@@ -19,6 +19,10 @@ def _isolated_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     실패한다. 매 테스트가 시작 시점에 초기화하므로 격리는 그대로 보장된다.
     """
     monkeypatch.setenv("SOOLJANG_ENVIRONMENT", "test")
+    # 개발자의 로컬 `.env` 를 읽지 않게 한다. 읽으면 테스트가 각자의 환경 설정에 따라
+    # 통과·실패해 CI 와 결과가 갈린다.
+    monkeypatch.setenv("SOOLJANG_ENV_FILE", "")
+    monkeypatch.delenv("SOOLJANG_CORS_ORIGINS", raising=False)
     monkeypatch.setenv(
         "SOOLJANG_DATABASE_URL", os.environ.get("SOOLJANG_DATABASE_URL", TEST_DATABASE_URL)
     )
