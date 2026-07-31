@@ -1,0 +1,365 @@
+name: Quality
+
+# PR 에서만 실행한다. main 푸시는 PR 을 거쳐 들어오므로 중복 실행할 이유가 없다.
+on:
+  pull_request:
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Task 5 이전에는 Python·Node 프로젝트가 아직 없다. 각 잡을 해당 파일 존재
+  # 여부로 게이팅해 워크플로가 지금도 유효하고, 프로젝트가 생기면 자동으로
+  # 활성화되게 한다.
+  detect:
+    name: Detect project layout
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      python: ${{ steps.check.outputs.python }}
+      web: ${{ steps.check.outputs.web }}
+      docker: ${{ steps.check.outputs.docker }}
+      alembic: ${{ steps.check.outputs.alembic }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Check which toolchains are present
+        id: check
+        shell: bash
+        run: |
+          emit() { echo "$1=$2" >> "$GITHUB_OUTPUT"; echo "$1=$2"; }
+          present() { if [[ -e "$1" ]]; then echo true; else echo false; fi; }
+          emit python "$(present pyproject.toml)"
+          emit web "$(present web/package.json)"
+          emit alembic "$(present alembic.ini)"
+          if [[ -f Dockerfile ]] || compgen -G 'docker/*.Dockerfile' > /dev/null; then
+            emit docker true
+          else
+            emit docker false
+          fi
+
+  commit-convention:
+    name: Commit convention
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate commit messages
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          failed=0
+          while IFS= read -r subject; do
+            if ! bash scripts/check_commit_message.sh "$subject"; then
+              failed=1
+            fi
+          done < <(git log --format=%s "$BASE_SHA..$HEAD_SHA")
+          exit "$failed"
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Scan tracked files for secrets and personal data
+        run: bash scripts/scan-secrets.sh
+
+  python-quality:
+    name: Python quality
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sooljang
+          POSTGRES_PASSWORD: sooljang
+          POSTGRES_DB: sooljang_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      # 개별 검사를 continue-on-error 로 돌리고 마지막에 합산한다. 첫 실패에서
+      # 멈추면 나머지 문제를 다음 실행에서야 알게 되어 왕복이 늘어난다.
+      - name: Lint
+        id: ruff
+        continue-on-error: true
+        run: uv run --frozen ruff check --output-format=github .
+
+      - name: Check formatting
+        id: formatting
+        continue-on-error: true
+        run: uv run --frozen ruff format --check .
+
+      - name: Type check
+        id: ty
+        continue-on-error: true
+        run: uv run --frozen ty check --output-format=github
+
+      - name: Test with branch coverage
+        id: pytest
+        continue-on-error: true
+        run: uv run --frozen pytest
+
+      - name: Audit dependencies
+        id: audit
+        continue-on-error: true
+        run: uv run --frozen --with pip-audit pip-audit --strict
+
+      - name: Summarize Python results
+        shell: bash
+        env:
+          RUFF: ${{ steps.ruff.outcome }}
+          FORMATTING: ${{ steps.formatting.outcome }}
+          TY: ${{ steps.ty.outcome }}
+          PYTEST: ${{ steps.pytest.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "| 검사 | 결과 |"
+            echo "|---|---|"
+            echo "| ruff check | $RUFF |"
+            echo "| ruff format | $FORMATTING |"
+            echo "| ty check | $TY |"
+            echo "| pytest (branch coverage 85%) | $PYTEST |"
+            echo "| pip-audit | $AUDIT |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for outcome in "$RUFF" "$FORMATTING" "$TY" "$PYTEST" "$AUDIT"; do
+            if [[ "$outcome" != "success" ]]; then
+              echo "Python 품질 검사에 실패한 항목이 있습니다." >&2
+              exit 1
+            fi
+          done
+
+  migration-check:
+    name: Migration round trip
+    needs: detect
+    if: needs.detect.outputs.alembic == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sooljang
+          POSTGRES_PASSWORD: sooljang
+          POSTGRES_DB: sooljang_migrate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_migrate
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Upgrade to head then downgrade to base
+        run: |
+          uv run --frozen alembic upgrade head
+          uv run --frozen alembic downgrade base
+          uv run --frozen alembic upgrade head
+
+      - name: Detect model and migration drift
+        run: |
+          uv run --frozen alembic check
+
+  web-quality:
+    name: TypeScript quality
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --prefix web
+
+      - name: Lint and format check
+        id: biome
+        continue-on-error: true
+        run: npm --prefix web run lint
+
+      - name: Type check
+        id: tsc
+        continue-on-error: true
+        run: npm --prefix web run typecheck
+
+      - name: Test with coverage
+        id: vitest
+        continue-on-error: true
+        run: npm --prefix web run test:coverage
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: npm --prefix web run build
+
+      - name: Audit dependencies
+        id: audit
+        continue-on-error: true
+        run: npm --prefix web audit --audit-level=high
+
+      - name: Summarize TypeScript results
+        shell: bash
+        env:
+          BIOME: ${{ steps.biome.outcome }}
+          TSC: ${{ steps.tsc.outcome }}
+          VITEST: ${{ steps.vitest.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "| 검사 | 결과 |"
+            echo "|---|---|"
+            echo "| biome lint/format | $BIOME |"
+            echo "| tsc --noEmit | $TSC |"
+            echo "| vitest (coverage 80%) | $VITEST |"
+            echo "| build | $BUILD |"
+            echo "| npm audit | $AUDIT |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for outcome in "$BIOME" "$TSC" "$VITEST" "$BUILD" "$AUDIT"; do
+            if [[ "$outcome" != "success" ]]; then
+              echo "TypeScript 품질 검사에 실패한 항목이 있습니다." >&2
+              exit 1
+            fi
+          done
+
+  docker-build:
+    name: Container build
+    needs: detect
+    if: needs.detect.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # 서드파티 액션 대신 러너에 내장된 buildx 를 직접 쓴다. 공급망 표면을
+      # 줄이고 검증되지 않은 액션 SHA 를 pin 하지 않기 위한 선택이다.
+      - name: Build images without pushing
+        run: |
+          for dockerfile in Dockerfile docker/*.Dockerfile; do
+            [[ -f "$dockerfile" ]] || continue
+            echo "::group::$dockerfile"
+            docker buildx build --file "$dockerfile" --tag "sooljang-ci:$(basename "$dockerfile")" .
+            echo "::endgroup::"
+          done
+
+  quality-gate:
+    name: Quality gate
+    needs:
+      - commit-convention
+      - workflow-lint
+      - secret-scan
+      - python-quality
+      - migration-check
+      - web-quality
+      - docker-build
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # 단일 필수 체크로 모아 두면, 게이팅으로 건너뛴 잡(skipped)은 통과로
+      # 취급하고 실패·취소만 잡을 수 있다.
+      - name: Verify no job failed
+        shell: bash
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "잡 결과: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "품질 게이트 실패: $result" >&2; exit 1 ;;
+            esac
+          done
+          echo "품질 게이트 통과"

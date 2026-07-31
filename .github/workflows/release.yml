@@ -1,0 +1,193 @@
+name: Release
+
+# 이 워크플로는 미리 작성해 두고 개발 기간 동안 실행하지 않는다.
+# 첫 정식 릴리스는 모든 기능 Task 가 끝난 뒤 Task 21 에서 한 번만 수행한다.
+#
+# 검증은 workflow_dispatch 의 dry_run 모드로만 한다. dry_run 은 이미지 빌드까지
+# 수행하고 레지스트리 push 와 릴리스 생성은 건너뛴다.
+#
+# 배포 방식: GitHub Actions 는 홈 PC 로 인바운드 접속을 할 수 없다. 따라서 이
+# 워크플로는 GHCR 에 이미지를 게시하는 것까지만 하고, 홈 PC 가 `make deploy` 로
+# 이미지를 pull 한다. 클라우드로 이전하면 여기에 배포 스텝만 추가한다.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "빌드까지만 수행하고 게시·릴리스 생성을 건너뜁니다"
+        type: boolean
+        default: true
+      ref:
+        description: "빌드 대상 ref (기본: 현재 브랜치)"
+        type: string
+        required: false
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write # 릴리스 생성
+      packages: write # GHCR push
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve release mode
+        id: mode
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            dry_run=false
+            version="${REF_NAME#v}"
+          else
+            dry_run="${DRY_RUN_INPUT:-true}"
+            version="0.0.0-dryrun"
+          fi
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run version=$version"
+
+      - name: Verify tag is reachable from main
+        if: steps.mode.outputs.dry_run == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # 태그가 main 히스토리에 없으면 검증되지 않은 커밋을 릴리스하게 된다.
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            fetch origin main
+          if ! git merge-base --is-ancestor "$REF_NAME" origin/main; then
+            echo "태그 $REF_NAME 이 main 히스토리에 없습니다." >&2
+            exit 1
+          fi
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Verify project version matches tag
+        if: steps.mode.outputs.dry_run == 'false'
+        shell: bash
+        env:
+          VERSION: ${{ steps.mode.outputs.version }}
+        run: |
+          project_version="$(uv version --short)"
+          if [[ "$project_version" != "$VERSION" ]]; then
+            echo "pyproject.toml 버전($project_version)과 태그($VERSION)가 다릅니다." >&2
+            exit 1
+          fi
+
+      - name: Install Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Run full test suite
+        shell: bash
+        run: |
+          uv sync --frozen
+          uv run --frozen pytest
+          npm ci --prefix web
+          npm --prefix web run check
+
+      - name: Build container images
+        shell: bash
+        env:
+          VERSION: ${{ steps.mode.outputs.version }}
+        run: |
+          image="${REGISTRY}/${IMAGE_NAME}"
+          for dockerfile in Dockerfile docker/*.Dockerfile; do
+            [[ -f "$dockerfile" ]] || continue
+            component="$(basename "$dockerfile" .Dockerfile)"
+            [[ "$component" == "Dockerfile" ]] && component="app"
+            tag_lower="$(echo "${image}-${component}" | tr '[:upper:]' '[:lower:]')"
+            echo "::group::build $dockerfile"
+            docker buildx build \
+              --file "$dockerfile" \
+              --tag "${tag_lower}:${VERSION}" \
+              --tag "${tag_lower}:latest" \
+              --label "org.opencontainers.image.source=https://github.com/${IMAGE_NAME}" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              .
+            echo "::endgroup::"
+          done
+
+      - name: Log in to GHCR
+        if: steps.mode.outputs.dry_run == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Push images
+        if: steps.mode.outputs.dry_run == 'false'
+        shell: bash
+        env:
+          VERSION: ${{ steps.mode.outputs.version }}
+        run: |
+          image="${REGISTRY}/${IMAGE_NAME}"
+          for dockerfile in Dockerfile docker/*.Dockerfile; do
+            [[ -f "$dockerfile" ]] || continue
+            component="$(basename "$dockerfile" .Dockerfile)"
+            [[ "$component" == "Dockerfile" ]] && component="app"
+            tag_lower="$(echo "${image}-${component}" | tr '[:upper:]' '[:lower:]')"
+            docker push "${tag_lower}:${VERSION}"
+            docker push "${tag_lower}:latest"
+          done
+
+      - name: Create GitHub release with generated notes
+        if: steps.mode.outputs.dry_run == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "$REF_NAME" \
+            --title "$REF_NAME" \
+            --generate-notes \
+            --verify-tag
+
+      - name: Report dry run outcome
+        if: steps.mode.outputs.dry_run == 'true'
+        shell: bash
+        run: |
+          {
+            echo "### 릴리스 dry run 완료"
+            echo ""
+            echo "빌드까지 검증했고 아래 단계는 의도적으로 건너뛰었습니다."
+            echo ""
+            echo "- GHCR 로그인 및 이미지 push"
+            echo "- GitHub 릴리스 생성"
+            echo ""
+            echo "실제 릴리스는 Task 21 에서 \`v*.*.*\` 태그를 푸시해 수행합니다."
+          } >> "$GITHUB_STEP_SUMMARY"
