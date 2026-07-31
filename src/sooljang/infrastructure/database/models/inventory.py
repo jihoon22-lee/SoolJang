@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from sooljang.infrastructure.database.base import Base, EntityMixin, str_enum_column
+from sooljang.infrastructure.database.models.product import Sku
 
 
 class VendorKind(enum.StrEnum):
@@ -107,8 +108,8 @@ class Purchase(Base, EntityMixin):
     # 레거시 원문 보존. 자동 분해에 실패한 구매처 문자열 등을 그대로 남긴다.
     import_note: Mapped[str | None] = mapped_column(Text, default=None)
 
-    sku: Mapped[object] = relationship("Sku", lazy="selectin")
-    vendor: Mapped[object | None] = relationship("Vendor", lazy="selectin")
+    sku: Mapped[Sku] = relationship("Sku", lazy="selectin")
+    vendor: Mapped[Vendor | None] = relationship("Vendor", lazy="selectin")
     bottles: Mapped[list[Bottle]] = relationship(
         "Bottle", back_populates="purchase", cascade="all, delete-orphan"
     )
