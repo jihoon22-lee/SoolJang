@@ -46,6 +46,35 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ---
 
+## 1-1. 실제 데이터로 앱 써 보기
+
+Task 11 로 실제 429행이 들어간다. 직접 확인하려면 이렇게 한다.
+
+```bash
+# 1) DB 기동 후 마이그레이션
+sg docker -c "docker compose up -d db"        # 새 셸이면 sg 없이 docker compose
+export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5432/sooljang"
+uv run alembic upgrade head
+
+# 2) API 기동 (Compose api 컨테이너가 8000 을 쓰므로 다른 포트를 쓴다)
+SOOLJANG_API_PORT=8210 uv run sooljang-api
+
+# 3) 프론트엔드 (다른 터미널)
+SOOLJANG_API_URL=http://127.0.0.1:8210 npm --prefix web run dev
+# → http://127.0.0.1:5173 접속, "가져오기" 화면에서 /mnt/e/alcohol.csv 업로드
+#   반드시 "분석 (미리보기)" 로 먼저 확인한 뒤 "적재 실행"
+```
+
+CLI 로 요약만 보려면:
+
+```bash
+uv run python -m sooljang.infrastructure.legacy.report /mnt/e/alcohol.csv --samples 0
+```
+
+적재는 재실행해도 중복이 생기지 않는다. 실수로 두 번 눌러도 안전하다.
+
+---
+
 ## 2. 지금까지 한 일
 
 전체 23개 Task 중 **11개 완료**. PR 10개 머지.
