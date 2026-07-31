@@ -452,3 +452,209 @@ button:disabled {
   padding: 2rem;
   color: var(--muted);
 }
+
+/* --- 병 관리 ------------------------------------------------------------- */
+
+.bottle-filters,
+.bottle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.bottle-filters button,
+.bottle-actions button {
+  min-height: 2.75rem;
+  padding: 0 0.9rem;
+}
+
+.bottle-filters button[aria-pressed="true"] {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.bottle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bottle-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+}
+
+.bottle-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+
+.bottle-badge-unopened {
+  background: var(--surface);
+}
+
+.bottle-badge-open {
+  border-color: #2b7a4b;
+  color: #2b7a4b;
+}
+
+.bottle-badge-finished,
+.bottle-badge-gifted,
+.bottle-badge-sold {
+  color: var(--muted);
+}
+
+.bottle-list-remaining {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.bottle-panel {
+  margin: 0.5rem 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.bottle-panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.bottle-panel-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.bottle-remaining {
+  margin: 0;
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.bottle-dates,
+.tasting-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+.bottle-dates dt,
+.tasting-summary dt {
+  color: var(--muted);
+}
+
+.bottle-dates dd,
+.tasting-summary dd {
+  margin: 0;
+}
+
+.bottle-error {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.4rem;
+  background: var(--danger-surface, #fdecec);
+  color: var(--danger, #a4262c);
+  font-size: 0.85rem;
+}
+
+.tasting-form {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+}
+
+.tasting-form h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.tasting-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.tasting-form button[type="submit"] {
+  min-height: 2.75rem;
+}
+
+.tasting-timeline h4 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.tasting-timeline ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.tasting-timeline li {
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+}
+
+.tasting-date {
+  font-weight: 600;
+  margin-right: 0.6rem;
+}
+
+.tasting-rating,
+.tasting-poured {
+  margin-right: 0.6rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.tasting-note,
+.tasting-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
+.tasting-meta {
+  color: var(--muted);
+}
+
+@media (min-width: 40rem) {
+  .tasting-form {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tasting-form h4,
+  .tasting-form button[type="submit"],
+  .tasting-form .bottle-error {
+    grid-column: 1 / -1;
+  }
+}

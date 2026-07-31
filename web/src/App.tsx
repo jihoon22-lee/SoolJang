@@ -5,14 +5,16 @@ import { ApiError, authApi, setUnauthorizedHandler } from "@/api/client";
 import type { User } from "@/api/types";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
+import { BottlesPage } from "@/pages/BottlesPage";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 
-type View = "products" | "categories" | "import" | "status";
+type View = "products" | "bottles" | "categories" | "import" | "status";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
+  { id: "bottles", label: "병 관리" },
   { id: "categories", label: "주종 관리" },
   { id: "import", label: "가져오기" },
   { id: "status", label: "서비스 상태" },
@@ -21,7 +23,7 @@ const VIEWS: { id: View; label: string }[] = [
 /**
  * 애플리케이션 루트.
  *
- * 라우터 라이브러리를 쓰지 않고 상태로 화면을 전환한다. 화면이 넷뿐이고 URL 공유가
+ * 라우터 라이브러리를 쓰지 않고 상태로 화면을 전환한다. 화면이 다섯뿐이고 URL 공유가
  * 요구사항이 아니라 의존성을 늘릴 이유가 없다. Task 15(PWA)에서 딥링크가 필요해지면 그때
  * 라우터를 도입한다.
  *
@@ -117,6 +119,7 @@ export function App() {
 
       <main className="app-main" id="main">
         {view === "products" && <ProductsPage />}
+        {view === "bottles" && <BottlesPage />}
         {view === "categories" && <CategoriesPage />}
         {view === "import" && <ImportPage />}
         {view === "status" && <HealthPanel />}

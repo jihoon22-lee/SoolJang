@@ -1,0 +1,232 @@
+# 세션 인계 — 2026-08-01 09:00 KST
+
+이 문서는 **이 세션이 끝나는 시점의 정확한 상태**와 **다음 세션이 무엇부터 해야 하는지**를
+담는다. 프로젝트 전체 맥락은 [handoff.md](handoff.md), 계획은 [plan.md](plan.md),
+설계는 [architecture.md](architecture.md) 에 있다.
+
+---
+
+## 1. 30초 요약
+
+- **완료**: Task 1~12 전부, Task 13 은 **백엔드만**
+- **머지된 PR**: 14개 (#1~#14). 전부 CI 9개 잡 통과 후 머지
+- **태그 0건 / 릴리스 0건** (Task 23 전용, 훅이 차단)
+- **다음 할 일**: **Task 13 프론트엔드 화면** (백엔드·API 는 완결)
+- 앱은 이제 **로그인을 요구한다**. 처음 켜면 계정 생성 폼이 뜬다
+
+```bash
+cd /mnt/e/projects/SoolJang
+git switch main && git pull --ff-only
+```
+
+---
+
+## 2. 지금 당장 해야 할 일 (순서대로)
+
+### 2-1. Task 13 프론트엔드 (남은 작업의 핵심)
+
+백엔드와 API 는 완결돼 있고 테스트로 고정했다. **화면만 없다.**
+
+만들어야 할 것:
+
+1. **병 목록·상세** — `GET /bottles?in_stock=true`
+   - 상태 배지(미개봉/개봉/소진/증여/판매), 잔량 게이지
+   - `remaining_ml` 이 `null` 이면 "미개봉(전량)" 이다. **0ml 이 아니다**
+2. **상태 전이 버튼** — `POST /bottles/{id}:open` 등
+   - 증여·판매는 되돌리기 어려우므로 확인을 받는다
+   - `:reopen` 은 "잘못 눌렀을 때" 되돌리기로 노출한다
+3. **시음 입력 폼** — `POST /tastings`
+   - 평점은 **6점 만점 0.5 단위**. 슬라이더나 라디오로 척도를 강제한다
+   - 따른 양은 선택. 얼마나 마셨는지 기억 안 나는 경우가 있다
+   - 향/맛/피니시/동석자/장소
+4. **시음 타임라인** — `GET /bottles/{id}/tastings`
+   - 평점 추이를 보여준다. `GET /tastings/summary` 의 `rating_change` 가 양수면 좋아졌다는 뜻
+5. **사진 첨부** — **첨부 업로드 엔드포인트가 아직 없다.** 모델(`attachment` 테이블)만 있다.
+   `POST /attachments` 를 먼저 만들어야 한다 (아래 §6 참조)
+
+기존 화면 패턴을 따른다:
+
+- 금액은 `web/src/format.ts` 의 `formatMoney` 한 곳에서만 (null → "가격 정보 없음")
+- 반응형은 CSS 만. 테이블+카드 둘 다 렌더 후 미디어쿼리 (JS 뷰포트 감지 금지)
+- 터치 타깃 44px, 모든 입력에 label 연결
+- 테스트에 `authenticatedRoutes()` 를 반드시 포함 (빠뜨리면 로그인 화면만 보인다)
+
+### 2-2. 그 다음
+
+Task 14(통계 v1, 엑셀 대조) → 15(PWA) → 16(바코드) → 17(OCR) → 18(외부소스) →
+19(사이트어댑터) → 20(통계v2) → **21(자체 통합테스트·다각도 분석)** →
+**22(개선 실행, 21↔22 반복)** → 23(첫 릴리스, 유일한 태그 푸시)
+
+---
+
+## 3. 이번 세션에 한 일
+
+### Task 12 — 인증과 로컬 HTTPS (PR #13, 머지 완료)
+
+| 항목 | 구현 |
+|---|---|
+| 테이블 | `app_user`, `app_session` (`0003_auth`) |
+| 비밀번호 | Argon2id, 최소 10자. 파라미터 상승 시 로그인 때 조용히 재해시 |
+| 세션 토큰 | 32바이트 무작위. DB 에는 **SHA-256 해시만** |
+| 세션 수명 | 30일. `revoked_at` 으로 즉시 무효화 |
+| 쿠키 | `sooljang_session`(httpOnly), `sooljang_csrf`(JS 읽기 가능) |
+| CSRF | double-submit. 쓰기 메서드만. 상수 시간 비교 |
+| 레이트 리밋 | 계정·IP 각각 5분 8회. 인메모리 |
+| 엔드포인트 | `/auth/setup`(GET·POST), `/auth/login`, `/auth/logout`, `/auth/me`, `/auth/password` |
+| 프론트엔드 | 로그인 화면, 인증 게이트, 401 중앙 처리, CSRF 헤더 자동 첨부 |
+| 운영 | `scripts/serve-https.sh`, `scripts/backup.sh` |
+
+### Task 13 백엔드 — 병 상태 전이와 시음 (PR #14, 머지 완료)
+
+| 항목 | 구현 |
+|---|---|
+| 테이블 | `tasting_session`, `attachment` (`0004_tasting`) |
+| 상태 전이 | `:open` `:finish` `:gift` `:sell` `:reopen` |
+| 시음 | 기록·타임라인·요약(평점 추이) |
+| 엔드포인트 | 12개 추가 → 총 **35개** |
+
+---
+
+## 4. 검증 증거 (이 세션에서 실제로 측정한 값)
+
+```
+Python          482 passed, 24 skipped, 커버리지 94.86%   (기준 85%)
+프론트엔드       145 passed, 커버리지 91.94% stmts          (기준 80%)
+ruff / format / ty                                        All checks passed
+Biome / tsc / vite build                                  통과 (CSS 5.50kB, JS gzip 82.92kB)
+마이그레이션     up→down→up 왕복 성공, alembic check 드리프트 없음
+shellcheck      serve-https.sh, backup.sh 통과
+시크릿 스캔      통과
+PR #13 CI       9개 잡 전부 pass (run 30671465017)
+PR #14 CI       9개 잡 전부 pass (run 30672352311)
+```
+
+### 인증 실서버 확인 (포트 8230)
+
+```
+1. 인증 없이 GET /products        → 401 "로그인이 필요합니다"
+2. GET /auth/setup               → {"needs_setup":true}
+3. POST /auth/setup              → 201, 권한 owner, 만료 2026-08-30
+4. 세션 쿠키                      → httpOnly 있음
+5. 인증 후 GET /products         → 200
+6. CSRF 없이 POST /categories    → 403
+7. CSRF 붙여 POST /categories    → 201
+8. 로그아웃 204 → 재접근          → 401
+9. GET /health (인증 없이)        → 200
+```
+
+### 시음 실서버 확인 (포트 8240, 라가불린 16년 700ml)
+
+```
+1. 개봉              → open / 2026-03-01 / 700ml
+2. 시음 40ml 4.0점    → 향 "피트, 요오드"
+3. 시음 60ml 5.0점    → 동석 "친구"
+4. 잔량              → 700 - 40 - 60 = 600ml
+5. 평점 추이          → 2회 / 평균 4.50 / 첫 4.0 → 최근 5.0 (변화 +1.0)
+6. 9999ml 요청        → 409 "잔량이 부족합니다. 남은 양 600ml"
+```
+
+### 백업 실제 검증
+
+생성 34K → `pg_restore --list` 로 테이블 12개 확인 → 카테고리 46개 삭제 → 복원 → 46개 복구,
+사용자 1명 유지. 확인 문자열이 틀리면 취소되는 것도 확인.
+
+---
+
+## 5. 이번 세션에 새로 발견한 함정
+
+| 함정 | 대응 |
+|---|---|
+| **FastAPI 최신 버전은 `app.routes` 에 `_IncludedRouter` 지연 객체를 둔다** | 라우트 확인은 `app.routes` 순회가 아니라 `app.openapi()['paths']` 로 해야 한다. 순회하면 "라우터가 등록되지 않았다"고 오판한다 |
+| `EmailStr` 이 `email-validator` 를 요구 | `pyproject.toml` 에 추가. 버전은 `>=2.3` (2.4 는 아직 없다) |
+| `.test` TLD 는 email-validator 가 거부 | 테스트 이메일은 `example.com` 을 쓴다 |
+| **HTTP 헤더는 ASCII 만 허용** | 테스트에서 헤더 값에 한글을 넣으면 `UnicodeEncodeError`. `wrong-token` 같은 ASCII 를 쓴다 |
+| 시크릿 스캐너는 **추적 중인 파일만** 본다 | 커밋 전에 실행하면 새 파일을 못 본다. 커밋 후 다시 돌려야 CI 와 결과가 같다 |
+| `sg docker -c "..."` 에 인자를 이어 붙이면 공백이 깨진다 | `printf %q` 로 각 인자를 이스케이프. `--format '{{.Service}} {{.State}}'` 가 두 개로 쪼개졌다 |
+| ty 는 속성에 대입한 뒤 타입을 좁히지 않는다 | 지역 변수로 받아 비교한 뒤 대입한다 |
+| `Query(default=...)` 는 ruff B008 위반 | 이 저장소 규약은 `Annotated[T, Query(...)] = default` |
+| 로그인 후 `invalidateQueries` 가 `/auth/me` 를 재조회 | 테스트 스텁 배열을 그 자리에서 바꿔 200 으로 전환시켜야 실제와 같아진다 |
+| `Product.normalized_name` 은 NOT NULL | 테스트 픽스처에서 반드시 채운다 |
+| `POST /products` 는 `skus`(리스트)를 받고, 구매는 **별도 엔드포인트** | `POST /purchases` 로 따로 만든다 |
+
+기존 함정은 [handoff.md](handoff.md) §5 에 있다. 특히 이 두 개는 계속 유효하다.
+
+- `docker` 명령은 이 셸에서 `sg docker -c "..."` 로 감싼다
+- Compose `api` 컨테이너가 8000 을 점유하므로 로컬 서버는 `SOOLJANG_API_PORT` 로 다른 포트
+
+---
+
+## 6. 알려진 미완·부채
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **Task 13 프론트엔드** | 미구현 | 백엔드·API 는 완결. §2-1 참조 |
+| **첨부 업로드 엔드포인트** | 미구현 | `attachment` 테이블과 모델만 있다. `POST /attachments`, 파일 저장 경로, 이미지 검증(MIME·크기·EXIF 제거), 정적 서빙이 필요 |
+| **Tailscale 실제 접속 미확인** | 환경 제약 | 이 환경에 tailscale 이 설치되지 않았다. 스크립트는 shellcheck 통과. 사용자가 `tailscale up` 후 `scripts/serve-https.sh` 실행 |
+| 감사 로그 | 미구현 | `architecture.md` §6 에 "인증·권한 변경, 임포트, 삭제는 감사 로그에 남긴다"고 적었으나 아직 없다 |
+| 레이트 리밋이 인메모리 | 의도된 선택 | 여러 워커로 늘리면 공유 저장소 필요 |
+| 실구매 총액 1원 차 | 수용됨 | 총액÷병수 반올림 잔여. 허용범위 20원으로 테스트 고정 |
+| 구매처 24행 수동 분할 대상 | 미처리 | 병수 힌트 합이 맞지 않아 자동 분할 불가. Task 13 화면에서 수동 분할 UI 를 고려 |
+
+---
+
+## 7. 절대 규칙 (변함없음)
+
+1. `main` 직접 푸시 금지 (부트스트랩 커밋만 예외). `pre-push` 훅이 막는다
+2. **개발 중 `v*.*.*` 태그 금지.** Task 23 전용. 우회는 `SOOLJANG_ALLOW_TAG_PUSH=1`
+3. 실제 음주 기록·`.env`·백업 덤프(`*.dump`)·업로드 이미지 커밋 금지
+4. 매 Task PR 에 `plan.md` + `handoff.md` 갱신 포함
+5. 모든 API 는 인증 요구 (`/health` 예외). 라우터 단위로 걸어 기본이 인증이 되게 한다
+6. 파생값 DB 저장 금지 (매번 계산)
+7. 외부 데이터는 출처 URL 없이 저장 금지
+8. Task 1개 = `feature/*` 브랜치 1개 = PR 1개. Conventional Commits
+9. **테스트에서 인증을 우회하지 말 것.** 우회하면 인증이 깨져도 초록색이다
+10. `Enum` 컬럼은 반드시 `base.str_enum_column` 헬퍼를 쓴다 (값 저장 보장)
+
+---
+
+## 8. 재개 명령 모음
+
+```bash
+cd /mnt/e/projects/SoolJang
+export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:localdevonly@127.0.0.1:5432/sooljang_test"
+
+# DB
+sg docker -c "docker compose up -d db"
+uv run alembic upgrade head
+
+# 검증
+uv run ruff check . && uv run ruff format --check . && uv run ty check
+uv run pytest                     # 482 passed 기대
+npm --prefix web run check         # 145 passed 기대
+bash scripts/scan-secrets.sh
+
+# 실서버 (Compose api 가 8000 을 쓰므로 다른 포트)
+SOOLJANG_API_PORT=8210 uv run sooljang-api
+SOOLJANG_API_URL=http://127.0.0.1:8210 npm --prefix web run dev
+
+# 실제 데이터 (429행)
+SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet
+
+# 백업
+scripts/backup.sh
+```
+
+로그인 계정을 잊었다면:
+
+```bash
+sg docker -c "docker compose exec -T db psql -U sooljang -d sooljang -c 'DELETE FROM app_user'"
+# 이후 앱을 열면 다시 계정 생성 폼이 뜬다
+```
+
+---
+
+## 9. 열린 질문
+
+| # | 질문 | 필요 시점 |
+|---|---|---|
+| Q4 | Tailscale 설치·tailnet 이름 (스크립트는 준비됨) | Task 15 이전 |
+| Q2 | 검색·LLM API 제공자와 예산 | Task 17 |
+| Q3 | 초기 외부 소스 사이트 목록 | Task 18 |
+| Q5 | 목표가 알림 채널 | Task 19 |
+| Q6 | 지인 공유 권한 모델 (`role` 은 이미 있음) | Task 20 |

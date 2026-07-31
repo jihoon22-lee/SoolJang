@@ -22,6 +22,9 @@ import type {
   Purchase,
   PurchaseCreateInput,
   SetupStatus,
+  Tasting,
+  TastingInput,
+  TastingSummary,
   User,
   Vendor,
 } from "@/api/types";
@@ -320,4 +323,45 @@ export const authApi = {
 
   changePassword: (input: { current_password: string; new_password: string }) =>
     request<void>("/auth/password", { method: "POST", body: input }),
+};
+
+// --- 병과 시음 ----------------------------------------------------------------
+
+/** 병 상태 전이. 상태·잔량·날짜가 얽혀 있어 서버가 함께 갱신한다. */
+export const bottlesApi = {
+  list: (params: { status?: string; in_stock?: boolean }, signal?: AbortSignal) =>
+    request<Bottle[]>("/bottles", { params, ...(signal ? { signal } : {}) }),
+
+  get: (id: string, signal?: AbortSignal) =>
+    request<Bottle>(`/bottles/${id}`, signal ? { signal } : {}),
+
+  open: (id: string, body: { opened_on?: string; remaining_ml?: number } = {}) =>
+    request<Bottle>(`/bottles/${id}:open`, { method: "POST", body }),
+
+  finish: (id: string, body: { finished_on?: string } = {}) =>
+    request<Bottle>(`/bottles/${id}:finish`, { method: "POST", body }),
+
+  gift: (id: string, body: { on?: string; note?: string } = {}) =>
+    request<Bottle>(`/bottles/${id}:gift`, { method: "POST", body }),
+
+  sell: (id: string, body: { on?: string; note?: string } = {}) =>
+    request<Bottle>(`/bottles/${id}:sell`, { method: "POST", body }),
+
+  /** 잘못 눌렀을 때 되돌리기. 기록을 지우지 않고 상태만 개봉으로 바꾼다. */
+  reopen: (id: string) => request<Bottle>(`/bottles/${id}:reopen`, { method: "POST" }),
+
+  tastings: (id: string, signal?: AbortSignal) =>
+    request<Tasting[]>(`/bottles/${id}/tastings`, signal ? { signal } : {}),
+};
+
+export const tastingsApi = {
+  create: (input: TastingInput) => request<Tasting>("/tastings", { method: "POST", body: input }),
+
+  list: (params: { sku_id?: string; bottle_id?: string }, signal?: AbortSignal) =>
+    request<Tasting[]>("/tastings", { params, ...(signal ? { signal } : {}) }),
+
+  summary: (params: { sku_id?: string; bottle_id?: string }, signal?: AbortSignal) =>
+    request<TastingSummary>("/tastings/summary", { params, ...(signal ? { signal } : {}) }),
+
+  remove: (id: string) => request<void>(`/tastings/${id}`, { method: "DELETE" }),
 };
