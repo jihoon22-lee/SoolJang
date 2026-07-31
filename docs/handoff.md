@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 01:35 KST**
+- 최종 갱신: **2026-08-01 02:15 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `feature/web-ui-slice` (Task 10)
+- 현재 브랜치: `feature/legacy-import` (Task 11)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---
@@ -48,7 +48,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **10개 완료**. PR 9개 머지.
+전체 23개 Task 중 **11개 완료**. PR 10개 머지.
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -62,6 +62,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 8. 파생 지표 | ✅ | [#7](https://github.com/jihoon22-lee/SoolJang/pull/7) | `domain/metrics.py` 순수 함수 + `metrics_sql.py` SQL 구현 + 일치 검증 |
 | 9. REST API | ✅ | [#8](https://github.com/jihoon22-lee/SoolJang/pull/8) | 엔드포인트 17개, 커서 페이지네이션, Problem Details, 카테고리 관리 API |
 | 10. 웹 UI | ✅ | [#9](https://github.com/jihoon22-lee/SoolJang/pull/9) | 목록(PC 테이블/모바일 카드)·필터·상세·등록 폼·카테고리 관리 트리 |
+| 11. 레거시 임포터 | ✅ | [#10](https://github.com/jihoon22-lee/SoolJang/pull/10) | dry-run 미리보기 + 적재 + 멱등성. **실제 429행 적재 성공** |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -77,7 +78,8 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 엑셀 한계 해결 확인 | 같은 제품에 구매처·가격·구매일이 다른 구매 건 2건 + 개별 병 3개 저장 성공 |
 | 파생 지표 이중 구현 일치 | 12개 시나리오에서 순수 함수와 SQL 결과 동일. 레거시 실측 케이스(100ml당 3,197.33원 등) 재현 |
 | REST API 실동작 | 실서버에서 복합 조건 조회·한글 검색·Problem Details·구매 건 분할 확인. 엔드포인트 17개 |
-| 웹 UI 실동작 | Vite 프록시 경유로 제품 4건·카테고리 45개 조회 성공. 프론트엔드 테스트 119개 통과(커버리지 90%) |
+| 웹 UI 실동작 | Vite 프록시 경유로 제품 4건·카테고리 45개 조회 성공. 프론트엔드 테스트 131개 통과(커버리지 90.9%) |
+| **실제 데이터 이관 완료** | 429행 → 제품 405종(24종 병합)·병 1,078개·구매 건 434건. 정가 ₩42,401,108·용량 704,970ml·소비 819/미개봉 225/개봉 34 모두 엑셀 합계행과 일치. 실패 0건. 재실행 시 중복 0 |
 
 ---
 
@@ -128,21 +130,21 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 11 — 레거시 데이터 임포터 (`feature/legacy-import`)
+### 다음 착수: Task 12 — 인증과 로컬 HTTPS 접근 (`feature/auth-https`)
 
-파서(Task 6)와 API(Task 9)와 화면(Task 10)이 모두 준비됐다. 이제 실제 429행을 넣는다.
+실제 데이터가 들어갔다. 이제 폰에서 볼 수 있게 만든다.
 
-- 업로드 → 파서로 분석 → **dry-run 미리보기** → 실제 적재. 미리보기 없이 바로 넣으면 잘못된
-  매핑을 되돌리기 어렵다
-- 제품 자동 병합: `normalized_name` + `vintage` + `abv`
-- 구매처 개행 분할 시도. 총합이 `구매` 병수와 맞지 않으면 포기하고 단일 구매 건으로 적재하되
-  원문을 `purchase.import_note` 에 보존
-- 병 레코드 초기화: `소비`→finished, `미개봉`→unopened, `개봉`→open
-- 재실행 멱등성
-- **`docs/legacy-schema.md` §5 기준값 전체 대조** (429행, 1,078/819/259/225/34병,
-  ₩42,401,100, ₩36,495,447, 704,970ml, 구매처 82곳)
+1. `api/deps.py` 의 `current_user_id` 를 세션 쿠키 기반으로 교체. **이 함수만 바꾸면 모든
+   라우터가 실제 사용자를 쓴다** (Task 9 에서 그 목적으로 자리를 만들어 뒀다)
+2. `user` · `session` 테이블 + 마이그레이션. 비밀번호는 Argon2id
+3. 로그인·로그아웃·`GET /auth/me`, `httpOnly` + `Secure` + `SameSite=Lax` 쿠키
+4. CSRF(double-submit cookie), 로그인 레이트 리밋
+5. `/health` 외 전 엔드포인트에 인증 적용
+6. 로그인 화면과 인증 만료 처리
+7. `tailscale serve --https=443` → `https://<머신>.<tailnet>.ts.net`
+8. `pg_dump` 백업·복원 스크립트
 
-파서는 이미 이 값을 모두 재현한다(§3). 임포터는 그 결과를 DB 에 옮기는 일만 남았다.
+**사용자 확인 필요**: Tailscale 설치 여부와 tailnet 이름 (§7-Q4). HTTPS 인증서 발급에 필요하다.
 
 ### 핵심 마일스톤: Task 12 (인증 + Tailscale HTTPS)
 
@@ -184,6 +186,9 @@ python3 scripts/generate_legacy_fixture.py
 | **Compose `api` 컨테이너가 8000 포트 점유** | 로컬 서버가 `Address already in use`, 또는 구버전 코드가 응답 | `docker compose stop api` 하거나 `SOOLJANG_API_PORT` 로 다른 포트를 쓴다 |
 | **관계 컬렉션이 낡은 값 유지** | 품종을 교체했는데 응답에 이전 값이 남음 | 수정 후 `session.expire(obj, ["관계명"])` 로 만료시킨다 |
 | **flush 직후 Decimal 정밀도** | 생성 응답은 `85000`, 재조회는 `85000.00` | 응답 전에 `session.refresh()` 로 저장된 값을 읽는다 |
+| **FastAPI 파일 업로드** | `Form data requires "python-multipart"` | `python-multipart` 의존성이 필요하다 (추가됨) |
+| **테스트 fetch 스텁과 FormData** | `[object FormData] is not valid JSON` | `testing.tsx` 의 `readBody` 가 FormData 를 파일 이름으로 변환한다 |
+| **합성 픽스처로 못 잡는 결함** | 실제 데이터에서만 터지는 형식 변형 | 실측 파일 opt-in 테스트를 반드시 돌린다: `SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet` |
 
 ---
 
