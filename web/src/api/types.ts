@@ -231,3 +231,69 @@ export interface Bottle {
   storage_location: string | null;
   note: string | null;
 }
+
+// --- 레거시 임포트 ----------------------------------------------------------
+
+export interface ImportBlockInfo {
+  record_count: number;
+  /** 데이터 중간의 빈 행. 종료로 오인하지 않고 통과한 위치 */
+  skipped_blank_lines: number[];
+  total_row_lines: number[];
+  excluded_line_count: number;
+}
+
+export interface ImportTotals {
+  products: number;
+  source_rows: number;
+  skus: number;
+  purchases: number;
+  bottles: number;
+  vendors: number;
+  categories: number;
+  varieties: number;
+  list_amount: Money;
+  paid_amount: Money;
+  volume_ml: number;
+}
+
+export interface ImportReview {
+  merge_group_count: number;
+  merge_examples: number[][];
+  split_vendor_rows: number[];
+  unsplit_vendor_rows: number[];
+  warning_summary: [string, number][];
+}
+
+export interface ImportSampleRow {
+  line_number: number;
+  name: string;
+  vintage: number | null;
+  volume_ml: number | null;
+  abv: string | null;
+  category_path: string[];
+  varieties: string[];
+  unit_list_price: Money;
+  unit_paid_price: Money;
+  quantity: number;
+  vendors: string[];
+}
+
+export interface ImportAnalysis {
+  block: ImportBlockInfo;
+  totals: ImportTotals;
+  review: ImportReview;
+  sample: ImportSampleRow[];
+}
+
+export interface ImportCommitResult {
+  products_created: number;
+  products_reused: number;
+  skus_created: number;
+  purchases_created: number;
+  purchases_skipped: number;
+  bottles_created: number;
+  categories_created: number;
+  vendors_created: number;
+  varieties_created: number;
+  failed_rows: [number, string][];
+}

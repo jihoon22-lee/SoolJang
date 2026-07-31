@@ -11,6 +11,8 @@ import type {
   DeleteStrategy,
   FieldError,
   HealthStatus,
+  ImportAnalysis,
+  ImportCommitResult,
   ProblemDetail,
   Product,
   ProductCreateInput,
@@ -205,4 +207,38 @@ export const purchasesApi = {
 
   split: (id: string, parts: { quantity: number; vendor_id?: string | null }[]) =>
     request<Purchase[]>(`/purchases/${id}:split`, { method: "POST", body: { parts } }),
+};
+
+// --- 레거시 임포트 ----------------------------------------------------------
+
+/**
+ * 파일 업로드는 multipart 이므로 JSON 요청 헬퍼를 쓸 수 없다. Content-Type 을 직접 지정하면
+ * boundary 가 빠져 서버가 파싱하지 못하므로 브라우저가 붙이도록 둔다.
+ */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(`${API_PREFIX}${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body: form,
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = isProblemDetail(payload) ? payload : null;
+    throw new ApiError(
+      response.status,
+      problem?.detail ?? problem?.title ?? `업로드가 실패했습니다 (HTTP ${response.status})`,
+      problem,
+    );
+  }
+  return payload as T;
+}
+
+export const importsApi = {
+  /** DB 를 건드리지 않고 적재될 내용만 계산한다. */
+  analyze: (file: File) => upload<ImportAnalysis>("/imports/legacy:analyze", file),
+  commit: (file: File) => upload<ImportCommitResult>("/imports/legacy:commit", file),
 };

@@ -31,11 +31,7 @@ export function stubRoutes(routes: RouteStub[]) {
   const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({
-      url,
-      method,
-      body: init?.body ? JSON.parse(init.body as string) : undefined,
-    });
+    calls.push({ url, method, body: readBody(init?.body) });
 
     const route = routes.find(
       (candidate) =>
@@ -58,4 +54,29 @@ export function stubRoutes(routes: RouteStub[]) {
 
   vi.stubGlobal("fetch", spy);
   return { spy, calls };
+}
+
+/**
+ * 요청 본문을 검증하기 쉬운 형태로 바꾼다.
+ *
+ * 파일 업로드는 FormData 이므로 JSON 으로 파싱할 수 없다. 파일 이름만 남겨 어떤 파일이
+ * 올라갔는지 확인할 수 있게 한다.
+ */
+function readBody(body: BodyInit | null | undefined): unknown {
+  if (!body) return undefined;
+  if (body instanceof FormData) {
+    const entries: Record<string, string> = {};
+    for (const [key, value] of body.entries()) {
+      entries[key] = value instanceof File ? value.name : String(value);
+    }
+    return entries;
+  }
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return body;
+    }
+  }
+  return undefined;
 }
