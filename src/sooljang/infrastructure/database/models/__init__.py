@@ -5,6 +5,8 @@ Alembic 이 `Base.metadata` 를 통해 스키마를 인식하므로, 새 모델�
 드리프트로 잡아낸다.
 """
 
+from sooljang.infrastructure.database.models.auth import Session, User
+from sooljang.infrastructure.database.models.auth_enums import UserRole
 from sooljang.infrastructure.database.models.category import Category, Producer, Variety
 from sooljang.infrastructure.database.models.inventory import (
     IN_STOCK_STATUSES,
@@ -32,8 +34,11 @@ __all__ = [
     "Producer",
     "Product",
     "ProductVariety",
+    "Session",
     "Purchase",
     "Sku",
+    "User",
+    "UserRole",
     "Variety",
     "Vendor",
     "VendorKind",
