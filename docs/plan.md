@@ -17,25 +17,47 @@
 | 항목 | 값 |
 |---|---|
 | 최종 갱신 | 2026-07-31 |
-| 완료된 Task | **Task 1, Task 2, Task 3** |
-| 다음 착수 Task | **Task 4 — CI/CD 워크플로 구축** |
-| 현재 브랜치 | `feature/work-plan-doc` (Task 3) |
+| 완료된 Task | **Task 1 ~ Task 4** |
+| 다음 착수 Task | **Task 5 — 애플리케이션 골격** |
+| 현재 브랜치 | `feature/ci-cd` (Task 4) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 21에서만) |
 
-### 즉시 해야 할 일 (Task 4)
+### 즉시 해야 할 일 (Task 5)
 
-1. `.github/workflows/quality.yml` 작성 — PR 트리거, §7 품질 게이트 전 항목
-2. `.github/workflows/release.yml` 작성 — **파일만 작성하고 실행하지 않는다**
-3. `.github/release.yml` 릴리스 노트 라벨 설정, PR·이슈 템플릿
-4. `.githooks/commit-msg`(Conventional Commits 검증) + `pre-push`(`main` 직접 푸시 차단) +
-   설치 스크립트
-5. `actionlint` 설치 후 워크플로 정적 검사
-6. 더미 PR로 CI 전 항목 통과 확인
+> **선행 조건**: §6-Q1(데이터베이스 실행 방식)을 사용자와 먼저 확정한다. 이 환경에 Docker와
+> PostgreSQL이 없고 passwordless sudo도 불가하다.
+
+1. `pyproject.toml` 작성 (uv + hatchling, Python 3.14, ruff line-length 100, pytest 85% 게이트)
+2. `src/sooljang/` 골격 — 설정 로딩, FastAPI 앱, `GET /health`(DB 연결·마이그레이션 버전 보고)
+3. `web/` 골격 — Vite + React + TS + Biome + Vitest, `lint`·`typecheck`·`test:coverage`·`build`·
+   `check` npm 스크립트 (CI가 이 이름들을 호출한다)
+4. Alembic 초기화(`alembic.ini`, `env.py`), `Dockerfile`, `docker-compose.yml`
+5. `Makefile`, `.env.example`
+6. Task 4에서 게이팅해 둔 CI 잡(`python-quality`·`web-quality`·`migration-check`·`docker-build`)이
+   자동 활성화되어 전부 통과하는지 확인
 
 ### 차단 요인
 
-없음. 단 Task 5 착수 전에 §6-Q1(데이터베이스 실행 방식)을 사용자와 확정해야 한다.
+§6-Q1 데이터베이스 실행 방식 미확정.
+
+---
+
+## 1-1. CI 잡 활성화 상태
+
+Task 4의 품질 게이트는 프로젝트 파일 존재 여부로 잡을 게이팅한다. Task 5에서 아래 파일이
+추가되면 해당 잡이 자동으로 켜진다.
+
+| 잡 | 활성 조건 | 현재 |
+|---|---|---|
+| `commit-convention` | 항상 | ✅ 동작 |
+| `workflow-lint` | 항상 | ✅ 동작 |
+| `secret-scan` | 항상 | ✅ 동작 |
+| `python-quality` | `pyproject.toml` | ⏸ Task 5 |
+| `migration-check` | `alembic.ini` | ⏸ Task 5 |
+| `web-quality` | `web/package.json` | ⏸ Task 5 |
+| `docker-build` | `Dockerfile` 또는 `docker/*.Dockerfile` | ⏸ Task 5 |
+| `quality-gate` | 항상 (skipped 는 통과로 취급) | ✅ 동작 |
 
 ---
 
@@ -52,22 +74,26 @@ gh pr list --state all --limit 5
 # 2) main 최신화
 git switch main && git pull --ff-only
 
-# 3) 개발 환경 (Task 5 이후 유효)
+# 3) git 훅 활성화 (클론 직후 1회. main 직접 푸시·버전 태그 푸시를 차단한다)
+bash scripts/install-hooks.sh
+
+# 4) 개발 환경 (Task 5 이후 유효)
 uv sync                       # Python 의존성
 npm ci --prefix web           # 프론트엔드 의존성
 cp .env.example .env          # 최초 1회, 값 채우기
 
-# 4) 검증
+# 5) 검증
 uv run ruff check . && uv run ruff format --check .
 uv run ty check
 uv run pytest                 # 브랜치 커버리지 85% 강제
 npm --prefix web run check    # 포맷·린트·타입·테스트·빌드
+bash scripts/scan-secrets.sh  # 시크릿·개인 데이터 커밋 여부
 
-# 5) 새 Task 시작
+# 6) 새 Task 시작
 git switch -c feature/<task-slug>
 ```
 
-Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 3~4단계를 건너뛴다.
+Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부를 건너뛴다.
 
 ---
 
@@ -80,7 +106,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 3~4단계를 건�
 | 1 | 환경 부트스트랩 — 디렉토리와 private repo 생성 | ✅ | (main 부트스트랩) | — |
 | 2 | 아키텍처 설계 문서 | ✅ | `feature/architecture-docs` | [#1](https://github.com/jihoon22-lee/SoolJang/pull/1) |
 | 3 | 상세 작업 계획 문서 | ✅ | `feature/work-plan-doc` | [#2](https://github.com/jihoon22-lee/SoolJang/pull/2) |
-| 4 | CI/CD 워크플로 구축 | ⬜ | `feature/ci-cd` | |
+| 4 | CI/CD 워크플로 구축 | ✅ | `feature/ci-cd` | [#3](https://github.com/jihoon22-lee/SoolJang/pull/3) |
 | 5 | 애플리케이션 골격 | ⬜ | `feature/app-skeleton` | |
 | 6 | 레거시 CSV 블록 분리 파서 | ⬜ | `feature/legacy-parser` | |
 | 7 | 도메인 모델과 마이그레이션 | ⬜ | `feature/domain-model` | |
@@ -157,20 +183,32 @@ flowchart LR
   열린 질문 포함
 - **결과**: PR [#2](https://github.com/jihoon22-lee/SoolJang/pull/2)
 
-### ⬜ Task 4 — CI/CD 워크플로 구축
+### ✅ Task 4 — CI/CD 워크플로 구축
 
-- **목표**: PR마다 자동 품질 검증. 릴리스 파이프라인은 미리 만들어 두고 실행하지 않는다
 - **산출물**
-  - `.github/workflows/quality.yml` — PR 트리거 (§7 전 항목)
-  - `.github/workflows/release.yml` — `v*.*.*` 태그 + `workflow_dispatch`(dry-run 옵션)
-  - `.github/release.yml` — 릴리스 노트 라벨 분류
-  - `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/`
-  - `.githooks/commit-msg`, `.githooks/pre-push`, `scripts/install-hooks.sh`
-- **테스트**: 잘못된 커밋 메시지가 훅에서 거부됨 / `main` 직접 푸시가 훅에서 차단됨 /
-  `actionlint` 통과 / release 워크플로 dry-run이 빌드까지 성공
-- **데모**: 더미 PR에서 CI 전 항목 통과 로그, release dry-run 성공 로그 (게시물·태그 없음)
-- **주의**: Task 5 이전이라 Python·Node 프로젝트가 없다. 워크플로는 해당 경로가 존재할 때만
-  잡을 실행하도록 조건을 두거나, Task 5에서 잡을 활성화한다. **태그를 푸시하지 않는다**
+  - `.github/workflows/quality.yml` — PR 트리거. 잡 8개: `detect`, `commit-convention`,
+    `workflow-lint`, `secret-scan`, `python-quality`, `migration-check`, `web-quality`,
+    `docker-build`, 그리고 단일 필수 체크 역할의 `quality-gate`
+  - `.github/workflows/release.yml` — `v*.*.*` 태그 + `workflow_dispatch`(dry-run 기본값 true).
+    **작성만 하고 실행하지 않았다**
+  - `.github/release.yml`, `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/`
+  - `.githooks/commit-msg`, `.githooks/pre-push`, `scripts/install-hooks.sh`,
+    `scripts/check_commit_message.sh`, `scripts/scan-secrets.sh`, `.node-version`
+- **검증 결과**
+  - `actionlint` 1.7.12 + `shellcheck` 0.11.0 — 오류 0
+  - 커밋 메시지 검증: 정상 3종 통과, 비정상 3종 거부, 머지 커밋 예외 통과
+  - `pre-push`: `main` 푸시 차단(exit 1), `v1.0.0` 태그 푸시 차단(exit 1),
+    `SOOLJANG_ALLOW_TAG_PUSH=1` 우회 통과, feature 브랜치 통과
+  - 시크릿 스캔: 정상 상태 통과, `alcohol.csv`·OpenAI 키 패턴 주입 시 2건 검출
+- **설계 판단**
+  - Task 5 이전에는 Python·Node 프로젝트가 없다. `detect` 잡이 파일 존재 여부를 출력하고
+    후속 잡이 이를 조건으로 삼아, 워크플로가 지금도 유효하고 Task 5에서 자동 활성화된다
+  - Docker 관련 서드파티 액션을 쓰지 않고 러너 내장 `buildx`를 직접 호출한다. 공급망 표면을
+    줄이고 검증되지 않은 액션 SHA를 pin 하지 않기 위한 선택이다
+  - 개별 검사를 `continue-on-error`로 돌리고 마지막에 합산한다. 첫 실패에서 멈추면 나머지
+    문제를 다음 실행에서야 알게 되어 왕복이 늘어난다
+  - `quality-gate`가 `needs.*.result`를 합산해 `skipped`는 통과로 취급한다. 게이팅된 잡이
+    필수 체크를 영구 대기 상태로 만드는 문제를 피한다
 
 ### ⬜ Task 5 — 애플리케이션 골격
 
@@ -347,6 +385,13 @@ flowchart LR
 | D11 | 배포는 GHCR pull 방식 | GitHub Actions가 홈 PC로 인바운드 배포할 수 없음 |
 | D12 | 릴리스 태그는 Task 21에서만 1회 | 사용자 지시. 워크플로는 미리 작성하고 dry-run으로만 검증 |
 | D13 | UUIDv7 PK, 파생값 비저장, 서버 세션 쿠키, PostgreSQL, PWA | [architecture.md](architecture.md) §9 ADR 참조 |
+| D14 | CI 잡을 프로젝트 파일 존재 여부로 게이팅 | Task 5 이전에는 Python·Node 프로젝트가 없다. 게이팅하면 워크플로가 지금도 유효하고 Task 5에서 자동 활성화된다 |
+| D15 | 단일 필수 체크 `quality-gate`로 결과 합산 | 게이팅으로 `skipped`된 잡이 필수 체크를 영구 대기 상태로 만드는 문제를 피한다. `skipped`는 통과, `failure`·`cancelled`만 실패로 취급 |
+| D16 | Docker 서드파티 액션 대신 러너 내장 `buildx` 직접 호출 | 공급망 표면 축소. 검증되지 않은 액션 SHA를 pin 하지 않는다 |
+| D17 | 액션은 커밋 SHA로 pin | 기존 프로젝트에서 검증된 SHA를 재사용한다 (`actions/checkout@de0fac2` v6.0.2, `actions/setup-node@2499707` v6, `astral-sh/setup-uv@0880764` v8.1.0) |
+| D18 | 시크릿 스캔은 자체 스크립트 | 이 프로젝트의 고유 위험(개인 음주 기록 파일, 자격증명)에 초점을 맞춘다. 외부 스캐너 의존과 라이선스 제약을 피하고, 필요하면 나중에 gitleaks 로 교체·병행한다 |
+| D19 | `pre-push` 훅이 버전 태그 푸시도 차단 | 릴리스는 Task 21에서 1회만 수행해야 한다. 의도한 릴리스는 `SOOLJANG_ALLOW_TAG_PUSH=1`로 우회 |
+| D20 | 개별 검사를 `continue-on-error`로 실행하고 마지막에 합산 | 첫 실패에서 멈추면 나머지 문제를 다음 실행에서야 알게 되어 수정 왕복이 늘어난다 |
 
 ---
 
