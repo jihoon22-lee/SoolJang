@@ -1,0 +1,38 @@
+name: 버그 신고
+description: 동작이 기대와 다른 경우
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 무슨 일이 일어났나요
+      description: 기대한 동작과 실제 동작을 함께 적어주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 절차
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 어디서 발생했나요
+      options:
+        - PC 브라우저
+        - 안드로이드 브라우저
+        - 안드로이드 홈 화면(PWA)
+        - API 직접 호출
+        - 그 외
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그
+      description: 개인 기록이나 자격증명은 제거하고 붙여주세요.
+      render: shell

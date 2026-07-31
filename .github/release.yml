@@ -1,0 +1,32 @@
+# gh release create --generate-notes 가 PR 라벨로 릴리스 노트를 자동 분류한다.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: 새 기능
+      labels:
+        - feature
+        - enhancement
+    - title: 버그 수정
+      labels:
+        - bug
+        - fix
+    - title: 성능 개선
+      labels:
+        - performance
+    - title: 문서
+      labels:
+        - documentation
+    - title: 개발 환경과 CI
+      labels:
+        - ci
+        - build
+        - chore
+    - title: 리팩터링과 테스트
+      labels:
+        - refactor
+        - test
+    - title: 그 외 변경
+      labels:
+        - "*"
