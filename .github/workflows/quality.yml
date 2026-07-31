@@ -124,7 +124,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_test
+      SOOLJANG_ENVIRONMENT: test
+      SOOLJANG_DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_test
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -165,7 +166,12 @@ jobs:
       - name: Audit dependencies
         id: audit
         continue-on-error: true
-        run: uv run --frozen --with pip-audit pip-audit --strict
+        # 설치된 환경을 그대로 감사하면 PyPI 에 없는 로컬 프로젝트(sooljang)를
+        # --strict 가 오류로 처리한다. 락 파일에서 서드파티 의존성만 뽑아 감사한다.
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements.txt \
+            --output-file /tmp/requirements-audit.txt
+          uv run --frozen --with pip-audit pip-audit --strict --requirement /tmp/requirements-audit.txt
 
       - name: Summarize Python results
         shell: bash
@@ -214,6 +220,8 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_migrate
+      SOOLJANG_ENVIRONMENT: test
+      SOOLJANG_DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_migrate
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

@@ -573,18 +573,50 @@ Tailscale이 `<머신>.<tailnet>.ts.net`에 대해 Let's Encrypt 인증서를 �
 - 클라우드 이전 절차: 관리형 Postgres 생성 → `pg_restore` → 이미지 배포 → DNS·인증서 전환.
   스키마와 이미지가 동일하므로 애플리케이션 변경은 환경 변수뿐이다
 
-### 8.4 환경 제약 (2026-07-31 실측)
+### 8.4 환경 제약과 해결 (2026-07-31 실측)
 
 | 항목 | 상태 | 대응 |
 |---|---|---|
-| Docker | **미설치** | Task 5에서 결정. 후보: (a) Docker Desktop/Engine 설치, (b) `pgserver` PyPI 패키지(Postgres 바이너리 번들, root 불필요), (c) micromamba로 사용자 영역 설치 |
-| PostgreSQL | 미설치 | 위와 동일 |
-| passwordless sudo | 불가 | 시스템 패키지 설치는 사용자 확인이 필요 |
-| GitHub 브랜치 보호 | **불가** — 무료 플랜 private 저장소는 ruleset API가 HTTP 403 (`Upgrade to GitHub Pro`) | 로컬 `pre-push` 훅으로 `main` 직접 푸시 차단 + PR 규율로 대체 |
+| Docker | **설치됨** (29.7.0, Compose v5.3.1) | 로컬·운영 모두 Docker Compose 를 기본 경로로 쓴다 |
+| PostgreSQL | 시스템 설치 없음 | Compose 의 `postgres:17-alpine` 사용. Docker 를 쓸 수 없는 상황을 위해 `scripts/dev-db.sh` 폴백을 유지한다 (§8.5) |
+| passwordless sudo | 불가 | 시스템 패키지 설치를 요구하지 않는 경로만 사용한다 |
+| GitHub 브랜치 보호 | **불가** — 무료 플랜 private 저장소는 ruleset API 가 HTTP 403 (`Upgrade to GitHub Pro`) | 로컬 `pre-push` 훅으로 `main` 직접 푸시와 버전 태그 푸시를 차단 + PR 규율 |
 | 사용 가능 | git 2.53.0, gh 2.86.0, uv 0.11.29, node 24.18.0, npm 11.16.0, python 3.14.4 | |
 
-Docker 없이도 CI(GitHub Actions는 컨테이너 사용 가능)와 개발 대부분이 진행되므로, DB 실행 방식은
-Task 5에서 사용자와 확인해 결정한다.
+> Docker 를 설치한 직후에는 `docker` 그룹 추가가 기존 셸 세션에 반영되지 않아
+> `permission denied ... /var/run/docker.sock` 가 발생한다. 새 셸(또는 새 WSL 세션)을 열면
+> 해결된다.
+
+### 8.5 데이터베이스 실행 방식
+
+| 환경 | 실행 방식 | PostgreSQL |
+|---|---|---|
+| 로컬 개발·테스트 (기본) | `docker compose up -d db` | `postgres:17-alpine` |
+| 로컬 개발·테스트 (폴백) | `scripts/dev-db.sh` — micromamba 로 홈 디렉토리에 설치, root·Docker 불필요, 포트 54329 | 17.10 |
+| CI | GitHub Actions `services: postgres` | `postgres:17-alpine` |
+| 운영(홈 PC) | `docker-compose.yml` | `postgres:17-alpine` |
+
+모든 환경이 PostgreSQL 17 이므로 쿼리 동작이 갈라지지 않는다. 폴백 인스턴스는 루프백에만
+바인딩하고 `trust` 인증을 쓴다. 운영은 비밀번호 인증을 요구하며 `POSTGRES_PASSWORD` 가 비어
+있으면 기동을 거부한다.
+
+폴백 경로를 남겨 두는 이유는 두 가지다. Docker 데몬 접근이 막힌 상황(그룹 반영 전, 데몬 미기동)
+에서도 개발을 계속할 수 있고, 클라우드 이전이나 다른 기기에서 작업할 때 진입 장벽을 낮춘다.
+
+`pgserver` PyPI 패키지도 검토했으나 Python 3.14 휠이 없어(cp39~cp312 만 제공) 쓸 수 없다.
+
+#### 한글 부분 문자열 검색 실측 검증
+
+`pg_trgm` GIN 인덱스가 한글 `ILIKE '%...%'` 를 실제로 가속하는지 확인했다.
+
+```
+EXPLAIN 결과: Bitmap Heap Scan → Bitmap Index Scan on t_name_trgm
+              Index Cond: (name ~~* '%캐스크 스트렝스%')
+```
+
+5,000행 표본에서 인덱스를 사용했고, 유사도 검색(`similarity()`)도 한글에서 동작한다
+(`'카발란 솔리스트 쉐리'` → 0.414 로 정확한 레코드 검출). 형태소 분석기 없이 §4.3 의
+`q` 필터를 구현할 수 있다.
 
 ## 9. 기술 결정 기록 (ADR)
 

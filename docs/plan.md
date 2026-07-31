@@ -17,47 +17,71 @@
 | 항목 | 값 |
 |---|---|
 | 최종 갱신 | 2026-07-31 |
-| 완료된 Task | **Task 1 ~ Task 4** |
-| 다음 착수 Task | **Task 5 — 애플리케이션 골격** |
-| 현재 브랜치 | `feature/ci-cd` (Task 4) |
+| 완료된 Task | **Task 1 ~ Task 5** |
+| 다음 착수 Task | **Task 6 — 레거시 CSV 블록 분리 파서** |
+| 현재 브랜치 | `feature/app-skeleton` (Task 5) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 21에서만) |
 
-### 즉시 해야 할 일 (Task 5)
+### 즉시 해야 할 일 (Task 6)
 
-> **선행 조건**: §6-Q1(데이터베이스 실행 방식)을 사용자와 먼저 확정한다. 이 환경에 Docker와
-> PostgreSQL이 없고 passwordless sudo도 불가하다.
+사양은 [legacy-schema.md](legacy-schema.md) §3(블록 판별 규칙)과 §4(정규화 규칙)에 전부 있다.
 
-1. `pyproject.toml` 작성 (uv + hatchling, Python 3.14, ruff line-length 100, pytest 85% 게이트)
-2. `src/sooljang/` 골격 — 설정 로딩, FastAPI 앱, `GET /health`(DB 연결·마이그레이션 버전 보고)
-3. `web/` 골격 — Vite + React + TS + Biome + Vitest, `lint`·`typecheck`·`test:coverage`·`build`·
-   `check` npm 스크립트 (CI가 이 이름들을 호출한다)
-4. Alembic 초기화(`alembic.ini`, `env.py`), `Dockerfile`, `docker-compose.yml`
-5. `Makefile`, `.env.example`
-6. Task 4에서 게이팅해 둔 CI 잡(`python-quality`·`web-quality`·`migration-check`·`docker-build`)이
-   자동 활성화되어 전부 통과하는지 확인
+1. `src/sooljang/infrastructure/legacy/` 패키지 생성
+2. 블록 분리기 — 헤더 시그니처 인식, 326행 빈 줄 통과, 432행 합계행 배제,
+   464~476행 우측 매트릭스 오탐 방지
+3. 필드 정규화기 — CP949, `\`(0x5C)→₩ 금액, `" \- "`→NULL, 용량·도수, 이름 후행
+   `, YYYY` 빈티지 분리, `종류` forward-fill, 총액→병당 단가
+4. 다중값 분해 — 품종·외부 평점(`값 (태그)`)·구매처·이름 2번째 줄
+5. 비고 외화 파싱 — `$46.67 (환율 1431.6원)`
+6. 주종 2단계 계층 매핑 테이블, 품종 오타 정규화 사전
+7. 익명화 fixture 기반 회귀 테스트 (레코드 429건, 블록 경계 3종, `#N/A` 통과)
 
 ### 차단 요인
 
-§6-Q1 데이터베이스 실행 방식 미확정.
+없음. Q1(데이터베이스 실행 방식)은 Task 5에서 해결했다.
+
+### 로컬 환경 기동 (Task 5 이후)
+
+```bash
+make install      # 의존성 설치 + git 훅 활성화
+make db-up        # PostgreSQL 기동 (Docker, 운영과 같은 postgres:17-alpine)
+make migrate
+make api          # 다른 터미널에서 make web
+make check        # CI 와 동일한 전체 검증
+```
+
+Docker 를 쓸 수 없는 상황에서는 폴백을 쓴다. `scripts/dev-db.sh` 가 micromamba 로 홈
+디렉토리에 PostgreSQL 17 을 설치해 root 없이 실행한다.
+
+```bash
+make db-local-setup   # 최초 1회
+make db-local-start
+export SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev
+```
+
+> Docker 를 설치한 직후에는 `docker` 그룹 추가가 기존 셸 세션에 반영되지 않아
+> `permission denied ... /var/run/docker.sock` 가 발생한다. 새 셸을 열면 해결된다.
 
 ---
 
 ## 1-1. CI 잡 활성화 상태
 
-Task 4의 품질 게이트는 프로젝트 파일 존재 여부로 잡을 게이팅한다. Task 5에서 아래 파일이
-추가되면 해당 잡이 자동으로 켜진다.
+Task 4의 품질 게이트는 프로젝트 파일 존재 여부로 잡을 게이팅한다. Task 5에서 해당 파일이
+추가되어 모든 잡이 활성화되었다.
 
 | 잡 | 활성 조건 | 현재 |
 |---|---|---|
 | `commit-convention` | 항상 | ✅ 동작 |
 | `workflow-lint` | 항상 | ✅ 동작 |
 | `secret-scan` | 항상 | ✅ 동작 |
-| `python-quality` | `pyproject.toml` | ⏸ Task 5 |
-| `migration-check` | `alembic.ini` | ⏸ Task 5 |
-| `web-quality` | `web/package.json` | ⏸ Task 5 |
-| `docker-build` | `Dockerfile` 또는 `docker/*.Dockerfile` | ⏸ Task 5 |
+| `python-quality` | `pyproject.toml` | ✅ 활성 (Task 5) |
+| `migration-check` | `alembic.ini` | ✅ 활성 (Task 5) |
+| `web-quality` | `web/package.json` | ✅ 활성 (Task 5) |
+| `docker-build` | `Dockerfile` 또는 `docker/*.Dockerfile` | ✅ 활성 (Task 5) |
 | `quality-gate` | 항상 (skipped 는 통과로 취급) | ✅ 동작 |
+
+CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부재와 무관하다.
 
 ---
 
@@ -107,7 +131,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 2 | 아키텍처 설계 문서 | ✅ | `feature/architecture-docs` | [#1](https://github.com/jihoon22-lee/SoolJang/pull/1) |
 | 3 | 상세 작업 계획 문서 | ✅ | `feature/work-plan-doc` | [#2](https://github.com/jihoon22-lee/SoolJang/pull/2) |
 | 4 | CI/CD 워크플로 구축 | ✅ | `feature/ci-cd` | [#3](https://github.com/jihoon22-lee/SoolJang/pull/3) |
-| 5 | 애플리케이션 골격 | ⬜ | `feature/app-skeleton` | |
+| 5 | 애플리케이션 골격 | ✅ | `feature/app-skeleton` | [#4](https://github.com/jihoon22-lee/SoolJang/pull/4) |
 | 6 | 레거시 CSV 블록 분리 파서 | ⬜ | `feature/legacy-parser` | |
 | 7 | 도메인 모델과 마이그레이션 | ⬜ | `feature/domain-model` | |
 | 8 | 파생 지표 계산 계층 | ⬜ | `feature/derived-metrics` | |
@@ -210,15 +234,42 @@ flowchart LR
   - `quality-gate`가 `needs.*.result`를 합산해 `skipped`는 통과로 취급한다. 게이팅된 잡이
     필수 체크를 영구 대기 상태로 만드는 문제를 피한다
 
-### ⬜ Task 5 — 애플리케이션 골격
+### ✅ Task 5 — 애플리케이션 골격
 
-- **선행 확인**: §6-Q1 데이터베이스 실행 방식 확정
-- **산출물**: `pyproject.toml`(uv/hatchling), `src/sooljang/`(FastAPI, 설정, `/health`),
-  `web/`(Vite+React+TS+Biome+Vitest), `docker-compose.yml`, Alembic 초기화, `Makefile`,
-  `.env.example`
-- **테스트**: `/health` 200(DB 연결·마이그레이션 버전 포함), 프론트 스모크 렌더, DB 연결
-- **데모**: 백엔드·프론트 기동 후 브라우저에서 화면과 `/health` 응답 확인
-- **완료 조건**: Task 4의 CI 잡이 실제 코드에 대해 전부 통과
+- **산출물**
+  - `pyproject.toml` (uv + hatchling, Python 3.14, ruff line-length 100, pytest 브랜치 85% 게이트)
+  - `src/sooljang/` — `config.py`(환경 변수 설정, 시크릿 기본값 없음), `api/app.py`(앱 팩토리),
+    `api/routes/health.py`, `infrastructure/database/{session,base}.py`
+  - `web/` — Vite + React 19 + TS + Biome + Vitest. npm 스크립트 `lint`·`typecheck`·
+    `test:coverage`·`build`·`check` (CI 가 호출하는 이름)
+  - `alembic.ini`, `migrations/env.py`, `0001_enable_pg_trgm` 마이그레이션
+  - `docker/{api,web}.Dockerfile`, `docker/nginx.conf`, `docker-compose.yml`
+  - `Makefile`(21개 명령), `.env.example`, `scripts/dev-db.sh`
+- **검증 결과**
+  - `ruff check`·`ruff format --check`·`ty check` — 전부 통과
+  - `pytest` — 30개 통과, **브랜치 커버리지 100%** (기준 85%)
+  - Vitest — 11개 통과, 커버리지 100% stmts / 95.65% branch (기준 80%)
+  - `vite build` — 성공 (76 모듈, 229.85 kB)
+  - Alembic up → down → up 왕복 성공 (사용자 영역 인스턴스와 Docker `postgres:17-alpine`
+    양쪽에서 확인). `pg_trgm` 생성·삭제 확인
+  - **Docker Compose 전체 스택 기동 성공** — `db`/`api`/`web` 모두 `healthy`.
+    `docker/api.Dockerfile`·`docker/web.Dockerfile` 이미지 빌드 성공
+  - web 컨테이너(8080)를 통한 `/api/v1/health` → `200 {"status":"ok","environment":
+    "production","database_connected":true,"migration_revision":"0001_enable_pg_trgm"}`
+    → 리버스 프록시 경로까지 검증됨
+  - `make check` 전체 통과
+- **설계 판단**
+  - 시크릿에 기본값을 두지 않는다. 기본값이 있으면 설정을 잊은 채 배포되어도 동작해
+    잘못된 구성이 조용히 통과한다
+  - `/health` 는 DB 장애 시 503 과 함께 본문을 반환한다. 프론트엔드는 503 을 오류로 던지지
+    않고 degraded 로 표시한다. 상태 표시 화면이 사라지면 원인을 알 수 없다
+  - 제약 이름 규칙(`NAMING_CONVENTION`)을 metadata 에 고정했다. 이름 없는 제약은 Alembic
+    downgrade 에서 찾을 수 없어 왕복이 깨진다
+  - Compose 포트를 `127.0.0.1` 에만 바인딩한다. 외부 노출은 `tailscale serve` 가 담당한다
+  - 프론트엔드 컨테이너가 정적 자산 서빙과 `/api` 프록시를 겸한다. Tailscale 이 머신당
+    인증서 1개만 발급하므로 단일 진입점이 필요하다
+  - uv 공식 이미지에 Python 3.14 태그가 없어, `python:3.14-slim` 위에 버전을 고정한 설치
+    스크립트로 uv 를 넣는다. 버전을 고정하지 않으면 재현 가능한 빌드가 깨진다
 
 ### ⬜ Task 6 — 레거시 CSV 블록 분리 파서
 
@@ -392,6 +443,9 @@ flowchart LR
 | D18 | 시크릿 스캔은 자체 스크립트 | 이 프로젝트의 고유 위험(개인 음주 기록 파일, 자격증명)에 초점을 맞춘다. 외부 스캐너 의존과 라이선스 제약을 피하고, 필요하면 나중에 gitleaks 로 교체·병행한다 |
 | D19 | `pre-push` 훅이 버전 태그 푸시도 차단 | 릴리스는 Task 21에서 1회만 수행해야 한다. 의도한 릴리스는 `SOOLJANG_ALLOW_TAG_PUSH=1`로 우회 |
 | D20 | 개별 검사를 `continue-on-error`로 실행하고 마지막에 합산 | 첫 실패에서 멈추면 나머지 문제를 다음 실행에서야 알게 되어 수정 왕복이 늘어난다 |
+| D21 | 로컬 DB 는 Docker Compose 를 기본, `scripts/dev-db.sh`(micromamba) 를 폴백으로 | 운영과 같은 `postgres:17-alpine` 을 쓰면 동작 차이가 없다. 폴백은 Docker 접근이 막힌 상황에서도 개발을 계속할 수 있게 한다. `pgserver` PyPI 는 Python 3.14 휠이 없어 배제 |
+| D22 | 컨테이너 이미지는 `python:3.14-slim` + 버전 고정 uv 설치 스크립트 | uv 공식 이미지에 Python 3.14 태그가 없다. 버전을 고정하지 않으면 재현 가능한 빌드가 깨진다 |
+| D23 | 시크릿 설정에 기본값을 두지 않는다 | 기본값이 있으면 설정을 잊은 채 배포되어도 동작해 잘못된 구성이 조용히 통과한다 |
 
 ---
 
@@ -399,7 +453,7 @@ flowchart LR
 
 | # | 질문 | 상태 | 필요 시점 |
 |---|---|---|---|
-| **Q1** | **데이터베이스 실행 방식.** 이 환경에 Docker와 PostgreSQL이 없고 passwordless sudo도 불가하다. 후보: (a) Docker Desktop/Engine 설치 (b) `pgserver` PyPI 패키지 — Postgres 바이너리를 번들해 root 없이 사용자 영역에서 실행 (c) micromamba로 사용자 영역 설치 (d) 개발·테스트는 SQLite, 운영만 Postgres(비권장 — 쿼리 divergence 위험). 권장은 (b)로 시작해 운영은 (a) | **미해결 — Task 5 착수 전 확정 필요** | Task 5 |
+| ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
 | Q2 | 검색·LLM API 제공자와 예산. Task 17(OCR)·18(요약)에 필요. 기존 프로젝트에 `anthropic`·`google-genai`·`openai` 의존성이 있어 키 보유로 추정 | 미해결 | Task 17 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록. 국내 가격은 데일리샷·이마트·GS25 와인25+ 등 후보. 사용자 승인 필요 | 미해결 | Task 18 |
 | Q4 | Tailscale 설치·로그인 여부와 tailnet 이름. HTTPS 인증서 발급에 필요 | 미해결 | Task 12 |

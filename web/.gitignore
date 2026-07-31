@@ -1,0 +1,7 @@
+# Biome 의 VCS 통합이 이 디렉토리에서 ignore 파일을 찾는다.
+# 저장소 루트 .gitignore 와 중복되지 않는 프론트엔드 산출물만 둔다.
+dist/
+dev-dist/
+coverage/
+node_modules/
+*.tsbuildinfo

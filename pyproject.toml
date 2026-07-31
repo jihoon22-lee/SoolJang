@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sooljang"
+version = "0.1.0"
+description = "개인 주류 컬렉션 기록·관리·분석 플랫폼 (술장)"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "alembic>=1.18.5,<2",
+    "fastapi>=0.139.1,<1",
+    "psycopg[binary]>=3.2,<4",
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.7,<3",
+    "sqlalchemy>=2.0,<3",
+    "uvicorn[standard]>=0.51.0,<1",
+]
+
+[project.scripts]
+sooljang-api = "sooljang.api.__main__:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1,<1",
+    "pytest>=9,<10",
+    "pytest-asyncio>=1.0,<2",
+    "pytest-cov>=7,<8",
+    "pytest-timeout>=2.4,<3",
+    "ruff>=0.12,<1",
+    "ty>=0.0.56,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sooljang"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+# --timeout 은 교착 상태를 무한 대기 대신 스택이 남는 실패로 바꾼다.
+addopts = "-ra --strict-markers --timeout=60 --timeout-method=thread --cov=sooljang --cov-branch --cov-report=term-missing --cov-fail-under=85"
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+    "requires_db: 실제 PostgreSQL 연결이 필요한 테스트",
+    "live_llm: 실제 LLM API 를 호출하는 opt-in 테스트",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["sooljang"]
+omit = ["src/sooljang/infrastructure/database/migrations/*"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true

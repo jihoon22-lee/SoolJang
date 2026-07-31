@@ -45,6 +45,23 @@ PC와 안드로이드에서 같은 데이터를 보며, 오프라인에서도 �
 - **프론트엔드** React, Vite, TypeScript, TanStack Query, Tailwind CSS, Dexie, Workbox
 - **인프라** Docker Compose, Tailscale HTTPS, GitHub Actions, GHCR
 
+## 개발 환경
+
+```bash
+make install      # 의존성 설치 + git 훅 활성화
+make db-up        # PostgreSQL 기동 (Docker, 운영과 같은 postgres:17-alpine)
+make migrate
+make api          # 다른 터미널에서 make web
+make check        # CI 와 동일한 전체 검증
+make help         # 전체 명령 목록
+```
+
+Docker 를 쓸 수 없는 환경에서는 `make db-local-setup` → `make db-local-start` 로 폴백한다.
+micromamba 로 홈 디렉토리에 PostgreSQL 17 을 설치해 root 없이 실행한다.
+
+전체 스택을 컨테이너로 띄우려면 `.env` 에 `POSTGRES_PASSWORD` 를 채운 뒤
+`docker compose up -d --build` 를 실행하고 `http://127.0.0.1:8080` 으로 접속한다.
+
 ## 개발 현황
 
 초기 구축 단계. 진행 상황은 [docs/plan.md](docs/plan.md)의 "현재 위치" 절에서 확인한다.
