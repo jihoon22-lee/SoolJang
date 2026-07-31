@@ -9,7 +9,7 @@
 ## 1. 30초 요약
 
 - **완료**: Task 1~13 전부 (백엔드 + 프론트엔드)
-- **머지된 PR**: 15개 (#1~#15). 전부 CI 9개 잡 통과 후 머지
+- **머지된 PR**: 17개 (#1~#17). 전부 CI 9개 잡 통과 후 머지. **열린 PR 0개**
 - **태그 0건 / 릴리스 0건** (Task 23 전용, 훅이 차단)
 - **다음 할 일**: **Task 14 통계 대시보드 v1** (엑셀 통계 재현). 브랜치 `feature/stats-v1`
 - 앱은 이제 **로그인을 요구한다**. 처음 켜면 계정 생성 폼이 뜬다
@@ -257,3 +257,40 @@ sg docker -c "docker compose exec -T db psql -U sooljang -d sooljang -c 'DELETE 
 | Q3 | 초기 외부 소스 사이트 목록 | Task 18 |
 | Q5 | 목표가 알림 채널 | Task 19 |
 | Q6 | 지인 공유 권한 모델 (`role` 은 이미 있음) | Task 20 |
+
+---
+
+## 10. 세션 종료 시점 상태 (2026-08-01 08:46 KST 확인)
+
+이 값들은 종료 직전에 실제로 측정했다. 다음 세션은 이 기준선에서 시작한다.
+
+```
+git log -1              7d344ec Merge pull request #17
+머지된 PR               17개 / 열린 PR 0개
+태그                    0건 / 릴리스 0건
+작업 트리                변경 0개 (깨끗함)
+ruff / format / ty      All checks passed
+시크릿 스캔              통과
+Python                  482 passed, 24 skipped, 커버리지 94.86%
+프론트엔드               164 passed, 커버리지 87.69%
+엔드포인트               35개
+문서 상대 링크           깨진 것 0건
+```
+
+### 정리한 것
+
+- 데모용 임시 DB `sooljang_demo`, `sooljang_demo2` 삭제
+- 데모용 API 서버(포트 8230·8240) 종료
+- `/tmp` 임시 파일 삭제
+
+### 유지한 것
+
+- Docker Compose 스택 (`db`·`api`·`web` 모두 running). 다음 세션이 바로 쓸 수 있다
+- 개발 DB `sooljang`, 테스트 DB `sooljang_test`
+
+### 마지막으로 확인한 것
+
+인계 문서에 적은 **모든 명령을 실제로 실행해 동작을 확인했다.** `npm --prefix web run check`
+가 존재하는지(`lint`·`typecheck`·`test:coverage`·`build`·`check` 5개 전부 있음), 백업
+스크립트가 실제로 40K 덤프를 만들고 테이블 14개를 검증하는지까지 봤다. 문서에 적힌 명령이
+동작하지 않으면 인계가 실패하기 때문이다.
