@@ -3,12 +3,33 @@ import { type RenderResult, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 
+import type { User } from "@/api/types";
+
 /** 페이지 테스트용 렌더. 재시도를 끄지 않으면 실패 경로 테스트가 느려진다. */
 export function renderWithQuery(node: ReactNode): RenderResult {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}
+
+/** 테스트용 로그인 사용자. */
+export const TEST_USER: User = {
+  id: "00000000-0000-0000-0000-000000000001",
+  email: "owner@example.com",
+  display_name: "테스트 소유자",
+  role: "owner",
+  last_login_at: null,
+};
+
+/**
+ * 로그인된 상태를 만드는 스텁.
+ *
+ * `App` 은 `/auth/me` 로 세션을 확인하므로, 이 스텁이 없으면 어떤 화면 테스트든 로그인
+ * 화면만 보게 된다. 각 테스트가 직접 적는 대신 여기 모아 둔다.
+ */
+export function authenticatedRoutes(): RouteStub[] {
+  return [{ match: "/auth/me", body: TEST_USER }];
 }
 
 export interface RouteStub {

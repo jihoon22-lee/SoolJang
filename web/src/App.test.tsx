@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
 import type { CategoryTree, HealthStatus } from "@/api/types";
-import { renderWithQuery, stubRoutes } from "@/testing";
+import { authenticatedRoutes, renderWithQuery, stubRoutes } from "@/testing";
 
 const emptyTree: CategoryTree = { items: [], max_depth: 0, depth_limit: 8 };
 
@@ -17,6 +17,7 @@ const healthy: HealthStatus = {
 
 function stubAll() {
   return stubRoutes([
+    ...authenticatedRoutes(),
     { match: "/health", body: healthy },
     { match: "/categories", body: emptyTree },
     { match: "/products", body: { items: [], next_cursor: null } },
@@ -28,18 +29,18 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("서비스 이름을 제목으로 표시한다", () => {
+  it("서비스 이름을 제목으로 표시한다", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "술장" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "술장" })).toBeInTheDocument();
   });
 
-  it("키보드 사용자를 위한 본문 건너뛰기 링크를 제공한다", () => {
+  it("키보드 사용자를 위한 본문 건너뛰기 링크를 제공한다", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    const skip = screen.getByRole("link", { name: "본문으로 건너뛰기" });
+    const skip = await screen.findByRole("link", { name: "본문으로 건너뛰기" });
     expect(skip).toHaveAttribute("href", "#main");
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
   });
@@ -56,7 +57,7 @@ describe("App", () => {
     stubAll();
     renderWithQuery(<App />);
 
-    await userEvent.click(screen.getByRole("link", { name: "주종 관리" }));
+    await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "주종 관리" })).toHaveAttribute("aria-current", "page");
@@ -66,7 +67,7 @@ describe("App", () => {
     stubAll();
     renderWithQuery(<App />);
 
-    await userEvent.click(screen.getByRole("link", { name: "서비스 상태" }));
+    await userEvent.click(await screen.findByRole("link", { name: "서비스 상태" }));
 
     expect(await screen.findByText("0002_domain_model")).toBeInTheDocument();
   });
@@ -74,6 +75,7 @@ describe("App", () => {
   it("DB 장애 시 degraded 로 표시한다", async () => {
     // 503 을 오류로 던지면 상태 화면 자체가 사라져 원인을 알 수 없다.
     stubRoutes([
+      ...authenticatedRoutes(),
       {
         match: "/health",
         status: 503,
@@ -89,16 +91,16 @@ describe("App", () => {
     ]);
     renderWithQuery(<App />);
 
-    await userEvent.click(screen.getByRole("link", { name: "서비스 상태" }));
+    await userEvent.click(await screen.findByRole("link", { name: "서비스 상태" }));
 
     expect(await screen.findByText("일부 구성 요소에 문제가 있습니다.")).toBeInTheDocument();
     expect(screen.getByText("연결 안 됨")).toBeInTheDocument();
   });
 
-  it("내비게이션에 접근성 이름을 붙인다", () => {
+  it("내비게이션에 접근성 이름을 붙인다", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    expect(screen.getByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
   });
 });
