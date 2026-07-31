@@ -6,7 +6,7 @@
 - 최종 갱신: **2026-08-01 02:15 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 11 까지 머지 완료. 작업 브랜치는 머지 후 삭제된다)
+- 현재 브랜치: `main` (Task 12 까지 머지 완료. 작업 브랜치는 머지 후 삭제된다)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---
@@ -72,6 +72,45 @@ uv run python -m sooljang.infrastructure.legacy.report /mnt/e/alcohol.csv --samp
 ```
 
 적재는 재실행해도 중복이 생기지 않는다. 실수로 두 번 눌러도 안전하다.
+
+
+### 로그인이 필요해졌다 (Task 12)
+
+이제 모든 화면이 로그인을 요구한다. 처음 켜면 계정 생성 폼이 뜬다.
+
+```bash
+# API 로 직접 확인할 때
+curl -s http://127.0.0.1:8210/api/v1/auth/setup          # {"needs_setup":true}
+curl -c /tmp/j -X POST http://127.0.0.1:8210/api/v1/auth/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"me@example.com","password":"열자이상비밀번호","display_name":"나"}'
+# 이후 요청은 -b /tmp/j 로 쿠키를 실어 보낸다.
+# 쓰기 요청은 X-CSRF-Token 헤더가 추가로 필요하다 (응답의 csrf_token 값).
+```
+
+비밀번호를 잊었다면 DB 에서 사용자를 지우고 다시 설정한다.
+
+```bash
+docker compose exec -T db psql -U sooljang -d sooljang -c 'DELETE FROM app_user'
+```
+
+### 폰에서 접속하기
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
+scripts/serve-https.sh            # 접속 주소를 알려준다
+```
+
+HTTPS 가 필요한 이유는 편의가 아니다. 카메라(Task 16·17)와 서비스 워커(Task 15)는
+브라우저가 secure context 를 요구해 평문 HTTP 에서는 아예 동작하지 않는다.
+
+### 백업
+
+```bash
+scripts/backup.sh                 # 생성 + 검증까지
+scripts/backup.sh --list
+scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를 덮어쓴다
+```
 
 ---
 
