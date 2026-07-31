@@ -227,6 +227,7 @@ export interface Bottle {
   status: BottleStatus;
   opened_on: string | null;
   finished_on: string | null;
+  /** `null` 이면 미개봉(규격 용량 전량)이라는 뜻이다. 0ml 이 아니다. */
   remaining_ml: number | null;
   storage_location: string | null;
   note: string | null;
@@ -319,4 +320,49 @@ export interface LoginResponse {
 
 export interface SetupStatus {
   needs_setup: boolean;
+}
+
+// --- 병과 시음 ----------------------------------------------------------------
+
+export interface Tasting {
+  id: string;
+  bottle_id: string | null;
+  sku_id: string;
+  tasted_on: string;
+  poured_ml: number | null;
+  /** 6점 만점 0.5 단위. 문자열로 오므로 표시 전에 그대로 쓴다. */
+  rating: string | null;
+  nose: string | null;
+  palate: string | null;
+  finish: string | null;
+  note: string | null;
+  place: string | null;
+  companions: string | null;
+}
+
+export interface TastingInput {
+  tasted_on: string;
+  bottle_id?: string | undefined;
+  sku_id?: string | undefined;
+  poured_ml?: number | undefined;
+  rating?: string | undefined;
+  nose?: string | undefined;
+  palate?: string | undefined;
+  finish?: string | undefined;
+  note?: string | undefined;
+  place?: string | undefined;
+  companions?: string | undefined;
+}
+
+export interface TastingSummary {
+  session_count: number;
+  rated_count: number;
+  average_rating: string | null;
+  first_rating: string | null;
+  latest_rating: string | null;
+  /** 첫 평점 대비 최근 평점의 변화. 양수면 처음보다 좋아졌다는 뜻이다. */
+  rating_change: string | null;
+  total_poured_ml: number;
+  first_tasted_on: string | null;
+  latest_tasted_on: string | null;
 }
