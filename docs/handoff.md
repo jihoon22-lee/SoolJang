@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 02:10 KST**
+- 최종 갱신: **2026-08-01 01:35 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `feature/rest-api` (Task 9)
+- 현재 브랜치: `feature/web-ui-slice` (Task 10)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---
@@ -48,7 +48,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **9개 완료**. PR 8개 머지.
+전체 23개 Task 중 **10개 완료**. PR 9개 머지.
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -61,6 +61,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 7. 도메인 모델 | ✅ | [#6](https://github.com/jihoon22-lee/SoolJang/pull/6) | 테이블 9개, 마이그레이션 `0002_domain_model`, 카테고리 계층 서비스 |
 | 8. 파생 지표 | ✅ | [#7](https://github.com/jihoon22-lee/SoolJang/pull/7) | `domain/metrics.py` 순수 함수 + `metrics_sql.py` SQL 구현 + 일치 검증 |
 | 9. REST API | ✅ | [#8](https://github.com/jihoon22-lee/SoolJang/pull/8) | 엔드포인트 17개, 커서 페이지네이션, Problem Details, 카테고리 관리 API |
+| 10. 웹 UI | ✅ | [#9](https://github.com/jihoon22-lee/SoolJang/pull/9) | 목록(PC 테이블/모바일 카드)·필터·상세·등록 폼·카테고리 관리 트리 |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -76,6 +77,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 엑셀 한계 해결 확인 | 같은 제품에 구매처·가격·구매일이 다른 구매 건 2건 + 개별 병 3개 저장 성공 |
 | 파생 지표 이중 구현 일치 | 12개 시나리오에서 순수 함수와 SQL 결과 동일. 레거시 실측 케이스(100ml당 3,197.33원 등) 재현 |
 | REST API 실동작 | 실서버에서 복합 조건 조회·한글 검색·Problem Details·구매 건 분할 확인. 엔드포인트 17개 |
+| 웹 UI 실동작 | Vite 프록시 경유로 제품 4건·카테고리 45개 조회 성공. 프론트엔드 테스트 119개 통과(커버리지 90%) |
 
 ---
 
@@ -126,20 +128,21 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 10 — 웹 UI 수직 슬라이스 (`feature/web-ui-slice`)
+### 다음 착수: Task 11 — 레거시 데이터 임포터 (`feature/legacy-import`)
 
-API 는 준비됐다. `GET /api/v1/openapi.json` 으로 스키마를 확인할 수 있다.
+파서(Task 6)와 API(Task 9)와 화면(Task 10)이 모두 준비됐다. 이제 실제 429행을 넣는다.
 
-- 반응형 레이아웃 (PC 테이블 / 모바일 카드)
-- 제품 목록 + 필터 사이드바. 무한 스크롤은 `next_cursor` 를 그대로 이어 보낸다
-- 제품 상세 (구매 이력, 병 목록, 파생 지표)
-- 제품·구매 등록 폼. **제품·규격·구매를 한 폼에서** 만들 수 있게 해 4계층 입력 부담을 완화
-- **카테고리 관리 화면** — 트리에서 추가·이름 변경·이동·순서 변경·삭제·병합.
-  삭제 시 하위·소속 제품 처리 방식을 묻는다
-- 접근성: 키보드 내비게이션, 라벨 연결, 명암비, 트리 조작
+- 업로드 → 파서로 분석 → **dry-run 미리보기** → 실제 적재. 미리보기 없이 바로 넣으면 잘못된
+  매핑을 되돌리기 어렵다
+- 제품 자동 병합: `normalized_name` + `vintage` + `abv`
+- 구매처 개행 분할 시도. 총합이 `구매` 병수와 맞지 않으면 포기하고 단일 구매 건으로 적재하되
+  원문을 `purchase.import_note` 에 보존
+- 병 레코드 초기화: `소비`→finished, `미개봉`→unopened, `개봉`→open
+- 재실행 멱등성
+- **`docs/legacy-schema.md` §5 기준값 전체 대조** (429행, 1,078/819/259/225/34병,
+  ₩42,401,100, ₩36,495,447, 704,970ml, 구매처 82곳)
 
-주의: 금액 필드가 `null` 인 것은 0원이 아니라 **가격 정보가 없다**는 뜻이다. 화면에서
-`0원` 으로 표시하면 안 된다.
+파서는 이미 이 값을 모두 재현한다(§3). 임포터는 그 결과를 DB 에 옮기는 일만 남았다.
 
 ### 핵심 마일스톤: Task 12 (인증 + Tailscale HTTPS)
 
