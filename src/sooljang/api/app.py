@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from sooljang import __version__
 from sooljang.api.errors import ProblemDetail, register_error_handlers
-from sooljang.api.routes import categories, health, products, purchases
+from sooljang.api.routes import categories, health, legacy_import, products, purchases
 from sooljang.config import Settings, get_settings
 
 API_PREFIX = "/api/v1"
@@ -56,4 +56,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(products.router, prefix=API_PREFIX)
     app.include_router(purchases.vendors_router, prefix=API_PREFIX)
     app.include_router(purchases.purchases_router, prefix=API_PREFIX)
+    app.include_router(legacy_import.router, prefix=API_PREFIX)
     return app

@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { HealthPanel } from "@/components/HealthPanel";
 import { CategoriesPage } from "@/pages/CategoriesPage";
+import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 
-type View = "products" | "categories" | "status";
+type View = "products" | "categories" | "import" | "status";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
   { id: "categories", label: "주종 관리" },
+  { id: "import", label: "가져오기" },
   { id: "status", label: "서비스 상태" },
 ];
 
@@ -49,6 +51,7 @@ export function App() {
       <main className="app-main" id="main">
         {view === "products" && <ProductsPage />}
         {view === "categories" && <CategoriesPage />}
+        {view === "import" && <ImportPage />}
         {view === "status" && <HealthPanel />}
       </main>
     </div>
