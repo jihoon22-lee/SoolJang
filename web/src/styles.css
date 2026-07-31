@@ -373,3 +373,82 @@ button:disabled {
   padding: var(--space);
   background: var(--surface);
 }
+
+/* --- 인증 화면 ----------------------------------------------------------- */
+
+.auth-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 22rem;
+  padding: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.auth-card button[type="submit"] {
+  /* 터치 타깃 최소 44px 규칙을 지킨다. */
+  min-height: 2.75rem;
+  margin-top: 0.35rem;
+}
+
+.auth-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.auth-error {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.4rem;
+  background: var(--danger-surface, #fdecec);
+  color: var(--danger, #a4262c);
+  font-size: 0.85rem;
+}
+
+.app-account {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.app-account-name {
+  color: var(--muted);
+}
+
+.app-logout {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0 0.75rem;
+}
+
+.app-loading {
+  display: block;
+  padding: 2rem;
+  color: var(--muted);
+}

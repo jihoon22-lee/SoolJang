@@ -5,7 +5,6 @@
 """
 
 import os
-import uuid
 from functools import lru_cache
 from typing import Annotated, Literal
 
@@ -37,7 +36,6 @@ class Settings(BaseSettings):
 
     # Task 12(인증) 이전에 쓰는 고정 사용자 식별자. 인증이 붙으면 세션에서 읽는다.
     # 지금부터 모든 쿼리를 user_id 로 스코프하게 강제하려고 자리를 만들어 둔다.
-    default_user_id: uuid.UUID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
     # 프론트엔드 개발 서버 origin. 운영에서는 단일 프록시를 쓰므로 비워 둔다.
     # NoDecode 로 pydantic-settings 의 JSON 디코딩을 끄고, 쉼표 구분 문자열을 받는다.

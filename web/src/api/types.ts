@@ -297,3 +297,26 @@ export interface ImportCommitResult {
   varieties_created: number;
   failed_rows: [number, string][];
 }
+
+// --- 인증 --------------------------------------------------------------------
+
+export type UserRole = "owner" | "viewer";
+
+export interface User {
+  id: string;
+  email: string;
+  display_name: string;
+  role: UserRole;
+  last_login_at: string | null;
+}
+
+export interface LoginResponse {
+  user: User;
+  /** 쓰기 요청의 `X-CSRF-Token` 헤더에 실린다. 클라이언트가 쿠키에서도 읽는다. */
+  csrf_token: string;
+  expires_at: string;
+}
+
+export interface SetupStatus {
+  needs_setup: boolean;
+}
