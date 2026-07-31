@@ -1,36 +1,26 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
-import type { HealthStatus } from "@/api/client";
+import type { CategoryTree, HealthStatus } from "@/api/types";
+import { renderWithQuery, stubRoutes } from "@/testing";
+
+const emptyTree: CategoryTree = { items: [], max_depth: 0, depth_limit: 8 };
 
 const healthy: HealthStatus = {
   status: "ok",
   version: "0.1.0",
   environment: "test",
   database_connected: true,
-  migration_revision: "0001_enable_pg_trgm",
+  migration_revision: "0002_domain_model",
 };
 
-function renderApp(node: ReactNode = <App />) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
-}
-
-function stubFetch(status: number, body: unknown) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { "Content-Type": "application/json" },
-        }),
-    ),
-  );
+function stubAll() {
+  return stubRoutes([
+    { match: "/health", body: healthy },
+    { match: "/categories", body: emptyTree },
+    { match: "/products", body: { items: [], next_cursor: null } },
+  ]);
 }
 
 afterEach(() => {
@@ -39,58 +29,76 @@ afterEach(() => {
 
 describe("App", () => {
   it("서비스 이름을 제목으로 표시한다", () => {
-    stubFetch(200, healthy);
-    renderApp();
+    stubAll();
+    renderWithQuery(<App />);
 
     expect(screen.getByRole("heading", { level: 1, name: "술장" })).toBeInTheDocument();
   });
 
-  it("조회 중에는 진행 상태를 알린다", () => {
-    stubFetch(200, healthy);
-    renderApp();
+  it("키보드 사용자를 위한 본문 건너뛰기 링크를 제공한다", () => {
+    stubAll();
+    renderWithQuery(<App />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("서비스 상태를 확인하고 있습니다");
+    const skip = screen.getByRole("link", { name: "본문으로 건너뛰기" });
+    expect(skip).toHaveAttribute("href", "#main");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main");
   });
 
-  it("정상 상태와 마이그레이션 리비전을 표시한다", async () => {
-    stubFetch(200, healthy);
-    renderApp();
+  it("기본 화면은 술 목록이다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
 
-    expect(await screen.findByText("정상 동작 중입니다.")).toBeInTheDocument();
-    expect(screen.getByText("0001_enable_pg_trgm")).toBeInTheDocument();
-    expect(screen.getByText("연결됨")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /내 술/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "내 술" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("DB 장애 시 degraded 로 표시하고 마이그레이션 없음을 알린다", async () => {
-    stubFetch(503, {
-      ...healthy,
-      status: "degraded",
-      database_connected: false,
-      migration_revision: null,
-    });
-    renderApp();
+  it("주종 관리로 전환한다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(screen.getByRole("link", { name: "주종 관리" }));
+
+    expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "주종 관리" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("서비스 상태로 전환하면 마이그레이션 리비전을 보여준다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(screen.getByRole("link", { name: "서비스 상태" }));
+
+    expect(await screen.findByText("0002_domain_model")).toBeInTheDocument();
+  });
+
+  it("DB 장애 시 degraded 로 표시한다", async () => {
+    // 503 을 오류로 던지면 상태 화면 자체가 사라져 원인을 알 수 없다.
+    stubRoutes([
+      {
+        match: "/health",
+        status: 503,
+        body: {
+          ...healthy,
+          status: "degraded",
+          database_connected: false,
+          migration_revision: null,
+        },
+      },
+      { match: "/categories", body: emptyTree },
+      { match: "/products", body: { items: [], next_cursor: null } },
+    ]);
+    renderWithQuery(<App />);
+
+    await userEvent.click(screen.getByRole("link", { name: "서비스 상태" }));
 
     expect(await screen.findByText("일부 구성 요소에 문제가 있습니다.")).toBeInTheDocument();
     expect(screen.getByText("연결 안 됨")).toBeInTheDocument();
-    expect(screen.getByText("적용된 마이그레이션 없음")).toBeInTheDocument();
   });
 
-  it("요청이 실패하면 alert 역할로 오류를 알린다", async () => {
-    stubFetch(500, {});
-    renderApp();
+  it("내비게이션에 접근성 이름을 붙인다", () => {
+    stubAll();
+    renderWithQuery(<App />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("백엔드에 연결할 수 없습니다");
-  });
-
-  it("네트워크 오류 메시지도 표시한다", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new Error("network down");
-      }),
-    );
-    renderApp();
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("network down");
+    expect(screen.getByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
   });
 });
