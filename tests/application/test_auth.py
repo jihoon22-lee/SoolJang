@@ -22,26 +22,30 @@ from sooljang.application.auth import (
     verify_password,
 )
 
+#: 테스트용 비밀번호. 실제 자격증명이 아니다. scan-secrets-allow
+VALID_PASSWORD = "충분히긴비밀번호1234"  # scan-secrets-allow
+WRONG_PASSWORD = "충분히긴비밀번호12345"  # scan-secrets-allow
+
 
 class TestPasswordHashing:
     def test_해시는_원문을_담지_않는다(self) -> None:
-        password = "충분히긴비밀번호1234"
+        password = VALID_PASSWORD
         digest = hash_password(password)
         assert password not in digest
         assert digest.startswith("$argon2id$"), "Argon2id 를 써야 한다"
 
     def test_같은_비밀번호도_해시가_매번_다르다(self) -> None:
         # 솔트가 다르기 때문이다. 같으면 레인보우 테이블에 취약하다.
-        password = "충분히긴비밀번호1234"
+        password = VALID_PASSWORD
         assert hash_password(password) != hash_password(password)
 
     def test_올바른_비밀번호를_검증한다(self) -> None:
-        digest = hash_password("충분히긴비밀번호1234")
-        assert verify_password("충분히긴비밀번호1234", digest) is True
+        digest = hash_password(VALID_PASSWORD)
+        assert verify_password(VALID_PASSWORD, digest) is True
 
     def test_틀린_비밀번호를_거부한다(self) -> None:
-        digest = hash_password("충분히긴비밀번호1234")
-        assert verify_password("충분히긴비밀번호12345", digest) is False
+        digest = hash_password(VALID_PASSWORD)
+        assert verify_password(WRONG_PASSWORD, digest) is False
 
     def test_깨진_해시는_예외_대신_False(self) -> None:
         # DB 가 손상되었더라도 500 이 아니라 인증 실패로 다뤄야 한다.
@@ -57,7 +61,7 @@ class TestPasswordHashing:
         assert hash_password("a" * MIN_PASSWORD_LENGTH)
 
     def test_현재_파라미터는_재해시가_불필요하다(self) -> None:
-        assert needs_rehash(hash_password("충분히긴비밀번호1234")) is False
+        assert needs_rehash(hash_password(VALID_PASSWORD)) is False
 
     def test_깨진_해시는_재해시_판정에서도_안전하다(self) -> None:
         assert needs_rehash("이건해시가아니다") is False

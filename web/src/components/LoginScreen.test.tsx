@@ -20,6 +20,8 @@ import {
 } from "@/testing";
 
 const emptyTree: CategoryTree = { items: [], max_depth: 0, depth_limit: 8 };
+/** 테스트용 CSRF 토큰. 실제 자격증명이 아니다. scan-secrets-allow */
+const TEST_CSRF = "test-csrf-value";
 const emptyProducts = { items: [], next_cursor: null };
 
 const UNAUTHORIZED = {
@@ -40,7 +42,7 @@ function loginSuccess() {
     method: "POST",
     body: {
       user: TEST_USER,
-      csrf_token: "csrf-1234",
+      csrf_token: TEST_CSRF, // scan-secrets-allow
       expires_at: "2026-09-01T00:00:00Z",
     },
   };
