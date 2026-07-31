@@ -5,10 +5,11 @@
 조회와 soft delete 가 테이블마다 다르게 구현되는 것을 막는다.
 """
 
+import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy import DateTime, Enum, MetaData, func
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -56,3 +57,22 @@ class EntityMixin(TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=new_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+
+
+def str_enum_column[E: enum.StrEnum](enum_class: type[E], name: str, *, length: int = 24) -> Enum:
+    """`StrEnum` 을 **값** 으로 저장하는 컬럼 타입.
+
+    SQLAlchemy 의 `Enum` 은 기본적으로 멤버 **이름**(`UNOPENED`)을 저장한다. 그러면
+    `status <> 'unopened'` 같은 CHECK 제약이 절대 일치하지 않아 조용히 무력화되고, API
+    응답 값도 이름과 값이 뒤섞인다. `values_callable` 로 값을 저장하게 고정한다.
+
+    `native_enum=False` 를 쓰는 이유는 PostgreSQL 네이티브 enum 에 값을 추가하려면 별도
+    DDL 이 필요해 마이그레이션이 번거로워지기 때문이다.
+    """
+    return Enum(
+        enum_class,
+        name=name,
+        native_enum=False,
+        length=length,
+        values_callable=lambda members: [member.value for member in members],
+    )
