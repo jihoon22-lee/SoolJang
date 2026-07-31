@@ -1,0 +1,62 @@
+# 운영(홈 PC) 실행 구성.
+#
+# 포트는 모두 127.0.0.1 에만 바인딩한다. 외부 접근은 `tailscale serve` 가 HTTPS 로
+# 종단하며, LAN 이나 인터넷에 직접 노출하지 않는다.
+#
+#   docker compose up -d
+#   tailscale serve --bg --https=443 http://127.0.0.1:8080
+
+name: sooljang
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sooljang}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env 에 설정하세요}
+      POSTGRES_DB: ${POSTGRES_DB:-sooljang}
+      # 한글 정렬·비교를 위해 초기화 옵션을 고정한다.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sooljang} -d ${POSTGRES_DB:-sooljang}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: ghcr.io/jihoon22-lee/sooljang-api:${SOOLJANG_VERSION:-local}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SOOLJANG_ENVIRONMENT: production
+      SOOLJANG_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sooljang}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sooljang}
+    volumes:
+      - uploads:/app/uploads
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    image: ghcr.io/jihoon22-lee/sooljang-web:${SOOLJANG_VERSION:-local}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      # tailscale serve 가 이 포트를 HTTPS 로 종단한다.
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  pgdata:
+  uploads:
