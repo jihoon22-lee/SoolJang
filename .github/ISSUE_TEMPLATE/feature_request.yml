@@ -1,0 +1,22 @@
+name: 기능 제안
+description: 새 기능이나 개선 아이디어
+labels: [feature]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 불편을 해결하나요
+      description: 기능 자체보다 해결하려는 문제를 먼저 적어주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 방식
+    validations:
+      required: true
+  - type: input
+    id: related-task
+    attributes:
+      label: 관련 Task
+      description: "docs/plan.md 의 Task 번호가 있으면 적어주세요. 예: Task 14"
