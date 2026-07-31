@@ -9,7 +9,8 @@
 ## 1. 30초 요약
 
 - **완료**: Task 1~13 전부 (백엔드 + 프론트엔드)
-- **머지된 PR**: 17개 (#1~#17). 전부 CI 9개 잡 통과 후 머지. **열린 PR 0개**
+- **머지된 PR**: 19개 (#1~#19). 전부 CI 9개 잡 통과 후 머지. **열린 PR 0개**
+  - #16~#19 는 이 인계 문서 자체를 다듬은 문서 전용 PR 이다
 - **태그 0건 / 릴리스 0건** (Task 23 전용, 훅이 차단)
 - **다음 할 일**: **Task 14 통계 대시보드 v1** (엑셀 통계 재현). 브랜치 `feature/stats-v1`
 - 앱은 이제 **로그인을 요구한다**. 처음 켜면 계정 생성 폼이 뜬다
@@ -125,6 +126,7 @@ shellcheck      serve-https.sh, backup.sh 통과
 PR #13 CI       9개 잡 전부 pass (run 30671465017)
 PR #14 CI       9개 잡 전부 pass (run 30672352311)
 PR #15 CI       9개 잡 전부 pass (run 30672843124)
+PR #16~#19 CI   각 9개 잡 전부 pass (문서 전용)
 ```
 
 ### 인증 실서버 확인 (포트 8230)
@@ -260,13 +262,13 @@ sg docker -c "docker compose exec -T db psql -U sooljang -d sooljang -c 'DELETE 
 
 ---
 
-## 10. 세션 종료 시점 상태 (2026-08-01 08:46 KST 확인)
+## 10. 세션 종료 시점 상태 (2026-08-01 08:54 KST 확인)
 
 이 값들은 종료 직전에 실제로 측정했다. 다음 세션은 이 기준선에서 시작한다.
 
 ```
-git log -1              7d344ec Merge pull request #17
-머지된 PR               17개 / 열린 PR 0개
+git log -1              153283a Merge pull request #19
+머지된 PR               19개 / 열린 PR 0개
 태그                    0건 / 릴리스 0건
 작업 트리                변경 0개 (깨끗함)
 ruff / format / ty      All checks passed
