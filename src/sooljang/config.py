@@ -4,6 +4,7 @@
 있으면 설정을 잊은 채로 배포되어도 동작해 버려서, 잘못된 구성이 조용히 통과한다.
 """
 
+import os
 from functools import lru_cache
 from typing import Annotated, Literal
 
@@ -53,5 +54,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """설정을 한 번만 읽어 캐시한다. 테스트는 `get_settings.cache_clear()` 로 초기화한다."""
-    return Settings()
+    """설정을 한 번만 읽어 캐시한다. 테스트는 `get_settings.cache_clear()` 로 초기화한다.
+
+    읽을 `.env` 경로는 `SOOLJANG_ENV_FILE` 로 바꿀 수 있다. 빈 문자열이면 파일을 읽지
+    않는다. 테스트가 개발자의 로컬 `.env` 에 따라 통과·실패하는 것을 막기 위한 장치다.
+    """
+    env_file = os.environ.get("SOOLJANG_ENV_FILE", ".env")
+    return Settings(_env_file=env_file or None)
