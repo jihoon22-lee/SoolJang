@@ -17,27 +17,26 @@
 | 항목 | 값 |
 |---|---|
 | 최종 갱신 | 2026-08-01 |
-| 완료된 Task | **Task 1 ~ Task 6** |
-| 다음 착수 Task | **Task 7 — 도메인 모델과 마이그레이션** |
-| 현재 브랜치 | `feature/legacy-parser` (Task 6) |
+| 완료된 Task | **Task 1 ~ Task 7** |
+| 다음 착수 Task | **Task 8 — 파생 지표 계산 계층** |
+| 현재 브랜치 | `feature/domain-model` (Task 7) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
 
-### 즉시 해야 할 일 (Task 7)
+### 즉시 해야 할 일 (Task 8)
 
-사양은 [architecture.md](architecture.md) §2.2(공통 컬럼 규약)·§2.3(테이블 정의)에 있다.
+사양은 [architecture.md](architecture.md) §3(파생 지표 계산 규칙)에 수식 수준으로 있다.
 
-1. `category` 모델 — 자기참조, **깊이 제한 없음**, 사용자가 자유롭게 추가·수정·이동·삭제·병합
-   (§5-D24). 순환 금지와 깊이 상한 8을 애플리케이션 계층에서 강제
-2. `producer`, `variety`, `product_variety`, `product`, `sku`, `vendor`, `purchase`, `bottle`
-3. Alembic 마이그레이션 + pg_trgm GIN 인덱스
-4. 주종 계층 시드 — `sooljang.infrastructure.legacy.categories.default_seed_paths()` 사용.
-   **upsert 여야 한다.** 사용자가 바꾼 항목을 시드가 되살리면 편집을 무시하는 셈이다
-5. 테스트: 재귀 CTE 계층 조회, soft delete, 제약(도수 0~100·용량 양수·평점 0~6·병수 정합),
-   마이그레이션 up/down 왕복, `user_id` 스코프 누락 검출, 순환 이동 거부
+1. `src/sooljang/domain/metrics.py` — 순수 함수로 구현. SQLAlchemy·HTTP 를 import 하지 않는다
+2. 평단가·실평단가·100ml당 가격(**정가 기준**)·병수 집계·할인율·재고 자산가치
+3. SQL 집계 뷰 또는 쿼리로 같은 공식을 이중 구현
+4. **두 구현이 같은 결과를 내는지 검증하는 테스트**를 반드시 둔다
+5. 외화 구매는 `fx_rate` 스냅샷으로 원화 환산. 현재 환율로 재평가하지 않는다
+6. 가격이 NULL 인 구매 건(선물)은 금액 집계에서 제외하되 병수 집계에는 포함한다
+   (레거시에 정가 결측 33건, 실구매가 결측 34건)
 
 ### 차단 요인
 
@@ -136,7 +135,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 4 | CI/CD 워크플로 구축 | ✅ | `feature/ci-cd` | [#3](https://github.com/jihoon22-lee/SoolJang/pull/3) |
 | 5 | 애플리케이션 골격 | ✅ | `feature/app-skeleton` | [#4](https://github.com/jihoon22-lee/SoolJang/pull/4) |
 | 6 | 레거시 CSV 블록 분리 파서 | ✅ | `feature/legacy-parser` | [#5](https://github.com/jihoon22-lee/SoolJang/pull/5) |
-| 7 | 도메인 모델과 마이그레이션 | ⬜ | `feature/domain-model` | |
+| 7 | 도메인 모델과 마이그레이션 | ✅ | `feature/domain-model` | [#6](https://github.com/jihoon22-lee/SoolJang/pull/6) |
 | 8 | 파생 지표 계산 계층 | ⬜ | `feature/derived-metrics` | |
 | 9 | REST API와 검색·필터·정렬 | ⬜ | `feature/rest-api` | |
 | 10 | 웹 UI 수직 슬라이스 | ⬜ | `feature/web-ui-slice` | |
@@ -319,19 +318,41 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
   - 테스트 격리 결함을 수정했다. 설정이 개발자의 로컬 `.env` 를 읽어 CORS 테스트가
     환경에 따라 실패했다. `SOOLJANG_ENV_FILE` 재정의 지점을 추가해 차단
 
-### ⬜ Task 7 — 도메인 모델과 마이그레이션
+### ✅ Task 7 — 도메인 모델과 마이그레이션
 
-- **사양**: [architecture.md](architecture.md) §2
-- **산출물**: `category`(자기참조)·`producer`·`variety`·`product_variety`·`product`·`sku`·
-  `vendor`·`purchase`·`bottle` 모델 + Alembic 마이그레이션 + 주종 계층 시드
-- **카테고리 요구사항 (§5-D24)**: 깊이 제한을 두지 않는다. 사용자가 최상위부터 말단까지
-  자유롭게 추가·이름 변경·이동·순서 변경·삭제·병합할 수 있어야 한다. 순환 금지와 깊이 상한
-  8은 애플리케이션 계층에서 강제한다. 시드는
-  `sooljang.infrastructure.legacy.categories.default_seed_paths()` 를 **upsert** 로 적용한다
-- **테스트**: 계층 재귀 조회, 순환 이동 거부, soft delete, 제약(도수 0~100, 용량 양수,
-  평점 0~6, 병수 정합), 마이그레이션 up/down 왕복, `user_id` 스코프 누락 검출
-- **데모**: 같은 제품에 가격·구매처가 다른 구매 건 2개 저장 (엑셀에서 불가능했던 기록),
-  그리고 카테고리를 하나 만들어 다른 부모로 옮겨 서브트리가 함께 이동함을 확인
+- **산출물**
+  - `infrastructure/database/models/category.py` — `Category`(자기참조), `Producer`, `Variety`
+  - `infrastructure/database/models/product.py` — `Product`, `ProductVariety`, `Sku`
+  - `infrastructure/database/models/inventory.py` — `Vendor`, `Purchase`, `Bottle`
+  - `application/categories.py` — 재귀 CTE 조회, 순환 검사, 깊이 상한, 시드 upsert
+  - 마이그레이션 `0002_domain_model` (테이블 9개)
+- **검증 결과**
+  - **45개 DB 테스트 통과.** 전체 190개 통과, 커버리지 97% (기준 85%)
+  - 마이그레이션 up → down → up 왕복 성공, `alembic check` 드리프트 없음
+  - metadata 기준 드리프트 검사도 통과 (`compare_metadata` 결과 빈 목록)
+  - 깊이 8까지 계층 생성 성공, 9단계 시도는 `CategoryDepthError`
+  - 후손을 부모로 지정하는 이동은 `CategoryCycleError` 로 거부. 서브트리 동반 이동 확인
+  - 같은 제품에 서로 다른 구매처·가격·구매일의 구매 건 2개 저장 성공 (엑셀 한계 해결 확인),
+    병 3개가 개별 레코드로 생성
+  - 제약 검증: 도수 범위, 빈티지 범위, 6점 평점, 용량 양수, 병수 양수, 외화에 환율 필수,
+    미개봉에 개봉일 금지, 소진 시 잔량 0, 소진일 ≥ 개봉일, 병 순번 유일, 바코드 사용자 범위 유일
+  - `user_id` 스코프 격리 확인 (다른 사용자의 계층이 섞이지 않음)
+- **설계 판단**
+  - `Enum` 컬럼은 **값**으로 저장한다. SQLAlchemy 기본은 멤버 **이름**(`UNOPENED`)을 저장해
+    `status <> 'unopened'` CHECK 제약이 절대 일치하지 않고 조용히 무력화된다. 실제로 이 문제로
+    두 제약이 통과해 버리는 것을 테스트가 잡아냈다. `str_enum_column` 헬퍼로 고정
+  - 유일 인덱스는 `deleted_at IS NULL` 부분 인덱스로 만든다. 그러지 않으면 soft delete 후
+    같은 이름을 다시 만들 수 없다
+  - `Producer` 에 종류 구분을 강제하지 않는다. 주종을 넘나드는 생산자가 있어 분류를 강제하면
+    사용자가 맞지 않는 값을 고르게 된다
+  - 재귀 CTE 의 경로 컬럼은 `text` 로 캐스팅해야 한다. PostgreSQL 은 비재귀 항과 재귀 항의
+    타입이 같아야 하고, `varchar(120)` 과 연결 결과 `text` 가 달라 실패한다
+  - 경로 구분자는 `\x1f`(unit separator). 카테고리 이름에 나타날 수 없는 문자여야
+    `와인 > 레드와인` 같은 이름을 쪼갤 때 오작동하지 않는다
+  - conftest 가 모델을 명시적으로 import 한다. 없으면 `Base.metadata` 가 비어 `create_all` 이
+    아무 테이블도 만들지 않고 그 사실이 조용히 통과한다
+  - `alembic.ini` 의 post-write 훅을 `console_scripts` → `exec` 로 바꿨다. `ruff` 는 별도
+    실행 파일이라 alembic 프로세스 안에서 entrypoint 를 찾지 못한다
 
 ### ⬜ Task 8 — 파생 지표 계산 계층
 
@@ -548,6 +569,9 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | D27 | 시드 적용은 upsert | 사용자가 이름을 바꾸거나 삭제한 항목을 시드가 되살리면 사용자의 편집을 무시하는 셈이 된다 |
 | D28 | 레거시 파서는 빈 행이 아니라 **행 모양**으로 블록 경계를 판정한다 | 실측 326행 빈 줄이 데이터 종료가 아니다. 가로 배치 블록(464~476)은 이름·병수 조건을 통과하므로 도수 칸의 유효성이 유일한 방어선이다 |
 | D29 | 파싱 실패는 예외 대신 경고로 수집 | 429행 중 한 행의 이상값이 전체 임포트를 중단시키면 사용자는 아무것도 얻지 못한다 |
+| D31 | `Enum` 컬럼은 멤버 **값**으로 저장한다 (`str_enum_column`) | SQLAlchemy 기본은 멤버 **이름**을 저장해 `status <> 'unopened'` 같은 CHECK 제약이 절대 일치하지 않고 조용히 무력화된다. 실제로 두 제약이 통과해 버리는 것을 테스트가 잡아냈다 |
+| D32 | 유일 인덱스는 `deleted_at IS NULL` 부분 인덱스 | 그러지 않으면 soft delete 후 같은 이름을 다시 만들 수 없다 |
+| D33 | 재귀 CTE 경로 컬럼은 `text` 캐스팅, 구분자는 `\x1f` | PostgreSQL 은 비재귀 항과 재귀 항 타입이 같아야 한다. 구분자는 카테고리 이름에 나타날 수 없는 문자여야 경로 분해가 안전하다 |
 | D30 | 테스트는 `SOOLJANG_ENV_FILE=""` 로 로컬 `.env` 를 차단한다 | 설정이 개발자의 `.env` 를 읽어 CORS 테스트가 환경에 따라 실패했다. 로컬과 CI 결과가 갈리면 게이트를 신뢰할 수 없다 |
 
 ---

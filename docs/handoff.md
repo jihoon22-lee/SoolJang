@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 00:05 KST**
+- 최종 갱신: **2026-08-01 00:35 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `feature/legacy-parser` (Task 6)
+- 현재 브랜치: `feature/domain-model` (Task 7)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---
@@ -48,7 +48,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ## 2. 지금까지 한 일
 
-전체 21개 Task 중 **6개 완료**. PR 5개 머지.
+전체 23개 Task 중 **7개 완료**. PR 6개 머지.
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -57,7 +57,8 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 3. 작업 계획 문서 | ✅ | [#2](https://github.com/jihoon22-lee/SoolJang/pull/2) | `docs/plan.md` |
 | 4. CI/CD | ✅ | [#3](https://github.com/jihoon22-lee/SoolJang/pull/3) | 품질 게이트 9잡, 릴리스 워크플로(미실행), git 훅 |
 | 5. 애플리케이션 골격 | ✅ | [#4](https://github.com/jihoon22-lee/SoolJang/pull/4) | FastAPI + React PWA + Docker Compose |
-| 6. 레거시 CSV 파서 | 🟡 진행 중 | (작성 예정) | `src/sooljang/infrastructure/legacy/` |
+| 6. 레거시 CSV 파서 | ✅ | [#5](https://github.com/jihoon22-lee/SoolJang/pull/5) | `src/sooljang/infrastructure/legacy/` |
+| 7. 도메인 모델 | ✅ | [#6](https://github.com/jihoon22-lee/SoolJang/pull/6) | 테이블 9개, 마이그레이션 `0002_domain_model`, 카테고리 계층 서비스 |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -69,6 +70,8 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | Alembic 왕복 | 사용자 영역 + Docker `postgres:17-alpine` 양쪽에서 up→down→up 성공 |
 | `pg_trgm` 한글 부분 검색 | `EXPLAIN` 에서 `Bitmap Index Scan on t_name_trgm` 확인 |
 | 레거시 파서가 실제 시트를 정확히 읽음 | §3 참조 |
+| 도메인 모델·마이그레이션 정합 | DB 테스트 45개 통과, `alembic check` 드리프트 없음, metadata 기준 드리프트도 없음 |
+| 엑셀 한계 해결 확인 | 같은 제품에 구매처·가격·구매일이 다른 구매 건 2건 + 개별 병 3개 저장 성공 |
 
 ---
 
@@ -119,14 +122,14 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 7 — 도메인 모델과 마이그레이션 (`feature/domain-model`)
+### 다음 착수: Task 8 — 파생 지표 계산 계층 (`feature/derived-metrics`)
 
-- `category`(자기참조, **깊이 제한 없음**, 사용자가 자유롭게 관리), `producer`, `variety`,
-  `product_variety`, `product`, `sku`, `vendor`, `purchase`, `bottle`
-- 시드는 `sooljang.infrastructure.legacy.categories.default_seed_paths()` 를 그대로 쓴다.
-  **시드는 upsert 여야 한다.** 사용자가 이름을 바꾸거나 삭제한 항목을 시드가 되살리면
-  사용자의 편집을 무시하는 셈이다
-- 사양: `docs/architecture.md` §2.2(공통 컬럼), §2.3(테이블별 정의)
+- `src/sooljang/domain/metrics.py` 를 **순수 함수**로 구현한다. SQLAlchemy·HTTP 를
+  import 하지 않아야 DB 없이 단위 테스트할 수 있다
+- 같은 공식을 SQL 로도 구현하고 **두 구현이 같은 결과를 내는지 검증하는 테스트**를 둔다
+- 100ml당 가격은 **정가 기준**이다 (실구매 기준으로 계산하면 레거시와 168건 불일치)
+- 가격이 NULL 인 구매 건(선물)은 금액 집계에서 제외하되 병수 집계에는 포함한다
+- 사양: `docs/architecture.md` §3 에 수식 수준으로 있다
 
 ### 핵심 마일스톤: Task 12 (인증 + Tailscale HTTPS)
 
@@ -161,6 +164,10 @@ python3 scripts/generate_legacy_fixture.py
 | **vitest 4 의 defineConfig 출처** | `'test' does not exist in type 'UserConfigExport'` | `vitest/config` 에서 import 한다 |
 | **CP949 인코딩 불가 문자** | 픽스처 생성 시 `UnicodeEncodeError` | 픽스처에 `é` 같은 문자를 쓰지 않는다 |
 | **`pgserver` PyPI** | Python 3.14 휠 없음 | 쓰지 않는다. Docker 또는 micromamba 폴백 |
+| **SQLAlchemy Enum 이 이름을 저장** | `status <> 'unopened'` CHECK 제약이 조용히 무력화 | `base.str_enum_column` 헬퍼를 쓴다 (값으로 저장) |
+| **재귀 CTE 타입 불일치** | `recursive query ... column has type character varying(120)` | 비재귀 항의 경로 컬럼을 `text` 로 캐스팅한다 |
+| **모델 import 누락** | `create_all` 이 아무 테이블도 만들지 않고 조용히 통과 | conftest·alembic env 가 `database.models` 를 import 해야 한다 |
+| **마이그레이션 파일 삭제 순서** | DB 가 없는 리비전을 가리켜 `Can't locate revision` | 파일을 지우기 **전에** `alembic downgrade` 를 먼저 한다 |
 
 ---
 
