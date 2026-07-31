@@ -6,7 +6,7 @@
 - 최종 갱신: **2026-08-01 02:15 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 12 까지 머지 완료. 작업 브랜치는 머지 후 삭제된다)
+- 현재 브랜치: `main` (Task 12 까지 머지 완료. Task 13 은 백엔드만 완료)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---

@@ -8,7 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from sooljang import __version__
 from sooljang.api.deps import active_session
 from sooljang.api.errors import ProblemDetail, register_error_handlers
-from sooljang.api.routes import auth, categories, health, legacy_import, products, purchases
+from sooljang.api.routes import (
+    auth,
+    categories,
+    health,
+    legacy_import,
+    products,
+    purchases,
+    tastings,
+)
 from sooljang.config import Settings, get_settings
 
 API_PREFIX = "/api/v1"
@@ -67,6 +75,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         purchases.vendors_router,
         purchases.purchases_router,
         legacy_import.router,
+        tastings.bottles_router,
+        tastings.tastings_router,
     ):
         app.include_router(router, prefix=API_PREFIX, dependencies=[protected])
     return app
