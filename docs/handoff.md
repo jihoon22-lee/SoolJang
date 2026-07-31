@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 00:35 KST**
+- 최종 갱신: **2026-08-01 01:05 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `feature/domain-model` (Task 7)
+- 현재 브랜치: `feature/derived-metrics` (Task 8)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---
@@ -48,7 +48,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **7개 완료**. PR 6개 머지.
+전체 23개 Task 중 **8개 완료**. PR 7개 머지.
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -59,6 +59,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 5. 애플리케이션 골격 | ✅ | [#4](https://github.com/jihoon22-lee/SoolJang/pull/4) | FastAPI + React PWA + Docker Compose |
 | 6. 레거시 CSV 파서 | ✅ | [#5](https://github.com/jihoon22-lee/SoolJang/pull/5) | `src/sooljang/infrastructure/legacy/` |
 | 7. 도메인 모델 | ✅ | [#6](https://github.com/jihoon22-lee/SoolJang/pull/6) | 테이블 9개, 마이그레이션 `0002_domain_model`, 카테고리 계층 서비스 |
+| 8. 파생 지표 | ✅ | [#7](https://github.com/jihoon22-lee/SoolJang/pull/7) | `domain/metrics.py` 순수 함수 + `metrics_sql.py` SQL 구현 + 일치 검증 |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -72,6 +73,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 레거시 파서가 실제 시트를 정확히 읽음 | §3 참조 |
 | 도메인 모델·마이그레이션 정합 | DB 테스트 45개 통과, `alembic check` 드리프트 없음, metadata 기준 드리프트도 없음 |
 | 엑셀 한계 해결 확인 | 같은 제품에 구매처·가격·구매일이 다른 구매 건 2건 + 개별 병 3개 저장 성공 |
+| 파생 지표 이중 구현 일치 | 12개 시나리오에서 순수 함수와 SQL 결과 동일. 레거시 실측 케이스(100ml당 3,197.33원 등) 재현 |
 
 ---
 
@@ -122,14 +124,17 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 8 — 파생 지표 계산 계층 (`feature/derived-metrics`)
+### 다음 착수: Task 9 — REST API와 검색·필터·정렬 (`feature/rest-api`)
 
-- `src/sooljang/domain/metrics.py` 를 **순수 함수**로 구현한다. SQLAlchemy·HTTP 를
-  import 하지 않아야 DB 없이 단위 테스트할 수 있다
-- 같은 공식을 SQL 로도 구현하고 **두 구현이 같은 결과를 내는지 검증하는 테스트**를 둔다
-- 100ml당 가격은 **정가 기준**이다 (실구매 기준으로 계산하면 레거시와 168건 불일치)
-- 가격이 NULL 인 구매 건(선물)은 금액 집계에서 제외하되 병수 집계에는 포함한다
-- 사양: `docs/architecture.md` §3 에 수식 수준으로 있다
+- Pydantic 스키마 + FastAPI 라우터. 제품·규격·구매·구매처·주종 CRUD
+- **커서 페이지네이션** — `(정렬키, id)` 복합 커서. offset 은 데이터가 바뀌면 중복·누락이 생긴다
+- 다중 필터 — 주종(하위 포함, 재귀 CTE), 도수·가격 구간, 재고 유무, 평점, 구매처, 빈티지
+- `pg_trgm` 한글 부분 문자열 검색 (`q` 파라미터). 인덱스를 타는 것은 이미 검증했다
+- 파생 지표 노출 — `metrics_sql.product_metrics_query` 를 목록·상세에 연결
+- **카테고리 관리 API** — `reparent`, `reorder`, `merge`, `reset-seed`, 삭제 전략.
+  `application/categories.py` 에 순환 검사·깊이 상한·시드 upsert 가 이미 구현되어 있다
+- Problem Details(RFC 9457) 에러, `Idempotency-Key` 허용
+- 사양: `docs/architecture.md` §4 에 엔드포인트 목록까지 있다
 
 ### 핵심 마일스톤: Task 12 (인증 + Tailscale HTTPS)
 

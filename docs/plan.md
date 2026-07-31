@@ -17,26 +17,29 @@
 | 항목 | 값 |
 |---|---|
 | 최종 갱신 | 2026-08-01 |
-| 완료된 Task | **Task 1 ~ Task 7** |
-| 다음 착수 Task | **Task 8 — 파생 지표 계산 계층** |
-| 현재 브랜치 | `feature/domain-model` (Task 7) |
+| 완료된 Task | **Task 1 ~ Task 8** |
+| 다음 착수 Task | **Task 9 — REST API와 검색·필터·정렬** |
+| 현재 브랜치 | `feature/derived-metrics` (Task 8) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
 
-### 즉시 해야 할 일 (Task 8)
+### 즉시 해야 할 일 (Task 9)
 
-사양은 [architecture.md](architecture.md) §3(파생 지표 계산 규칙)에 수식 수준으로 있다.
+사양은 [architecture.md](architecture.md) §4(API 설계)에 엔드포인트 목록까지 있다.
 
-1. `src/sooljang/domain/metrics.py` — 순수 함수로 구현. SQLAlchemy·HTTP 를 import 하지 않는다
-2. 평단가·실평단가·100ml당 가격(**정가 기준**)·병수 집계·할인율·재고 자산가치
-3. SQL 집계 뷰 또는 쿼리로 같은 공식을 이중 구현
-4. **두 구현이 같은 결과를 내는지 검증하는 테스트**를 반드시 둔다
-5. 외화 구매는 `fx_rate` 스냅샷으로 원화 환산. 현재 환율로 재평가하지 않는다
-6. 가격이 NULL 인 구매 건(선물)은 금액 집계에서 제외하되 병수 집계에는 포함한다
-   (레거시에 정가 결측 33건, 실구매가 결측 34건)
+1. Pydantic 스키마와 FastAPI 라우터 — 제품·규격·구매·구매처·주종 CRUD
+2. 커서 페이지네이션 — `(정렬키, id)` 복합 커서. offset 은 데이터가 바뀌면 중복·누락이 생긴다
+3. 다중 필터 — 주종(하위 포함, 재귀 CTE), 국가, 도수 구간, 100ml당 가격 구간, 재고 유무,
+   평점, 구매처, 태그, 빈티지 구간
+4. `pg_trgm` 한글 부분 문자열 검색 (`q` 파라미터)
+5. 파생 지표 노출 — `metrics_sql.product_metrics_query` 를 목록·상세에 연결
+6. **카테고리 관리 API** — `reparent`, `reorder`, `merge`, `reset-seed`, 삭제 전략
+   (§5-D24, D25)
+7. Problem Details(RFC 9457) 에러 규약, `Idempotency-Key` 허용
+8. `POST /purchases/{id}:split` — 레거시 합성 구매 건 해체
 
 ### 차단 요인
 
@@ -136,7 +139,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 5 | 애플리케이션 골격 | ✅ | `feature/app-skeleton` | [#4](https://github.com/jihoon22-lee/SoolJang/pull/4) |
 | 6 | 레거시 CSV 블록 분리 파서 | ✅ | `feature/legacy-parser` | [#5](https://github.com/jihoon22-lee/SoolJang/pull/5) |
 | 7 | 도메인 모델과 마이그레이션 | ✅ | `feature/domain-model` | [#6](https://github.com/jihoon22-lee/SoolJang/pull/6) |
-| 8 | 파생 지표 계산 계층 | ⬜ | `feature/derived-metrics` | |
+| 8 | 파생 지표 계산 계층 | ✅ | `feature/derived-metrics` | [#7](https://github.com/jihoon22-lee/SoolJang/pull/7) |
 | 9 | REST API와 검색·필터·정렬 | ⬜ | `feature/rest-api` | |
 | 10 | 웹 UI 수직 슬라이스 | ⬜ | `feature/web-ui-slice` | |
 | 11 | 레거시 데이터 임포터 | ⬜ | `feature/legacy-import` | |
@@ -354,13 +357,36 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
   - `alembic.ini` 의 post-write 훅을 `console_scripts` → `exec` 로 바꿨다. `ruff` 는 별도
     실행 파일이라 alembic 프로세스 안에서 entrypoint 를 찾지 못한다
 
-### ⬜ Task 8 — 파생 지표 계산 계층
+### ✅ Task 8 — 파생 지표 계산 계층
 
-- **사양**: [architecture.md](architecture.md) §3 수식
-- **산출물**: `domain/metrics.py` 순수 함수 + SQL 집계 뷰 (동일 결과 보장)
-- **테스트**: 다중 구매·다중 용량 가중 평균, 병 상태 전이 후 재계산, 가격 NULL(선물) 제외,
-  외화 환율 스냅샷 환산, 0병·전량 소진 경계, **순수 함수와 SQL 뷰 결과 일치 검증**
-- **데모**: 구매 건 3개인 제품의 전체 파생 지표 자동 계산
+- **산출물**
+  - `domain/metrics.py` — 순수 함수. SQLAlchemy·HTTP 를 import 하지 않아 DB 없이 테스트 가능
+  - `infrastructure/database/metrics_sql.py` — 같은 공식의 SQL 구현 (목록·통계 성능 경로)
+  - `tests/domain/test_metrics.py` — 단위 테스트 31개
+  - `tests/infrastructure/database/test_metrics_parity.py` — **두 구현 일치 검증 12개**
+- **검증 결과**
+  - 전체 **233개 통과, 커버리지 98%** (기준 85%). 프론트엔드 11개 통과, 빌드 성공
+  - ruff / ruff format / ty 전부 통과
+  - 레거시 실측 케이스 재현: 750ml 1병 23,980원 → 100ml당 3,197.33원,
+    500ml 2병 32,000원 → 평단가 16,000원·100ml당 3,200원,
+    평단가 219,900/750ml → 29,320원(정가 기준. 실구매 기준이면 23,986.67원으로 어긋난다)
+  - 일치 검증 시나리오 12종: 단일/다중 구매, 다중 용량 가중 평균, 선물(가격 결측),
+    전부 선물, 정가만 있는 경우, 부분 가격 할인율, 증여·판매 제외, 병 없는 제품,
+    사용자 스코프, soft delete 제외, 도메인 상태 문자열과 ORM enum 값 일치
+- **설계 판단**
+  - 가격 정보가 없을 때 **0 이 아니라 None** 을 반환한다. 0 을 반환하면 "전부 무료" 와
+    "가격 정보 없음" 을 구분할 수 없다
+  - 평단가의 분모는 **가격이 있는 구매 건의 병수**다. 선물 병수가 분모에 들어가면
+    평단가가 실제보다 낮게 나온다
+  - 할인율은 정가와 실구매가가 **모두 있는** 구매 건만으로 계산한다. 한쪽만 있는 구매 건을
+    섞으면 분자와 분모의 모집단이 달라져 왜곡된다
+  - 100ml당 가격은 여러 용량이 섞인 경우를 위해 가중 평균으로 계산한다.
+    `Σ(단가×병수)×100 / Σ(용량×병수)`. 단일 용량이면 단순 공식과 같은 결과다
+  - 도메인 계층은 ORM enum 을 import 하지 않는다. import 하면 의존 방향이 뒤집힌다.
+    값이 어긋나는 것은 전용 테스트가 잡는다
+  - 병수 정합성 불일치는 예외 대신 경고다. 레거시 데이터가 완벽하지 않을 수 있고, 지표를
+    아예 못 보는 것보다 경고와 함께 보는 것이 낫다
+  - SQL 은 `NULLIF` 로 0 분모를 NULL 로 바꿔 나눗셈 오류 대신 NULL 을 만든다
 
 ### ⬜ Task 9 — REST API와 검색·필터·정렬
 
@@ -571,6 +597,9 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | D29 | 파싱 실패는 예외 대신 경고로 수집 | 429행 중 한 행의 이상값이 전체 임포트를 중단시키면 사용자는 아무것도 얻지 못한다 |
 | D31 | `Enum` 컬럼은 멤버 **값**으로 저장한다 (`str_enum_column`) | SQLAlchemy 기본은 멤버 **이름**을 저장해 `status <> 'unopened'` 같은 CHECK 제약이 절대 일치하지 않고 조용히 무력화된다. 실제로 두 제약이 통과해 버리는 것을 테스트가 잡아냈다 |
 | D32 | 유일 인덱스는 `deleted_at IS NULL` 부분 인덱스 | 그러지 않으면 soft delete 후 같은 이름을 다시 만들 수 없다 |
+| D34 | 파생 지표는 순수 함수와 SQL 로 **이중 구현**하고 일치를 테스트로 보장한다 | 목록·통계에서 제품 수백~수천 건을 한 번에 계산해야 해 SQL 이 필요하고, 경계값 검증에는 순수 함수가 필요하다. 갈라지면 화면과 API 가 다른 값을 보여준다 |
+| D35 | 가격 정보가 없으면 0 이 아니라 NULL/None | 0 을 반환하면 "전부 무료" 와 "가격 정보 없음" 을 구분할 수 없다 |
+| D36 | 평단가 분모는 가격이 있는 구매 건의 병수, 할인율은 양쪽 가격이 모두 있는 구매 건만 | 선물 병수가 분모에 들어가면 평단가가 실제보다 낮게 나오고, 한쪽만 있는 구매 건을 섞으면 할인율의 모집단이 어긋난다 |
 | D33 | 재귀 CTE 경로 컬럼은 `text` 캐스팅, 구분자는 `\x1f` | PostgreSQL 은 비재귀 항과 재귀 항 타입이 같아야 한다. 구분자는 카테고리 이름에 나타날 수 없는 문자여야 경로 분해가 안전하다 |
 | D30 | 테스트는 `SOOLJANG_ENV_FILE=""` 로 로컬 `.env` 를 차단한다 | 설정이 개발자의 `.env` 를 읽어 CORS 테스트가 환경에 따라 실패했다. 로컬과 CI 결과가 갈리면 게이트를 신뢰할 수 없다 |
 
