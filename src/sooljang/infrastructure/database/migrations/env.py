@@ -13,9 +13,11 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from sooljang.config import get_settings
+from sooljang.infrastructure.database import models as _models  # noqa: F401 - 메타데이터 등록
 from sooljang.infrastructure.database.base import Base
 
-# 모델을 import 해 Base.metadata 를 채운다. Task 7 에서 모델이 추가되면 여기에 등록한다.
+# 모델을 import 해 Base.metadata 를 채운다. 위 import 를 제거하면 자동 생성 마이그레이션이
+# 테이블을 놓치고 `alembic check` 가 드리프트로 잡아낸다.
 target_metadata = Base.metadata
 
 config = context.config
