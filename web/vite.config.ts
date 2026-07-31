@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+// vitest 4 부터 `test` 설정은 vite 의 defineConfig 타입에 없다. vitest/config 를 쓴다.
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
