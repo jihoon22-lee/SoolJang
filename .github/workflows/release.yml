@@ -71,6 +71,35 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry_run version=$version"
 
+      # quality.yml 과 같은 게이팅을 적용해 Task 5 이전에도 dry-run 을 검증할 수
+      # 있게 한다. 단 실제 릴리스에서는 구성 요소 누락을 실패로 처리한다.
+      - name: Detect project layout
+        id: layout
+        shell: bash
+        env:
+          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+        run: |
+          emit() { echo "$1=$2" >> "$GITHUB_OUTPUT"; echo "$1=$2"; }
+          present() { if [[ -e "$1" ]]; then echo true; else echo false; fi; }
+          python="$(present pyproject.toml)"
+          web="$(present web/package-lock.json)"
+          if [[ -f Dockerfile ]] || compgen -G 'docker/*.Dockerfile' > /dev/null; then
+            docker=true
+          else
+            docker=false
+          fi
+          emit python "$python"
+          emit web "$web"
+          emit docker "$docker"
+          if [[ "$DRY_RUN" == "false" ]]; then
+            for pair in "pyproject.toml:$python" "web/package-lock.json:$web" "Dockerfile:$docker"; do
+              if [[ "${pair##*:}" != "true" ]]; then
+                echo "실제 릴리스에는 ${pair%%:*} 가 필요합니다." >&2
+                exit 1
+              fi
+            done
+          fi
+
       - name: Verify tag is reachable from main
         if: steps.mode.outputs.dry_run == 'false'
         shell: bash
@@ -87,6 +116,7 @@ jobs:
           fi
 
       - name: Install uv and Python
+        if: steps.layout.outputs.python == 'true'
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.14"
@@ -105,6 +135,7 @@ jobs:
           fi
 
       - name: Install Node.js
+        if: steps.layout.outputs.web == 'true'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .node-version
@@ -113,17 +144,33 @@ jobs:
 
       - name: Run full test suite
         shell: bash
+        env:
+          HAS_PYTHON: ${{ steps.layout.outputs.python }}
+          HAS_WEB: ${{ steps.layout.outputs.web }}
         run: |
-          uv sync --frozen
-          uv run --frozen pytest
-          npm ci --prefix web
-          npm --prefix web run check
+          if [[ "$HAS_PYTHON" == "true" ]]; then
+            uv sync --frozen
+            uv run --frozen pytest
+          else
+            echo "pyproject.toml 이 없어 Python 테스트를 건너뜁니다 (dry-run)."
+          fi
+          if [[ "$HAS_WEB" == "true" ]]; then
+            npm ci --prefix web
+            npm --prefix web run check
+          else
+            echo "web/package-lock.json 이 없어 프론트엔드 검사를 건너뜁니다 (dry-run)."
+          fi
 
       - name: Build container images
         shell: bash
         env:
           VERSION: ${{ steps.mode.outputs.version }}
+          HAS_DOCKER: ${{ steps.layout.outputs.docker }}
         run: |
+          if [[ "$HAS_DOCKER" != "true" ]]; then
+            echo "Dockerfile 이 없어 이미지 빌드를 건너뜁니다 (dry-run)."
+            exit 0
+          fi
           image="${REGISTRY}/${IMAGE_NAME}"
           for dockerfile in Dockerfile docker/*.Dockerfile; do
             [[ -f "$dockerfile" ]] || continue
