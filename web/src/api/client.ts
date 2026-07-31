@@ -13,6 +13,7 @@ import type {
   HealthStatus,
   ImportAnalysis,
   ImportCommitResult,
+  LoginResponse,
   ProblemDetail,
   Product,
   ProductCreateInput,
@@ -20,10 +21,41 @@ import type {
   ProductPage,
   Purchase,
   PurchaseCreateInput,
+  SetupStatus,
+  User,
   Vendor,
 } from "@/api/types";
 
 export const API_PREFIX = "/api/v1";
+
+/** CSRF 토큰 쿠키 이름. 서버(`api/routes/auth.py`)와 같아야 한다. */
+const CSRF_COOKIE = "sooljang_csrf";
+const CSRF_HEADER = "X-CSRF-Token";
+
+/**
+ * 쿠키에서 CSRF 토큰을 읽는다.
+ *
+ * 세션 토큰은 `httpOnly` 라 JavaScript 가 읽을 수 없지만, CSRF 토큰은 헤더에 실어야 하므로
+ * 읽을 수 있게 두었다(double-submit cookie).
+ */
+function readCsrfToken(): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`));
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+type UnauthorizedHandler = () => void;
+
+let onUnauthorized: UnauthorizedHandler | null = null;
+
+/**
+ * 세션이 만료됐을 때 호출할 콜백을 등록한다.
+ *
+ * 각 화면이 401 을 개별로 처리하면 빠뜨리는 곳이 생긴다. 클라이언트 한 곳에서 잡아
+ * 로그인 화면으로 되돌린다.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  onUnauthorized = handler;
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -69,11 +101,17 @@ function buildQuery(params: RequestOptions["params"]): string {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, params, signal, acceptStatuses = [] } = options;
 
+  const csrfToken = readCsrfToken();
+  const needsCsrf = method !== "GET" && method !== "HEAD";
+
   const response = await fetch(`${API_PREFIX}${path}${buildQuery(params)}`, {
     method,
+    // 세션 쿠키를 실어야 인증이 통과한다. 기본값 `same-origin` 으로도 되지만 의도를 명시한다.
+    credentials: "same-origin",
     headers: {
       Accept: "application/json",
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(needsCsrf && csrfToken ? { [CSRF_HEADER]: csrfToken } : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     ...(signal ? { signal } : {}),
@@ -89,10 +127,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const problem = isProblemDetail(payload) ? payload : null;
     const message =
       problem?.detail ?? problem?.title ?? `요청이 실패했습니다 (HTTP ${response.status})`;
+    notifyIfUnauthorized(response.status, path);
     throw new ApiError(response.status, message, problem);
   }
 
   return payload as T;
+}
+
+/**
+ * 401 이면 세션 만료를 알린다.
+ *
+ * 로그인 요청 자체의 401 은 "비밀번호가 틀렸다"는 뜻이므로 세션 만료로 다루면 안 된다.
+ * 로그인 화면이 직접 메시지를 보여준다.
+ */
+function notifyIfUnauthorized(status: number, path: string): void {
+  if (status !== 401) return;
+  if (path.startsWith("/auth/login") || path.startsWith("/auth/setup")) return;
+  onUnauthorized?.();
 }
 
 async function parseJson(response: Response): Promise<unknown> {
@@ -219,14 +270,20 @@ async function upload<T>(path: string, file: File): Promise<T> {
   const form = new FormData();
   form.append("file", file);
 
+  const csrfToken = readCsrfToken();
   const response = await fetch(`${API_PREFIX}${path}`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      ...(csrfToken ? { [CSRF_HEADER]: csrfToken } : {}),
+    },
     body: form,
   });
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
+    notifyIfUnauthorized(response.status, path);
     const problem = isProblemDetail(payload) ? payload : null;
     throw new ApiError(
       response.status,
@@ -241,4 +298,26 @@ export const importsApi = {
   /** DB 를 건드리지 않고 적재될 내용만 계산한다. */
   analyze: (file: File) => upload<ImportAnalysis>("/imports/legacy:analyze", file),
   commit: (file: File) => upload<ImportCommitResult>("/imports/legacy:commit", file),
+};
+
+// --- 인증 --------------------------------------------------------------------
+
+export const authApi = {
+  /** 초기 설정이 필요한지. 로그인 화면이 어떤 폼을 보여줄지 결정한다. */
+  setupStatus: (signal?: AbortSignal) =>
+    request<SetupStatus>("/auth/setup", signal ? { signal } : {}),
+
+  setup: (input: { email: string; password: string; display_name: string }) =>
+    request<LoginResponse>("/auth/setup", { method: "POST", body: input }),
+
+  login: (input: { email: string; password: string }) =>
+    request<LoginResponse>("/auth/login", { method: "POST", body: input }),
+
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+
+  /** 현재 사용자. 401 이면 로그인되지 않은 상태다. */
+  me: (signal?: AbortSignal) => request<User>("/auth/me", signal ? { signal } : {}),
+
+  changePassword: (input: { current_password: string; new_password: string }) =>
+    request<void>("/auth/password", { method: "POST", body: input }),
 };
