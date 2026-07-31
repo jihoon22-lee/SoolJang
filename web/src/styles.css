@@ -1,0 +1,375 @@
+/*
+ * 기본 스타일.
+ *
+ * 반응형은 JS 뷰포트 감지 없이 CSS 만으로 처리한다. 화면 폭에 따라 테이블과 카드 목록 중
+ * 하나만 보이게 하면 서버 렌더링·초기 페인트에서 깜빡임이 없고, 테스트에서도 두 뷰가 항상
+ * DOM 에 있어 검증하기 쉽다.
+ *
+ * 색은 명암비 4.5:1 이상을 확보하도록 골랐다.
+ */
+
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #d9d2c7;
+  --text: #241f1a;
+  --text-muted: #5c5349;
+  --accent: #7a3b2e;
+  --accent-contrast: #ffffff;
+  --danger: #9b2226;
+  --ok: #2d6a4f;
+  --radius: 8px;
+  --space: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+  line-height: 1.55;
+}
+
+/* 키보드 포커스를 항상 보이게 한다. outline 을 지우면 키보드 사용자가 위치를 잃는다. */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 스크린리더 전용 텍스트 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 본문으로 건너뛰기 링크. 키보드 사용자가 매번 내비게이션을 통과하지 않게 한다. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 100;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.app-nav a {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  /* 터치 타깃 최소 44px. 모바일에서 누르기 어려우면 기록 자체를 안 하게 된다. */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-nav a[aria-current="page"] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.app-main {
+  flex: 1;
+  padding: var(--space);
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.layout-with-sidebar {
+  display: grid;
+  gap: var(--space);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .layout-with-sidebar {
+    grid-template-columns: 280px 1fr;
+    align-items: start;
+  }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space);
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: 10px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.field-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- 목록: PC 는 테이블, 모바일은 카드 ------------------------------------ */
+
+.product-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: none;
+}
+
+.product-table th,
+.product-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.product-table th {
+  background: #f2ede6;
+  font-size: 0.85rem;
+}
+
+.product-table td.numeric,
+.product-table th.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.product-cards {
+  display: grid;
+  gap: var(--space);
+}
+
+@media (min-width: 900px) {
+  .product-table {
+    display: table;
+  }
+
+  .product-cards {
+    display: none;
+  }
+}
+
+.product-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.product-card h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.product-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+}
+
+.product-card dt {
+  color: var(--text-muted);
+}
+
+.product-card dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f2ede6;
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.badge.stock-none {
+  color: var(--text-muted);
+}
+
+.badge.stock-some {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.metrics-grid {
+  display: grid;
+  gap: var(--space);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.metric dt {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.metric dd {
+  margin: 4px 0 0;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 카테고리 트리 --------------------------------------------------------- */
+
+.category-tree {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.category-tree ul {
+  list-style: none;
+  padding-left: 18px;
+  margin: 0;
+  border-left: 1px dotted var(--border);
+}
+
+.category-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.category-row .name {
+  font-weight: 500;
+}
+
+.alert {
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: var(--space);
+  background: #fdf3f2;
+}
+
+.notice {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+  background: var(--surface);
+}
