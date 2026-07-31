@@ -60,6 +60,23 @@ git switch main && git pull --ff-only
 SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet
 ```
 
+
+**재사용할 기존 코드** (새로 만들지 말 것):
+
+| 파일 | 쓸 것 |
+|---|---|
+| `domain/metrics.py` | `compute_price_metrics`, `tally_bottles`, `quantize_money`, `quantize_ratio`, `PurchaseLot`, `BottleRecord` |
+| `infrastructure/database/metrics_sql.py` | `product_metrics_query(user_id)`, `product_price_metrics_query`, `product_bottle_tally_query` |
+| `application/tastings.py` | `summarize_tastings` (평점 평균·추이) |
+| `application/categories.py` | 재귀 CTE 로 하위 주종 포함 집계 |
+
+랭킹은 `product_metrics_query` 에 `ORDER BY` 와 `LIMIT` 을 붙이면 대부분 나온다. 주종별
+집계는 그 쿼리를 `category_id` 로 그룹화한 뒤 재귀 CTE 로 상위 주종에 롤업한다.
+
+**동점 처리**: 같은 값이면 `id` 로 순서를 고정한다. 그러지 않으면 새로고침마다 순서가 바뀐다.
+
+**성능**: 제품 405건 규모라 인덱스 추가 없이 충분하다. 측정해 보고 느리면 그때 본다.
+
 ### 2-2. 그 다음
 
 Task 15(PWA) → 16(바코드) → 17(OCR) → 18(외부소스) → 19(사이트어댑터) → 20(통계v2) →
