@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 01:05 KST**
+- 최종 갱신: **2026-08-01 02:10 KST**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `feature/derived-metrics` (Task 8)
+- 현재 브랜치: `feature/rest-api` (Task 9)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 ---
@@ -48,7 +48,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **8개 완료**. PR 7개 머지.
+전체 23개 Task 중 **9개 완료**. PR 8개 머지.
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -60,6 +60,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 6. 레거시 CSV 파서 | ✅ | [#5](https://github.com/jihoon22-lee/SoolJang/pull/5) | `src/sooljang/infrastructure/legacy/` |
 | 7. 도메인 모델 | ✅ | [#6](https://github.com/jihoon22-lee/SoolJang/pull/6) | 테이블 9개, 마이그레이션 `0002_domain_model`, 카테고리 계층 서비스 |
 | 8. 파생 지표 | ✅ | [#7](https://github.com/jihoon22-lee/SoolJang/pull/7) | `domain/metrics.py` 순수 함수 + `metrics_sql.py` SQL 구현 + 일치 검증 |
+| 9. REST API | ✅ | [#8](https://github.com/jihoon22-lee/SoolJang/pull/8) | 엔드포인트 17개, 커서 페이지네이션, Problem Details, 카테고리 관리 API |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -74,6 +75,7 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 | 도메인 모델·마이그레이션 정합 | DB 테스트 45개 통과, `alembic check` 드리프트 없음, metadata 기준 드리프트도 없음 |
 | 엑셀 한계 해결 확인 | 같은 제품에 구매처·가격·구매일이 다른 구매 건 2건 + 개별 병 3개 저장 성공 |
 | 파생 지표 이중 구현 일치 | 12개 시나리오에서 순수 함수와 SQL 결과 동일. 레거시 실측 케이스(100ml당 3,197.33원 등) 재현 |
+| REST API 실동작 | 실서버에서 복합 조건 조회·한글 검색·Problem Details·구매 건 분할 확인. 엔드포인트 17개 |
 
 ---
 
@@ -124,17 +126,20 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 9 — REST API와 검색·필터·정렬 (`feature/rest-api`)
+### 다음 착수: Task 10 — 웹 UI 수직 슬라이스 (`feature/web-ui-slice`)
 
-- Pydantic 스키마 + FastAPI 라우터. 제품·규격·구매·구매처·주종 CRUD
-- **커서 페이지네이션** — `(정렬키, id)` 복합 커서. offset 은 데이터가 바뀌면 중복·누락이 생긴다
-- 다중 필터 — 주종(하위 포함, 재귀 CTE), 도수·가격 구간, 재고 유무, 평점, 구매처, 빈티지
-- `pg_trgm` 한글 부분 문자열 검색 (`q` 파라미터). 인덱스를 타는 것은 이미 검증했다
-- 파생 지표 노출 — `metrics_sql.product_metrics_query` 를 목록·상세에 연결
-- **카테고리 관리 API** — `reparent`, `reorder`, `merge`, `reset-seed`, 삭제 전략.
-  `application/categories.py` 에 순환 검사·깊이 상한·시드 upsert 가 이미 구현되어 있다
-- Problem Details(RFC 9457) 에러, `Idempotency-Key` 허용
-- 사양: `docs/architecture.md` §4 에 엔드포인트 목록까지 있다
+API 는 준비됐다. `GET /api/v1/openapi.json` 으로 스키마를 확인할 수 있다.
+
+- 반응형 레이아웃 (PC 테이블 / 모바일 카드)
+- 제품 목록 + 필터 사이드바. 무한 스크롤은 `next_cursor` 를 그대로 이어 보낸다
+- 제품 상세 (구매 이력, 병 목록, 파생 지표)
+- 제품·구매 등록 폼. **제품·규격·구매를 한 폼에서** 만들 수 있게 해 4계층 입력 부담을 완화
+- **카테고리 관리 화면** — 트리에서 추가·이름 변경·이동·순서 변경·삭제·병합.
+  삭제 시 하위·소속 제품 처리 방식을 묻는다
+- 접근성: 키보드 내비게이션, 라벨 연결, 명암비, 트리 조작
+
+주의: 금액 필드가 `null` 인 것은 0원이 아니라 **가격 정보가 없다**는 뜻이다. 화면에서
+`0원` 으로 표시하면 안 된다.
 
 ### 핵심 마일스톤: Task 12 (인증 + Tailscale HTTPS)
 
@@ -173,6 +178,9 @@ python3 scripts/generate_legacy_fixture.py
 | **재귀 CTE 타입 불일치** | `recursive query ... column has type character varying(120)` | 비재귀 항의 경로 컬럼을 `text` 로 캐스팅한다 |
 | **모델 import 누락** | `create_all` 이 아무 테이블도 만들지 않고 조용히 통과 | conftest·alembic env 가 `database.models` 를 import 해야 한다 |
 | **마이그레이션 파일 삭제 순서** | DB 가 없는 리비전을 가리켜 `Can't locate revision` | 파일을 지우기 **전에** `alembic downgrade` 를 먼저 한다 |
+| **Compose `api` 컨테이너가 8000 포트 점유** | 로컬 서버가 `Address already in use`, 또는 구버전 코드가 응답 | `docker compose stop api` 하거나 `SOOLJANG_API_PORT` 로 다른 포트를 쓴다 |
+| **관계 컬렉션이 낡은 값 유지** | 품종을 교체했는데 응답에 이전 값이 남음 | 수정 후 `session.expire(obj, ["관계명"])` 로 만료시킨다 |
+| **flush 직후 Decimal 정밀도** | 생성 응답은 `85000`, 재조회는 `85000.00` | 응답 전에 `session.refresh()` 로 저장된 값을 읽는다 |
 
 ---
 
