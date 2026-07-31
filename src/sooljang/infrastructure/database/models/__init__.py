@@ -23,8 +23,19 @@ from sooljang.infrastructure.database.models.product import (
     ProductVariety,
     Sku,
 )
+from sooljang.infrastructure.database.models.tasting import (
+    MAX_RATING,
+    RATING_STEP,
+    Attachment,
+    AttachmentKind,
+    TastingSession,
+)
 
 __all__ = [
+    "MAX_RATING",
+    "RATING_STEP",
+    "Attachment",
+    "AttachmentKind",
     "IN_STOCK_STATUSES",
     "MAX_PERSONAL_RATING",
     "BarcodeType",
@@ -35,6 +46,7 @@ __all__ = [
     "Product",
     "ProductVariety",
     "Session",
+    "TastingSession",
     "Purchase",
     "Sku",
     "User",
