@@ -11,14 +11,16 @@
 어긋나면 조회가 조용히 틀리기 때문이다(§5-D26).
 """
 
+import datetime
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import Select, Text, cast, literal, select
+from sqlalchemy import Select, Text, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.infrastructure.database.models import Category
+from sooljang.infrastructure.database.models import Category, Product
 from sooljang.infrastructure.legacy.categories import (
     MAX_CATEGORY_DEPTH,
     default_seed_paths,
@@ -273,3 +275,152 @@ async def seed_default_categories(session: AsyncSession, *, user_id: uuid.UUID) 
         created.append(category)
 
     return created
+
+
+async def direct_product_counts(session: AsyncSession, user_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    """카테고리별로 직접 속한 제품 수."""
+    rows = await session.execute(
+        select(Product.category_id, func.count())
+        .where(
+            Product.user_id == user_id,
+            Product.deleted_at.is_(None),
+            Product.category_id.is_not(None),
+        )
+        .group_by(Product.category_id)
+    )
+    return {row[0]: row[1] for row in rows if row[0] is not None}
+
+
+def rollup_product_counts(
+    nodes: Sequence[CategoryNode], direct: dict[uuid.UUID, int]
+) -> dict[uuid.UUID, int]:
+    """후손을 포함한 제품 수. 필터가 하위를 포함하므로 목록 배지에도 이 값이 맞다.
+
+    깊은 쪽부터 부모로 더해 올린다. 깊이 역순으로 돌면 자식이 항상 부모보다 먼저 온다.
+    """
+    totals = {node.id: direct.get(node.id, 0) for node in nodes}
+    for node in sorted(nodes, key=lambda item: item.depth, reverse=True):
+        if node.parent_id is not None and node.parent_id in totals:
+            totals[node.parent_id] += totals[node.id]
+    return totals
+
+
+async def reorder_categories(
+    session: AsyncSession, *, user_id: uuid.UUID, order_by_id: dict[uuid.UUID, int]
+) -> int:
+    """형제 간 표시 순서를 일괄 변경한다. 갱신된 건수를 반환한다."""
+    if not order_by_id:
+        return 0
+    rows = await session.scalars(
+        select(Category).where(
+            Category.user_id == user_id,
+            Category.id.in_(list(order_by_id)),
+            Category.deleted_at.is_(None),
+        )
+    )
+    updated = 0
+    for category in rows:
+        category.sort_order = order_by_id[category.id]
+        updated += 1
+    if updated != len(order_by_id):
+        raise CategoryError("일부 카테고리를 찾을 수 없습니다")
+    await session.flush()
+    return updated
+
+
+async def _child_ids(session: AsyncSession, category_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = await session.scalars(
+        select(Category.id).where(Category.parent_id == category_id, Category.deleted_at.is_(None))
+    )
+    return list(rows)
+
+
+async def _products_in(session: AsyncSession, category_id: uuid.UUID) -> list[Product]:
+    rows = await session.scalars(
+        select(Product).where(Product.category_id == category_id, Product.deleted_at.is_(None))
+    )
+    return list(rows)
+
+
+async def _load_owned(
+    session: AsyncSession, user_id: uuid.UUID, category_id: uuid.UUID, label: str
+) -> Category:
+    category = await session.get(Category, category_id)
+    if category is None or category.deleted_at is not None or category.user_id != user_id:
+        raise CategoryError(f"{label} 카테고리를 찾을 수 없습니다: {category_id}")
+    return category
+
+
+async def delete_category(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    category_id: uuid.UUID,
+    promote_children: bool = False,
+    reassign_to: uuid.UUID | None = None,
+) -> Category:
+    """카테고리를 soft delete 한다.
+
+    **제품은 지우지 않는다.** 개인 기록을 잃는 것이 가장 큰 손실이다. 하위나 소속 제품이
+    있으면 기본은 거부하고, 사용자가 처리 방식을 명시해야 삭제된다
+    (`docs/architecture.md` §2.3 삭제 정책).
+    """
+    category = await _load_owned(session, user_id, category_id, "대상")
+
+    children = await _child_ids(session, category_id)
+    if children:
+        if not promote_children:
+            raise CategoryNotEmptyError(
+                f"하위 카테고리 {len(children)}개가 있습니다. "
+                "promote_children 을 지정하면 상위로 올린 뒤 삭제합니다"
+            )
+        for child_id in children:
+            child = await session.get(Category, child_id)
+            if child is not None:
+                child.parent_id = category.parent_id
+
+    products = await _products_in(session, category_id)
+    if products:
+        if reassign_to is None:
+            raise CategoryNotEmptyError(
+                f"소속 제품 {len(products)}개가 있습니다. reassign_to 로 옮길 카테고리를 지정하세요"
+            )
+        await _load_owned(session, user_id, reassign_to, "옮길")
+        for product in products:
+            product.category_id = reassign_to
+
+    category.deleted_at = datetime.datetime.now(datetime.UTC)
+    await session.flush()
+    return category
+
+
+async def merge_categories(
+    session: AsyncSession, *, user_id: uuid.UUID, source_id: uuid.UUID, target_id: uuid.UUID
+) -> int:
+    """원본의 제품과 하위를 대상으로 옮기고 원본을 soft delete 한다.
+
+    중복 생성된 카테고리를 정리하는 경로다. 옮긴 제품 수를 반환한다.
+    """
+    if source_id == target_id:
+        raise CategoryError("자기 자신과 병합할 수 없습니다")
+
+    source = await _load_owned(session, user_id, source_id, "원본")
+    await _load_owned(session, user_id, target_id, "대상")
+
+    # 대상이 원본의 후손이면 병합 후 순환이 생긴다.
+    descendants = await session.execute(descendant_ids_query(source_id))
+    if target_id in set(descendants.scalars().all()):
+        raise CategoryCycleError("후손 카테고리로 병합할 수 없습니다 (순환)")
+
+    for child_id in await _child_ids(session, source_id):
+        child = await session.get(Category, child_id)
+        if child is not None:
+            child.parent_id = target_id
+
+    products = await _products_in(session, source_id)
+    for product in products:
+        product.category_id = target_id
+
+    source.deleted_at = datetime.datetime.now(datetime.UTC)
+    await session.flush()
+    return len(products)

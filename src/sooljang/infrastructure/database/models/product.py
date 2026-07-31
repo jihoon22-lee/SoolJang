@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from sooljang.infrastructure.database.base import Base, EntityMixin, str_enum_column
+from sooljang.infrastructure.database.models.category import Category, Producer, Variety
 
 #: 개인 평점 스케일. 레거시 실측이 0.5 단위 6점 만점이었다
 #: (`docs/legacy-schema.md` §4.8).
@@ -69,8 +70,8 @@ class Product(Base, EntityMixin):
     # 레거시 원문 보존. 임포트가 해석하지 못한 정보를 잃지 않기 위한 자리다.
     import_note: Mapped[str | None] = mapped_column(Text, default=None)
 
-    category: Mapped[object | None] = relationship("Category", lazy="selectin")
-    producer: Mapped[object | None] = relationship("Producer", lazy="selectin")
+    category: Mapped[Category | None] = relationship("Category", lazy="selectin")
+    producer: Mapped[Producer | None] = relationship("Producer", lazy="selectin")
     skus: Mapped[list[Sku]] = relationship(
         "Sku", back_populates="product", cascade="all, delete-orphan"
     )
@@ -129,7 +130,7 @@ class ProductVariety(Base, EntityMixin):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     product: Mapped[Product] = relationship("Product", back_populates="varieties")
-    variety: Mapped[object] = relationship("Variety", lazy="selectin")
+    variety: Mapped[Variety] = relationship("Variety", lazy="selectin")
 
     __table_args__ = (
         UniqueConstraint(
