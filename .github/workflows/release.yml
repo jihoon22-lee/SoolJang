@@ -1,7 +1,7 @@
 name: Release
 
 # 이 워크플로는 미리 작성해 두고 개발 기간 동안 실행하지 않는다.
-# 첫 정식 릴리스는 모든 기능 Task 가 끝난 뒤 Task 21 에서 한 번만 수행한다.
+# 첫 정식 릴리스는 모든 기능 Task 가 끝난 뒤 Task 23 에서 한 번만 수행한다.
 #
 # 검증은 workflow_dispatch 의 dry_run 모드로만 한다. dry_run 은 이미지 빌드까지
 # 수행하고 레지스트리 push 와 릴리스 생성은 건너뛴다.
@@ -236,5 +236,5 @@ jobs:
             echo "- GHCR 로그인 및 이미지 push"
             echo "- GitHub 릴리스 생성"
             echo ""
-            echo "실제 릴리스는 Task 21 에서 \`v*.*.*\` 태그를 푸시해 수행합니다."
+            echo "실제 릴리스는 Task 23 에서 \`v*.*.*\` 태그를 푸시해 수행합니다."
           } >> "$GITHUB_STEP_SUMMARY"
