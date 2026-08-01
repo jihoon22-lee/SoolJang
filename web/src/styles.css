@@ -887,3 +887,23 @@ button:disabled {
     grid-column: 1 / -1;
   }
 }
+
+/* --- 바코드 스캔 ----------------------------------------------------------- */
+
+.barcode-scan-panel {
+  position: absolute;
+  z-index: 20;
+  width: min(28rem, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.barcode-scan-video {
+  width: 100%;
+  max-height: 20rem;
+  background: #000;
+  border-radius: var(--radius);
+  object-fit: cover;
+}

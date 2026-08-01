@@ -446,3 +446,29 @@ export interface StatsSummary {
   avg_personal_rating: string | null;
   vendor_count: number;
 }
+
+// --- 바코드 -------------------------------------------------------------------
+
+export interface BarcodeLocalMatch {
+  product_id: string;
+  product_name: string;
+  sku_id: string;
+  volume_ml: number;
+}
+
+export interface BarcodeExternalSuggestion {
+  name: string;
+  brand: string | null;
+  quantity_text: string | null;
+  image_url: string | null;
+  source_url: string;
+}
+
+export interface BarcodeLookupResponse {
+  barcode: string;
+  barcode_type: string;
+  is_rcn: boolean;
+  source: "local" | "external" | "not_found";
+  local_match: BarcodeLocalMatch | null;
+  external_suggestion: BarcodeExternalSuggestion | null;
+}

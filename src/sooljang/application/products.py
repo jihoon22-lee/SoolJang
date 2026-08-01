@@ -205,6 +205,20 @@ async def load_product(
     return product
 
 
+async def load_sku(session: AsyncSession, *, user_id: uuid.UUID, sku_id: uuid.UUID) -> Sku:
+    """규격 하나를 읽는다. 없으면 404 로 알린다."""
+    sku = await session.scalar(
+        select(Sku).where(
+            Sku.id == sku_id,
+            Sku.user_id == user_id,
+            Sku.deleted_at.is_(None),
+        )
+    )
+    if sku is None:
+        raise NotFoundError(f"규격을 찾을 수 없습니다: {sku_id}")
+    return sku
+
+
 async def category_path_map(
     session: AsyncSession, user_id: uuid.UUID
 ) -> dict[uuid.UUID, list[str]]:

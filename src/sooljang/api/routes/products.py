@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, status
 from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, UserDep
+from sooljang.api.errors import ValidationFailedError
 from sooljang.api.pagination import (
     Cursor,
     SortOrder,
@@ -22,7 +23,9 @@ from sooljang.api.schemas.product import (
     ProductUpdate,
     SkuCreate,
     SkuOut,
+    SkuUpdate,
 )
+from sooljang.application.barcodes import InvalidBarcodeError, normalize_optional
 from sooljang.application.products import (
     ProductFilters,
     SortKey,
@@ -30,6 +33,7 @@ from sooljang.application.products import (
     category_path_map,
     ensure_category_exists,
     load_product,
+    load_sku,
     metrics_from_row,
     normalized_name_of,
     producer_name_map,
@@ -40,6 +44,7 @@ from sooljang.infrastructure.database.metrics_sql import single_product_metrics_
 from sooljang.infrastructure.database.models import Product, ProductVariety, Sku
 
 router = APIRouter(prefix="/products", tags=["products"])
+skus_router = APIRouter(prefix="/skus", tags=["products"])
 
 
 def _to_out(
@@ -255,21 +260,81 @@ async def add_sku(
     product_id: uuid.UUID, payload: SkuCreate, session: SessionDep, user_id: UserDep
 ) -> SkuOut:
     await load_product(session, user_id=user_id, product_id=product_id)
-    sku = _new_sku(user_id, product_id, payload)
+    try:
+        sku = _new_sku(user_id, product_id, payload)
+    except InvalidBarcodeError as error:
+        raise ValidationFailedError(str(error)) from error
+    await _check_barcode_available(session, user_id=user_id, barcode=sku.barcode)
     session.add(sku)
     await session.flush()
     return SkuOut.model_validate(sku)
 
 
 def _new_sku(user_id: uuid.UUID, product_id: uuid.UUID, payload: SkuCreate) -> Sku:
+    barcode, barcode_type = normalize_optional(payload.barcode)
     return Sku(
         user_id=user_id,
         product_id=product_id,
         volume_ml=payload.volume_ml,
-        barcode=payload.barcode,
-        barcode_type=payload.barcode_type,
+        barcode=barcode,
+        barcode_type=barcode_type,
         package_note=payload.package_note,
     )
+
+
+@skus_router.patch("/{sku_id}", response_model=SkuOut, summary="규격 수정")
+async def update_sku(
+    sku_id: uuid.UUID, payload: SkuUpdate, session: SessionDep, user_id: UserDep
+) -> SkuOut:
+    """규격을 부분 수정한다.
+
+    바코드 스캔 학습(Task 16)의 핵심 경로다 — 이미 등록된 규격을 스캔해서 매칭하지
+    못했을 때, 사용자가 확인한 뒤 이 엔드포인트로 바코드를 저장하면 다음 스캔부터는
+    바로 매칭된다.
+    """
+    sku = await load_sku(session, user_id=user_id, sku_id=sku_id)
+
+    fields = payload.model_dump(exclude_unset=True, exclude={"barcode", "barcode_type"})
+    for key, value in fields.items():
+        setattr(sku, key, value)
+
+    if "barcode" in payload.model_fields_set:
+        try:
+            barcode, barcode_type = normalize_optional(payload.barcode)
+        except InvalidBarcodeError as error:
+            raise ValidationFailedError(str(error)) from error
+        await _check_barcode_available(
+            session, user_id=user_id, barcode=barcode, exclude_sku_id=sku.id
+        )
+        sku.barcode = barcode
+        sku.barcode_type = barcode_type
+
+    await session.flush()
+    return SkuOut.model_validate(sku)
+
+
+async def _check_barcode_available(
+    session: SessionDep,
+    *,
+    user_id: uuid.UUID,
+    barcode: str | None,
+    exclude_sku_id: uuid.UUID | None = None,
+) -> None:
+    """다른 규격이 이미 같은 바코드를 쓰고 있으면 명확한 오류로 알린다.
+
+    DB 의 부분 유니크 인덱스가 최종 방어선이지만, 여기서 먼저 걸러야 원시 무결성 오류
+    대신 사용자가 이해할 수 있는 메시지를 준다.
+    """
+    if barcode is None:
+        return
+    conflict_query = select(Sku.id).where(
+        Sku.user_id == user_id, Sku.barcode == barcode, Sku.deleted_at.is_(None)
+    )
+    if exclude_sku_id is not None:
+        conflict_query = conflict_query.where(Sku.id != exclude_sku_id)
+    existing = await session.scalar(conflict_query)
+    if existing is not None:
+        raise ValidationFailedError(f"이미 다른 규격이 쓰고 있는 바코드입니다: {barcode}")
 
 
 async def _replace_varieties(

@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 (Task 15 PR)**
+- 최종 갱신: **2026-08-02 (Task 16 PR)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 15 까지 완료)
+- 현재 브랜치: `main` (Task 16 까지 완료)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -37,8 +37,8 @@ export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5
 uv run alembic upgrade head
 
 # 5) 검증
-uv run pytest                  # 521 passed, 27 skipped 가 정상 (skip 전부 opt-in 실측 테스트)
-npm --prefix web run check     # 207 passed, 커버리지 임계값(branch 80%) 통과
+uv run pytest                  # 557 passed, 27 skipped 가 정상 (skip 전부 opt-in 실측 테스트)
+npm --prefix web run check     # 223 passed, 커버리지 임계값(branch 80%) 통과
 
 # 6) 이어서 작업
 #    plan.md §1 의 "다음 착수 Task" 를 확인하고 해당 브랜치를 만든다
@@ -120,7 +120,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **15개 완료**. PR 22개 머지 (#1~#22, #16~#20 은 문서 전용 — 이후 규칙
+전체 23개 Task 중 **16개 완료**. PR 23개 머지 (#1~#23, #16~#20 은 문서 전용 — 이후 규칙
 9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
@@ -140,6 +140,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 13. 병 관리·시음 세션 | ✅ | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) | 상태 전이·잔량 추적·시음 기록. 엔드포인트 35개로 증가 |
 | 14. 통계 대시보드 v1 | ✅ | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) | `/stats/rankings`·`/stats/by-category`·`/stats/summary`, 통계 화면. 엑셀 실측값과 대조 |
 | 15. PWA와 오프라인 동기화 | ✅ | [#22](https://github.com/jihoon22-lee/SoolJang/pull/22) | `application/sync.py`(pull·apply_batch·LWW·충돌 로그), Dexie 로컬 미러, outbox, 4개 화면 오프라인 조회, `SyncStatusBadge` |
+| 16. 바코드 스캔과 제품 매칭 | ✅ | [#23](https://github.com/jihoon22-lee/SoolJang/pull/23) | `application/barcodes.py`(정규화·RCN 판별), Open Food Facts 조회, `GET /barcodes/{code}`·`PATCH /skus/{id}`, `BarcodeScanPanel`(네이티브 BarcodeDetector + ZXing 폴백) |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -158,6 +159,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 웹 UI 실동작 | Vite 프록시 경유로 제품 4건·카테고리 45개 조회 성공. 프론트엔드 테스트 131개 통과(커버리지 90.9%) |
 | **실제 데이터 이관 완료** | 429행 → 제품 405종(24종 병합)·병 1,078개·구매 건 434건. 정가 ₩42,401,108·용량 704,970ml·소비 819/미개봉 225/개봉 34 모두 엑셀 합계행과 일치. 실패 0건. 재실행 시 중복 0 |
 | 오프라인 동기화 백엔드·프론트 전체 검증 | `pytest` 521 passed, 27 skipped(전부 opt-in 실측 테스트), 커버리지 90.10%. 프론트엔드 207 passed, 커버리지 89.0% stmts / 80.2% branch. `vite build` 로 PWA manifest·`sw.js`·아이콘 정상 생성 확인 |
+| 바코드 스캔 백엔드·프론트 전체 검증 | `pytest` 557 passed, 27 skipped, 커버리지 90.43%. 프론트엔드 223 passed, 커버리지 89.4% stmts / 80.17% branch. 카메라·`BarcodeDetector`·`@zxing/browser` 를 전부 가짜로 주입해 하드웨어 없이 스캐너 로직까지 검증. `docker build`(web·api) 둘 다 정상 |
 
 ---
 
@@ -208,19 +210,23 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 16 — 바코드 스캔과 제품 매칭 (`feature/barcode-scan`)
+### 다음 착수: Task 17 — 라벨 OCR 프리필, 단 **사용자 확인 필요**
 
-Task 15(PWA·오프라인 동기화)까지 마쳐 오프라인에서도 컬렉션을 조회·등록할 수 있다.
-사양은 `docs/plan.md` §4 Task 16.
+Task 16(바코드 스캔)까지 마쳐 카메라로 기존 제품을 빠르게 매칭할 수 있다. 다음은 라벨
+사진을 Vision LLM 으로 구조화 추출하는 단계인데, **Q2(검색·LLM API 제공자와 예산)가
+아직 미해결**이라(`docs/plan.md` §6) 착수할 수 없다. 기존 프로젝트에 `anthropic`·
+`google-genai`·`openai` 의존성이 있어 키를 보유하고 있을 가능성이 높지만, 어떤
+제공자·모델·예산 상한을 쓸지는 사용자가 정해야 한다.
 
-1. `BarcodeDetector` + `@zxing/browser` 폴백 스캐너
-2. 로컬 SKU 매칭 → Open Food Facts 조회 → 수동 검색 폴백 순서
-3. 사용자 확인 후 바코드 학습 저장(재스캔 시 즉시 매칭)
+**Q2 가 풀리기 전까지 막히지 않는 대안**: Task 20(통계 v2 — 커스텀 피벗과 취향 분석)
+은 외부 API 없이 Task 14 데이터만으로 진행할 수 있고, 의존 관계상 Task 17·18·19 를
+거치지 않아도 된다(아래 다이어그램 참조).
 
 **HTTPS 공개는 여전히 미완이다**: Tailscale 설치·로그인은 Task 14 세션에서 끝났지만
-(tailnet `tail30f401.ts.net`), 이 브라우저 자동화가 동작하지 않는 샌드박스라 Task 15
-에서도 실기기 수동 검증은 하지 못했다 — API·Dexie 로직은 자동화 테스트로만 검증했다.
-Task 16(카메라)에 실제로 착수하려면 그 전에 한 번은 사람이 직접 다음을 해야 한다.
+(tailnet `tail30f401.ts.net`), 이 브라우저 자동화가 동작하지 않는 샌드박스라 아직
+실기기 수동 검증은 하지 못했다 — API·Dexie·바코드 스캔 로직은 전부 자동화 테스트(카메라는
+가짜 주입)로만 검증했다. 실기기로 카메라·오프라인 동기화를 확인하려면 그 전에 한 번은
+사람이 직접 다음을 해야 한다.
 
 ```bash
 docker compose up -d --build   # 현재 컨테이너가 최신 코드인지 다시 확인
@@ -229,8 +235,12 @@ scripts/serve-https.sh
 
 **Task 15 에서 남긴 것**: 오프라인 쓰기는 `category`·`product`·`sku`·`vendor`·`purchase`·
 `bottle`·`tasting_session` 7개 엔티티로 제한했다(D72). `producer`·`variety` 는 풀(읽기)
-대상일 뿐 오프라인에서 새로 만들 수 없다 — Task 16 에서 바코드로 새 제품을 등록할 때
-품종·생산자 지정이 필요하면 이 제약을 다시 검토해야 한다.
+대상일 뿐 오프라인에서 새로 만들 수 없다.
+
+**Task 16 에서 남긴 것**: `PATCH /skus/{id}` 를 새로 만들었다(architecture.md 가 Task 9
+산출물로 문서화했지만 실제로는 없었던 엔드포인트, D79). 바코드 스캔으로 만드는 새
+제품·바코드 학습은 온라인 전용이다(outbox 를 거치지 않는다, D81) — 오프라인이면 "바코드로
+스캔" 버튼 자체가 보이지 않는다.
 
 ### 의존 관계 요약
 
@@ -272,6 +282,8 @@ scripts/serve-https.sh
 | **합성 픽스처로 못 잡는 결함** | 실제 데이터에서만 터지는 형식 변형 | 실측 파일 opt-in 테스트를 반드시 돌린다: `SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet` |
 | **새 셸에서 `pytest` 가 전부 `password authentication failed`** | `conftest.py` 의 `TEST_DATABASE_URL` 하드코딩 기본값 비밀번호(`sooljang`)가 `.env`/컨테이너의 실제 비밀번호(`localdevonly`)와 다르다 | `export SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang:<`.env`의 POSTGRES_PASSWORD`>@127.0.0.1:5432/sooljang_test` 를 먼저 설정한다 |
 | **`useLiveQuery` 컴포넌트를 마운트 직후 동기 `getByText` 로 단언** | 플레이키 실패(첫 계산은 비동기라 로딩 중 빈 상태를 잡을 수 있다) | `findByText`/`findByRole` 로 기다린다. `SyncStatusBadge` 충돌 패널에서 실제로 겪음(Task 15) |
+| **`web.Dockerfile` 은 `web/` 디렉터리만 이미지에 복사한다** | 저장소 루트의 다른 디렉터리(`tests/fixtures/` 등)를 상대 경로로 참조하는 프론트엔드 파일이 있으면 `Container build` 잡에서만 `tsc` 가 모듈을 못 찾는다(로컬 `npm run check` 는 통과) | 그 경로도 `COPY <경로>/ <컨테이너 내 같은 상대 위치>/` 로 명시적으로 추가한다. Task 15 의 `metrics.test.ts`(공유 골든값 픽스처) 에서 실제로 터졌다 |
+| **버튼이 `disabled` 면 그 안의 유효성 검사 분기는 테스트로 못 만난다** | `userEvent.click(disabled 버튼)` 은 조용히 아무 일도 안 한다 — 콘솔 경고도 없다 | disabled 조건과 함수 내부 가드가 같은 값을 검사한다면 함수 내부 가드는 죽은 코드다. 지우거나(권장), 정말 다른 경로로 호출될 수 있다면 그 경로로 테스트한다. `BarcodeScanPanel` 에서 실제로 발견(Task 16) |
 
 ---
 

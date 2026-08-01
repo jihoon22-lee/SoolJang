@@ -405,3 +405,70 @@ def test_in_stock_filter_uses_bottle_status(api_client: TestClient, prefix: str)
     result = _list(api_client, prefix, in_stock=True)
 
     assert [item["name"] for item in result["items"]] == ["재고 있음"]
+
+
+# --- 규격 수정 (바코드 학습, Task 16) -----------------------------------------
+
+
+def test_patch_sku_attaches_barcode(api_client: TestClient, prefix: str) -> None:
+    product = _seed_product(api_client, prefix, name="바코드 학습 대상")
+    sku_id = product["skus"][0]["id"]
+
+    response = api_client.patch(f"{prefix}/skus/{sku_id}", json={"barcode": "8801234567890"})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["barcode"] == "8801234567890"
+    assert body["barcode_type"] == "ean13"
+
+
+def test_patch_sku_normalizes_and_classifies_barcode(api_client: TestClient, prefix: str) -> None:
+    product = _seed_product(api_client, prefix, name="UPC-A 학습")
+    sku_id = product["skus"][0]["id"]
+
+    response = api_client.patch(f"{prefix}/skus/{sku_id}", json={"barcode": "012345678905"})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["barcode"] == "0012345678905"
+    assert body["barcode_type"] == "upca"
+
+
+def test_patch_sku_rejects_duplicate_barcode(api_client: TestClient, prefix: str) -> None:
+    first = _seed_product(api_client, prefix, name="먼저 학습")
+    second = _seed_product(api_client, prefix, name="나중에 학습")
+    _post(
+        api_client,
+        f"{prefix}/products/{first['id']}/skus",
+        {"volume_ml": 500, "barcode": "8801234567890"},
+    )
+
+    response = api_client.patch(
+        f"{prefix}/skus/{second['skus'][0]['id']}", json={"barcode": "8801234567890"}
+    )
+
+    assert response.status_code == 422, response.text
+
+
+def test_patch_sku_rejects_invalid_barcode(api_client: TestClient, prefix: str) -> None:
+    product = _seed_product(api_client, prefix, name="잘못된 바코드")
+    sku_id = product["skus"][0]["id"]
+
+    response = api_client.patch(f"{prefix}/skus/{sku_id}", json={"barcode": "12"})
+
+    assert response.status_code == 422, response.text
+
+
+def test_patch_sku_updates_volume_without_touching_barcode(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = _seed_product(api_client, prefix, name="용량만 수정")
+    sku_id = product["skus"][0]["id"]
+    api_client.patch(f"{prefix}/skus/{sku_id}", json={"barcode": "8801234567890"})
+
+    response = api_client.patch(f"{prefix}/skus/{sku_id}", json={"volume_ml": 1000})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["volume_ml"] == 1000
+    assert body["barcode"] == "8801234567890"
