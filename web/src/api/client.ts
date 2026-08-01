@@ -7,6 +7,7 @@
 
 import type {
   Bottle,
+  CategoryStat,
   CategoryTree,
   DeleteStrategy,
   FieldError,
@@ -21,7 +22,9 @@ import type {
   ProductPage,
   Purchase,
   PurchaseCreateInput,
+  Rankings,
   SetupStatus,
+  StatsSummary,
   Tasting,
   TastingInput,
   TastingSummary,
@@ -364,4 +367,15 @@ export const tastingsApi = {
     request<TastingSummary>("/tastings/summary", { params, ...(signal ? { signal } : {}) }),
 
   remove: (id: string) => request<void>(`/tastings/${id}`, { method: "DELETE" }),
+};
+
+export const statsApi = {
+  rankings: (params: { limit?: number } = {}, signal?: AbortSignal) =>
+    request<Rankings>("/stats/rankings", { params, ...(signal ? { signal } : {}) }),
+
+  byCategory: (signal?: AbortSignal) =>
+    request<CategoryStat[]>("/stats/by-category", signal ? { signal } : {}),
+
+  summary: (signal?: AbortSignal) =>
+    request<StatsSummary>("/stats/summary", signal ? { signal } : {}),
 };

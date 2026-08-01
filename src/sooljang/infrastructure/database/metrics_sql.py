@@ -101,6 +101,11 @@ def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
                 func.sum(cast(Sku.volume_ml, _MONEY) * cast(Purchase.quantity, _MONEY)),
                 literal(0),
             ).label("total_volume_ml"),
+            # 통계 대시보드의 주종별 집계가 제품 단위 가중 평균을 그룹 단위로 다시 계산할 때
+            # 쓴다(`application/stats.py`). 개별 제품 지표 응답에는 노출하지 않는다.
+            func.coalesce(list_volume, literal(0)).label("list_volume"),
+            discount_list.label("discount_list_total"),
+            discount_paid.label("discount_paid_total"),
         )
         .select_from(Product)
         .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))
@@ -172,6 +177,9 @@ def product_metrics_query(user_id: uuid.UUID) -> Select[Any]:
             func.coalesce(tally.c.sold, literal(0)).label("sold"),
             func.coalesce(tally.c.in_stock, literal(0)).label("in_stock"),
             inventory_value.label("inventory_value_at_cost"),
+            prices.c.list_volume,
+            prices.c.discount_list_total,
+            prices.c.discount_paid_total,
         )
         .select_from(prices)
         .outerjoin(tally, tally.c.product_id == prices.c.product_id)
@@ -182,3 +190,46 @@ def single_product_metrics_query(user_id: uuid.UUID, product_id: uuid.UUID) -> S
     """제품 한 건의 지표. 상세 화면에서 쓴다."""
     metrics = product_metrics_query(user_id).subquery("all_metrics")
     return select(metrics).where(metrics.c.product_id == product_id)
+
+
+def product_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
+    """통계 대시보드(랭킹·주종별 집계·전체 합계)용 제품별 지표 + 분류 정보.
+
+    `application/stats.py` 가 이 한 쿼리의 결과를 랭킹 정렬과 주종별 그룹핑 양쪽에
+    재사용한다. 제품 규모가 수백 건이라 파이썬에서 집계해도 된다(§ Task 14 결정).
+    구매 건이 없는 제품도 남기려면 지표를 LEFT JOIN 해야 한다 — 등록만 하고 아직
+    구매 기록이 없는 제품이 사라지면 안 된다.
+    """
+    metrics = product_metrics_query(user_id).subquery("stats_metrics")
+    return (
+        select(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Product.category_id.label("category_id"),
+            Product.abv.label("abv"),
+            Product.personal_rating.label("personal_rating"),
+            metrics.c.purchased_count,
+            metrics.c.priced_quantity,
+            metrics.c.paid_quantity,
+            metrics.c.list_total,
+            metrics.c.paid_total,
+            metrics.c.avg_list_price,
+            metrics.c.avg_paid_price,
+            metrics.c.price_per_100ml,
+            metrics.c.price_per_100ml_paid,
+            metrics.c.discount_rate,
+            metrics.c.total_volume_ml,
+            metrics.c.list_volume,
+            metrics.c.discount_list_total,
+            metrics.c.discount_paid_total,
+            metrics.c.unopened,
+            metrics.c.open,
+            metrics.c.finished,
+            metrics.c.gifted,
+            metrics.c.sold,
+            metrics.c.in_stock,
+        )
+        .select_from(Product)
+        .outerjoin(metrics, metrics.c.product_id == Product.id)
+        .where(Product.user_id == user_id, Product.deleted_at.is_(None))
+    )

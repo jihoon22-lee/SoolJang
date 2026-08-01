@@ -3,11 +3,15 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 02:15 KST**
+- 최종 갱신: **2026-08-01 (Task 14 PR)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 13 까지 완료)
+- 현재 브랜치: `main` (Task 14 까지 완료)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
+
+> 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
+> 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
+> 파일은 특정 세션 종료 시점의 스냅샷이다.
 
 ---
 
@@ -116,7 +120,8 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **11개 완료**. PR 10개 머지.
+전체 23개 Task 중 **14개 완료**. PR 21개 머지 (#1~#21, #16~#20 은 문서 전용 — 이후 규칙
+9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -131,6 +136,9 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 9. REST API | ✅ | [#8](https://github.com/jihoon22-lee/SoolJang/pull/8) | 엔드포인트 17개, 커서 페이지네이션, Problem Details, 카테고리 관리 API |
 | 10. 웹 UI | ✅ | [#9](https://github.com/jihoon22-lee/SoolJang/pull/9) | 목록(PC 테이블/모바일 카드)·필터·상세·등록 폼·카테고리 관리 트리 |
 | 11. 레거시 임포터 | ✅ | [#10](https://github.com/jihoon22-lee/SoolJang/pull/10) | dry-run 미리보기 + 적재 + 멱등성. **실제 429행 적재 성공** |
+| 12. 인증과 로컬 HTTPS | ✅ | [#13](https://github.com/jihoon22-lee/SoolJang/pull/13) | 세션 쿠키 인증, CSRF, 레이트 리밋, `serve-https.sh`, `backup.sh` |
+| 13. 병 관리·시음 세션 | ✅ | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) | 상태 전이·잔량 추적·시음 기록. 엔드포인트 35개로 증가 |
+| 14. 통계 대시보드 v1 | ✅ | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) | `/stats/rankings`·`/stats/by-category`·`/stats/summary`, 통계 화면. 엑셀 실측값과 대조 |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -198,26 +206,33 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 12 — 인증과 로컬 HTTPS 접근 (`feature/auth-https`)
+### 다음 착수: Task 15 — PWA와 오프라인 동기화 (`feature/pwa-sync`)
 
-실제 데이터가 들어갔다. 이제 폰에서 볼 수 있게 만든다.
+Task 12(인증·HTTPS)까지 마쳐 폰에서 실사용이 가능하다. 이제 오프라인에서도 기록할 수
+있게 만든다. 사양은 `docs/architecture.md` §5.
 
-1. `api/deps.py` 의 `current_user_id` 를 세션 쿠키 기반으로 교체. **이 함수만 바꾸면 모든
-   라우터가 실제 사용자를 쓴다** (Task 9 에서 그 목적으로 자리를 만들어 뒀다)
-2. `user` · `session` 테이블 + 마이그레이션. 비밀번호는 Argon2id
-3. 로그인·로그아웃·`GET /auth/me`, `httpOnly` + `Secure` + `SameSite=Lax` 쿠키
-4. CSRF(double-submit cookie), 로그인 레이트 리밋
-5. `/health` 외 전 엔드포인트에 인증 적용
-6. 로그인 화면과 인증 만료 처리
-7. `tailscale serve --https=443` → `https://<머신>.<tailnet>.ts.net`
-8. `pg_dump` 백업·복원 스크립트
+1. Workbox 앱 셸, PWA manifest
+2. Dexie 로 IndexedDB 에 로컬 미러 유지
+3. outbox 직렬 큐 — 오프라인 중 생성한 기록을 순서대로 재전송
+4. `GET /sync?since=<cursor>` — `(updated_at, id)` 복합 커서로 델타 풀
+5. LWW(last-write-wins) 병합, soft delete 전파, idempotency 로 재전송 중복 방지
+6. 동기화 상태 UI
 
-**사용자 확인 필요**: Tailscale 설치 여부와 tailnet 이름 (§7-Q4). HTTPS 인증서 발급에 필요하다.
+**Tailscale 해결됨** (§7-Q4, 2026-08-01): 설치·로그인 완료. tailnet `tail30f401.ts.net`,
+이 머신 호스트명 `main` → 접속 주소 `https://main.tail30f401.ts.net`. 폰에 Tailscale 앱
+설치 + 같은 계정 로그인만 남았다.
 
-### 핵심 마일스톤: Task 12 (인증 + Tailscale HTTPS)
+**공개 전 필수**: 현재 떠 있는 Docker 컨테이너(`sooljang-api-1`·`sooljang-web-1`)는 Task 12
+(인증) 이전 빌드라 `/auth/setup` 이 404 난다. `scripts/serve-https.sh` 실행 전에 반드시
+재빌드한다.
 
-이 지점부터 폰에서 실사용이 가능해진다. Task 16(바코드)·17(OCR)·15(PWA)는 secure context 가
-필요하므로 Task 12 없이는 폰에서 검증할 수 없다.
+```bash
+docker compose up -d --build
+scripts/serve-https.sh
+```
+
+Task 16(바코드)·17(OCR)이 secure context 를 요구하므로 HTTPS 공개 없이는 카메라 기능을
+폰에서 확인할 수 없다.
 
 ### 의존 관계 요약
 
@@ -269,7 +284,10 @@ python3 scripts/generate_legacy_fixture.py
 4. 모든 Task PR 에 `docs/plan.md` 와 이 문서의 갱신을 포함한다
 5. 커밋 메시지는 Conventional Commits 를 지킨다. 사용자가 읽는 텍스트는 한글 우선
 6. Task 1개 = `feature/<slug>` 브랜치 1개 = PR 1개. 머지는 `gh pr merge --merge`
-   (커밋 단위를 히스토리에 남기기 위해 squash 를 쓰지 않는다)
+   (커밋 단위를 히스토리에 남기기 위해 squash 를 쓰지 않는다). **PR을 계층별(백엔드/
+   프론트엔드)로 쪼개거나 문서만 고치는 후속 PR을 따로 만들지 않는다** — 한 Task 의
+   모든 변경(코드·테스트·문서)을 같은 PR 에 담는다(사용자 피드백, 2026-08-01. Task 13
+   이 PR 7개로 쪼개졌던 것은 반례다)
 7. 모든 API 는 인증을 요구한다 (`/health` 예외)
 8. 파생값을 DB 에 저장하지 않는다
 9. 외부 데이터는 출처 URL 없이 저장하지 않는다
@@ -282,7 +300,7 @@ python3 scripts/generate_legacy_fixture.py
 
 | # | 질문 | 필요 시점 |
 |---|---|---|
-| Q4 | Tailscale 설치 여부와 tailnet 이름 (HTTPS 인증서 발급에 필요) | Task 12 |
+| ~~Q4~~ | ~~Tailscale 설치 여부와 tailnet 이름~~ | **✅ 해결** — `tail30f401.ts.net`, `https://main.tail30f401.ts.net`. §4 참조 |
 | Q2 | 검색·LLM API 제공자와 예산 | Task 17 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | Task 18 |
 | Q5 | 목표가 알림 채널 (웹 푸시 vs 다른 수단) | Task 19 |

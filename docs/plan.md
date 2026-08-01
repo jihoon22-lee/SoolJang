@@ -16,33 +16,33 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-01 08:50 KST |
-| 완료된 Task | **Task 1 ~ Task 13** |
-| 다음 착수 Task | **Task 14 — 통계 대시보드 v1 (엑셀 통계 재현)** |
-| 현재 브랜치 | `main` (Task 13 까지 머지 완료, 열린 PR 없음) |
+| 최종 갱신 | 2026-08-01 (Task 14 PR) |
+| 완료된 Task | **Task 1 ~ Task 14** |
+| 다음 착수 Task | **Task 15 — PWA와 오프라인 동기화** |
+| 현재 브랜치 | `main` (Task 14 까지 머지 완료, 열린 PR 없음) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
 
-### 즉시 해야 할 일 (Task 12) — 핵심 마일스톤
+### 즉시 해야 할 일 (Task 15) — 핵심 마일스톤
 
-실제 데이터가 들어갔다. 이제 폰에서 볼 수 있게 만든다. **이 Task 부터 실사용이 시작된다.**
+Task 12(인증·HTTPS)까지 마쳐 폰에서 실사용이 가능해졌다. 이제 오프라인에서도 기록할 수 있게
+만든다.
 
-1. `api/deps.py` 의 `current_user_id` 를 세션 쿠키 기반으로 교체. 이 함수만 바꾸면 모든
-   라우터가 실제 사용자를 쓴다 (Task 9 에서 그 목적으로 자리를 만들어 뒀다)
-2. `user` · `session` 테이블과 마이그레이션. 비밀번호는 Argon2id
-3. 로그인·로그아웃·`GET /auth/me`. `httpOnly` + `Secure` + `SameSite=Lax` 쿠키
-4. 쓰기 요청에 double-submit cookie CSRF 검증, 로그인 레이트 리밋
-5. `/health` 를 제외한 모든 엔드포인트에 인증 적용
-6. 로그인 화면과 인증 만료 처리 (프론트엔드)
-7. `tailscale serve --https=443` 연동 → `https://<머신>.<tailnet>.ts.net`
-8. `pg_dump` 백업·복원 스크립트와 절차 문서화
+- **사양**: [architecture.md](architecture.md) §5
+- Workbox 앱 셸, Dexie 로컬 미러, outbox 직렬 큐
+- `GET /sync?since=` — `(updated_at, id)` 복합 커서
+- LWW(last-write-wins) 병합, soft delete 전파, 충돌 로그
+- 동기화 상태 UI, PWA manifest
 
-**선행 확인 필요**: §6-Q4 Tailscale 설치 여부와 tailnet 이름. HTTPS 인증서 발급에 필요하다.
-Task 15(PWA)·16(바코드)·17(OCR)이 secure context 를 요구하므로 이 단계 없이는 폰에서
-검증할 수 없다.
+**Q4 해결됨** (2026-08-01): Tailscale 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 머신
+호스트명 `main` → 접속 주소는 `https://main.tail30f401.ts.net`. 폰에도 Tailscale 앱을 설치하고
+같은 계정으로 로그인하면 된다. 단, `scripts/serve-https.sh` 실행 전에 **Docker 이미지를
+재빌드**해야 한다 — 현재 떠 있는 컨테이너는 Task 12(인증) 이전 빌드라 `/auth/setup` 이 404
+난다: `docker compose up -d --build`. Task 16(바코드)·17(OCR)이 secure context 를 요구하므로
+이 단계 없이는 폰에서 카메라 기능을 검증할 수 없다.
 
 ### 차단 요인
 
@@ -146,9 +146,9 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 9 | REST API와 검색·필터·정렬 | ✅ | `feature/rest-api` | [#8](https://github.com/jihoon22-lee/SoolJang/pull/8) |
 | 10 | 웹 UI 수직 슬라이스 | ✅ | `feature/web-ui-slice` | [#9](https://github.com/jihoon22-lee/SoolJang/pull/9) |
 | 11 | 레거시 데이터 임포터 | ✅ | `feature/legacy-import` | [#10](https://github.com/jihoon22-lee/SoolJang/pull/10) |
-| 12 | 인증과 로컬 HTTPS 접근 환경 | ⬜ | `feature/auth-https` | |
-| 13 | 개별 병 관리와 시음 세션 | ⬜ | `feature/bottles-tastings` | |
-| 14 | 통계 대시보드 v1 | ⬜ | `feature/stats-v1` | |
+| 12 | 인증과 로컬 HTTPS 접근 환경 | ✅ | `feature/auth-https` | [#13](https://github.com/jihoon22-lee/SoolJang/pull/13) |
+| 13 | 개별 병 관리와 시음 세션 | ✅ | `feature/bottles-tastings`, `feature/bottles-tastings-ui` | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) |
+| 14 | 통계 대시보드 v1 | ✅ | `feature/stats-v1` | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) |
 | 15 | PWA와 오프라인 동기화 | ⬜ | `feature/pwa-sync` | |
 | 16 | 바코드 스캔과 제품 매칭 | ⬜ | `feature/barcode-scan` | |
 | 17 | 라벨 OCR 프리필 | ⬜ | `feature/label-ocr` | |
@@ -515,29 +515,81 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
   - **구매처 종류는 추정하되 강제하지 않는다.** 이름으로 맞히지 못하면 `기타` 로 두고 사용자가
     고친다. 틀린 분류를 넣는 것보다 낫다
 
-### ⬜ Task 12 — 인증과 로컬 HTTPS 접근 환경 🔑 핵심 마일스톤
+### ✅ Task 12 — 인증과 로컬 HTTPS 접근 환경 🔑 핵심 마일스톤
 
-- **산출물**: Argon2id 해시, 서버 세션 쿠키, CSRF, 레이트 리밋, 감사 로그, 전 API 인증 적용,
-  Docker Compose 로컬 프로덕션 구성, `tailscale serve --https=443`, `pg_dump` 백업·복원 스크립트
-- **테스트**: 미인증 차단, 세션 만료, 비밀번호 정책, 레이트 리밋, 백업·복원 왕복
-- **데모**: 갤럭시 폰 크롬에서 `https://<머신>.<tailnet>.ts.net` 접속·로그인해 이관 데이터 조회
-- **범위 제외**: 이미지 게시·릴리스 노트·버전 태그 (Task 23)
+- **산출물**: Argon2id 해시, 서버 세션 쿠키(`app_user`·`app_session`, `0003_auth`), double-submit
+  cookie CSRF, 로그인 레이트 리밋(계정·IP 각 5분 8회), 라우터 단위 인증 적용,
+  `scripts/serve-https.sh`(Tailscale), `scripts/backup.sh`(`pg_dump -Fc` + 검증)
+- **결과**: PR [#13](https://github.com/jihoon22-lee/SoolJang/pull/13) 머지. 결정 근거는
+  §5 D50~D59
+- **검증 결과**: 미인증 401, CSRF 없는 쓰기 403, 로그아웃 후 재접근 401, 백업 34K 생성 →
+  `pg_restore --list` 테이블 12개 확인 → 복원 → 데이터 유지 확인. 실서버 확인 상세는
+  [handoff.md](handoff.md)
+- **범위 제외**: 감사 로그(미구현, [handoff.md](handoff.md) §6 참조), 이미지 게시·릴리스
+  노트·버전 태그(Task 23)
+- **Tailscale 실접속**: Task 14 세션에서 확인됨. 설치·로그인 완료, tailnet
+  `tail30f401.ts.net`, 접속 주소 `https://main.tail30f401.ts.net`. Docker 이미지를
+  재빌드(`docker compose up -d --build`)한 뒤 `scripts/serve-https.sh` 로 공개한다 —
+  현재 컨테이너는 Task 12 이전 빌드다
 
-### ⬜ Task 13 — 개별 병 관리와 시음 세션
+### ✅ Task 13 — 개별 병 관리와 시음 세션
 
-- **산출물**: 병 상태 전이(`:open`/`:finish`/`:gift`/`:sell`), 잔량 추적, 시음 세션 기록
-  (날짜·따른 양·평점 6점 0.5단위·향/맛/피니시·사진·동석자·장소), 시음 타임라인
-- **테스트**: 세션 기록 시 잔량 차감, 잔량 초과 거부, 상태 전이 제약, 세션 평균 평점,
-  평점 변화 추이
-- **데모**: 병 개봉 후 시음 2회 기록 → 잔량 감소와 평점 추이
+- **산출물**: 병 상태 전이(`:open`/`:finish`/`:gift`/`:sell`/`:reopen`), 잔량 추적, 시음 세션
+  기록(날짜·따른 양·평점 6점 0.5단위·향/맛/피니시·동석자·장소), 시음 타임라인·요약(평점 추이).
+  테이블 `tasting_session`·`attachment`(`0004_tasting`)
+- **결과**: PR [#14](https://github.com/jihoon22-lee/SoolJang/pull/14)(백엔드),
+  [#15](https://github.com/jihoon22-lee/SoolJang/pull/15)(프론트엔드) 머지. 결정 근거는 §5
+  D60~D67
+- **검증 결과**: 실서버에서 병 개봉 → 시음 2회 기록(40ml·60ml) → 잔량 700→600ml, 평점 추이
+  4.0→5.0(+1.0) 확인. 잔량 초과 요청은 409. 상세는 [handoff.md](handoff.md)
+- **범위 제외**: 사진 첨부(`POST /attachments` 미구현, Task 10 에서 이미 이관 결정)
 
-### ⬜ Task 14 — 통계 대시보드 v1 (엑셀 통계 재현)
+### ✅ Task 14 — 통계 대시보드 v1 (엑셀 통계 재현)
 
-- **산출물**: 병당 가격·총 구매액·100ml당 가격·개인 평점 랭킹, 주종별 집계(병수·총액·평균 도수·
-  평균 평점·평균 100ml가·할인율), 전체 합계, 주종 분포 차트
-- **테스트**: **엑셀 실측 통계값과 대조**, 동점 처리, 빈 데이터, 대량 데이터 성능
-- **데모**: 엑셀 통계표(주종별 통계 26행, 랭킹 3종, 합계)와 앱 화면 비교해 일치
-- **주의**: 100ml당 가격은 **정가 기준**이다([legacy-schema.md](legacy-schema.md) §4.2)
+- **산출물**
+  - `infrastructure/database/metrics_sql.py` 확장 — `product_stats_rows_query(user_id)`.
+    기존 `product_metrics_query` 서브쿼리를 `Product.category_id`·`abv`·`personal_rating` 과
+    조인하고, 주종별 집계에 필요한 `list_volume`·`discount_list_total`·`discount_paid_total`
+    을 추가로 노출한다
+  - `application/stats.py`(신규) — `get_rankings`·`get_category_rollup`·`get_summary`.
+    제품 수백 건 규모라 파이썬에서 집계한다
+  - `api/schemas/stats.py`·`api/routes/stats.py`(신규) — `GET /stats/rankings`,
+    `GET /stats/by-category`, `GET /stats/summary` (`docs/architecture.md` §4.2 에 이미
+    정의된 엔드포인트). 결과가 항상 작고 고정 크기라 커서 페이지네이션을 쓰지 않는다
+  - `web/src/pages/StatsPage.tsx` — 전체 합계(`metrics-grid` 재사용), 랭킹 4종, 주종별 집계
+    표(`stats-table`/`stats-cards` 이중 렌더), 주종 분포는 새 의존성 없이 CSS 막대로 표현
+  - `App.tsx` 에 "통계" 탭 추가
+- **검증 결과**
+  - 합성 데이터 테스트: `tests/infrastructure/database/test_stats.py`(10개),
+    `tests/api/test_stats.py`(4개), 프론트엔드 `StatsPage.test.tsx`(3개) 전부 통과
+  - **실제 시트 대조** (`tests/api/test_legacy_stats_real.py`,
+    `SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet`):
+    구매/소비/재고/미개봉/개봉 병수·총 용량 정확히 일치, 정가·실구매 총액·평균 정가
+    (39,333원)·평균 실구매(33,855원)·평균 100ml가(6,015원)·평균 평점(3.4) 오차범위 내 일치,
+    주종 롤업 병수(와인 170·사케 12·전통주 120·맥주 642·양주 134) 정확히 일치, 100ml당
+    가격 랭킹 1위(글렌고인 25y, ₩154,286/100ml) 일치
+  - 전체 스위트 496 passed, 커버리지 95.06%. 프론트엔드 167 passed, 커버리지 88.23%
+    stmts / 81.12% branch
+- **설계 판단** (§5 결정 로그 참조)
+  - **랭킹 3종의 금액 기준이 서로 다르다.** "병당 가격"·"총 구매액"은 **실구매가** 기준,
+    "100ml당 가격"은 기존 **정가** 기준(D5)이다. 엑셀 원본 랭킹 블록(464~531행)을 직접
+    파싱해 상위 20건 소계(₩8,246,807 / ₩11,689,451 / ₩1,303,064)와 대조해 확정했다.
+    엑셀 라벨은 "상위 10위"지만 실제로는 20건씩 들어 있었다
+  - **"총 구매액" 랭킹은 엑셀 소계를 완전히 재현하지 못한다.** 이 앱은 같은 제품의 반복
+    구매를 하나로 합산하지만(§9.3, 엑셀 한계 해결의 핵심), 엑셀은 반복 구매를 별도 행으로
+    남겼다. 병합된 제품이 어떤 단일 행보다도 큰 총액을 갖게 되어 상위권 구성이 달라진다.
+    이는 결함이 아니라 데이터 모델 개선의 자연스러운 결과다
+  - **전체 합계의 평균값은 전체 병수·용량을 분모로 쓴다.** 제품별 지표(`avg_list_price` 등,
+    분모가 가격 있는 병수)와 다른 기준이다. 실측 대조로 발견: `39,333원 = 정가 총액 ÷
+    전체 1,078병`(가격 없는 선물 병도 분모에 포함). "가격이 있는 것만의 평균"이 아니라
+    "컬렉션 전체의 평균"이기 때문이다
+  - **주종별 집계는 SQL 이 아니라 파이썬에서 그룹핑한다.** 카테고리 깊이가 컬럼으로
+    저장되지 않아(D26) 최상위 조상을 구하려면 부모 포인터를 루트까지 따라가야 하는데,
+    제품 수백 건·카테고리 수십 개 규모에서는 SQL 재귀 조인보다 `load_tree()` 결과를 한 번
+    읽어 파이썬에서 매핑하는 편이 간단하다
+  - **차트는 새 의존성 없이 CSS 로 만든다.** 이 프로젝트는 라우터·Tailwind·shadcn 을
+    "필요 규모가 아니다"로 배제해 온 관례가 있다(D41). 병수 막대 하나만 필요한데 차트
+    라이브러리를 추가할 이유가 없다
 
 ### ⬜ Task 15 — PWA와 오프라인 동기화
 
@@ -737,6 +789,15 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | D66 | 첨부는 **파일 경로만 DB 저장** | 바이너리를 DB 에 두면 백업이 폭증해 `pg_dump` 가 실용적이지 않다. `sha256` 으로 중복 업로드를 재사용 |
 | D67 | 시음 삭제는 **잔량을 되돌리지 않는다** | 실제로 마신 양을 되돌릴 방법이 없다. 잘못 입력했다면 병 잔량을 직접 고치는 편이 명확하다 |
 
+### Task 14 결정 (D68~D71)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D68 | "병당 가격"·"총 구매액" 랭킹은 **실구매가** 기준, "100ml당 가격"은 **정가** 기준(D5 유지) | 엑셀 랭킹 블록(464~531행)을 직접 파싱해 상위 20건 소계(₩8,246,807 / ₩11,689,451 / ₩1,303,064)와 대조한 결과다. 정가로 계산하면 "병당 가격" 소계가 어긋나고, 실구매가로 계산하면 "100ml당 가격" 소계가 어긋난다 — 엑셀 자체가 랭킹 블록마다 다른 컬럼을 참조했다 |
+| D69 | "총 구매액" 랭킹은 엑셀 소계를 완전히 재현하는 것을 목표로 하지 않는다 | 이 앱은 같은 제품의 반복 구매를 하나로 합산한다(§9.3, 엑셀 한계 해결의 핵심 목적). 엑셀은 반복 구매를 별도 행으로 남겼으므로, 병합된 제품이 어떤 단일 행보다도 큰 총액을 갖게 되어 상위권 구성이 달라진다. 이는 데이터 모델 개선의 의도된 결과이지 결함이 아니다 |
+| D70 | 통계 요약(`/stats/summary`)의 평균값은 분모를 **전체 병수·전체 용량**으로 쓴다 | 제품별 지표(`avg_list_price`, 분모가 가격 있는 병수)와는 다른 기준이다. 실측 대조로 발견: `병당 평균 정가 39,333원 = 정가 총액 42,401,108 ÷ 전체 1,078병`(가격 없는 선물 병도 포함). "가격이 있는 것만의 평균"이 아니라 "컬렉션 전체를 병 하나당으로 나눈 평균"이기 때문이다 |
+| D71 | 주종별 집계는 SQL 재귀 조인이 아니라 `load_tree()` 결과를 파이썬에서 그룹핑한다 | 카테고리 깊이를 컬럼으로 저장하지 않으므로(D26) 최상위 조상을 구하려면 부모 포인터를 루트까지 따라가야 한다. 제품 수백 건·카테고리 수십 개 규모에서는 SQL 재귀보다 트리 전체를 한 번 읽어 매핑하는 편이 간단하고, Task 21 에서 10배 규모로도 성능을 재확인한다 |
+
 ## 6. 열린 질문
 
 | # | 질문 | 상태 | 필요 시점 |
@@ -744,7 +805,7 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
 | Q2 | 검색·LLM API 제공자와 예산. Task 17(OCR)·18(요약)에 필요. 기존 프로젝트에 `anthropic`·`google-genai`·`openai` 의존성이 있어 키 보유로 추정 | 미해결 | Task 17 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록. 국내 가격은 데일리샷·이마트·GS25 와인25+ 등 후보. 사용자 승인 필요 | 미해결 | Task 18 |
-| Q4 | Tailscale 설치·로그인 여부와 tailnet 이름. HTTPS 인증서 발급에 필요 | 미해결 | Task 12 |
+| ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 주소 `https://main.tail30f401.ts.net`. 폰에 Tailscale 앱 설치 + 같은 계정 로그인만 남았다. Docker 이미지 재빌드 필요(현재 컨테이너는 Task 12 이전 빌드) | — |
 | Q5 | 웹 푸시 알림 채널. 목표가 알림을 웹 푸시로 할지 다른 수단(이메일 등)으로 할지 | 미해결 | Task 19 |
 | Q6 | 지인 공유 시 권한 모델 상세. 읽기 전용 링크만으로 충분한지, 계정 발급이 필요한지 | 미해결 | Task 20 |
 
@@ -782,3 +843,7 @@ PR마다 아래를 모두 통과해야 머지한다.
 6. 파생값을 DB에 저장하지 않는다
 7. 외부 데이터는 출처 URL 없이 저장하지 않는다
 8. 모든 Task PR에 이 문서 갱신을 포함한다
+9. **PR은 계층별로 쪼개지 않는다.** 한 Task 의 백엔드·프론트엔드·테스트·문서 갱신을
+   전부 같은 PR 에 담는다. 문서만 고치는 후속 PR 을 따로 만들지 않는다 — Task 13 에서
+   백엔드/프론트엔드 PR 2개 + 문서 전용 PR 5개로 쪼개졌던 것은 반례다(사용자 피드백,
+   2026-08-01)

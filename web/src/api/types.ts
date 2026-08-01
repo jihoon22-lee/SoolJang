@@ -366,3 +366,51 @@ export interface TastingSummary {
   first_tasted_on: string | null;
   latest_tasted_on: string | null;
 }
+
+// --- 통계 --------------------------------------------------------------------
+
+export interface RankingEntry {
+  product_id: string;
+  product_name: string;
+  value: string;
+}
+
+export interface Rankings {
+  /** 실구매가 기준. */
+  by_bottle_price: RankingEntry[];
+  /** 실구매가 기준. 같은 제품의 반복 구매를 합산하므로 레거시 엑셀의 행 단위 랭킹과는
+   * 다를 수 있다(엑셀은 반복 구매를 별도 행으로 남겼다). */
+  by_total_spend: RankingEntry[];
+  /** 정가 기준. 레거시 통계와 일치시키기 위한 결정이다. */
+  by_price_per_100ml: RankingEntry[];
+  by_personal_rating: RankingEntry[];
+}
+
+export interface CategoryStat {
+  category_id: string | null;
+  /** 카테고리가 없으면 "미분류". */
+  name: string;
+  bottle_count: number;
+  total_spend: Money;
+  avg_abv: string | null;
+  avg_rating: string | null;
+  avg_price_per_100ml: Money;
+  discount_rate: string | null;
+}
+
+export interface StatsSummary {
+  purchased_count: number;
+  consumed_count: number;
+  in_stock_count: number;
+  unopened_count: number;
+  opened_count: number;
+  total_volume_ml: number;
+  list_total: Money;
+  paid_total: Money;
+  avg_list_price: Money;
+  avg_paid_price: Money;
+  avg_price_per_100ml: Money;
+  discount_rate: string | null;
+  avg_personal_rating: string | null;
+  vendor_count: number;
+}
