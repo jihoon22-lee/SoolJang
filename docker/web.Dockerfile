@@ -10,6 +10,10 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 
 COPY web/ ./
+# web/src/domain/metrics.test.ts 가 Python 쪽과 공유하는 golden-value 픽스처를
+# 상대 경로(../../../tests/fixtures)로 참조한다 — 3-way parity 를 위해 한 파일만
+# 두는 설계라 이미지에도 같은 상대 위치로 복사해야 한다.
+COPY tests/fixtures/ /tests/fixtures/
 RUN npm run build
 
 
