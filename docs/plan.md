@@ -16,34 +16,27 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-01 (Task 15 PR) |
-| 완료된 Task | **Task 1 ~ Task 15** |
-| 다음 착수 Task | **Task 16 — 바코드 스캔과 제품 매칭** |
-| 현재 브랜치 | `main` (Task 15 까지 머지 완료, 열린 PR 없음) |
+| 최종 갱신 | 2026-08-02 (Task 16 PR) |
+| 완료된 Task | **Task 1 ~ Task 16** |
+| 다음 착수 Task | **Task 17 — 라벨 OCR 프리필** (Q2 미해결로 차단, 아래 참조) |
+| 현재 브랜치 | `main` (Task 16 까지 머지 완료, 열린 PR 없음) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
 
-### 즉시 해야 할 일 (Task 16)
+### 차단 요인 — Task 17·18 은 사용자 확인이 필요하다
 
-Task 15(PWA·오프라인 동기화)까지 마쳐 오프라인에서도 컬렉션을 조회·등록할 수 있다. 다음은
-바코드 스캔으로 제품 등록을 더 빠르게 만드는 단계다.
+Task 17(라벨 OCR)·18(외부 소스 요약)은 **Vision·Text LLM API 제공자와 예산이 미해결**이다
+(§6 Q2). 기존 프로젝트에 `anthropic`·`google-genai`·`openai` 의존성이 있어 키를 보유하고
+있을 가능성이 높지만, 어떤 제공자·모델·월 예산 상한을 쓸지는 사용자가 정해야 한다 —
+임의로 하나를 골라 키 설정 코드를 먼저 만들면 나중에 예산 초과나 원치 않는 벤더 종속이
+생길 수 있다.
 
-- **사양**: [architecture.md](architecture.md) 관련 절
-- `BarcodeDetector` + `@zxing/browser` 폴백 스캐너
-- 로컬 SKU → Open Food Facts → 검색 폴백 순으로 매칭
-- 사용자 확인 후 바코드 학습 저장
-
-Tailscale 설치·로그인은 Task 14 세션에서 끝났다(`https://main.tail30f401.ts.net`). 다만
-이 개발 샌드박스는 브라우저 자동화가 동작하지 않아 실기기 HTTPS 접속을 사람이 직접
-검증한 적은 아직 없다 — Task 16(카메라)에 실제 착수하기 전에 `docker compose up -d --build`
-+ `scripts/serve-https.sh` 로 한 번 수동 확인이 필요하다([handoff.md](handoff.md) §4 참조).
-
-### 차단 요인
-
-없음.
+**Q2 가 풀리기 전까지 막히지 않는 다음 후보**: Task 20(통계 v2 — 커스텀 피벗과 취향 분석)
+은 외부 API 없이 Task 14(통계 v1) 데이터만으로 진행할 수 있다. 의존 관계상으로도
+Task 17·18·19 를 거치지 않고 바로 시작할 수 있다(§3 의존 관계 다이어그램 참조).
 
 ### 로컬 환경 기동
 
@@ -147,7 +140,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 13 | 개별 병 관리와 시음 세션 | ✅ | `feature/bottles-tastings`, `feature/bottles-tastings-ui` | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) |
 | 14 | 통계 대시보드 v1 | ✅ | `feature/stats-v1` | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) |
 | 15 | PWA와 오프라인 동기화 | ✅ | `feature/pwa-sync` | (병합 예정) |
-| 16 | 바코드 스캔과 제품 매칭 | ⬜ | `feature/barcode-scan` | |
+| 16 | 바코드 스캔과 제품 매칭 | ✅ | `feature/barcode-scan` | (병합 예정) |
 | 17 | 라벨 OCR 프리필 | ⬜ | `feature/label-ocr` | |
 | 18 | 외부 소스 레지스트리와 온디맨드 조회 | ⬜ | `feature/external-sources` | |
 | 19 | 사이트별 어댑터와 시세 이력 | ⬜ | `feature/site-adapters` | |
@@ -652,13 +645,57 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
   - **PWA 는 API 응답 런타임 캐싱을 하지 않는다.** 읽기가 이제 Dexie 가 우선이라
     Workbox 의 역할은 설치 가능성 + 앱 셸(JS/CSS/HTML) 캐싱으로 좁아진다
 
-### ⬜ Task 16 — 바코드 스캔과 제품 매칭
+### ✅ Task 16 — 바코드 스캔과 제품 매칭
 
-- **산출물**: `BarcodeDetector` + `@zxing/browser` 폴백 스캐너, 로컬 SKU → Open Food Facts →
-  검색 폴백, 사용자 확인 후 바코드 학습 저장
-- **테스트**: EAN-13/UPC-A 정규화, 로컬 히트·미스 분기, 외부 실패 시 수동 경로, RCN 경고
-- **데모**: 실제 병 바코드 스캔으로 기존 제품 즉시 매칭
-- **전제**: Task 12의 HTTPS(secure context)가 없으면 카메라가 동작하지 않는다
+- **백엔드 산출물**
+  - `application/barcodes.py`(신규) — `normalize_and_classify(raw)`: EAN-8·UPC-A·EAN-13
+    인식, UPC-A → EAN-13 정규화(GS1 표준대로 0 패딩), RCN(Restricted Circulation Number,
+    매장 내부용) 판별. UPC-A 는 원본 12자리의 "number system digit" 이 2 인지로,
+    네이티브 EAN-13 은 정규화된 13자리의 접두어(20~29·04)로 각각 판별한다 — 패딩 때문에
+    자릿수가 밀려 두 규칙을 하나로 합칠 수 없다(구현 중 발견, 테스트로 고정)
+  - `infrastructure/external/open_food_facts.py`(신규) — 유일한 온디맨드 외부 조회
+    (§1.1). 인증·API 키 불필요. 실패해도 예외를 던지지 않고 `None` — "있으면 좋은"
+    보조 정보일 뿐이라 실패가 전체 요청을 막지 않는다. `httpx.AsyncClient` 에 `transport`
+    를 주입할 수 있게 열어 둬 `httpx.MockTransport` 로 실제 네트워크 없이 테스트한다
+  - `GET /barcodes/{code}`(신규) — 로컬 SKU → Open Food Facts 순으로 조회만 한다(쓰지
+    않는다). RCN 이면 전역 조회가 무의미해 외부 호출 자체를 건너뛴다
+  - `PATCH /skus/{id}`(신규) — 이미 등록된 규격에 나중에 바코드를 붙이는 "학습" 경로.
+    architecture.md 가 Task 9 산출물로 이미 문서화했지만 실제로는 구현되지 않았던
+    엔드포인트다(문서-코드 불일치, 이번에 정정). 바코드 필드는 항상
+    `normalize_and_classify` 를 거쳐 저장되므로, 어느 경로로 등록하든(생성·수정) 조회
+    정규화와 형식이 항상 맞는다
+- **프론트엔드 산출물**
+  - `web/src/barcode/scanner.ts` — 네이티브 `BarcodeDetector` 우선, 미지원 브라우저는
+    `@zxing/browser` 로 폴백(동적 import 로 코드 스플릿 — 대부분의 사용자는 다운로드하지
+    않는다). `startScanning` 을 주입 가능한 함수로 노출해, 실제 하드웨어 없이는 검증할 수
+    없는 카메라 상호작용과 UI 로직을 분리했다
+  - `web/src/components/BarcodeScanPanel.tsx` — 스캔 → 조회 → (로컬 매칭 시 이동 /
+    미매칭 시 새로 등록 또는 기존 규격에 연결) 흐름. 스캔은 카메라 + 온디맨드 외부 조회가
+    필요해 **온라인 전용**이다(오프라인이면 버튼 자체를 감춘다 — Task 15 의 다른
+    온라인 전용 기능들과 같은 패턴)
+  - `ProductsPage.tsx` 에 "바코드로 스캔" 버튼 추가
+- **검증 결과**
+  - 백엔드: `ruff check`·`ruff format --check`·`ty check` 전부 통과. `pytest` 정확한
+    건수는 §2(handoff.md) 참조. UPC-A RCN 판별 버그(자릿수 밀림)를 테스트 작성 중 직접
+    발견·수정 — 처음 짠 구현은 "20000100000X" 류의 UPC-A 를 EAN13 으로 잘못 분류했다
+  - 프론트엔드: `npm run check` 전부 통과. 카메라 하드웨어 상호작용(`scanner.ts`)까지
+    `navigator.mediaDevices`·`BarcodeDetector`·`@zxing/browser` 를 전부 가짜로 주입해
+    실제 브라우저 없이 검증했다 — "테스트 못 하니 제외"가 아니라 목킹으로 커버리지
+    임계값(branch 80%)을 실제로 통과시켰다
+  - `docker build -f docker/web.Dockerfile .` · `docker build -f docker/api.Dockerfile .`
+    양쪽 다 새 의존성(`@zxing/browser`)·새 모듈(`infrastructure/external/`) 포함해서
+    정상 빌드 확인
+- **설계 판단** (§5 결정 로그 참조)
+  - **바코드 정규화·분류를 저장 시점에 서버가 강제한다.** 클라이언트가 보낸
+    `barcode_type` 힌트를 신뢰하지 않고 서버가 다시 계산한다 — 분류는 신뢰 경계에서
+    확정해야 하는 데이터이지 UI 편의 값이 아니다
+  - **"검색 폴백"은 별도 검색 API 통합이 아니라 앱 안의 수동 등록·연결 흐름이다.**
+    Task 18(외부 소스 레지스트리)의 웹 검색 API 도입까지 기다리지 않고, 로컬·외부
+    양쪽에서 못 찾으면 사용자가 직접 새로 등록하거나 기존 술에 연결하게 한다. 이렇게
+    범위를 좁혀 Q2(검색·LLM API 제공자 미해결)에 막히지 않고 Task 16 을 끝냈다
+  - **스캔으로 만드는 새 제품은 outbox 를 거치지 않는다.** 카메라 접근과 Open Food
+    Facts 조회 자체가 온라인을 전제하므로, 오프라인 대응 범위를 넓히는 대신 버튼을
+    숨기는 쪽을 택했다(Task 15 의 주종 이동·병합 등과 같은 판단)
 
 ### ⬜ Task 17 — 라벨 OCR 프리필
 
@@ -860,6 +897,15 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | D75 | 온라인일 때의 제품 등록은 outbox 가 아니라 기존 REST 체인을 그대로 쓴다 | outbox 는 아직 `product_variety` 를 쓰기 대상으로 지원하지 않는다(D72). 온라인에서도 outbox 로 통일하면 이미 동작하던 품종 입력이 조용히 무시되는 회귀가 생긴다. 오프라인일 때만 outbox 체인(품종 미지원, 폼에 안내 없음 — 다음 세션에서 보완 여지)으로 전환한다 |
 | D76 | 통계·제품 목록의 파생 지표는 TypeScript 로 세 번째 구현하되, `domain/metrics.ts` 한 곳에서만 계산한다 | Dexie 는 원자값만 미러링하고 파생 지표를 저장하지 않는다(절대 규칙 6, 서버와 동일 원칙). 오프라인에서 제품 목록·통계 화면을 보여주려면 같은 공식이 필요하다. `queries.ts` 는 필터·정렬·롤업 로직만 재구현하고, 금액·병수 계산은 전부 `domain/metrics.ts` 를 호출해 공식이 네 곳(Python 순수 함수·SQL·TS)으로 갈라지지 않게 했다. 3-way parity 는 공유 골든값 픽스처로 확인한다 |
 | D77 | PWA(Workbox)는 API 응답에 런타임 캐싱 전략을 두지 않는다 | 오프라인 읽기의 기본 경로가 Dexie 로 바뀌었으므로(사용자가 선택한 "전체 컬렉션 오프라인 탐색"), 네트워크 응답을 별도로 캐싱할 이유가 없다. Workbox 의 역할은 설치 가능성(manifest)과 앱 셸(JS/CSS/HTML) 프리캐시로 좁힌다 |
+
+### Task 16 결정 (D78~D81)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D78 | RCN 판별은 UPC-A·EAN-13 을 서로 다른 규칙으로 검사한다 — UPC-A 는 0 패딩 **전** 원본 12자리의 첫 자리, EAN-13 은 정규화된 13자리 자체의 접두어(20~29·04) | 처음에는 정규화 후 13자리 문자열 하나에 규칙을 통일하려 했으나, UPC-A 를 0 패딩하면 자릿수가 한 칸 밀려 EAN-13 접두어 범위와 겹치지 않는다는 것을 테스트 작성 중 발견했다(예: UPC-A "2000010000059" → 패딩 후 "02000100000059" 라 접두어가 "02" 가 되어 "20~29" 범위를 벗어난다). 두 표준의 RCN 예약 규칙 자체가 다르므로 패딩 전/후 각각 검사해야 한다 |
+| D79 | `PATCH /skus/{id}` 를 Task 16 에서 새로 만든다 | architecture.md 는 Task 9 산출물로 이미 문서화했지만 실제 코드에는 없었다(문서-코드 불일치, `POST /products/{id}/skus` 만 존재). 바코드 학습(이미 등록된 규격에 나중에 바코드를 붙이는 것)에 반드시 필요해 이번에 채웠다 |
+| D80 | "검색 폴백"은 별도 검색 API 를 통합하지 않고, 앱 안의 수동 등록·연결 흐름으로 구현한다 | Q2(검색·LLM API 제공자와 예산)가 아직 미해결이다. Task 18(외부 소스)까지 기다리지 않고, 로컬·Open Food Facts 양쪽에서 못 찾으면 사용자가 직접 새로 등록하거나 기존 술에 연결하게 해 Task 16 범위를 스스로 완결시켰다 |
+| D81 | 바코드 스캔으로 만드는 새 제품·바코드 학습은 outbox(Task 15)를 거치지 않고 항상 온라인 REST 로 처리한다 | 카메라 접근과 Open Food Facts 조회 자체가 온라인을 전제한다. 오프라인 대응 범위를 넓히는 대신 오프라인일 때 스캔 버튼을 감추는 쪽을 택했다(Task 15 의 주종 이동·병합과 같은 판단 기준) |
 
 ## 6. 열린 질문
 
