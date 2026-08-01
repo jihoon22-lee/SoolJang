@@ -332,6 +332,156 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- 통계 대시보드 ---------------------------------------------------------- */
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: none;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.stats-table th {
+  background: #f2ede6;
+  font-size: 0.85rem;
+}
+
+.stats-table td.numeric,
+.stats-table th.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-cards {
+  display: grid;
+  gap: var(--space);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+@media (min-width: 900px) {
+  .stats-table {
+    display: table;
+  }
+
+  .stats-cards {
+    display: none;
+  }
+}
+
+.stats-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.stats-card h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.stats-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+}
+
+.stats-card dt {
+  color: var(--text-muted);
+}
+
+.stats-card dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.category-bars {
+  display: grid;
+  gap: 8px;
+  margin-bottom: var(--space);
+}
+
+.category-bar-row {
+  display: grid;
+  grid-template-columns: 6em 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.category-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-bar-track {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.category-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.ranking-grid {
+  display: grid;
+  gap: var(--space);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ranking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ranking-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ranking-rank {
+  color: var(--text-muted);
+  min-width: 1.5em;
+}
+
+.ranking-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* --- 카테고리 트리 --------------------------------------------------------- */
 
 .category-tree {
