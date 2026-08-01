@@ -18,6 +18,16 @@ class SkuCreate(BaseModel):
     package_note: str | None = None
 
 
+class SkuUpdate(BaseModel):
+    """규격 부분 수정. 바코드 스캔 학습(Task 16)이 주 용도다 — 이미 등록된 규격에
+    나중에 바코드를 붙인다."""
+
+    volume_ml: int | None = Field(default=None, gt=0, le=100_000)
+    barcode: str | None = Field(default=None, max_length=64)
+    barcode_type: BarcodeType | None = None
+    package_note: str | None = None
+
+
 class SkuOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

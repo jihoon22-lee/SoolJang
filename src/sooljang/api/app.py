@@ -10,6 +10,7 @@ from sooljang.api.deps import active_session
 from sooljang.api.errors import ProblemDetail, register_error_handlers
 from sooljang.api.routes import (
     auth,
+    barcodes,
     categories,
     health,
     legacy_import,
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for router in (
         categories.router,
         products.router,
+        products.skus_router,
         purchases.vendors_router,
         purchases.purchases_router,
         legacy_import.router,
@@ -81,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tastings.tastings_router,
         stats.router,
         sync.router,
+        barcodes.router,
     ):
         app.include_router(router, prefix=API_PREFIX, dependencies=[protected])
     return app
