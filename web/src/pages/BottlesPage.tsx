@@ -5,12 +5,12 @@
  * 찾기 어렵다.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 
-import { bottlesApi } from "@/api/client";
-import type { Bottle, BottleStatus } from "@/api/types";
+import type { BottleStatus } from "@/api/types";
 import { BottlePanel, formatRemaining } from "@/components/BottlePanel";
+import { getBottles } from "@/sync/queries";
 
 type Filter = "in_stock" | "all" | BottleStatus;
 
@@ -32,12 +32,7 @@ export function BottlesPage(): React.JSX.Element {
   const [filter, setFilter] = useState<Filter>("in_stock");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const bottles = useQuery({
-    queryKey: ["bottles", filter],
-    queryFn: ({ signal }) => bottlesApi.list(filterParams(filter), signal),
-  });
-
-  const selected: Bottle | undefined = bottles.data?.find((item) => item.id === selectedId);
+  const bottles = useLiveQuery(() => getBottles(filterParams(filter)), [filter]);
 
   return (
     <div className="bottles-page">
@@ -60,19 +55,16 @@ export function BottlesPage(): React.JSX.Element {
         ))}
       </fieldset>
 
-      {bottles.isPending ? <output>불러오는 중…</output> : null}
-      {bottles.isError ? (
-        <p role="alert">병 목록을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.</p>
-      ) : null}
+      {bottles === undefined ? <output>불러오는 중…</output> : null}
 
-      {bottles.data?.length === 0 ? (
+      {bottles?.length === 0 ? (
         <p className="muted">
           해당하는 병이 없습니다. 술을 등록하고 구매 정보를 넣으면 병이 만들어집니다.
         </p>
       ) : null}
 
       <ul className="bottle-list">
-        {bottles.data?.map((bottle) => (
+        {bottles?.map((bottle) => (
           <li key={bottle.id}>
             <button
               type="button"
@@ -88,10 +80,6 @@ export function BottlesPage(): React.JSX.Element {
           </li>
         ))}
       </ul>
-
-      {selected && selectedId && !bottles.data?.some((item) => item.id === selectedId) ? (
-        <BottlePanel bottle={selected} />
-      ) : null}
     </div>
   );
 }

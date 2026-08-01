@@ -35,6 +35,7 @@ function rowOf(name: string): HTMLElement {
 }
 
 const handlers = () => ({
+  offline: false,
   onCreate: vi.fn(),
   onRename: vi.fn(),
   onReparent: vi.fn(),
@@ -258,6 +259,24 @@ describe("CategoryManager", () => {
     render(<CategoryManager tree={tree(items)} busy error={null} {...handlers()} />);
 
     expect(screen.getByRole("button", { name: "이름 변경" })).toBeDisabled();
+  });
+
+  it("오프라인에서는 이동·병합·삭제·기본값 복원을 막고 이유를 안내한다", async () => {
+    const items = [node({ id: "c", name: "와인" })];
+    const spies = handlers();
+
+    render(<CategoryManager tree={tree(items)} busy={false} error={null} {...spies} offline />);
+
+    expect(screen.getByRole("button", { name: "기본 주종 복원" })).toBeDisabled();
+    expect(screen.getByText(/오프라인에서는 사용할 수 없습니다/)).toBeInTheDocument();
+    const row = rowOf("와인");
+    expect(within(row).getByLabelText("와인 상위 주종 변경")).toBeDisabled();
+    expect(within(row).getByLabelText("와인 을 다른 주종으로 병합")).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "삭제" })).toBeDisabled();
+    // 추가·이름 변경은 outbox 를 타므로 오프라인에서도 계속 쓸 수 있어야 한다.
+    await userEvent.type(screen.getByLabelText("이름"), "새 주종");
+    expect(screen.getByRole("button", { name: "추가" })).not.toBeDisabled();
+    expect(within(row).getByRole("button", { name: "이름 변경" })).not.toBeDisabled();
   });
 
   it("오류를 alert 로 알린다", () => {

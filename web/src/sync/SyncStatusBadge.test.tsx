@@ -1,0 +1,141 @@
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { db } from "@/sync/db";
+import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
+import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
+import { authenticatedRoutes, renderWithQuery, stubRoutes } from "@/testing";
+
+const NOW = "2026-01-01T00:00:00Z";
+
+beforeEach(async () => {
+  await db.open();
+  vi.stubGlobal("navigator", { ...navigator, onLine: true });
+});
+
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  await db.conflict_log.clear();
+  await db.outbox.clear();
+});
+
+function renderBadge() {
+  return renderWithQuery(
+    <SyncStatusProvider>
+      <SyncStatusBadge />
+    </SyncStatusProvider>,
+  );
+}
+
+describe("SyncStatusBadge", () => {
+  it("대기·실패·충돌이 없으면 최신 상태를 보여준다", async () => {
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderBadge();
+
+    expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
+  });
+
+  it("충돌이 없을 때 배지를 누르면 즉시 동기화를 시도한다", async () => {
+    const { calls } = stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderBadge();
+    calls.length = 0;
+    await userEvent.click(await screen.findByRole("button", { name: "최신 상태" }));
+
+    // outbox 가 비어 있으면 flushOutbox 는 아무것도 보내지 않는다 — pullDeltas 의
+    // GET /sync 호출로 "동기화를 실제로 시도했는지" 를 확인한다.
+    await waitFor(() => {
+      expect(calls.some((call) => call.method === "GET" && call.url.includes("/sync"))).toBe(true);
+    });
+  });
+
+  it("오프라인이고 대기 중인 작업이 있으면 대기 건수를 보여준다", async () => {
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+    await db.outbox.put({
+      idempotency_key: "op1",
+      entity: "vendor",
+      op: "create",
+      entity_id: "v1",
+      fields: { name: "대기 중 구매처" },
+      created_at: NOW,
+      status: "pending",
+      error: null,
+    });
+
+    renderBadge();
+
+    expect(await screen.findByRole("button", { name: "오프라인 (대기 1건)" })).toBeInTheDocument();
+  });
+
+  it("충돌이 있으면 배지에 건수를 보여주고, 눌러서 패널을 열 수 있다", async () => {
+    await db.conflict_log.put({
+      id: "c1",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      entity: "category",
+      entity_id: "cat1",
+      server_updated_at: NOW,
+      client_updated_at: NOW,
+      client_snapshot: { name: "내가 바꾸려던 이름" },
+      idempotency_key: "op1",
+    });
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderBadge();
+
+    const badge = await screen.findByRole("button", { name: "충돌 1건" });
+    await userEvent.click(badge);
+
+    expect(await screen.findByRole("dialog", { name: "동기화 충돌" })).toBeInTheDocument();
+    // ConflictPanel 은 열리자마자 자체 useLiveQuery 를 새로 구독한다 — 첫 계산이 비동기로
+    // 끝나므로 동기 getByText 가 아니라 findByText 로 기다려야 한다.
+    expect(await screen.findByText(/내가 바꾸려던 이름/)).toBeInTheDocument();
+  });
+
+  it("확인을 누르면 서버에 알리고 목록에서 사라진다", async () => {
+    await db.conflict_log.put({
+      id: "c1",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      entity: "category",
+      entity_id: "cat1",
+      server_updated_at: NOW,
+      client_updated_at: NOW,
+      client_snapshot: { name: "내가 바꾸려던 이름" },
+      idempotency_key: "op1",
+    });
+    const { calls } = stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+      { match: "/sync/conflicts/c1:resolve", method: "POST", status: 204, body: null },
+    ]);
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "충돌 1건" }));
+    await userEvent.click(await screen.findByRole("button", { name: "확인" }));
+
+    await waitFor(() => {
+      expect(calls.some((call) => call.url.includes(":resolve"))).toBe(true);
+    });
+    expect(await screen.findByText("확인할 충돌이 없습니다.")).toBeInTheDocument();
+    expect((await db.conflict_log.get("c1"))?.deleted_at).not.toBeNull();
+  });
+});

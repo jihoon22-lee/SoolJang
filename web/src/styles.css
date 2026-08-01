@@ -603,6 +603,85 @@ button:disabled {
   color: var(--muted);
 }
 
+/* --- 동기화 상태 ---------------------------------------------------------- */
+
+.sync-status {
+  position: relative;
+}
+
+.sync-status-badge {
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: var(--surface);
+}
+
+.sync-status-ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.sync-status-muted {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.sync-status-warn,
+.sync-status-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.sync-conflict-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 20;
+  width: min(22rem, 90vw);
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  text-align: left;
+}
+
+.sync-conflict-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sync-conflict-panel-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.sync-conflict-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sync-conflict-panel li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-conflict-panel li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
 /* --- 병 관리 ------------------------------------------------------------- */
 
 .bottle-filters,

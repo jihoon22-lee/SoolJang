@@ -10,6 +10,8 @@ import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { StatsPage } from "@/pages/StatsPage";
+import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
+import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 
 type View = "products" | "bottles" | "categories" | "stats" | "import" | "status";
 
@@ -78,55 +80,58 @@ export function App() {
   const user: User | undefined = session.data ?? undefined;
 
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main">
-        본문으로 건너뛰기
-      </a>
+    <SyncStatusProvider>
+      <div className="app-shell">
+        <a className="skip-link" href="#main">
+          본문으로 건너뛰기
+        </a>
 
-      <header className="app-header">
-        <h1>술장</h1>
-        <nav className="app-nav" aria-label="주요 화면">
-          {VIEWS.map((item) => (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              aria-current={view === item.id ? "page" : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                setView(item.id);
+        <header className="app-header">
+          <h1>술장</h1>
+          <nav className="app-nav" aria-label="주요 화면">
+            {VIEWS.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                aria-current={view === item.id ? "page" : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setView(item.id);
+                }}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          <div className="app-account">
+            <SyncStatusBadge />
+            {user ? <span className="app-account-name">{user.display_name}</span> : null}
+            <button
+              type="button"
+              className="app-logout"
+              onClick={() => {
+                void authApi.logout().finally(() => {
+                  queryClient.setQueryData(["auth", "me"], null);
+                  queryClient.removeQueries({
+                    predicate: (query) => query.queryKey[0] !== "auth",
+                  });
+                });
               }}
             >
-              {item.label}
-            </a>
-          ))}
-        </nav>
-        <div className="app-account">
-          {user ? <span className="app-account-name">{user.display_name}</span> : null}
-          <button
-            type="button"
-            className="app-logout"
-            onClick={() => {
-              void authApi.logout().finally(() => {
-                queryClient.setQueryData(["auth", "me"], null);
-                queryClient.removeQueries({
-                  predicate: (query) => query.queryKey[0] !== "auth",
-                });
-              });
-            }}
-          >
-            로그아웃
-          </button>
-        </div>
-      </header>
+              로그아웃
+            </button>
+          </div>
+        </header>
 
-      <main className="app-main" id="main">
-        {view === "products" && <ProductsPage />}
-        {view === "bottles" && <BottlesPage />}
-        {view === "categories" && <CategoriesPage />}
-        {view === "stats" && <StatsPage />}
-        {view === "import" && <ImportPage />}
-        {view === "status" && <HealthPanel />}
-      </main>
-    </div>
+        <main className="app-main" id="main">
+          {view === "products" && <ProductsPage />}
+          {view === "bottles" && <BottlesPage />}
+          {view === "categories" && <CategoriesPage />}
+          {view === "stats" && <StatsPage />}
+          {view === "import" && <ImportPage />}
+          {view === "status" && <HealthPanel />}
+        </main>
+      </div>
+    </SyncStatusProvider>
   );
 }

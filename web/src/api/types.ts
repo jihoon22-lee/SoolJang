@@ -367,6 +367,38 @@ export interface TastingSummary {
   latest_tasted_on: string | null;
 }
 
+// --- 동기화 ------------------------------------------------------------------
+// `entity` 를 `sync/db.ts` 의 `SyncEntity` 로 좁히지 않는다 — 이 파일은 다른 모듈을
+// import 하지 않는 순수 타입 선언 파일이라는 기존 관례를 따른다.
+
+export interface SyncPullResponse {
+  changes: Record<string, Record<string, unknown>[]>;
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface SyncOperationRequest {
+  idempotency_key: string;
+  entity: string;
+  op: "create" | "update" | "delete" | "action";
+  entity_id: string;
+  base_updated_at?: string | undefined;
+  action?: string | undefined;
+  fields: Record<string, unknown>;
+}
+
+export interface SyncOperationResult {
+  idempotency_key: string;
+  status: "applied" | "conflict" | "failed";
+  detail: string | null;
+  snapshot: Record<string, unknown> | null;
+}
+
+export interface SyncBatchResponse {
+  results: SyncOperationResult[];
+  stopped: boolean;
+}
+
 // --- 통계 --------------------------------------------------------------------
 
 export interface RankingEntry {

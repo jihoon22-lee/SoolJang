@@ -5,6 +5,8 @@ interface CategoryManagerProps {
   tree: CategoryTree;
   busy: boolean;
   error: unknown;
+  /** 이동·병합·삭제·기본값 복원은 순환·깊이 재검사가 필요해 온라인 전용이다. */
+  offline: boolean;
   onCreate: (name: string, parentId: string | null) => void;
   onRename: (id: string, name: string) => void;
   onReparent: (id: string, newParentId: string | null) => void;
@@ -27,6 +29,7 @@ export function CategoryManager({
   tree,
   busy,
   error,
+  offline,
   onCreate,
   onRename,
   onReparent,
@@ -102,11 +105,13 @@ export function CategoryManager({
       </form>
 
       <div className="button-row" style={{ margin: "12px 0" }}>
-        <button type="button" onClick={onResetSeed} disabled={busy}>
+        <button type="button" onClick={onResetSeed} disabled={busy || offline}>
           기본 주종 복원
         </button>
         <span className="muted" style={{ alignSelf: "center", fontSize: "0.85rem" }}>
-          직접 만들거나 이름을 바꾼 주종은 그대로 유지됩니다.
+          {offline
+            ? "오프라인에서는 사용할 수 없습니다."
+            : "직접 만들거나 이름을 바꾼 주종은 그대로 유지됩니다."}
         </span>
       </div>
 
@@ -123,6 +128,7 @@ export function CategoryManager({
               childrenOf={childrenOf}
               allNodes={tree.items}
               busy={busy}
+              offline={offline}
               onRename={onRename}
               onReparent={onReparent}
               onMerge={onMerge}
@@ -140,6 +146,7 @@ interface BranchProps {
   childrenOf: Map<string, CategoryNode[]>;
   allNodes: CategoryNode[];
   busy: boolean;
+  offline: boolean;
   onRename: (id: string, name: string) => void;
   onReparent: (id: string, newParentId: string | null) => void;
   onMerge: (id: string, targetId: string) => void;
@@ -151,6 +158,7 @@ function CategoryBranch({
   childrenOf,
   allNodes,
   busy,
+  offline,
   onRename,
   onReparent,
   onMerge,
@@ -213,7 +221,7 @@ function CategoryBranch({
             <select
               id={`move-${node.id}`}
               value={node.parent_id ?? ""}
-              disabled={busy}
+              disabled={busy || offline}
               onChange={(event) => onReparent(node.id, event.target.value || null)}
             >
               <option value="">최상위</option>
@@ -230,7 +238,7 @@ function CategoryBranch({
             <select
               id={`merge-${node.id}`}
               value=""
-              disabled={busy || moveTargets.length === 0}
+              disabled={busy || offline || moveTargets.length === 0}
               onChange={(event) => {
                 if (event.target.value) onMerge(node.id, event.target.value);
               }}
@@ -248,6 +256,7 @@ function CategoryBranch({
               hasChildren={children.length > 0}
               targets={moveTargets}
               busy={busy}
+              offline={offline}
               onDelete={onDelete}
             />
           </>
@@ -263,6 +272,7 @@ function CategoryBranch({
               childrenOf={childrenOf}
               allNodes={allNodes}
               busy={busy}
+              offline={offline}
               onRename={onRename}
               onReparent={onReparent}
               onMerge={onMerge}
@@ -280,12 +290,14 @@ function DeleteControl({
   hasChildren,
   targets,
   busy,
+  offline,
   onDelete,
 }: {
   node: CategoryNode;
   hasChildren: boolean;
   targets: CategoryNode[];
   busy: boolean;
+  offline: boolean;
   onDelete: (id: string, strategy: DeleteStrategy, targetId?: string) => void;
 }) {
   const [asking, setAsking] = useState(false);
@@ -295,7 +307,12 @@ function DeleteControl({
 
   if (!asking) {
     return (
-      <button type="button" className="danger" disabled={busy} onClick={() => setAsking(true)}>
+      <button
+        type="button"
+        className="danger"
+        disabled={busy || offline}
+        onClick={() => setAsking(true)}
+      >
         삭제
       </button>
     );

@@ -62,6 +62,8 @@ export function ProductForm({
   const [localError, setLocalError] = useState<string | null>(null);
 
   const apiError = error instanceof ApiError ? error : null;
+  // outbox 경로는 일반 Error 를 던진다(서버 왕복 없이 로컬에서 바로 검증하는 경우).
+  const genericError = !apiError && error instanceof Error ? error.message : null;
   const set = (patch: Partial<ProductFormValues>) => setValues((prev) => ({ ...prev, ...patch }));
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -82,9 +84,9 @@ export function ProductForm({
     <form className="panel" aria-labelledby="product-form-heading" onSubmit={handleSubmit}>
       <h2 id="product-form-heading">새 술 등록</h2>
 
-      {(localError || apiError) && (
+      {(localError || apiError || genericError) && (
         <p className="alert" role="alert">
-          {localError ?? apiError?.message}
+          {localError ?? apiError?.message ?? genericError}
         </p>
       )}
 
