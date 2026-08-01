@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-01 (Task 14 PR)**
+- 최종 갱신: **2026-08-01 (Task 15 PR)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 14 까지 완료)
+- 현재 브랜치: `main` (Task 15 까지 완료)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -37,8 +37,8 @@ export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5
 uv run alembic upgrade head
 
 # 5) 검증
-uv run pytest                  # 145 passed, 14 skipped 가 정상
-npm --prefix web run check
+uv run pytest                  # 521 passed, 27 skipped 가 정상 (skip 전부 opt-in 실측 테스트)
+npm --prefix web run check     # 207 passed, 커버리지 임계값(branch 80%) 통과
 
 # 6) 이어서 작업
 #    plan.md §1 의 "다음 착수 Task" 를 확인하고 해당 브랜치를 만든다
@@ -120,7 +120,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **14개 완료**. PR 21개 머지 (#1~#21, #16~#20 은 문서 전용 — 이후 규칙
+전체 23개 Task 중 **15개 완료**. PR 22개 머지 (#1~#22, #16~#20 은 문서 전용 — 이후 규칙
 9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
@@ -139,6 +139,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 12. 인증과 로컬 HTTPS | ✅ | [#13](https://github.com/jihoon22-lee/SoolJang/pull/13) | 세션 쿠키 인증, CSRF, 레이트 리밋, `serve-https.sh`, `backup.sh` |
 | 13. 병 관리·시음 세션 | ✅ | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) | 상태 전이·잔량 추적·시음 기록. 엔드포인트 35개로 증가 |
 | 14. 통계 대시보드 v1 | ✅ | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) | `/stats/rankings`·`/stats/by-category`·`/stats/summary`, 통계 화면. 엑셀 실측값과 대조 |
+| 15. PWA와 오프라인 동기화 | ✅ | [#22](https://github.com/jihoon22-lee/SoolJang/pull/22) | `application/sync.py`(pull·apply_batch·LWW·충돌 로그), Dexie 로컬 미러, outbox, 4개 화면 오프라인 조회, `SyncStatusBadge` |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -156,6 +157,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | REST API 실동작 | 실서버에서 복합 조건 조회·한글 검색·Problem Details·구매 건 분할 확인. 엔드포인트 17개 |
 | 웹 UI 실동작 | Vite 프록시 경유로 제품 4건·카테고리 45개 조회 성공. 프론트엔드 테스트 131개 통과(커버리지 90.9%) |
 | **실제 데이터 이관 완료** | 429행 → 제품 405종(24종 병합)·병 1,078개·구매 건 434건. 정가 ₩42,401,108·용량 704,970ml·소비 819/미개봉 225/개봉 34 모두 엑셀 합계행과 일치. 실패 0건. 재실행 시 중복 0 |
+| 오프라인 동기화 백엔드·프론트 전체 검증 | `pytest` 521 passed, 27 skipped(전부 opt-in 실측 테스트), 커버리지 90.10%. 프론트엔드 207 passed, 커버리지 89.0% stmts / 80.2% branch. `vite build` 로 PWA manifest·`sw.js`·아이콘 정상 생성 확인 |
 
 ---
 
@@ -206,33 +208,29 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 15 — PWA와 오프라인 동기화 (`feature/pwa-sync`)
+### 다음 착수: Task 16 — 바코드 스캔과 제품 매칭 (`feature/barcode-scan`)
 
-Task 12(인증·HTTPS)까지 마쳐 폰에서 실사용이 가능하다. 이제 오프라인에서도 기록할 수
-있게 만든다. 사양은 `docs/architecture.md` §5.
+Task 15(PWA·오프라인 동기화)까지 마쳐 오프라인에서도 컬렉션을 조회·등록할 수 있다.
+사양은 `docs/plan.md` §4 Task 16.
 
-1. Workbox 앱 셸, PWA manifest
-2. Dexie 로 IndexedDB 에 로컬 미러 유지
-3. outbox 직렬 큐 — 오프라인 중 생성한 기록을 순서대로 재전송
-4. `GET /sync?since=<cursor>` — `(updated_at, id)` 복합 커서로 델타 풀
-5. LWW(last-write-wins) 병합, soft delete 전파, idempotency 로 재전송 중복 방지
-6. 동기화 상태 UI
+1. `BarcodeDetector` + `@zxing/browser` 폴백 스캐너
+2. 로컬 SKU 매칭 → Open Food Facts 조회 → 수동 검색 폴백 순서
+3. 사용자 확인 후 바코드 학습 저장(재스캔 시 즉시 매칭)
 
-**Tailscale 해결됨** (§7-Q4, 2026-08-01): 설치·로그인 완료. tailnet `tail30f401.ts.net`,
-이 머신 호스트명 `main` → 접속 주소 `https://main.tail30f401.ts.net`. 폰에 Tailscale 앱
-설치 + 같은 계정 로그인만 남았다.
-
-**공개 전 필수**: 현재 떠 있는 Docker 컨테이너(`sooljang-api-1`·`sooljang-web-1`)는 Task 12
-(인증) 이전 빌드라 `/auth/setup` 이 404 난다. `scripts/serve-https.sh` 실행 전에 반드시
-재빌드한다.
+**HTTPS 공개는 여전히 미완이다**: Tailscale 설치·로그인은 Task 14 세션에서 끝났지만
+(tailnet `tail30f401.ts.net`), 이 브라우저 자동화가 동작하지 않는 샌드박스라 Task 15
+에서도 실기기 수동 검증은 하지 못했다 — API·Dexie 로직은 자동화 테스트로만 검증했다.
+Task 16(카메라)에 실제로 착수하려면 그 전에 한 번은 사람이 직접 다음을 해야 한다.
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build   # 현재 컨테이너가 최신 코드인지 다시 확인
 scripts/serve-https.sh
 ```
 
-Task 16(바코드)·17(OCR)이 secure context 를 요구하므로 HTTPS 공개 없이는 카메라 기능을
-폰에서 확인할 수 없다.
+**Task 15 에서 남긴 것**: 오프라인 쓰기는 `category`·`product`·`sku`·`vendor`·`purchase`·
+`bottle`·`tasting_session` 7개 엔티티로 제한했다(D72). `producer`·`variety` 는 풀(읽기)
+대상일 뿐 오프라인에서 새로 만들 수 없다 — Task 16 에서 바코드로 새 제품을 등록할 때
+품종·생산자 지정이 필요하면 이 제약을 다시 검토해야 한다.
 
 ### 의존 관계 요약
 
@@ -272,6 +270,8 @@ Task 16(바코드)·17(OCR)이 secure context 를 요구하므로 HTTPS 공개 �
 | **FastAPI 파일 업로드** | `Form data requires "python-multipart"` | `python-multipart` 의존성이 필요하다 (추가됨) |
 | **테스트 fetch 스텁과 FormData** | `[object FormData] is not valid JSON` | `testing.tsx` 의 `readBody` 가 FormData 를 파일 이름으로 변환한다 |
 | **합성 픽스처로 못 잡는 결함** | 실제 데이터에서만 터지는 형식 변형 | 실측 파일 opt-in 테스트를 반드시 돌린다: `SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet` |
+| **새 셸에서 `pytest` 가 전부 `password authentication failed`** | `conftest.py` 의 `TEST_DATABASE_URL` 하드코딩 기본값 비밀번호(`sooljang`)가 `.env`/컨테이너의 실제 비밀번호(`localdevonly`)와 다르다 | `export SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang:<`.env`의 POSTGRES_PASSWORD`>@127.0.0.1:5432/sooljang_test` 를 먼저 설정한다 |
+| **`useLiveQuery` 컴포넌트를 마운트 직후 동기 `getByText` 로 단언** | 플레이키 실패(첫 계산은 비동기라 로딩 중 빈 상태를 잡을 수 있다) | `findByText`/`findByRole` 로 기다린다. `SyncStatusBadge` 충돌 패널에서 실제로 겪음(Task 15) |
 
 ---
 
