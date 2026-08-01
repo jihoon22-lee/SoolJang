@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.90.21",
+    "@zxing/browser": "0.2.1",
     "decimal.js": "10.6.0",
     "dexie": "4.4.4",
     "dexie-react-hooks": "4.4.0",

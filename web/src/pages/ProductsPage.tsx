@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { productsApi, purchasesApi, vendorsApi } from "@/api/client";
 import type { ProductFilters, User } from "@/api/types";
+import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { ProductDetail } from "@/components/ProductDetail";
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
@@ -110,9 +111,13 @@ export function ProductsPage() {
           <h2 id="products-heading">
             내 술 {(allProducts?.length ?? 0) > 0 && `(${allProducts?.length})`}
           </h2>
-          <button type="button" className="primary" onClick={() => setFormOpen((open) => !open)}>
-            {formOpen ? "폼 닫기" : "새 술 등록"}
-          </button>
+          <div className="button-row">
+            {/* 스캔은 카메라 + Open Food Facts 조회가 필요해 온라인 전용이다. */}
+            {!offline && <BarcodeScanPanel onSelectProduct={setSelectedId} />}
+            <button type="button" className="primary" onClick={() => setFormOpen((open) => !open)}>
+              {formOpen ? "폼 닫기" : "새 술 등록"}
+            </button>
+          </div>
         </div>
 
         {formOpen && (

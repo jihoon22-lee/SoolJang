@@ -6,6 +6,7 @@
  */
 
 import type {
+  BarcodeLookupResponse,
   Bottle,
   CategoryStat,
   CategoryTree,
@@ -24,6 +25,7 @@ import type {
   PurchaseCreateInput,
   Rankings,
   SetupStatus,
+  Sku,
   StatsSummary,
   SyncBatchResponse,
   SyncOperationRequest,
@@ -244,6 +246,11 @@ export const productsApi = {
     request<unknown>(`/products/${id}/skus`, { method: "POST", body: { volume_ml: volumeMl } }),
 };
 
+export const skusApi = {
+  update: (id: string, input: { volume_ml?: number; barcode?: string | null }) =>
+    request<Sku>(`/skus/${id}`, { method: "PATCH", body: input }),
+};
+
 // --- 구매처·구매 건 ---------------------------------------------------------
 
 export const vendorsApi = {
@@ -396,4 +403,13 @@ export const syncApi = {
 
   resolveConflict: (conflictId: string) =>
     request<void>(`/sync/conflicts/${conflictId}:resolve`, { method: "POST" }),
+};
+
+/** 바코드 스캔 매칭(Task 16). 카메라·외부 조회 모두 온라인 전용이라 outbox 를 거치지
+ * 않는다 — 오프라인이면 스캔 버튼 자체를 감춘다. */
+export const barcodesApi = {
+  lookup: (code: string, signal?: AbortSignal) =>
+    request<BarcodeLookupResponse>(`/barcodes/${encodeURIComponent(code)}`, {
+      ...(signal ? { signal } : {}),
+    }),
 };
