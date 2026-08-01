@@ -16,6 +16,7 @@ import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import Select, Text, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,8 +190,13 @@ async def create_category(
     parent_id: uuid.UUID | None = None,
     sort_order: int = 0,
     is_seeded: bool = False,
+    id: uuid.UUID | None = None,  # noqa: A002 - 오프라인 outbox 가 미리 생성한 PK
 ) -> Category:
-    """카테고리를 만든다. 깊이 상한을 검사한다."""
+    """카테고리를 만든다. 깊이 상한을 검사한다.
+
+    `id` 를 지정하면 그대로 쓴다 — 오프라인에서 클라이언트가 미리 만든 UUIDv7 PK 를
+    그대로 반영해야 재동기화 시 같은 레코드로 인식된다(`docs/architecture.md` §5.2).
+    """
     if parent_id is not None:
         parent_depth = await _depth_of(session, parent_id)
         if parent_depth + 1 > MAX_CATEGORY_DEPTH:
@@ -198,14 +204,17 @@ async def create_category(
                 f"계층 깊이가 상한({MAX_CATEGORY_DEPTH})을 넘습니다: {parent_depth + 1}"
             )
 
-    category = Category(
-        user_id=user_id,
-        parent_id=parent_id,
-        name=name.strip(),
-        slug=make_slug(name),
-        sort_order=sort_order,
-        is_seeded=is_seeded,
-    )
+    kwargs: dict[str, Any] = {
+        "user_id": user_id,
+        "parent_id": parent_id,
+        "name": name.strip(),
+        "slug": make_slug(name),
+        "sort_order": sort_order,
+        "is_seeded": is_seeded,
+    }
+    if id is not None:
+        kwargs["id"] = id
+    category = Category(**kwargs)
     session.add(category)
     await session.flush()
     return category

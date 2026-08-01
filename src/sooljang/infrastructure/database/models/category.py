@@ -57,6 +57,8 @@ class Category(Base, EntityMixin):
             postgresql_where="deleted_at IS NULL",
         ),
         Index("ix_category_user_id_parent_id", "user_id", "parent_id"),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_category_user_id_updated_at", "user_id", "updated_at"),
     )
 
     def __repr__(self) -> str:
@@ -79,7 +81,10 @@ class Producer(Base, EntityMixin):
     website: Mapped[str | None] = mapped_column(Text, default=None)
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_producer_user_id_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_producer_user_id_name"),
+        Index("ix_producer_user_id_updated_at", "user_id", "updated_at"),
+    )
 
     def __repr__(self) -> str:
         return f"<Producer {self.name!r}>"
@@ -98,7 +103,10 @@ class Variety(Base, EntityMixin):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_variety_user_id_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_variety_user_id_name"),
+        Index("ix_variety_user_id_updated_at", "user_id", "updated_at"),
+    )
 
     def __repr__(self) -> str:
         return f"<Variety {self.name!r}>"

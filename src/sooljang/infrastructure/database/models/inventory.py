@@ -73,7 +73,10 @@ class Vendor(Base, EntityMixin):
     url: Mapped[str | None] = mapped_column(Text, default=None)
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_vendor_user_id_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_vendor_user_id_name"),
+        Index("ix_vendor_user_id_updated_at", "user_id", "updated_at"),
+    )
 
     def __repr__(self) -> str:
         return f"<Vendor {self.name!r} kind={self.kind}>"
@@ -130,6 +133,8 @@ class Purchase(Base, EntityMixin):
         CheckConstraint("char_length(currency) = 3", name="currency_is_iso4217"),
         Index("ix_purchase_sku_id", "sku_id"),
         Index("ix_purchase_user_id_purchased_on", "user_id", "purchased_on"),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_purchase_user_id_updated_at", "user_id", "updated_at"),
     )
 
     def __repr__(self) -> str:
@@ -179,6 +184,8 @@ class Bottle(Base, EntityMixin):
         ),
         Index("ix_bottle_purchase_id_status", "purchase_id", "status"),
         Index("ix_bottle_user_id_status", "user_id", "status"),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_bottle_user_id_updated_at", "user_id", "updated_at"),
     )
 
     @property

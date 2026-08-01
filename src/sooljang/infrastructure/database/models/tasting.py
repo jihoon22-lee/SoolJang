@@ -100,6 +100,8 @@ class TastingSession(Base, EntityMixin):
         Index("ix_tasting_session_bottle_id_tasted_on", "bottle_id", "tasted_on"),
         Index("ix_tasting_session_sku_id_tasted_on", "sku_id", "tasted_on"),
         Index("ix_tasting_session_user_id_tasted_on", "user_id", "tasted_on"),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_tasting_session_user_id_updated_at", "user_id", "updated_at"),
     )
 
     def __repr__(self) -> str:
@@ -160,6 +162,8 @@ class Attachment(Base, EntityMixin):
         Index("ix_attachment_product_id", "product_id"),
         Index("ix_attachment_bottle_id", "bottle_id"),
         Index("ix_attachment_tasting_session_id", "tasting_session_id"),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_attachment_user_id_updated_at", "user_id", "updated_at"),
     )
 
     def __repr__(self) -> str:

@@ -347,7 +347,10 @@ erDiagram
   `mime`, `bytes`, `sha256`, `storage_path`
 - `wishlist_item`: 구매 후보. `target_price` 도달 알림(Task 19)의 대상
 - `saved_view`: 커스텀 피벗 정의(Task 20). `definition jsonb`
-- `sync_cursor`, `outbox_receipt`: 동기화 상태(§5)
+- `sync_cursor`, `outbox_receipt`, `conflict_log`: 동기화 상태(§5). `conflict_log` 는
+  LWW 충돌에서 진 로컬 변경을 보관한다(§5.4) — 다른 9개 동기화 대상 테이블과 같은
+  공통 컬럼(`EntityMixin`)을 써서 풀 대상에 포함시킨다. 한 기기의 충돌이 다른 기기의
+  로컬 미러에도 같은 배관으로 전파된다
 - `user`, `session`: 인증(§6)
 
 ### 2.4 인덱스
@@ -406,7 +409,11 @@ erDiagram
 - 베이스 경로 `/api/v1`
 - 리소스 중심 URL, 동사는 HTTP 메서드로 표현. 상태 전이 등 예외는 `POST /bottles/{id}:open` 형태
 - 요청·응답 본문은 `snake_case` JSON
-- 모든 쓰기 요청은 `Idempotency-Key` 헤더를 허용한다 (오프라인 outbox 재전송 대비)
+- 동기화 배치(`POST /sync/batch`)의 각 작업은 본문의 `idempotency_key` 필드로 재전송
+  중복을 막는다(§5.2). 배치 하나에 작업이 여러 개 들어가므로 요청당 값 하나뿐인 HTTP
+  헤더로는 표현할 수 없다 — 애초에 outbox 는 일반 CRUD 엔드포인트를 직접 부르지 않고
+  전부 `/sync/batch` 로 모이므로, 다른 엔드포인트에 범용 `Idempotency-Key` 헤더를 따로
+  둘 이유가 없다(Task 15, 코드와 어긋난 이전 문구를 정정)
 - 에러는 RFC 9457 Problem Details
 
 ```json

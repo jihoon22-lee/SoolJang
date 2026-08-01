@@ -1,7 +1,9 @@
 """파생 지표 순수 함수 테스트 (`docs/architecture.md` §3)."""
 
 import datetime
+import json
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +20,9 @@ from sooljang.domain.metrics import (
     tally_bottles,
     value_for_money,
 )
+
+#: Python(순수 함수)·SQL·TS(`web/src/domain/metrics.ts`) 3-way parity 공유 기준값.
+_FIXTURE_PATH = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "metrics_cases.json"
 
 
 def _lot(qty: int, volume: int, list_price: str | None, paid_price: str | None) -> PurchaseLot:
@@ -175,6 +180,52 @@ def test_tally_counts_each_status() -> None:
     assert tally.in_stock == 3
     assert tally.disposed == 2
     assert tally.total == 6
+
+
+# --- 공유 골든값 (Python·SQL·TS 3-way parity) ----------------------------------
+
+
+def _load_fixture() -> dict:
+    return json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "case", _load_fixture()["price_metrics_cases"], ids=lambda case: case["name"]
+)
+def test_price_metrics_matches_shared_fixture(case: dict) -> None:
+    """`web/src/domain/metrics.test.ts` 와 같은 픽스처를 읽는다 — 갈라지면 여기서 잡힌다."""
+    lots = [
+        _lot(
+            row["quantity"],
+            row["volume_ml"],
+            row["unit_list_price"],
+            row["unit_paid_price"],
+        )
+        for row in case["lots"]
+    ]
+    metrics = compute_price_metrics(lots)
+
+    for key, expected in case["expected"].items():
+        actual = getattr(metrics, key)
+        if expected is None:
+            assert actual is None, f"{case['name']}.{key}: {actual} 는 None 이어야 함"
+        else:
+            assert actual == Decimal(expected), f"{case['name']}.{key}: {actual} != {expected}"
+
+
+def test_bottle_tally_matches_shared_fixture() -> None:
+    case = _load_fixture()["bottle_tally_case"]
+    tally = tally_bottles(BottleRecord(status) for status in case["statuses"])
+    expected = case["expected"]
+
+    assert tally.unopened == expected["unopened"]
+    assert tally.open == expected["open"]
+    assert tally.finished == expected["finished"]
+    assert tally.gifted == expected["gifted"]
+    assert tally.sold == expected["sold"]
+    assert tally.in_stock == expected["in_stock"]
+    assert tally.disposed == expected["disposed"]
+    assert tally.total == expected["total"]
 
 
 def test_gifted_and_sold_are_not_stock() -> None:

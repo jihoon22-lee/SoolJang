@@ -9,6 +9,7 @@ import datetime
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -188,6 +189,7 @@ async def record_tasting(
     data: TastingInput,
     bottle: Bottle | None = None,
     finish_if_empty: bool = True,
+    id: uuid.UUID | None = None,  # noqa: A002 - 오프라인 outbox 가 미리 생성한 PK
 ) -> TastingSession:
     """시음을 기록하고 병 잔량을 차감한다.
 
@@ -196,6 +198,8 @@ async def record_tasting(
 
     잔량이 0 이 되면 자동으로 소진 처리한다. 마지막 잔을 마신 뒤 따로 소진 버튼을 누르게 하면
     잊어버려 재고가 남아 있는 것처럼 보인다.
+
+    `id` 를 지정하면 그대로 쓴다 — 오프라인 클라이언트가 미리 생성한 UUIDv7 PK 를 반영한다.
     """
     validate_rating(data.rating)
 
@@ -221,20 +225,23 @@ async def record_tasting(
                 if bottle.opened_on is None:
                     bottle.opened_on = data.tasted_on
 
-    record = TastingSession(
-        user_id=user_id,
-        sku_id=sku_id,
-        bottle_id=bottle.id if bottle is not None else None,
-        tasted_on=data.tasted_on,
-        poured_ml=data.poured_ml,
-        rating=data.rating,
-        nose=data.nose,
-        palate=data.palate,
-        finish=data.finish,
-        note=data.note,
-        place=data.place,
-        companions=data.companions,
-    )
+    kwargs: dict[str, Any] = {
+        "user_id": user_id,
+        "sku_id": sku_id,
+        "bottle_id": bottle.id if bottle is not None else None,
+        "tasted_on": data.tasted_on,
+        "poured_ml": data.poured_ml,
+        "rating": data.rating,
+        "nose": data.nose,
+        "palate": data.palate,
+        "finish": data.finish,
+        "note": data.note,
+        "place": data.place,
+        "companions": data.companions,
+    }
+    if id is not None:
+        kwargs["id"] = id
+    record = TastingSession(**kwargs)
     session.add(record)
     await session.flush()
     return record

@@ -106,6 +106,8 @@ class Product(Base, EntityMixin):
             postgresql_using="gin",
             postgresql_ops={"name": "gin_trgm_ops"},
         ),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_product_user_id_updated_at", "user_id", "updated_at"),
     )
 
     def __repr__(self) -> str:
@@ -136,6 +138,7 @@ class ProductVariety(Base, EntityMixin):
         UniqueConstraint(
             "product_id", "variety_id", name="uq_product_variety_product_id_variety_id"
         ),
+        Index("ix_product_variety_user_id_updated_at", "user_id", "updated_at"),
     )
 
 
@@ -167,6 +170,8 @@ class Sku(Base, EntityMixin):
             unique=True,
             postgresql_where="barcode IS NOT NULL AND deleted_at IS NULL",
         ),
+        # 동기화 델타 조회 기준(`docs/architecture.md` §2.4).
+        Index("ix_sku_user_id_updated_at", "user_id", "updated_at"),
     )
 
     def __repr__(self) -> str:
