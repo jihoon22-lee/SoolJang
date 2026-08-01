@@ -1,9 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ProductsPage } from "@/pages/ProductsPage";
+import { db } from "@/sync/db";
+import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
 const zeroMetrics: ProductMetrics = {
@@ -51,135 +53,216 @@ function product(id: string, name: string): Product {
 
 const emptyTree: CategoryTree = { items: [], max_depth: 0, depth_limit: 8 };
 
-const seededTree: CategoryTree = {
-  items: [
-    {
-      id: "whisky",
-      parent_id: null,
-      name: "위스키",
-      depth: 1,
-      path: ["위스키"],
-      is_seeded: true,
-      sort_order: 0,
-      product_count: 1,
-      descendant_product_count: 2,
-    },
-  ],
-  max_depth: 1,
-  depth_limit: 8,
-};
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("ProductsPage", () => {
-  it("목록을 불러와 표시한다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      {
-        match: "/products",
-        body: { items: [product("p1", "가상 위스키")], next_cursor: null },
-      },
-    ]);
+  const NOW = "2026-01-01T00:00:00Z";
 
-    renderWithQuery(<ProductsPage />);
+  function row(overrides: Record<string, unknown>) {
+    return {
+      id: "row",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      ...overrides,
+    };
+  }
+
+  function renderProductsPage() {
+    return renderWithQuery(
+      <SyncStatusProvider>
+        <ProductsPage />
+      </SyncStatusProvider>,
+    );
+  }
+
+  /** 규격 없이 제품만 시딩한다. */
+  async function seedProduct(id: string, name: string, overrides: Record<string, unknown> = {}) {
+    await db.product.put(row({ id, name, category_id: null, ...overrides }));
+  }
+
+  /** 제품 + 규격 + 구매(+ 재고 병 1개)를 함께 시딩한다. 파생 지표 계산용. */
+  async function seedProductWithPurchase(
+    id: string,
+    name: string,
+    opts: { volumeMl?: number; unitListPrice?: string; inStock?: boolean } = {},
+  ) {
+    const { volumeMl = 700, unitListPrice, inStock = true } = opts;
+    await seedProduct(id, name);
+    await db.sku.put(row({ id: `${id}-sku`, product_id: id, volume_ml: volumeMl }));
+    await db.purchase.put(
+      row({ id: `${id}-pu`, sku_id: `${id}-sku`, quantity: 1, unit_list_price: unitListPrice }),
+    );
+    await db.bottle.put(
+      row({
+        id: `${id}-b1`,
+        purchase_id: `${id}-pu`,
+        label_no: 1,
+        status: inStock ? "unopened" : "finished",
+        remaining_ml: inStock ? null : 0,
+      }),
+    );
+  }
+
+  beforeEach(async () => {
+    await db.open();
+  });
+
+  afterEach(async () => {
+    await Promise.all([
+      db.product.clear(),
+      db.sku.clear(),
+      db.purchase.clear(),
+      db.bottle.clear(),
+      db.category.clear(),
+      db.vendor.clear(),
+      db.outbox.clear(),
+    ]);
+  });
+
+  it("목록을 불러와 표시한다", async () => {
+    await seedProduct("p1", "가상 위스키");
+
+    renderProductsPage();
 
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "가상 위스키" }).length).toBeGreaterThan(0);
   });
 
-  it("다음 페이지가 없으면 더 보기 버튼을 숨긴다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [product("p1", "하나뿐")], next_cursor: null } },
-    ]);
+  it("페이지 크기보다 적으면 더 보기 버튼을 숨긴다", async () => {
+    await seedProduct("p1", "하나뿐");
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await screen.findByRole("table");
 
     expect(screen.queryByRole("button", { name: "더 보기" })).not.toBeInTheDocument();
   });
 
-  it("더 보기를 누르면 커서를 실어 다음 페이지를 요청한다", async () => {
-    // 커서를 그대로 이어 보내야 중복·누락이 없다.
-    const { calls } = stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [product("p1", "첫 장")], next_cursor: "CURSOR-1" } },
-    ]);
+  it("더 보기를 누르면 다음 페이지 분량이 화면에 더 나온다", async () => {
+    // 기본 페이지 크기(30)보다 많아야 "더 보기" 가 나타난다.
+    for (let i = 0; i < 31; i += 1) {
+      await seedProduct(`p${i}`, `술 ${String(i).padStart(2, "0")}`);
+    }
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await screen.findByRole("table");
+    expect(screen.getByRole("heading", { name: "내 술 (31)" })).toBeInTheDocument();
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getAllByRole("row")).toHaveLength(31); // 헤더 1 + 30개
 
     await userEvent.click(screen.getByRole("button", { name: "더 보기" }));
 
     await waitFor(() => {
-      expect(calls.some((call) => call.url.includes("cursor=CURSOR-1"))).toBe(true);
+      expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(32);
     });
+    expect(screen.queryByRole("button", { name: "더 보기" })).not.toBeInTheDocument();
   });
 
-  it("필터를 바꾸면 서버에 조건을 전달한다", async () => {
-    const { calls } = stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [], next_cursor: null } },
-    ]);
+  it("이름으로 검색하면 일치하는 제품만 남는다", async () => {
+    await seedProduct("p1", "글렌캐스크 스트렝스");
+    await seedProduct("p2", "라프로익");
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await screen.findByLabelText("이름 검색");
 
     await userEvent.type(screen.getByLabelText("이름 검색"), "캐스크");
 
     await waitFor(() => {
-      expect(calls.some((call) => call.url.includes(`q=${encodeURIComponent("캐스크")}`))).toBe(
-        true,
+      expect(screen.getAllByRole("button", { name: "글렌캐스크 스트렝스" }).length).toBeGreaterThan(
+        0,
       );
+      expect(screen.queryByRole("button", { name: "라프로익" })).not.toBeInTheDocument();
     });
   });
 
-  it("재고 필터를 전달한다", async () => {
-    const { calls } = stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [], next_cursor: null } },
+  it("주종·도수·평점 필터를 적용한다", async () => {
+    await db.category.bulkPut([
+      row({ id: "liquor", parent_id: null, name: "양주" }),
+      row({ id: "whisky", parent_id: "liquor", name: "위스키" }),
     ]);
+    await seedProduct("p1", "위스키 술", {
+      category_id: "whisky",
+      abv: "43.0",
+      personal_rating: "4.5",
+    });
+    await seedProduct("p2", "다른 술", { category_id: null, abv: "5.0", personal_rating: "2.0" });
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
+    // 카테고리 트리도 Dexie 라이브 쿼리라 첫 렌더에는 옵션이 비어 있을 수 있다.
+    await waitFor(() => {
+      expect(screen.getByLabelText("주종").querySelectorAll("option").length).toBeGreaterThan(1);
+    });
+
+    // 상위 주종을 고르면 하위(위스키)까지 포함한다.
+    await userEvent.selectOptions(screen.getByLabelText("주종"), "liquor");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "위스키 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "다른 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    await userEvent.type(screen.getByLabelText("도수 (%)"), "40");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "위스키 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "다른 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    await userEvent.type(screen.getByLabelText("도수 최대"), "10");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "다른 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "위스키 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    await userEvent.type(screen.getByLabelText("내 평점 최소"), "4");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "위스키 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "다른 술" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("재고 필터를 적용한다", async () => {
+    await seedProductWithPurchase("p1", "재고 있음", { inStock: true });
+    await seedProductWithPurchase("p2", "재고 없음", { inStock: false });
+
+    renderProductsPage();
     await screen.findByLabelText("재고");
 
     await userEvent.selectOptions(screen.getByLabelText("재고"), "true");
 
     await waitFor(() => {
-      expect(calls.some((call) => call.url.includes("in_stock=true"))).toBe(true);
+      expect(screen.getAllByRole("button", { name: "재고 있음" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "재고 없음" })).not.toBeInTheDocument();
     });
   });
 
-  it("정렬 키와 방향을 전달한다", async () => {
-    const { calls } = stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [], next_cursor: null } },
-    ]);
+  it("정렬 키와 방향을 적용한다", async () => {
+    // 500ml/100000원 → 100ml당 20000원. 1000ml/50000원 → 100ml당 5000원.
+    await seedProductWithPurchase("cheap", "저렴한 술", { volumeMl: 1000, unitListPrice: "50000" });
+    await seedProductWithPurchase("pricey", "비싼 술", { volumeMl: 500, unitListPrice: "100000" });
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await screen.findByLabelText("정렬");
 
     await userEvent.selectOptions(screen.getByLabelText("정렬"), "price_per_100ml");
     await userEvent.selectOptions(screen.getByLabelText("정렬 방향"), "desc");
 
     await waitFor(() => {
-      expect(
-        calls.some(
-          (call) => call.url.includes("sort=price_per_100ml") && call.url.includes("order=desc"),
-        ),
-      ).toBe(true);
+      const table = screen.getByRole("table");
+      const names = within(table)
+        .getAllByRole("button")
+        .map((el) => el.textContent);
+      expect(names).toEqual(["비싼 술", "저렴한 술"]);
     });
   });
 
   it("필터를 초기화한다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [], next_cursor: null } },
-    ]);
-
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     const search = await screen.findByLabelText("이름 검색");
     await userEvent.type(search, "라프로익");
     expect(search).toHaveValue("라프로익");
@@ -190,12 +273,7 @@ describe("ProductsPage", () => {
   });
 
   it("등록 폼을 열고 닫는다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", body: { items: [], next_cursor: null } },
-    ]);
-
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await userEvent.click(await screen.findByRole("button", { name: "새 술 등록" }));
     expect(screen.getByLabelText("이름 *")).toBeInTheDocument();
 
@@ -203,27 +281,37 @@ describe("ProductsPage", () => {
     expect(screen.queryByLabelText("이름 *")).not.toBeInTheDocument();
   });
 
-  it("제품과 구매 건을 한 번에 만든다", async () => {
+  it("온라인일 때는 기존 경로로 제품과 구매 건을 한 번에 만든다", async () => {
     // 구매처 이름을 입력하면 목록에서 찾고 없으면 만든다. 매번 고르게 하면 입력이 느려진다.
+    // 온라인 경로는 품종까지 지원해야 하므로 outbox 가 아니라 기존 REST 호출을 그대로 쓴다.
     const created = product("new", "새 위스키");
     const { calls } = stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", method: "GET", body: { items: [], next_cursor: null } },
       { match: "/products", method: "POST", status: 201, body: created },
       { match: "/vendors", method: "GET", body: [] },
       { match: "/vendors", method: "POST", status: 201, body: { id: "v-new", name: "가상마트" } },
       { match: "/purchases", method: "POST", status: 201, body: { id: "pu1" } },
     ]);
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await userEvent.click(await screen.findByRole("button", { name: "새 술 등록" }));
+    const form = screen.getByRole("heading", { name: "새 술 등록" }).closest("form") as HTMLElement;
 
-    await userEvent.type(screen.getByLabelText("이름 *"), "새 위스키");
-    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
-    await userEvent.type(screen.getByLabelText("병수"), "2");
-    await userEvent.type(screen.getByLabelText("병당 실구매가 (원)"), "90000");
-    await userEvent.type(screen.getByLabelText("구매처"), "가상마트");
-    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+    await userEvent.type(within(form).getByLabelText("이름 *"), "새 위스키");
+    await userEvent.type(within(form).getByLabelText("도수 (%)"), "43");
+    await userEvent.type(within(form).getByLabelText("빈티지"), "2010");
+    await userEvent.type(within(form).getByLabelText("내 평점 (0.5~6)"), "4.5");
+    await userEvent.type(
+      within(form).getByLabelText("품종·스타일 (쉼표로 구분)"),
+      "싱글몰트, 셰리캐스크",
+    );
+    await userEvent.type(within(form).getByLabelText("메모"), "선물 받음");
+    await userEvent.type(within(form).getByLabelText("용량 (ml)"), "700");
+    await userEvent.type(within(form).getByLabelText("병수"), "2");
+    await userEvent.type(within(form).getByLabelText("구매일"), "2026-01-01");
+    await userEvent.type(within(form).getByLabelText("병당 정가 (원)"), "100000");
+    await userEvent.type(within(form).getByLabelText("병당 실구매가 (원)"), "90000");
+    await userEvent.type(within(form).getByLabelText("구매처"), "가상마트");
+    await userEvent.click(within(form).getByRole("button", { name: "등록" }));
 
     await waitFor(() => {
       expect(calls.some((call) => call.method === "POST" && call.url.includes("/purchases"))).toBe(
@@ -231,11 +319,25 @@ describe("ProductsPage", () => {
       );
     });
 
+    const productCall = calls.find(
+      (call) => call.method === "POST" && call.url.includes("/products"),
+    );
+    expect(productCall?.body).toMatchObject({
+      name: "새 위스키",
+      abv: "43",
+      vintage: 2010,
+      personal_rating: "4.5",
+      variety_names: ["싱글몰트", "셰리캐스크"],
+      note: "선물 받음",
+    });
+
     const purchaseCall = calls.find(
       (call) => call.method === "POST" && call.url.includes("/purchases"),
     );
     expect(purchaseCall?.body).toMatchObject({
       quantity: 2,
+      purchased_on: "2026-01-01",
+      unit_list_price: "100000",
       unit_paid_price: "90000",
       vendor_id: "v-new",
     });
@@ -243,12 +345,10 @@ describe("ProductsPage", () => {
 
   it("구매 정보를 비우면 제품만 만든다", async () => {
     const { calls } = stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", method: "GET", body: { items: [], next_cursor: null } },
       { match: "/products", method: "POST", status: 201, body: product("only", "제품만") },
     ]);
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     await userEvent.click(await screen.findByRole("button", { name: "새 술 등록" }));
     await userEvent.type(screen.getByLabelText("이름 *"), "제품만");
     await userEvent.click(screen.getByRole("button", { name: "등록" }));
@@ -261,26 +361,31 @@ describe("ProductsPage", () => {
     expect(calls.some((call) => call.url.includes("/purchases"))).toBe(false);
   });
 
-  it("목록 조회 실패를 alert 로 알린다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products", status: 500, body: { detail: "서버 오류" } },
-    ]);
+  it("오프라인일 때는 outbox 로 제품·규격·구매·병을 한 번에 만든다", async () => {
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
+    await userEvent.click(await screen.findByRole("button", { name: "새 술 등록" }));
+    await userEvent.type(screen.getByLabelText("이름 *"), "오프라인 위스키");
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+    await userEvent.type(screen.getByLabelText("병수"), "2");
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("목록을 불러올 수 없습니다");
+    await waitFor(async () => {
+      const entries = await db.outbox.toArray();
+      // product.create + sku.create + purchase.create — bottle 은 outbox 가 아니라
+      // 로컬 미러에 직접 반영된다(서버가 purchase.create 안에서 자동 생성하므로).
+      expect(entries.map((entry) => entry.entity)).toEqual(["product", "sku", "purchase"]);
+    });
+    const bottles = await db.bottle.toArray();
+    expect(bottles).toHaveLength(2);
+    expect(bottles.every((bottle) => bottle.status === "unopened")).toBe(true);
   });
 
   it("제품을 선택하면 상세와 구매 이력을 불러온다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products?", body: { items: [product("p1", "상세 대상")], next_cursor: null } },
-      { match: "/products/p1", body: product("p1", "상세 대상") },
-      { match: "/purchases", body: [] },
-    ]);
+    await seedProductWithPurchase("p1", "상세 대상");
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     const [firstLink] = await screen.findAllByRole("button", { name: "상세 대상" });
     await userEvent.click(firstLink as Element);
 
@@ -289,14 +394,9 @@ describe("ProductsPage", () => {
   });
 
   it("상세에서 목록으로 돌아온다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products?", body: { items: [product("p1", "왕복 대상")], next_cursor: null } },
-      { match: "/products/p1", body: product("p1", "왕복 대상") },
-      { match: "/purchases", body: [] },
-    ]);
+    await seedProductWithPurchase("p1", "왕복 대상");
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     const [link] = await screen.findAllByRole("button", { name: "왕복 대상" });
     await userEvent.click(link as Element);
     await userEvent.click(await screen.findByRole("button", { name: "← 목록으로" }));
@@ -304,17 +404,16 @@ describe("ProductsPage", () => {
     expect(await screen.findByRole("table")).toBeInTheDocument();
   });
 
-  it("상세 조회 실패를 알리고 돌아갈 길을 남긴다", async () => {
-    stubRoutes([
-      { match: "/categories", body: emptyTree },
-      { match: "/products?", body: { items: [product("p1", "실패 대상")], next_cursor: null } },
-      { match: "/products/p1", status: 404, body: { detail: "제품을 찾을 수 없습니다" } },
-      { match: "/purchases", body: [] },
-    ]);
+  it("보던 중 제품이 사라지면 알리고 돌아갈 길을 남긴다", async () => {
+    await seedProduct("p1", "실패 대상");
 
-    renderWithQuery(<ProductsPage />);
+    renderProductsPage();
     const [link] = await screen.findAllByRole("button", { name: "실패 대상" });
     await userEvent.click(link as Element);
+    await screen.findByRole("heading", { name: /실패 대상/ });
+
+    // 다른 기기가 동기화로 지운 상황을 흉내낸다.
+    await db.product.update("p1", { deleted_at: NOW });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("제품을 불러올 수 없습니다");
     expect(screen.getByRole("button", { name: "← 목록으로" })).toBeInTheDocument();
@@ -322,10 +421,46 @@ describe("ProductsPage", () => {
 });
 
 describe("CategoriesPage", () => {
-  it("계층을 불러와 관리 화면을 보여준다", async () => {
-    stubRoutes([{ match: "/categories", body: seededTree }]);
+  const NOW = "2026-01-01T00:00:00Z";
 
-    renderWithQuery(<CategoriesPage />);
+  function categoryRow(overrides: Record<string, unknown>) {
+    return {
+      id: "row",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      parent_id: null,
+      slug: "row",
+      sort_order: 0,
+      is_seeded: false,
+      note: null,
+      ...overrides,
+    };
+  }
+
+  function renderCategoriesPage() {
+    return renderWithQuery(
+      <SyncStatusProvider>
+        <CategoriesPage />
+      </SyncStatusProvider>,
+    );
+  }
+
+  beforeEach(async () => {
+    await db.open();
+  });
+
+  afterEach(async () => {
+    await db.category.clear();
+    await db.product.clear();
+    await db.outbox.clear();
+  });
+
+  it("계층을 불러와 관리 화면을 보여준다", async () => {
+    await db.category.put(categoryRow({ id: "whisky", name: "위스키", is_seeded: true }));
+
+    renderCategoriesPage();
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     expect(
@@ -335,29 +470,25 @@ describe("CategoriesPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("주종을 추가한다", async () => {
-    const { calls } = stubRoutes([
-      { match: "/categories", method: "GET", body: emptyTree },
-      { match: "/categories", method: "POST", status: 201, body: {} },
-    ]);
+  it("주종을 추가하면 outbox 에 쌓이고 즉시 화면에 보인다", async () => {
+    renderCategoriesPage();
 
-    renderWithQuery(<CategoriesPage />);
     await userEvent.type(await screen.findByLabelText("이름"), "새 주종");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
-    await waitFor(() => {
-      const call = calls.find((item) => item.method === "POST");
-      expect(call?.body).toMatchObject({ name: "새 주종", parent_id: null });
-    });
+    // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는
+    // "상위 주종 변경" 라벨로 존재를 확인한다.
+    expect(await screen.findByLabelText("새 주종 상위 주종 변경")).toBeInTheDocument();
+    const entries = await db.outbox.toArray();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ entity: "category", op: "create" });
+    expect(entries[0]?.fields).toMatchObject({ name: "새 주종", parent_id: null });
   });
 
   it("기본 주종을 복원한다", async () => {
-    const { calls } = stubRoutes([
-      { match: "/categories", method: "GET", body: emptyTree },
-      { match: "/categories:reset-seed", method: "POST", body: seededTree },
-    ]);
+    const { calls } = stubRoutes([{ match: "/categories:reset-seed", method: "POST", body: {} }]);
 
-    renderWithQuery(<CategoriesPage />);
+    renderCategoriesPage();
     await userEvent.click(await screen.findByRole("button", { name: "기본 주종 복원" }));
 
     await waitFor(() => {
@@ -365,49 +496,42 @@ describe("CategoriesPage", () => {
     });
   });
 
-  it("이름을 변경한다", async () => {
-    const { calls } = stubRoutes([
-      { match: "/categories", method: "GET", body: seededTree },
-      { match: "/categories/whisky", method: "PATCH", body: {} },
-    ]);
+  it("이름을 변경하면 outbox 에 쌓이고 즉시 화면에 반영된다", async () => {
+    await db.category.put(categoryRow({ id: "whisky", name: "위스키", is_seeded: true }));
 
-    renderWithQuery(<CategoriesPage />);
+    renderCategoriesPage();
     await userEvent.click(await screen.findByRole("button", { name: "이름 변경" }));
     const input = screen.getByLabelText("위스키 새 이름");
     await userEvent.clear(input);
     await userEvent.type(input, "양주");
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
-    await waitFor(() => {
-      const call = calls.find((item) => item.method === "PATCH");
-      expect(call?.body).toMatchObject({ name: "양주" });
-    });
+    expect(await screen.findByLabelText("양주 상위 주종 변경")).toBeInTheDocument();
+    const entries = await db.outbox.toArray();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ entity: "category", op: "update", entity_id: "whisky" });
+    expect(entries[0]?.fields).toMatchObject({ name: "양주" });
   });
 
   it("삭제 시 소속 제품 처리 방식을 서버에 전달한다", async () => {
-    const twoNodes: CategoryTree = {
-      ...seededTree,
-      items: [
-        ...seededTree.items,
-        {
-          id: "target",
-          parent_id: null,
-          name: "옮길 곳",
-          depth: 1,
-          path: ["옮길 곳"],
-          is_seeded: false,
-          sort_order: 1,
-          product_count: 0,
-          descendant_product_count: 0,
-        },
-      ],
-    };
+    await db.category.bulkPut([
+      categoryRow({ id: "whisky", name: "위스키" }),
+      categoryRow({ id: "target", name: "옮길 곳", sort_order: 1 }),
+    ]);
+    await db.product.put({
+      id: "p1",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      category_id: "whisky",
+      name: "글렌알라키",
+    });
     const { calls } = stubRoutes([
-      { match: "/categories", method: "GET", body: twoNodes },
-      { match: "/categories/whisky", method: "DELETE", body: twoNodes },
+      { match: "/categories/whisky", method: "DELETE", body: emptyTree },
     ]);
 
-    renderWithQuery(<CategoriesPage />);
+    renderCategoriesPage();
     const row = (await screen.findByLabelText("위스키 상위 주종 변경")).closest(
       ".category-row",
     ) as HTMLElement;
@@ -420,13 +544,5 @@ describe("CategoriesPage", () => {
       expect(call?.url).toContain("strategy=reassign");
       expect(call?.url).toContain("target_id=target");
     });
-  });
-
-  it("계층 조회 실패를 알린다", async () => {
-    stubRoutes([{ match: "/categories", status: 500, body: { detail: "서버 오류" } }]);
-
-    renderWithQuery(<CategoriesPage />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("주종을 불러올 수 없습니다");
   });
 });

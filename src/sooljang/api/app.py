@@ -16,6 +16,7 @@ from sooljang.api.routes import (
     products,
     purchases,
     stats,
+    sync,
     tastings,
 )
 from sooljang.config import Settings, get_settings
@@ -79,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tastings.bottles_router,
         tastings.tastings_router,
         stats.router,
+        sync.router,
     ):
         app.include_router(router, prefix=API_PREFIX, dependencies=[protected])
     return app

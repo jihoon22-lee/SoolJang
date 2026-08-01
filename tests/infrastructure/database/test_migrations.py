@@ -25,6 +25,26 @@ EXPECTED_TABLES = {
     "sku",
     "variety",
     "vendor",
+    "conflict_log",
+    "outbox_receipt",
+    "sync_cursor",
+}
+
+#: 동기화 델타 조회 기준(`docs/architecture.md` §2.4) — 이 12개 테이블 모두
+#: `(user_id, updated_at)` 인덱스가 있어야 한다.
+SYNC_TARGET_TABLES = {
+    "category",
+    "producer",
+    "variety",
+    "product",
+    "product_variety",
+    "sku",
+    "vendor",
+    "purchase",
+    "bottle",
+    "tasting_session",
+    "attachment",
+    "conflict_log",
 }
 
 
@@ -66,6 +86,25 @@ async def test_trigram_index_exists_on_product_name() -> None:
     trigram = next((index for index in indexes if index["name"] == "ix_product_name_trgm"), None)
     assert trigram is not None
     assert trigram.get("dialect_options", {}).get("postgresql_using") == "gin"
+
+
+async def test_sync_target_tables_have_user_id_updated_at_index() -> None:
+    """`GET /sync` 델타 조회가 이 인덱스를 타야 한다. 없으면 순차 스캔이 된다."""
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync: Base.metadata.drop_all(sync, checkfirst=True))
+        await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with engine.connect() as conn:
+        for table in SYNC_TARGET_TABLES:
+            indexes = await conn.run_sync(lambda sync, t=table: inspect(sync).get_indexes(t))
+            matching = [
+                index
+                for index in indexes
+                if set(index["column_names"]) == {"user_id", "updated_at"}
+            ]
+            assert matching, f"{table} 에 (user_id, updated_at) 인덱스가 없습니다"
 
 
 async def test_partial_unique_indexes_exclude_soft_deleted_rows() -> None:

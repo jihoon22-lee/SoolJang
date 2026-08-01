@@ -8,8 +8,49 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 
-import { ApiError, bottlesApi, tastingsApi } from "@/api/client";
-import type { Bottle, BottleStatus } from "@/api/types";
+import { bottlesApi, tastingsApi } from "@/api/client";
+import type { Bottle, BottleStatus, User } from "@/api/types";
+import { db, type SyncRow } from "@/sync/db";
+import { enqueue } from "@/sync/outbox";
+import { newId } from "@/sync/uuid7";
+
+type TransitionAction = "open" | "finish" | "gift" | "sell" | "reopen";
+
+async function bottleVolumeMl(purchaseId: string): Promise<number | null> {
+  const purchase = await db.purchase.get(purchaseId);
+  if (!purchase) return null;
+  const sku = await db.sku.get(purchase.sku_id as string);
+  return (sku?.volume_ml as number | undefined) ?? null;
+}
+
+/** `application/tastings.py` 의 상태 전이 부작용을 오프라인 낙관적 갱신용으로 옮긴 것. */
+async function transitionFields(
+  current: SyncRow,
+  action: TransitionAction,
+): Promise<Record<string, unknown>> {
+  const today = new Date().toISOString().slice(0, 10);
+  switch (action) {
+    case "open":
+      return {
+        status: "open",
+        opened_on: current.opened_on ?? today,
+        remaining_ml: await bottleVolumeMl(current.purchase_id as string),
+      };
+    case "finish":
+      return {
+        status: "finished",
+        opened_on: current.opened_on ?? today,
+        finished_on: today,
+        remaining_ml: 0,
+      };
+    case "gift":
+      return { status: "gifted", finished_on: today };
+    case "sell":
+      return { status: "sold", finished_on: today };
+    case "reopen":
+      return { status: "open", finished_on: null, opened_on: current.opened_on ?? today };
+  }
+}
 
 const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
@@ -52,19 +93,25 @@ export function BottlePanel({ bottle }: BottlePanelProps): React.JSX.Element {
   }
 
   const transition = useMutation({
-    mutationFn: (action: "open" | "finish" | "gift" | "sell" | "reopen") => {
-      if (action === "open") return bottlesApi.open(bottle.id);
-      if (action === "finish") return bottlesApi.finish(bottle.id);
-      if (action === "gift") return bottlesApi.gift(bottle.id);
-      if (action === "sell") return bottlesApi.sell(bottle.id);
-      return bottlesApi.reopen(bottle.id);
+    mutationFn: async (action: TransitionAction) => {
+      const current = await db.bottle.get(bottle.id);
+      if (!current) throw new Error("병을 찾을 수 없습니다");
+      const fields = await transitionFields(current, action);
+      await enqueue({
+        entity: "bottle",
+        op: "action",
+        entityId: bottle.id,
+        action,
+        fields: {},
+        optimisticRow: { ...current, ...fields, updated_at: new Date().toISOString() },
+      });
     },
     onSuccess: () => {
       setError(null);
       refresh();
     },
     onError: (cause) => {
-      setError(cause instanceof ApiError ? cause.message : "상태를 바꿀 수 없습니다");
+      setError(cause instanceof Error ? cause.message : "상태를 바꿀 수 없습니다");
     },
   });
 
@@ -159,6 +206,9 @@ export function BottlePanel({ bottle }: BottlePanelProps): React.JSX.Element {
       <div className="tasting-timeline">
         <h4>시음 기록</h4>
         {timeline.isPending ? <output>불러오는 중…</output> : null}
+        {timeline.isError ? (
+          <p className="muted">오프라인에서는 시음 기록을 불러올 수 없습니다.</p>
+        ) : null}
         {timeline.data?.length === 0 ? <p className="muted">아직 기록이 없습니다.</p> : null}
         <ul>
           {timeline.data?.map((item) => (
@@ -199,6 +249,7 @@ interface TastingFormProps {
 }
 
 function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element {
+  const queryClient = useQueryClient();
   const [tastedOn, setTastedOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [pouredMl, setPouredMl] = useState("");
   const [rating, setRating] = useState("");
@@ -210,18 +261,100 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      tastingsApi.create({
-        tasted_on: tastedOn,
-        bottle_id: bottleId,
-        ...(pouredMl ? { poured_ml: Number(pouredMl) } : {}),
-        ...(rating ? { rating } : {}),
-        ...(nose.trim() ? { nose: nose.trim() } : {}),
-        ...(palate.trim() ? { palate: palate.trim() } : {}),
-        ...(finish.trim() ? { finish: finish.trim() } : {}),
-        ...(place.trim() ? { place: place.trim() } : {}),
-        ...(companions.trim() ? { companions: companions.trim() } : {}),
-      }),
+    mutationFn: async () => {
+      const bottleRow = await db.bottle.get(bottleId);
+      if (!bottleRow) throw new Error("병을 찾을 수 없습니다");
+      if (bottleRow.status === "gifted" || bottleRow.status === "sold") {
+        throw new Error(`내보낸 병은 시음을 기록할 수 없습니다 (현재 상태: ${bottleRow.status})`);
+      }
+
+      // `application/tastings.py::record_tasting` 의 병 부작용(미개봉 자동 개봉, 잔량 차감,
+      // 0 이 되면 자동 소진)을 오프라인 낙관적 갱신용으로 옮긴 것.
+      const bottleUpdates: Record<string, unknown> = {};
+      if (bottleRow.status === "unopened") {
+        bottleUpdates.status = "open";
+        bottleUpdates.opened_on = tastedOn;
+        bottleUpdates.remaining_ml = await bottleVolumeMl(bottleRow.purchase_id as string);
+      }
+
+      const pouredMlValue = pouredMl ? Number(pouredMl) : null;
+      if (pouredMlValue !== null) {
+        let remaining = (bottleUpdates.remaining_ml ?? bottleRow.remaining_ml) as number | null;
+        if (remaining === null || remaining === undefined) {
+          remaining = (await bottleVolumeMl(bottleRow.purchase_id as string)) ?? 0;
+        }
+        if (pouredMlValue > remaining) {
+          throw new Error(
+            `잔량이 부족합니다. 남은 양 ${remaining}ml, 따르려는 양 ${pouredMlValue}ml`,
+          );
+        }
+        bottleUpdates.remaining_ml = remaining - pouredMlValue;
+        if (bottleUpdates.remaining_ml === 0) {
+          bottleUpdates.status = "finished";
+          bottleUpdates.finished_on = tastedOn;
+          if (bottleUpdates.opened_on === undefined && bottleRow.opened_on === null) {
+            bottleUpdates.opened_on = tastedOn;
+          }
+        }
+      }
+
+      const purchase = await db.purchase.get(bottleRow.purchase_id as string);
+      const skuId = purchase?.sku_id as string | undefined;
+      if (!skuId) throw new Error("무엇을 마셨는지 확인할 수 없습니다");
+
+      const now = new Date().toISOString();
+      const tastingId = newId();
+      const currentUser = queryClient.getQueryData<User>(["auth", "me"]);
+      const trimmedNose = nose.trim() || null;
+      const trimmedPalate = palate.trim() || null;
+      const trimmedFinish = finish.trim() || null;
+      const trimmedPlace = place.trim() || null;
+      const trimmedCompanions = companions.trim() || null;
+
+      await enqueue({
+        entity: "tasting_session",
+        op: "action",
+        entityId: tastingId,
+        action: "record_tasting",
+        fields: {
+          bottle_id: bottleId,
+          sku_id: skuId,
+          tasted_on: tastedOn,
+          ...(pouredMlValue !== null ? { poured_ml: pouredMlValue } : {}),
+          ...(rating ? { rating } : {}),
+          ...(trimmedNose ? { nose: trimmedNose } : {}),
+          ...(trimmedPalate ? { palate: trimmedPalate } : {}),
+          ...(trimmedFinish ? { finish: trimmedFinish } : {}),
+          ...(trimmedPlace ? { place: trimmedPlace } : {}),
+          ...(trimmedCompanions ? { companions: trimmedCompanions } : {}),
+        },
+        optimisticRow: {
+          id: tastingId,
+          user_id: currentUser?.id ?? "",
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          bottle_id: bottleId,
+          sku_id: skuId,
+          tasted_on: tastedOn,
+          poured_ml: pouredMlValue,
+          rating: rating || null,
+          nose: trimmedNose,
+          palate: trimmedPalate,
+          finish: trimmedFinish,
+          note: null,
+          place: trimmedPlace,
+          companions: trimmedCompanions,
+        },
+      });
+
+      // 병의 잔량·상태 변화는 시음 기록의 부작용일 뿐 별도 outbox 항목이 아니다 — 서버도
+      // `record_tasting` 안에서 같은 오퍼레이션으로 처리하고 병 스냅샷은 돌려주지 않는다.
+      // 다음 풀에서 정확한 서버 값으로 덮어써진다.
+      if (Object.keys(bottleUpdates).length > 0) {
+        await db.bottle.update(bottleId, { ...bottleUpdates, updated_at: now });
+      }
+    },
     onSuccess: () => {
       setError(null);
       setPouredMl("");
@@ -232,7 +365,7 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
       onSaved();
     },
     onError: (cause) => {
-      setError(cause instanceof ApiError ? cause.message : "기록에 실패했습니다");
+      setError(cause instanceof Error ? cause.message : "기록에 실패했습니다");
     },
   });
 

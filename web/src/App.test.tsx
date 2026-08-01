@@ -103,4 +103,29 @@ describe("App", () => {
 
     expect(await screen.findByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
   });
+
+  it("병 관리·통계·가져오기 화면으로도 전환된다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(await screen.findByRole("link", { name: "병 관리" }));
+    expect(await screen.findByRole("heading", { name: "병 관리" })).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole("link", { name: "통계" }));
+    expect(await screen.findByRole("heading", { name: "통계" })).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole("link", { name: "가져오기" }));
+    expect(await screen.findByRole("heading", { name: "엑셀 기록 가져오기" })).toBeInTheDocument();
+  });
+
+  it("헤더에 동기화 상태 배지를 항상 보여준다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
+
+    // 탭을 바꿔도 배지는 그대로 보인다.
+    await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
+    expect(screen.getByRole("button", { name: "최신 상태" })).toBeInTheDocument();
+  });
 });

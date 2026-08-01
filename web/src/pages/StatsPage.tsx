@@ -3,50 +3,25 @@
  *
  * 엑셀 통계표(주종별 통계·랭킹 3종·합계)를 재현한다(`docs/plan.md` Task 14). 필터·수정이
  * 없는 읽기 전용 화면이라 `CategoriesPage` 처럼 단일 쿼리 조합 + 조기 반환 패턴을 쓴다.
+ *
+ * 오프라인에서도 봐야 하므로 Dexie 로컬 미러 기반 `sync/queries.ts` 로 계산한다(Task 15).
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useLiveQuery } from "dexie-react-hooks";
 
-import { statsApi } from "@/api/client";
 import type { CategoryStat, RankingEntry } from "@/api/types";
 import { formatAbv, formatMoney, formatPercent, formatRating, formatVolume } from "@/format";
+import { getCategoryRollup, getStatsRankings, getStatsSummary } from "@/sync/queries";
 
 export function StatsPage() {
-  const rankings = useQuery({
-    queryKey: ["stats", "rankings"],
-    queryFn: ({ signal }) => statsApi.rankings({}, signal),
-  });
-  const byCategory = useQuery({
-    queryKey: ["stats", "by-category"],
-    queryFn: ({ signal }) => statsApi.byCategory(signal),
-  });
-  const summary = useQuery({
-    queryKey: ["stats", "summary"],
-    queryFn: ({ signal }) => statsApi.summary(signal),
-  });
+  const rankings = useLiveQuery(() => getStatsRankings(), []);
+  const categories = useLiveQuery(() => getCategoryRollup(), []);
+  const totals = useLiveQuery(() => getStatsSummary(), []);
 
-  if (rankings.isPending || byCategory.isPending || summary.isPending) {
+  if (rankings === undefined || categories === undefined || totals === undefined) {
     return <output aria-live="polite">통계를 불러오고 있습니다…</output>;
   }
 
-  const failed =
-    rankings.error instanceof Error ||
-    byCategory.error instanceof Error ||
-    summary.error instanceof Error ||
-    !rankings.data ||
-    !byCategory.data ||
-    !summary.data;
-
-  if (failed) {
-    return (
-      <p className="alert" role="alert">
-        통계를 불러올 수 없습니다
-      </p>
-    );
-  }
-
-  const totals = summary.data;
-  const categories = byCategory.data;
   const maxBottleCount = Math.max(1, ...categories.map((stat) => stat.bottle_count));
 
   return (
@@ -111,24 +86,24 @@ export function StatsPage() {
           <RankingList
             title="병당 가격"
             hint="실구매 기준"
-            entries={rankings.data.by_bottle_price}
+            entries={rankings.by_bottle_price}
             formatValue={formatMoney}
           />
           <RankingList
             title="총 구매액"
             hint="실구매 기준"
-            entries={rankings.data.by_total_spend}
+            entries={rankings.by_total_spend}
             formatValue={formatMoney}
           />
           <RankingList
             title="100ml당 가격"
             hint="정가 기준"
-            entries={rankings.data.by_price_per_100ml}
+            entries={rankings.by_price_per_100ml}
             formatValue={formatMoney}
           />
           <RankingList
             title="개인 평점"
-            entries={rankings.data.by_personal_rating}
+            entries={rankings.by_personal_rating}
             formatValue={formatRating}
           />
         </div>

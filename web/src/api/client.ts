@@ -25,6 +25,9 @@ import type {
   Rankings,
   SetupStatus,
   StatsSummary,
+  SyncBatchResponse,
+  SyncOperationRequest,
+  SyncPullResponse,
   Tasting,
   TastingInput,
   TastingSummary,
@@ -378,4 +381,19 @@ export const statsApi = {
 
   summary: (signal?: AbortSignal) =>
     request<StatsSummary>("/stats/summary", signal ? { signal } : {}),
+};
+
+/** 오프라인 동기화. `sync/engine.ts` 만 직접 호출한다 — 나머지 코드는 outbox 를 거친다. */
+export const syncApi = {
+  pull: (since: string | null, signal?: AbortSignal) =>
+    request<SyncPullResponse>("/sync", {
+      params: { since: since ?? undefined },
+      ...(signal ? { signal } : {}),
+    }),
+
+  batch: (operations: SyncOperationRequest[]) =>
+    request<SyncBatchResponse>("/sync/batch", { method: "POST", body: { operations } }),
+
+  resolveConflict: (conflictId: string) =>
+    request<void>(`/sync/conflicts/${conflictId}:resolve`, { method: "POST" }),
 };

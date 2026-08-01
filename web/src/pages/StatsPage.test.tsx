@@ -1,46 +1,40 @@
 import { screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { CategoryStat, Rankings, StatsSummary } from "@/api/types";
 import { StatsPage } from "@/pages/StatsPage";
-import { renderWithQuery, stubRoutes } from "@/testing";
+import { db } from "@/sync/db";
+import { renderWithQuery } from "@/testing";
 
-const emptyRankings: Rankings = {
-  by_bottle_price: [],
-  by_total_spend: [],
-  by_price_per_100ml: [],
-  by_personal_rating: [],
-};
+const NOW = "2026-01-01T00:00:00Z";
 
-const zeroSummary: StatsSummary = {
-  purchased_count: 0,
-  consumed_count: 0,
-  in_stock_count: 0,
-  unopened_count: 0,
-  opened_count: 0,
-  total_volume_ml: 0,
-  list_total: null,
-  paid_total: null,
-  avg_list_price: null,
-  avg_paid_price: null,
-  avg_price_per_100ml: null,
-  discount_rate: null,
-  avg_personal_rating: null,
-  vendor_count: 0,
-};
+function row(overrides: Record<string, unknown>) {
+  return {
+    id: "row",
+    user_id: "u1",
+    created_at: NOW,
+    updated_at: NOW,
+    deleted_at: null,
+    ...overrides,
+  };
+}
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+beforeEach(async () => {
+  await db.open();
+});
+
+afterEach(async () => {
+  await Promise.all([
+    db.category.clear(),
+    db.product.clear(),
+    db.sku.clear(),
+    db.purchase.clear(),
+    db.bottle.clear(),
+    db.vendor.clear(),
+  ]);
 });
 
 describe("StatsPage", () => {
   it("빈 컬렉션이면 가격 정보 없음과 안내 문구를 보여준다", async () => {
-    stubRoutes([
-      { match: "/stats/rankings", body: emptyRankings },
-      { match: "/stats/by-category", body: [] },
-      { match: "/stats/summary", body: zeroSummary },
-    ]);
-
     renderWithQuery(<StatsPage />);
 
     expect(await screen.findByText("등록된 술이 없습니다.")).toBeInTheDocument();
@@ -50,66 +44,75 @@ describe("StatsPage", () => {
   });
 
   it("랭킹·주종별 집계·합계를 표시한다", async () => {
-    const rankings: Rankings = {
-      by_bottle_price: [{ product_id: "p1", product_name: "글렌고인 25y", value: "848000.00" }],
-      by_total_spend: [{ product_id: "p1", product_name: "글렌고인 25y", value: "848000.00" }],
-      by_price_per_100ml: [{ product_id: "p1", product_name: "글렌고인 25y", value: "154286.00" }],
-      by_personal_rating: [{ product_id: "p2", product_name: "평점 술", value: "5.0" }],
-    };
-    const categories: CategoryStat[] = [
-      {
+    await db.category.bulkPut([
+      row({ id: "liquor", parent_id: null, name: "양주" }),
+      row({ id: "whisky", parent_id: "liquor", name: "위스키" }),
+    ]);
+    await db.vendor.bulkPut([
+      row({ id: "v1", name: "가상마트1", kind: "mart" }),
+      row({ id: "v2", name: "가상마트2", kind: "mart" }),
+    ]);
+    await db.product.bulkPut([
+      row({
+        id: "p1",
+        name: "글렌고인 25y",
         category_id: "whisky",
-        name: "양주",
-        bottle_count: 134,
-        total_spend: "1080000.00",
-        avg_abv: "43.0",
-        avg_rating: "4.0",
-        avg_price_per_100ml: "20000.00",
-        discount_rate: "0.1000",
-      },
-    ];
-    const summary: StatsSummary = {
-      ...zeroSummary,
-      purchased_count: 1078,
-      consumed_count: 819,
-      in_stock_count: 259,
-      unopened_count: 225,
-      opened_count: 34,
-      total_volume_ml: 704970,
-      list_total: "42401108.00",
-      paid_total: "36495454.00",
-      avg_list_price: "39333.00",
-      avg_paid_price: "33855.00",
-      avg_price_per_100ml: "6015.00",
-      discount_rate: "0.1400",
-      avg_personal_rating: "3.4",
-      vendor_count: 82,
-    };
-
-    stubRoutes([
-      { match: "/stats/rankings", body: rankings },
-      { match: "/stats/by-category", body: categories },
-      { match: "/stats/summary", body: summary },
+        abv: "43.0",
+        personal_rating: "3.0",
+      }),
+      row({
+        id: "p2",
+        name: "평점 술",
+        category_id: "whisky",
+        abv: "13.0",
+        personal_rating: "5.0",
+      }),
+    ]);
+    await db.sku.bulkPut([
+      row({ id: "s1", product_id: "p1", volume_ml: 500 }),
+      row({ id: "s2", product_id: "p2", volume_ml: 500 }),
+    ]);
+    await db.purchase.bulkPut([
+      row({
+        id: "pu1",
+        sku_id: "s1",
+        vendor_id: "v1",
+        quantity: 1,
+        unit_list_price: "1000000",
+        unit_paid_price: "848000",
+      }),
+      row({
+        id: "pu2",
+        sku_id: "s2",
+        vendor_id: "v2",
+        quantity: 1,
+        unit_list_price: "100000",
+        unit_paid_price: "90000",
+      }),
+    ]);
+    await db.bottle.bulkPut([
+      row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "unopened" }),
+      row({ id: "b2", purchase_id: "pu2", label_no: 1, status: "unopened" }),
     ]);
 
     renderWithQuery(<StatsPage />);
 
     expect(await screen.findByRole("table")).toBeInTheDocument();
     const table = screen.getByRole("table");
+    // 위스키의 상위 주종인 "양주" 로 롤업된다.
     expect(within(table).getByText("양주")).toBeInTheDocument();
-    expect(within(table).getByText("134")).toBeInTheDocument();
+    expect(within(table).getByText("2")).toBeInTheDocument();
 
-    expect(screen.getByText("1,078병")).toBeInTheDocument();
-    expect(screen.getByText("82곳")).toBeInTheDocument();
+    const summarySection = screen.getByRole("heading", { name: "전체 합계" }).closest("section");
+    expect(summarySection).not.toBeNull();
+    expect(within(summarySection as HTMLElement).getByText("2병")).toBeInTheDocument();
+    expect(within(summarySection as HTMLElement).getByText("2곳")).toBeInTheDocument();
+    // 두 제품 모두 랭킹 4종 각각에 나타난다(제품이 2개뿐이라 상위 10건 안에 다 든다).
     expect(screen.getAllByText("글렌고인 25y").length).toBeGreaterThan(0);
-    expect(screen.getByText("평점 술")).toBeInTheDocument();
-  });
-
-  it("통계를 불러오지 못하면 오류를 보여준다", async () => {
-    stubRoutes([]);
-
-    renderWithQuery(<StatsPage />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("통계를 불러올 수 없습니다");
+    expect(screen.getAllByText("평점 술").length).toBeGreaterThan(0);
+    // 평점 랭킹만 5.0점짜리("평점 술")가 1위로 뒤집힌다.
+    const ratingSection = screen.getByRole("region", { name: "개인 평점" });
+    const [firstEntry] = within(ratingSection).getAllByRole("listitem");
+    expect(firstEntry).toHaveTextContent("평점 술");
   });
 });

@@ -16,33 +16,30 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-01 (Task 14 PR) |
-| 완료된 Task | **Task 1 ~ Task 14** |
-| 다음 착수 Task | **Task 15 — PWA와 오프라인 동기화** |
-| 현재 브랜치 | `main` (Task 14 까지 머지 완료, 열린 PR 없음) |
+| 최종 갱신 | 2026-08-01 (Task 15 PR) |
+| 완료된 Task | **Task 1 ~ Task 15** |
+| 다음 착수 Task | **Task 16 — 바코드 스캔과 제품 매칭** |
+| 현재 브랜치 | `main` (Task 15 까지 머지 완료, 열린 PR 없음) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
 
-### 즉시 해야 할 일 (Task 15) — 핵심 마일스톤
+### 즉시 해야 할 일 (Task 16)
 
-Task 12(인증·HTTPS)까지 마쳐 폰에서 실사용이 가능해졌다. 이제 오프라인에서도 기록할 수 있게
-만든다.
+Task 15(PWA·오프라인 동기화)까지 마쳐 오프라인에서도 컬렉션을 조회·등록할 수 있다. 다음은
+바코드 스캔으로 제품 등록을 더 빠르게 만드는 단계다.
 
-- **사양**: [architecture.md](architecture.md) §5
-- Workbox 앱 셸, Dexie 로컬 미러, outbox 직렬 큐
-- `GET /sync?since=` — `(updated_at, id)` 복합 커서
-- LWW(last-write-wins) 병합, soft delete 전파, 충돌 로그
-- 동기화 상태 UI, PWA manifest
+- **사양**: [architecture.md](architecture.md) 관련 절
+- `BarcodeDetector` + `@zxing/browser` 폴백 스캐너
+- 로컬 SKU → Open Food Facts → 검색 폴백 순으로 매칭
+- 사용자 확인 후 바코드 학습 저장
 
-**Q4 해결됨** (2026-08-01): Tailscale 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 머신
-호스트명 `main` → 접속 주소는 `https://main.tail30f401.ts.net`. 폰에도 Tailscale 앱을 설치하고
-같은 계정으로 로그인하면 된다. 단, `scripts/serve-https.sh` 실행 전에 **Docker 이미지를
-재빌드**해야 한다 — 현재 떠 있는 컨테이너는 Task 12(인증) 이전 빌드라 `/auth/setup` 이 404
-난다: `docker compose up -d --build`. Task 16(바코드)·17(OCR)이 secure context 를 요구하므로
-이 단계 없이는 폰에서 카메라 기능을 검증할 수 없다.
+Tailscale 설치·로그인은 Task 14 세션에서 끝났다(`https://main.tail30f401.ts.net`). 다만
+이 개발 샌드박스는 브라우저 자동화가 동작하지 않아 실기기 HTTPS 접속을 사람이 직접
+검증한 적은 아직 없다 — Task 16(카메라)에 실제 착수하기 전에 `docker compose up -d --build`
++ `scripts/serve-https.sh` 로 한 번 수동 확인이 필요하다([handoff.md](handoff.md) §4 참조).
 
 ### 차단 요인
 
@@ -149,7 +146,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 12 | 인증과 로컬 HTTPS 접근 환경 | ✅ | `feature/auth-https` | [#13](https://github.com/jihoon22-lee/SoolJang/pull/13) |
 | 13 | 개별 병 관리와 시음 세션 | ✅ | `feature/bottles-tastings`, `feature/bottles-tastings-ui` | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) |
 | 14 | 통계 대시보드 v1 | ✅ | `feature/stats-v1` | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) |
-| 15 | PWA와 오프라인 동기화 | ⬜ | `feature/pwa-sync` | |
+| 15 | PWA와 오프라인 동기화 | ✅ | `feature/pwa-sync` | (병합 예정) |
 | 16 | 바코드 스캔과 제품 매칭 | ⬜ | `feature/barcode-scan` | |
 | 17 | 라벨 OCR 프리필 | ⬜ | `feature/label-ocr` | |
 | 18 | 외부 소스 레지스트리와 온디맨드 조회 | ⬜ | `feature/external-sources` | |
@@ -591,14 +588,69 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
     "필요 규모가 아니다"로 배제해 온 관례가 있다(D41). 병수 막대 하나만 필요한데 차트
     라이브러리를 추가할 이유가 없다
 
-### ⬜ Task 15 — PWA와 오프라인 동기화
+### ✅ Task 15 — PWA와 오프라인 동기화
 
-- **사양**: [architecture.md](architecture.md) §5
-- **산출물**: Workbox 앱 셸, Dexie 로컬 미러, outbox 직렬 큐, `GET /sync?since=`,
-  `(updated_at, id)` 복합 커서, LWW 병합, soft delete 전파, 충돌 로그, 동기화 상태 UI, manifest
-- **테스트**: 오프라인 생성 후 재전송, 동시 수정 LWW, 삭제 전파, idempotency 중복 방지,
-  부모-자식 순서 보장
-- **데모**: 폰 비행기 모드에서 등록 → 복구 시 PC 반영
+- **사양**: [architecture.md](architecture.md) §5(오프라인 동기화 프로토콜)·§1.2(컴포넌트
+  다이어그램)
+- **사용자 결정**: 오프라인 읽기 범위로 "최근 본 화면만"(가벼움) 대신 **"전체 컬렉션 오프라인
+  탐색"**(큰 쪽)을 선택했다 — Dexie 미러가 각 화면의 기본 조회 경로가 되고, 파생 지표 공식을
+  TypeScript 로 세 번째 구현해야 함을 뜻한다(아래 참조)
+- **백엔드 산출물**
+  - 마이그레이션 `0005_offline_sync.py` — `outbox_receipt`(재전송 시 멱등 응답 캐시)·
+    `sync_cursor`(부기용)·`conflict_log`(EntityMixin 사용, 풀 대상) 3개 테이블 + 기존
+    12개 동기화 대상 테이블에 `(user_id, updated_at)` 인덱스
+  - `application/sync.py`(신규, ~840줄) — `pull_changes`(단조 커서 델타 풀, `deleted_at`
+    필터 없음), `apply_batch`(SAVEPOINT 로 작업별 격리, 실패 시 이후 작업 중단 —
+    head-of-line blocking), 엔티티별 제네릭 CRUD 디스패치 + `bottle`/`tasting_session`
+    의 `action` 오퍼레이션(기존 `application/tastings.py` 함수 재사용, 재구현하지 않음)
+  - `api/routes/sync.py`·`api/schemas/sync.py` — `GET /sync?since=`, `POST /sync/batch`,
+    `POST /sync/conflicts/{id}:resolve`
+  - `create_category`·`record_tasting` 에 `id` 파라미터 추가 — 오프라인 클라이언트가 미리
+    생성한 UUIDv7 PK 를 그대로 반영
+- **프론트엔드 산출물**
+  - `web/src/sync/db.ts` — Dexie 로 12개 미러 테이블 + `outbox` + `sync_meta`
+  - `web/src/sync/outbox.ts`·`engine.ts` — `enqueue()`(낙관적 로컬 반영 + 큐 적재),
+    `SyncEngine`(outbox FIFO 전송 → 델타 풀, 대기 중 항목이 있는 행은 풀로 덮어쓰지 않음)
+  - `web/src/domain/metrics.ts` — `domain/metrics.py` 의 TS 포팅. 공유 골든값 픽스처
+    (`tests/fixtures/metrics_cases.json`)로 Python 순수 함수·SQL·TS 3-way parity 확인
+  - `web/src/sync/queries.ts`(~520줄) — Dexie 미러에서 `api/types.ts` 모양을 만든다.
+    `application/products.py` 의 필터·정렬·카테고리 하위 포함 로직과 `application/stats.py`
+    의 랭킹·주종 롤업·전체 합계 로직을 TS 로 재구현하되, 파생 지표 계산 자체는
+    `domain/metrics.ts` 를 그대로 써서 공식이 네 번째로 갈라지지 않게 했다
+  - Products·Categories·Bottles·Stats 4개 화면을 Dexie 기반 조회(`useLiveQuery`)로 전환
+  - outbox 로 전환한 쓰기: 주종 생성·이름 변경, 병 상태 전이(개봉·소진·증여·판매·되돌리기),
+    시음 기록, 제품 등록 체인(제품→규격→구매처→구매, 서버가 `purchase.create` 안에서
+    `bottle_ids` 로 병을 자동 생성하므로 별도 `bottle.create` 오퍼레이션은 보내지 않는다),
+    제품 소프트 삭제
+  - 온라인 전용으로 남긴 쓰기: 주종 이동·병합·삭제(전략 지정)·기본값 복원(순환·깊이
+    재검사가 필요해 로컬의 오래됐을 수 있는 미러를 신뢰하면 위험하다), 온라인일 때의 제품
+    등록(품종 지정 지원 — outbox 는 아직 `product_variety` 를 쓰기 대상으로 지원하지 않는다)
+  - `vite-plugin-pwa` 로 앱 셸 프리캐시 + manifest(`filename: "sw.js"`, 기존
+    `docker/nginx.conf` 의 `/sw.js` 캐시 무효화 규칙과 이름을 맞췄다)
+  - `SyncStatusBadge` — 헤더에 항상 노출(탭 무관). "동기화 중…"/"오프라인 (대기 N건)"/
+    "동기화 실패 N건"/"충돌 N건"(클릭 → 확인 패널)/"최신 상태"
+- **검증 결과**
+  - 백엔드: `ruff check`·`ruff format --check`·`ty check` 전부 통과, `alembic` 업/다운그레이드
+    왕복 정상, 드리프트 없음. `pytest` **521 passed, 27 skipped**(skip 는 전부
+    `SOOLJANG_LEGACY_SHEET` opt-in 테스트), 커버리지 90.10%(임계값 85%)
+  - 프론트엔드: `npm run check`(lint + typecheck + coverage + build) 전부 통과. **207
+    passed**, 커버리지 89.0% stmts / 80.2% branch / 84.5% funcs / 91.0% lines — branch
+    임계값(80%)에 가장 근접했던 지점이라 `SyncStatusBadge`·`BottlePanel`·
+    `ProductFilterPanel`·`ProductForm` 상호작용 테스트를 추가로 보강했다
+  - `SyncStatusBadge` 충돌 패널 테스트에서 재현 가능한 플레이키(약 20% 확률)를 하나
+    발견·수정: `useLiveQuery` 로 막 마운트된 컴포넌트의 첫 계산은 비동기라, 클릭 직후
+    동기 `getByText` 로 단언하면 로딩 중 빈 상태를 잡을 수 있다 — `findByText` 로 바꿔
+    해결. 프로덕션 버그가 아니라 테스트 자체의 async 처리 누락이었다
+- **설계 판단** (§5 결정 로그 참조)
+  - **오프라인 쓰기 대상은 7개 엔티티로 제한한다**(`category`·`product`·`sku`·`vendor`·
+    `purchase`·`bottle`·`tasting_session`). `producer`·`variety`·`product_variety`·
+    `attachment`·`conflict_log` 는 풀(읽기) 대상이지만 오프라인에서 새로 만들 수 없다
+  - **온라인 제품 등록과 오프라인 제품 등록은 별개 코드 경로**다. 온라인일 때는 기존
+    REST 체인(`productsApi.create` + `purchasesApi.create`, 품종 지정 지원)을 그대로
+    쓰고, 오프라인일 때만 outbox 체인으로 전환한다. 온라인에서도 outbox 로 통일하면
+    품종 입력이 조용히 무시되므로, 이미 검증된 경로를 그대로 살리는 쪽을 택했다
+  - **PWA 는 API 응답 런타임 캐싱을 하지 않는다.** 읽기가 이제 Dexie 가 우선이라
+    Workbox 의 역할은 설치 가능성 + 앱 셸(JS/CSS/HTML) 캐싱으로 좁아진다
 
 ### ⬜ Task 16 — 바코드 스캔과 제품 매칭
 
@@ -797,6 +849,17 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | D69 | "총 구매액" 랭킹은 엑셀 소계를 완전히 재현하는 것을 목표로 하지 않는다 | 이 앱은 같은 제품의 반복 구매를 하나로 합산한다(§9.3, 엑셀 한계 해결의 핵심 목적). 엑셀은 반복 구매를 별도 행으로 남겼으므로, 병합된 제품이 어떤 단일 행보다도 큰 총액을 갖게 되어 상위권 구성이 달라진다. 이는 데이터 모델 개선의 의도된 결과이지 결함이 아니다 |
 | D70 | 통계 요약(`/stats/summary`)의 평균값은 분모를 **전체 병수·전체 용량**으로 쓴다 | 제품별 지표(`avg_list_price`, 분모가 가격 있는 병수)와는 다른 기준이다. 실측 대조로 발견: `병당 평균 정가 39,333원 = 정가 총액 42,401,108 ÷ 전체 1,078병`(가격 없는 선물 병도 포함). "가격이 있는 것만의 평균"이 아니라 "컬렉션 전체를 병 하나당으로 나눈 평균"이기 때문이다 |
 | D71 | 주종별 집계는 SQL 재귀 조인이 아니라 `load_tree()` 결과를 파이썬에서 그룹핑한다 | 카테고리 깊이를 컬럼으로 저장하지 않으므로(D26) 최상위 조상을 구하려면 부모 포인터를 루트까지 따라가야 한다. 제품 수백 건·카테고리 수십 개 규모에서는 SQL 재귀보다 트리 전체를 한 번 읽어 매핑하는 편이 간단하고, Task 21 에서 10배 규모로도 성능을 재확인한다 |
+
+### Task 15 결정 (D72~D77)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D72 | 오프라인 쓰기 대상을 `category`·`product`·`sku`·`vendor`·`purchase`·`bottle`·`tasting_session` 7개로 제한한다 | `producer`·`variety`·`product_variety`·`attachment`·`conflict_log` 까지 쓰기 대상으로 넓히면 각각 전용 디스패치·충돌 규칙·프론트 outbox 체인이 늘어난다. 이번 Task 의 실제 요구(제품 등록·병 관리·시음 기록을 오프라인에서)를 충족하는 최소 범위로 시작하고, 필요해지면 넓힌다 |
+| D73 | `purchase.create` 는 서버가 `bottle_ids`(클라이언트 생성 UUIDv7)로 병을 자동 생성한다. 별도 `bottle.create` 오퍼레이션은 두지 않는다 | 기존 온라인 `POST /purchases` 도 구매 건 생성 시 병을 자동으로 만든다(라벨 번호 순차 부여). 오프라인 클라이언트가 이 로직을 다시 구현해 별도 오퍼레이션 N개를 보내게 하는 대신, `bottle_ids` 필드로 서버가 만들 병의 id 만 미리 정하게 해 클라이언트·서버 로직을 하나로 유지했다. 로컬 미러의 병 행은 outbox 를 거치지 않고 직접 낙관적으로 써 넣는다 |
+| D74 | 주종 이동·병합·전략 지정 삭제·기본값 복원은 온라인 전용으로 남긴다 | 순환·깊이 재검사, 계단식 재배치가 필요한 연산이다. 로컬의 오래됐을 수 있는 미러를 기준으로 처리하면 다른 기기에서 이미 동기화된 서브트리를 조용히 고아로 만들 위험이 있다. 생성·이름 변경만 outbox 로 전환했다 |
+| D75 | 온라인일 때의 제품 등록은 outbox 가 아니라 기존 REST 체인을 그대로 쓴다 | outbox 는 아직 `product_variety` 를 쓰기 대상으로 지원하지 않는다(D72). 온라인에서도 outbox 로 통일하면 이미 동작하던 품종 입력이 조용히 무시되는 회귀가 생긴다. 오프라인일 때만 outbox 체인(품종 미지원, 폼에 안내 없음 — 다음 세션에서 보완 여지)으로 전환한다 |
+| D76 | 통계·제품 목록의 파생 지표는 TypeScript 로 세 번째 구현하되, `domain/metrics.ts` 한 곳에서만 계산한다 | Dexie 는 원자값만 미러링하고 파생 지표를 저장하지 않는다(절대 규칙 6, 서버와 동일 원칙). 오프라인에서 제품 목록·통계 화면을 보여주려면 같은 공식이 필요하다. `queries.ts` 는 필터·정렬·롤업 로직만 재구현하고, 금액·병수 계산은 전부 `domain/metrics.ts` 를 호출해 공식이 네 곳(Python 순수 함수·SQL·TS)으로 갈라지지 않게 했다. 3-way parity 는 공유 골든값 픽스처로 확인한다 |
+| D77 | PWA(Workbox)는 API 응답에 런타임 캐싱 전략을 두지 않는다 | 오프라인 읽기의 기본 경로가 Dexie 로 바뀌었으므로(사용자가 선택한 "전체 컬렉션 오프라인 탐색"), 네트워크 응답을 별도로 캐싱할 이유가 없다. Workbox 의 역할은 설치 가능성(manifest)과 앱 셸(JS/CSS/HTML) 프리캐시로 좁힌다 |
 
 ## 6. 열린 질문
 

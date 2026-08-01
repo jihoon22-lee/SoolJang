@@ -1,0 +1,122 @@
+{
+  "_comment": "domain/metrics.py 와 web/src/domain/metrics.ts 의 3-way parity 기준값. Python(순수 함수)·SQL·TS 세 구현이 갈라지지 않게 양쪽 테스트가 이 파일 하나를 읽는다. 값은 tests/domain/test_metrics.py 에서 이미 검증된 레거시 실측 케이스와 같다.",
+  "price_metrics_cases": [
+    {
+      "name": "single_lot_matches_legacy_formula",
+      "lots": [{ "quantity": 1, "volume_ml": 750, "unit_list_price": "23980", "unit_paid_price": "23980" }],
+      "expected": {
+        "purchased_count": 1,
+        "list_total": "23980",
+        "avg_list_price": "23980.00",
+        "price_per_100ml": "3197.33",
+        "discount_rate": "0.0000",
+        "total_volume_ml": 750
+      }
+    },
+    {
+      "name": "multiple_bottles_divide_total_by_quantity",
+      "lots": [{ "quantity": 2, "volume_ml": 500, "unit_list_price": "16000", "unit_paid_price": "16000" }],
+      "expected": {
+        "avg_list_price": "16000.00",
+        "price_per_100ml": "3200.00"
+      }
+    },
+    {
+      "name": "price_per_100ml_uses_list_price_not_paid_price",
+      "lots": [{ "quantity": 1, "volume_ml": 750, "unit_list_price": "219900", "unit_paid_price": "179900" }],
+      "expected": {
+        "price_per_100ml": "29320.00",
+        "price_per_100ml_paid": "23986.67"
+      }
+    },
+    {
+      "name": "multiple_lots_produce_weighted_average",
+      "lots": [
+        { "quantity": 2, "volume_ml": 700, "unit_list_price": "100000", "unit_paid_price": "90000" },
+        { "quantity": 1, "volume_ml": 700, "unit_list_price": "130000", "unit_paid_price": "128000" }
+      ],
+      "expected": {
+        "avg_list_price": "110000.00",
+        "avg_paid_price": "102666.67",
+        "purchased_count": 3
+      }
+    },
+    {
+      "name": "mixed_volumes_use_weighted_per_100ml",
+      "lots": [
+        { "quantity": 1, "volume_ml": 700, "unit_list_price": "70000", "unit_paid_price": "70000" },
+        { "quantity": 1, "volume_ml": 1000, "unit_list_price": "80000", "unit_paid_price": "80000" }
+      ],
+      "expected": {
+        "price_per_100ml": "8823.53",
+        "total_volume_ml": 1700
+      }
+    },
+    {
+      "name": "gift_lot_excluded_from_money_but_counted_in_bottles",
+      "lots": [
+        { "quantity": 2, "volume_ml": 900, "unit_list_price": null, "unit_paid_price": null },
+        { "quantity": 1, "volume_ml": 900, "unit_list_price": "30000", "unit_paid_price": "30000" }
+      ],
+      "expected": {
+        "purchased_count": 3,
+        "priced_quantity": 1,
+        "list_total": "30000",
+        "avg_list_price": "30000.00"
+      }
+    },
+    {
+      "name": "all_gift_lots_yield_null_not_zero",
+      "lots": [{ "quantity": 2, "volume_ml": 900, "unit_list_price": null, "unit_paid_price": null }],
+      "expected": {
+        "purchased_count": 2,
+        "list_total": null,
+        "avg_list_price": null,
+        "price_per_100ml": null,
+        "discount_rate": null
+      }
+    },
+    {
+      "name": "list_price_only_lot_has_no_paid_metrics",
+      "lots": [{ "quantity": 1, "volume_ml": 700, "unit_list_price": "50000", "unit_paid_price": null }],
+      "expected": {
+        "avg_list_price": "50000.00",
+        "avg_paid_price": null,
+        "price_per_100ml_paid": null,
+        "discount_rate": null
+      }
+    },
+    {
+      "name": "discount_rate_only_uses_lots_with_both_prices",
+      "lots": [
+        { "quantity": 1, "volume_ml": 700, "unit_list_price": "100000", "unit_paid_price": "80000" },
+        { "quantity": 1, "volume_ml": 700, "unit_list_price": "100000", "unit_paid_price": null }
+      ],
+      "expected": {
+        "discount_rate": "0.2000"
+      }
+    },
+    {
+      "name": "empty_lots_produce_zero_counts_and_null_prices",
+      "lots": [],
+      "expected": {
+        "purchased_count": 0,
+        "avg_list_price": null,
+        "total_volume_ml": 0
+      }
+    }
+  ],
+  "bottle_tally_case": {
+    "statuses": ["unopened", "unopened", "open", "finished", "gifted", "sold"],
+    "expected": {
+      "unopened": 2,
+      "open": 1,
+      "finished": 1,
+      "gifted": 1,
+      "sold": 1,
+      "in_stock": 3,
+      "disposed": 2,
+      "total": 6
+    }
+  }
+}
