@@ -168,6 +168,8 @@ interface ProductAssembly {
   skus: SyncRow[];
   lots: PurchaseLot[];
   bottles: MetricsBottleRecord[];
+  /** 이 제품의 어느 규격이든 구매한 적 있는 구매처 id 들. `filters.vendor_id` 필터용이다. */
+  vendorIds: Set<string>;
 }
 
 async function assembleProducts(): Promise<ProductAssembly[]> {
@@ -204,6 +206,7 @@ async function assembleProducts(): Promise<ProductAssembly[]> {
     const productSkus = skusByProduct.get(product.id) ?? [];
     const lots: PurchaseLot[] = [];
     const bottleRecords: MetricsBottleRecord[] = [];
+    const vendorIds = new Set<string>();
 
     for (const sku of productSkus) {
       const skuPurchases = purchasesBySku.get(sku.id) ?? [];
@@ -216,6 +219,8 @@ async function assembleProducts(): Promise<ProductAssembly[]> {
             toDecimalOrNull(purchase.unit_paid_price),
           ),
         );
+        const vendorId = purchase.vendor_id as string | null;
+        if (vendorId) vendorIds.add(vendorId);
         for (const bottle of bottlesByPurchase.get(purchase.id) ?? []) {
           bottleRecords.push({
             status: bottle.status as string,
@@ -226,7 +231,7 @@ async function assembleProducts(): Promise<ProductAssembly[]> {
       }
     }
 
-    return { row: product, skus: productSkus, lots, bottles: bottleRecords };
+    return { row: product, skus: productSkus, lots, bottles: bottleRecords, vendorIds };
   });
 }
 
@@ -361,6 +366,11 @@ export async function getProducts(filters: ProductFilters): Promise<Product[]> {
 
   if (filters.q) {
     products = products.filter((p) => matchesText(p, filters.q as string));
+  }
+  if (filters.vendor_id) {
+    const vendorId = filters.vendor_id;
+    const vendorIdsByProduct = new Map(assemblies.map((a) => [a.row.id as string, a.vendorIds]));
+    products = products.filter((p) => vendorIdsByProduct.get(p.id)?.has(vendorId) ?? false);
   }
   if (filters.category_id) {
     const includeDescendants = filters.include_descendants !== false;
