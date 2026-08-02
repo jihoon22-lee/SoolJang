@@ -13,7 +13,8 @@ dependencies = [
     # 비밀번호 해시. Argon2id 는 현재 권장되는 기본값이다.
     "argon2-cffi>=25.1,<26",
     # LLM API 키를 DB 에 암호화해 저장한다(Task 17). Fernet 대칭 암호화.
-    "cryptography>=46,<47",
+    # 46.x 에 알려진 취약점(GHSA-537c-gmf6-5ccf)이 있어 수정된 48.0.1 이상으로 고정한다.
+    "cryptography>=48.0.1,<51",
     # pydantic EmailStr 이 요구한다. 이메일 형식 검증.
     "email-validator>=2.3,<3",
     "fastapi>=0.139.1,<1",

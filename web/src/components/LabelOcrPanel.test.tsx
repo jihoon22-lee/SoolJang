@@ -52,7 +52,10 @@ describe("LabelOcrPanel", () => {
   });
 
   it("사진을 고르면 인식 결과를 보여주고, 등록하면 프리필 값을 넘긴다", async () => {
-    stubRoutes([...authenticatedRoutes(), { match: "/ocr/label", method: "POST", body: CANNED_EXTRACTION }]);
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/ocr/label", method: "POST", body: CANNED_EXTRACTION },
+    ]);
     const onPrefill = vi.fn();
 
     renderWithQuery(<LabelOcrPanel categories={CATEGORIES} onPrefill={onPrefill} />);
@@ -80,7 +83,10 @@ describe("LabelOcrPanel", () => {
   });
 
   it("취소하면 프리필을 넘기지 않고 idle 로 돌아간다", async () => {
-    stubRoutes([...authenticatedRoutes(), { match: "/ocr/label", method: "POST", body: CANNED_EXTRACTION }]);
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/ocr/label", method: "POST", body: CANNED_EXTRACTION },
+    ]);
     const onPrefill = vi.fn();
 
     renderWithQuery(<LabelOcrPanel categories={CATEGORIES} onPrefill={onPrefill} />);
