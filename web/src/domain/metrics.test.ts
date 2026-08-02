@@ -10,6 +10,7 @@ import {
   type PriceMetrics,
   purchaseLot,
   tallyBottles,
+  valueForMoney,
 } from "@/domain/metrics";
 import fixture from "../../../tests/fixtures/metrics_cases.json";
 
@@ -102,5 +103,24 @@ describe("tallyBottles — 공유 골든값", () => {
     expect(bottleTallyInStock(tally)).toBe(expected.in_stock);
     expect(bottleTallyDisposed(tally)).toBe(expected.disposed);
     expect(bottleTallyTotal(tally)).toBe(expected.total);
+  });
+});
+
+describe("valueForMoney", () => {
+  it("가격이 저렴할수록 값이 높다", () => {
+    const cheap = valueForMoney(new Decimal("4.5"), new Decimal("3000"));
+    const expensive = valueForMoney(new Decimal("4.5"), new Decimal("30000"));
+
+    expect(cheap).not.toBeNull();
+    expect(expensive).not.toBeNull();
+    expect(cheap?.greaterThan(expensive as Decimal)).toBe(true);
+  });
+
+  it.each([
+    [null, new Decimal("3000")],
+    [new Decimal("4.5"), null],
+    [new Decimal("4.5"), new Decimal(0)],
+  ])("정의되지 않는 경우 null 을 반환한다", (rating, price) => {
+    expect(valueForMoney(rating, price)).toBeNull();
   });
 });

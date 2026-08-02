@@ -1,9 +1,10 @@
 import { screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StatsPage } from "@/pages/StatsPage";
 import { db } from "@/sync/db";
-import { renderWithQuery } from "@/testing";
+import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
+import { renderWithQuery, stubRoutes } from "@/testing";
 
 const NOW = "2026-01-01T00:00:00Z";
 
@@ -18,11 +19,27 @@ function row(overrides: Record<string, unknown>) {
   };
 }
 
+function renderStatsPage() {
+  // PivotExplorer(Task 20)가 온라인 전용 조회를 함께 하므로 최소한으로 스텁해 둔다 —
+  // 이 파일의 테스트는 통계 v1(랭킹·주종별 집계·합계) 표시만 검증한다.
+  stubRoutes([
+    { match: "/vendors", method: "GET", body: [] },
+    { match: "/saved-views", method: "GET", body: [] },
+    { match: "/stats/timeseries", method: "GET", body: [] },
+  ]);
+  return renderWithQuery(
+    <SyncStatusProvider>
+      <StatsPage />
+    </SyncStatusProvider>,
+  );
+}
+
 beforeEach(async () => {
   await db.open();
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await Promise.all([
     db.category.clear(),
     db.product.clear(),
@@ -35,12 +52,27 @@ afterEach(async () => {
 
 describe("StatsPage", () => {
   it("빈 컬렉션이면 가격 정보 없음과 안내 문구를 보여준다", async () => {
-    renderWithQuery(<StatsPage />);
+    renderStatsPage();
 
     expect(await screen.findByText("등록된 술이 없습니다.")).toBeInTheDocument();
     // null 은 0원이 아니라 "가격 정보 없음"이어야 한다(D35).
     expect(screen.getAllByText("가격 정보 없음").length).toBeGreaterThan(0);
     expect(screen.getAllByText("데이터가 없습니다.").length).toBe(4);
+  });
+
+  it("오프라인이면 피벗 대신 안내 문구를 보여준다(Task 20)", async () => {
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+
+    renderWithQuery(
+      <SyncStatusProvider>
+        <StatsPage />
+      </SyncStatusProvider>,
+    );
+
+    expect(
+      await screen.findByText("커스텀 피벗과 월별 시계열은 온라인일 때만 볼 수 있습니다."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "실행" })).not.toBeInTheDocument();
   });
 
   it("랭킹·주종별 집계·합계를 표시한다", async () => {
@@ -95,7 +127,7 @@ describe("StatsPage", () => {
       row({ id: "b2", purchase_id: "pu2", label_no: 1, status: "unopened" }),
     ]);
 
-    renderWithQuery(<StatsPage />);
+    renderStatsPage();
 
     expect(await screen.findByRole("table")).toBeInTheDocument();
     const table = screen.getByRole("table");

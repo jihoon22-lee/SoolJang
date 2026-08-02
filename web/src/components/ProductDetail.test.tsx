@@ -21,6 +21,7 @@ const metrics: ProductMetrics = {
   discount_rate: "0.0667",
   total_volume_ml: 2100,
   inventory_value_at_cost: "205333.34",
+  value_for_money: "31.85",
 };
 
 const product: Product = {

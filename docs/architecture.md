@@ -350,7 +350,10 @@ erDiagram
   `byte_size`, `sha256`, `storage_path`. 업로드는 `POST /attachments`(Task 17) 가 이미지만
   받는다
 - `wishlist_item`: 구매 후보. `target_price` 도달 알림(Task 19)의 대상
-- `saved_view`: 커스텀 피벗 정의(Task 20). `definition jsonb`
+- `saved_view`: 커스텀 피벗 정의(Task 20). `name`, `definition jsonb`(검증하지 않는다 —
+  불러와 `POST /stats/pivot` 에 다시 보낼 때 그 스키마가 검증한다). `EntityMixin` 을
+  쓰지만 **동기화 대상이 아니다** — 통계 v2 전체가 온라인 전용이라(피벗 재계산 자체가
+  서버 DB 조회를 전제한다) 저장된 정의만 오프라인에 미러링해 봐야 의미가 없다
 - `sync_cursor`, `outbox_receipt`, `conflict_log`: 동기화 상태(§5). `conflict_log` 는
   LWW 충돌에서 진 로컬 변경을 보관한다(§5.4) — 다른 9개 동기화 대상 테이블과 같은
   공통 컬럼(`EntityMixin`)을 써서 풀 대상에 포함시킨다. 한 기기의 충돌이 다른 기기의

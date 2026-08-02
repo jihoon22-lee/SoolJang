@@ -15,9 +15,9 @@
  * 2. 가격이 없는 구매 건(선물)은 금액 집계에서 제외하되 병수 집계에는 포함한다
  * 3. 여러 용량이 섞인 제품은 가중 평균으로 계산한다
  *
- * `value_for_money`·`consumption_rate_per_month`·`krw_from_foreign` 은 포팅하지 않았다 —
- * 이번 Task 의 오프라인 화면(제품 목록·통계) 어디에서도 쓰지 않는다. 필요해지면 그때
- * 추가한다.
+ * `consumption_rate_per_month`·`krw_from_foreign` 은 포팅하지 않았다 — 오프라인 화면
+ * 어디에서도 쓰지 않는다. 필요해지면 그때 추가한다. `value_for_money` 는 Task 20 에서
+ * 제품 지표에 노출하며 포팅했다.
  */
 
 import Decimal from "decimal.js";
@@ -32,6 +32,22 @@ export function quantizeMoney(value: Decimal): Decimal {
 
 export function quantizeRatio(value: Decimal): Decimal {
   return value.toDecimalPlaces(RATIO_DECIMALS, Decimal.ROUND_HALF_UP);
+}
+
+/**
+ * 가성비. 100ml당 가격 1,000원 기준으로 정규화해 값이 너무 작아지지 않게 한다(Task 20).
+ *
+ * 높을수록 좋다. 가격이 0 이하이면 정의되지 않는다.
+ * `src/sooljang/domain/metrics.py::value_for_money` 와 같은 공식이다.
+ */
+export function valueForMoney(
+  rating: Decimal | null,
+  pricePer100ml: Decimal | null,
+): Decimal | null {
+  if (rating === null || pricePer100ml === null || pricePer100ml.lessThanOrEqualTo(0)) {
+    return null;
+  }
+  return quantizeRatio(rating.times(1000).dividedBy(pricePer100ml));
 }
 
 export const BottleState = {

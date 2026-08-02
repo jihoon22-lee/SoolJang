@@ -82,6 +82,8 @@ export interface ProductMetrics {
   discount_rate: string | null;
   total_volume_ml: number;
   inventory_value_at_cost: Money;
+  /** 가성비. 내 평점 ÷ 100ml당 가격을 1,000원 기준으로 정규화. 높을수록 좋다(Task 20). */
+  value_for_money: string | null;
 }
 
 export interface Product {
@@ -445,6 +447,59 @@ export interface StatsSummary {
   discount_rate: string | null;
   avg_personal_rating: string | null;
   vendor_count: number;
+}
+
+// --- 통계 v2: 피벗·시계열·저장뷰 (Task 20) ------------------------------------
+// 이 화면 전체가 온라인 전용이다 — 피벗 집계 자체가 서버 DB 조회를 전제한다(Task 16·17
+// 의 카메라·LLM 호출과 같은 이유).
+
+export type GroupDimension = "category" | "vendor" | "country" | "vintage_decade";
+
+export type PivotMetric =
+  | "bottle_count"
+  | "list_total"
+  | "paid_total"
+  | "avg_price_per_100ml"
+  | "avg_rating"
+  | "discount_rate"
+  | "value_for_money";
+
+export interface PivotRequest {
+  row_dimension: GroupDimension;
+  column_dimension?: GroupDimension | undefined;
+  metric: PivotMetric;
+  category_id?: string | undefined;
+  vendor_id?: string | undefined;
+  purchased_on_min?: string | undefined;
+  purchased_on_max?: string | undefined;
+}
+
+export interface PivotCell {
+  row_key: string | null;
+  row_label: string;
+  column_key: string | null;
+  column_label: string;
+  value: string | null;
+  bottle_count: number;
+}
+
+export interface TimeSeriesPoint {
+  month: string;
+  bottle_count: number;
+  paid_total: Money;
+}
+
+export interface SavedView {
+  id: string;
+  name: string;
+  definition: PivotRequest;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedViewInput {
+  name: string;
+  definition: PivotRequest;
 }
 
 // --- 바코드 -------------------------------------------------------------------

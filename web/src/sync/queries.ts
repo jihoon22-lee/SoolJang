@@ -38,6 +38,7 @@ import {
   quantizeMoney,
   quantizeRatio,
   tallyBottles,
+  valueForMoney,
 } from "@/domain/metrics";
 import { db, type SyncRow } from "@/sync/db";
 
@@ -239,6 +240,7 @@ function toProduct(
   const metrics = computeProductMetrics(assembly.lots, assembly.bottles);
   const categoryId = row.category_id as string | null;
   const producerId = row.producer_id as string | null;
+  const personalRating = row.personal_rating as string | null;
 
   return {
     id: row.id,
@@ -253,7 +255,7 @@ function toProduct(
     abv: (row.abv as string | null) ?? null,
     vintage: (row.vintage as number | null) ?? null,
     age_years: (row.age_years as string | null) ?? null,
-    personal_rating: (row.personal_rating as string | null) ?? null,
+    personal_rating: personalRating ?? null,
     note: (row.note as string | null) ?? null,
     varieties: varietyNamesByProduct.get(row.id) ?? [],
     skus: skus.map((sku) => ({
@@ -280,6 +282,11 @@ function toProduct(
       discount_rate: metrics.prices.discountRate?.toFixed(4) ?? null,
       total_volume_ml: metrics.prices.totalVolumeMl,
       inventory_value_at_cost: metrics.inventoryValueAtCost?.toFixed(2) ?? null,
+      value_for_money:
+        valueForMoney(
+          personalRating ? new Decimal(personalRating) : null,
+          metrics.prices.pricePer100ml,
+        )?.toFixed(4) ?? null,
     },
   };
 }

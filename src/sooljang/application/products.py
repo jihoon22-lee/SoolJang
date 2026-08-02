@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from sooljang.api.errors import NotFoundError
 from sooljang.application.categories import descendant_ids_query, load_tree
-from sooljang.domain.metrics import quantize_money, quantize_ratio
+from sooljang.domain.metrics import quantize_money, quantize_ratio, value_for_money
 from sooljang.infrastructure.database.metrics_sql import product_metrics_query
 from sooljang.infrastructure.database.models import (
     Category,
@@ -277,7 +277,7 @@ async def ensure_category_exists(
         raise NotFoundError(f"카테고리를 찾을 수 없습니다: {category_id}")
 
 
-def metrics_from_row(row: Any) -> dict[str, Any]:
+def metrics_from_row(row: Any, *, personal_rating: Decimal | None = None) -> dict[str, Any]:
     """지표 서브쿼리 행을 응답 스키마 필드로 옮긴다.
 
     LEFT JOIN 이라 구매 건이 없는 제품은 모든 값이 NULL 이다. 병수는 0 으로, 금액은
@@ -286,9 +286,14 @@ def metrics_from_row(row: Any) -> dict[str, Any]:
     금액은 소수 둘째 자리로 정규화한다. SQL 은 `Numeric(20,4)` 로 계산해 나눗셈 결과가
     `12857.142857142857900000` 처럼 길게 나오는데, 그대로 내보내면 화면에서 잘라야 하고
     순수 함수 구현(`domain/metrics.py`)의 출력과도 형식이 달라진다.
+
+    `personal_rating` 은 지표 서브쿼리가 아니라 `Product` 자체의 컬럼이라 이 함수에
+    직접 실려 있지 않다 — 호출부가 넘겨줘야 가성비(`value_for_money`, Task 20)를 계산할
+    수 있다.
     """
     if row is None or getattr(row, "product_id", None) is None:
         return {}
+    price_per_100ml = _money(row.price_per_100ml)
     return {
         "purchased_count": int(row.purchased_count or 0),
         "consumed_count": int(row.finished or 0),
@@ -299,13 +304,14 @@ def metrics_from_row(row: Any) -> dict[str, Any]:
         "sold_count": int(row.sold or 0),
         "avg_list_price": _money(row.avg_list_price),
         "avg_paid_price": _money(row.avg_paid_price),
-        "price_per_100ml": _money(row.price_per_100ml),
+        "price_per_100ml": price_per_100ml,
         "price_per_100ml_paid": _money(row.price_per_100ml_paid),
         "list_total": _money(row.list_total),
         "paid_total": _money(row.paid_total),
         "discount_rate": _ratio(row.discount_rate),
         "total_volume_ml": int(row.total_volume_ml or 0),
         "inventory_value_at_cost": _money(row.inventory_value_at_cost),
+        "value_for_money": value_for_money(personal_rating, price_per_100ml),
     }
 
 

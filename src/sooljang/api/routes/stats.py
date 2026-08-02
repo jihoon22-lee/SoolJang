@@ -11,19 +11,27 @@ from fastapi import APIRouter, Query
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.schemas.stats import (
     CategoryStatOut,
+    PivotCellOut,
+    PivotRequest,
     RankingEntryOut,
     RankingsOut,
     StatsSummaryOut,
+    TimeSeriesPointOut,
 )
 from sooljang.application.stats import (
     DEFAULT_RANKING_LIMIT,
     CategoryStat,
+    PivotCell,
+    PivotFilters,
     RankingEntry,
     Rankings,
     StatsSummary,
+    TimeSeriesPoint,
     get_category_rollup,
+    get_pivot,
     get_rankings,
     get_summary,
+    get_timeseries,
 )
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -105,3 +113,50 @@ async def get_summary_route(session: SessionDep, user_id: UserDep) -> StatsSumma
     """전체 컬렉션 합계. `docs/legacy-schema.md` §5 대조 기준값과 대응한다."""
     summary = await get_summary(session, user_id=user_id)
     return _summary_out(summary)
+
+
+def _pivot_cell_out(cell: PivotCell) -> PivotCellOut:
+    return PivotCellOut(
+        row_key=cell.row_key,
+        row_label=cell.row_label,
+        column_key=cell.column_key,
+        column_label=cell.column_label,
+        value=cell.value,
+        bottle_count=cell.bottle_count,
+    )
+
+
+@router.post("/pivot", response_model=list[PivotCellOut], summary="커스텀 피벗 (Task 20)")
+async def pivot(payload: PivotRequest, session: SessionDep, user_id: UserDep) -> list[PivotCellOut]:
+    """구매 건을 두 축(행·선택적 열)으로 묶어 지표 하나를 계산한다.
+
+    결과는 저장하지 않는다 — 이 화면 하나만을 위한 계산이다. 다시 보고 싶으면
+    `POST /saved-views` 로 이 요청 본문 자체를 저장해 두고 나중에 불러온다.
+    """
+    cells = await get_pivot(
+        session,
+        user_id=user_id,
+        row_dimension=payload.row_dimension,
+        column_dimension=payload.column_dimension,
+        metric=payload.metric,
+        filters=PivotFilters(
+            category_id=payload.category_id,
+            vendor_id=payload.vendor_id,
+            purchased_on_min=payload.purchased_on_min,
+            purchased_on_max=payload.purchased_on_max,
+        ),
+    )
+    return [_pivot_cell_out(cell) for cell in cells]
+
+
+def _timeseries_point_out(point: TimeSeriesPoint) -> TimeSeriesPointOut:
+    return TimeSeriesPointOut(
+        month=point.month, bottle_count=point.bottle_count, paid_total=point.paid_total
+    )
+
+
+@router.get("/timeseries", response_model=list[TimeSeriesPointOut], summary="월별 지출·구매 병수")
+async def timeseries(session: SessionDep, user_id: UserDep) -> list[TimeSeriesPointOut]:
+    """구매일이 있는 구매 건만 월별로 묶는다. 구매일 미기록 건은 시계열에 놓을 위치가 없다."""
+    points = await get_timeseries(session, user_id=user_id)
+    return [_timeseries_point_out(point) for point in points]

@@ -5,9 +5,11 @@
 """
 
 import uuid
+from datetime import date
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RankingEntryOut(BaseModel):
@@ -49,3 +51,44 @@ class StatsSummaryOut(BaseModel):
     discount_rate: Decimal | None
     avg_personal_rating: Decimal | None
     vendor_count: int
+
+
+# --- 통계 v2: 피벗·시계열 (Task 20) -----------------------------------------
+
+GroupDimensionIn = Literal["category", "vendor", "country", "vintage_decade"]
+PivotMetricIn = Literal[
+    "bottle_count",
+    "list_total",
+    "paid_total",
+    "avg_price_per_100ml",
+    "avg_rating",
+    "discount_rate",
+    "value_for_money",
+]
+
+
+class PivotRequest(BaseModel):
+    """피벗 정의. 저장된 뷰(`SavedViewIn.definition`)에도 이 모양 그대로 넣는다."""
+
+    row_dimension: GroupDimensionIn
+    column_dimension: GroupDimensionIn | None = None
+    metric: PivotMetricIn
+    category_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = None
+    purchased_on_min: date | None = None
+    purchased_on_max: date | None = None
+
+
+class PivotCellOut(BaseModel):
+    row_key: str | None
+    row_label: str
+    column_key: str | None
+    column_label: str
+    value: Decimal | None
+    bottle_count: int
+
+
+class TimeSeriesPointOut(BaseModel):
+    month: str = Field(description="YYYY-MM")
+    bottle_count: int
+    paid_total: Decimal | None

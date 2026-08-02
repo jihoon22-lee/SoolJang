@@ -6,6 +6,7 @@ import {
   categoriesApi,
   fetchHealth,
   productsApi,
+  savedViewsApi,
 } from "@/api/client";
 import type { HealthStatus, ProblemDetail } from "@/api/types";
 
@@ -195,5 +196,24 @@ describe("attachmentsApi.create", () => {
     const form = init.body as FormData;
     expect(form.get("tasting_session_id")).toBe("t1");
     expect(form.get("bottle_id")).toBeNull();
+  });
+});
+
+describe("savedViewsApi.update", () => {
+  it("PATCH 로 바뀐 필드만 보낸다", async () => {
+    const spy = stubFetch(200, {
+      id: "sv1",
+      name: "새 이름",
+      definition: { row_dimension: "vendor", metric: "bottle_count" },
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-02T00:00:00Z",
+    });
+
+    await savedViewsApi.update("sv1", { name: "새 이름" });
+
+    const { url, init } = firstCall(spy);
+    expect(url).toContain("/saved-views/sv1");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ name: "새 이름" });
   });
 });
