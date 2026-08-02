@@ -1,8 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Product, ProductMetrics, Purchase } from "@/api/types";
+import type { Bottle, Product, ProductMetrics, Purchase } from "@/api/types";
 import { ProductDetail } from "@/components/ProductDetail";
+import { renderWithQuery } from "@/testing";
 
 const metrics: ProductMetrics = {
   purchased_count: 3,
@@ -87,18 +88,36 @@ const purchases: Purchase[] = [
 
 function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
   const onBack = vi.fn();
+  const onEdit = vi.fn();
   const onDelete = vi.fn();
-  render(
+  const onAddPurchase = vi.fn();
+  const onDeletePurchase = vi.fn();
+  const onSplitPurchase = vi.fn();
+  const onAddSku = vi.fn();
+  renderWithQuery(
     <ProductDetail
       product={product}
       purchases={purchases}
+      bottles={[]}
+      offline={false}
       onBack={onBack}
+      onEdit={onEdit}
       onDelete={onDelete}
       deleting={false}
+      onAddPurchase={onAddPurchase}
+      addingPurchase={false}
+      addPurchaseError={null}
+      onDeletePurchase={onDeletePurchase}
+      deletingPurchaseId={null}
+      onSplitPurchase={onSplitPurchase}
+      splittingPurchaseId={null}
+      splitError={null}
+      onAddSku={onAddSku}
+      addingSku={false}
       {...overrides}
     />,
   );
-  return { onBack, onDelete };
+  return { onBack, onEdit, onDelete, onAddPurchase, onDeletePurchase, onSplitPurchase, onAddSku };
 }
 
 describe("ProductDetail", () => {
@@ -167,7 +186,8 @@ describe("ProductDetail", () => {
   it("구매 기록이 없으면 구매 건 분리를 안내한다", () => {
     setup({ purchases: [] });
 
-    expect(screen.getByRole("status")).toHaveTextContent("구매 건을 각각 추가");
+    // 병 섹션도 비어 있으면 같은 role("status")의 안내를 띄운다 — 텍스트로 구분한다.
+    expect(screen.getByText(/구매 건을 각각 추가/)).toBeInTheDocument();
   });
 
   it("목록으로 돌아간다", async () => {
@@ -181,7 +201,8 @@ describe("ProductDetail", () => {
   it("삭제를 알린다", async () => {
     const { onDelete } = setup();
 
-    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+    // 구매 행에도 "삭제" 버튼이 있다 — 맨 위(제품 자체) 버튼이 DOM 순서상 항상 먼저다.
+    await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[0] as Element);
 
     expect(onDelete).toHaveBeenCalled();
   });
@@ -190,5 +211,151 @@ describe("ProductDetail", () => {
     setup({ deleting: true });
 
     expect(screen.getByRole("button", { name: "삭제 중…" })).toBeDisabled();
+  });
+
+  it("수정 버튼을 누르면 알린다", async () => {
+    const { onEdit } = setup();
+
+    await userEvent.click(screen.getByRole("button", { name: "수정" }));
+
+    expect(onEdit).toHaveBeenCalled();
+  });
+
+  describe("병 섹션", () => {
+    const bottles: Bottle[] = [
+      {
+        id: "b1",
+        purchase_id: "pu1",
+        label_no: 1,
+        status: "unopened",
+        opened_on: null,
+        finished_on: null,
+        remaining_ml: null,
+        storage_location: null,
+        note: null,
+      },
+      {
+        id: "b2",
+        purchase_id: "pu1",
+        label_no: 2,
+        status: "finished",
+        opened_on: "2026-02-01",
+        finished_on: "2026-02-10",
+        remaining_ml: 0,
+        storage_location: null,
+        note: null,
+      },
+    ];
+
+    it("병이 없으면 안내한다", () => {
+      setup({ bottles: [] });
+
+      expect(screen.getByText(/등록된 병이 없습니다/)).toBeInTheDocument();
+    });
+
+    it("병 목록을 보여주고, 재고(미개봉·개봉)를 먼저 보여준다", () => {
+      setup({ bottles });
+
+      expect(screen.getByText("병 (2개)")).toBeInTheDocument();
+      const labels = screen.getAllByText(/\d번 병/).map((el) => el.textContent);
+      expect(labels).toEqual(["1번 병", "2번 병"]);
+    });
+
+    it("병을 누르면 펼쳐져 상세 패널이 나온다", async () => {
+      setup({ bottles });
+
+      await userEvent.click(screen.getByRole("button", { name: /1번 병/ }));
+
+      expect(screen.getByText("개봉일")).toBeInTheDocument();
+    });
+  });
+
+  describe("구매 관리", () => {
+    it("오프라인이면 구매 추가·삭제·분할 버튼을 숨긴다", () => {
+      setup({ offline: true });
+
+      expect(screen.queryByRole("button", { name: "구매 추가" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "분할" })).not.toBeInTheDocument();
+      // 제품 자체의 "삭제" 버튼(항상 보임)만 남고, 구매 행별 "삭제" 버튼은 없다.
+      expect(screen.getAllByRole("button", { name: "삭제" })).toHaveLength(1);
+      expect(screen.getByText(/온라인일 때만/)).toBeInTheDocument();
+    });
+
+    it("구매 추가 폼을 열고 제출하면 입력값을 그대로 넘긴다", async () => {
+      const { onAddPurchase } = setup();
+
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.clear(screen.getByLabelText("병수"));
+      await userEvent.type(screen.getByLabelText("병수"), "3");
+      await userEvent.type(screen.getByLabelText("구매처"), "새 구매처");
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+
+      expect(onAddPurchase).toHaveBeenCalledWith(
+        expect.objectContaining({ skuId: "s1", quantity: 3, vendorName: "새 구매처" }),
+      );
+    });
+
+    it("구매 건 삭제는 확인을 받은 뒤에만 호출한다", async () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+      const { onDeletePurchase } = setup();
+
+      // index 0 은 제품 자체의 "삭제" 버튼 — 구매 행(pu1)의 삭제는 index 1 이다.
+      await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[1] as Element);
+      expect(onDeletePurchase).not.toHaveBeenCalled();
+
+      confirmSpy.mockReturnValue(true);
+      await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[1] as Element);
+      expect(onDeletePurchase).toHaveBeenCalledWith("pu1");
+
+      confirmSpy.mockRestore();
+    });
+
+    it("병수가 1개인 구매 건은 분할 버튼이 없다", () => {
+      setup();
+
+      // purchases: pu1(quantity 2), pu2(quantity 1) — 분할 버튼은 pu1 행에만 있어야 한다.
+      expect(screen.getAllByRole("button", { name: "분할" })).toHaveLength(1);
+    });
+
+    it("분할 폼을 열고 병수 합이 안 맞으면 에러를 보여준다", async () => {
+      const { onSplitPurchase } = setup();
+
+      await userEvent.click(screen.getAllByRole("button", { name: "분할" })[0] as Element);
+      const quantityInputs = screen.getAllByLabelText("병수");
+      // 첫 입력은 "구매 추가" 폼이 닫혀 있으므로 분할 폼의 두 병수 입력만 있다.
+      await userEvent.clear(quantityInputs[0] as Element);
+      await userEvent.type(quantityInputs[0] as Element, "5");
+
+      await userEvent.click(screen.getByRole("button", { name: "분할 실행" }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent("병수 합이");
+      expect(onSplitPurchase).not.toHaveBeenCalled();
+    });
+
+    it("분할 폼 제출이 성공하면 콜백을 호출한다", async () => {
+      const { onSplitPurchase } = setup();
+
+      await userEvent.click(screen.getAllByRole("button", { name: "분할" })[0] as Element);
+      await userEvent.click(screen.getByRole("button", { name: "분할 실행" }));
+
+      expect(onSplitPurchase).toHaveBeenCalledWith("pu1", [
+        { quantity: "1", vendorName: "" },
+        { quantity: "1", vendorName: "" },
+      ]);
+    });
+
+    it("규격이 없는 제품은 구매 추가 대신 규격 추가 폼을 보여준다", async () => {
+      const { onAddSku } = setup({
+        product: { ...product, skus: [] },
+      });
+
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      expect(screen.getByText(/먼저 규격을 등록하세요/)).toBeInTheDocument();
+
+      await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+      await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+
+      expect(onAddSku).toHaveBeenCalledWith(700);
+    });
   });
 });

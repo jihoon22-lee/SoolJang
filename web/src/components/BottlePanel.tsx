@@ -52,7 +52,7 @@ async function transitionFields(
   }
 }
 
-const STATUS_LABELS: Record<BottleStatus, string> = {
+export const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
   open: "개봉",
   finished: "소진",

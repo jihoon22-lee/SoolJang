@@ -523,6 +523,38 @@ export async function getBottles(params: {
   }));
 }
 
+/**
+ * 한 제품의 병만 모아 반환한다. "병 관리" 가 별도 탭이던 시절엔 전체 병을 평면 목록으로
+ * 보여줬는데, 무슨 술인지 알 수 없다는 문제가 있었다 — 제품 상세 안으로 통합하면서
+ * 애초에 제품 문맥 안에서만 병을 보여주게 됐다(Task 22). `getPurchasesForProduct` 와
+ * 같은 sku → purchase → bottle 조인 패턴을 그대로 쓰되 방향만 반대다.
+ */
+export async function getBottlesForProduct(productId: string): Promise<Bottle[]> {
+  const [skus, purchases, bottles] = await Promise.all([
+    liveTable("sku"),
+    liveTable("purchase"),
+    liveTable("bottle"),
+  ]);
+  const skuIds = new Set(skus.filter((s) => s.product_id === productId).map((s) => s.id));
+  const purchaseIds = new Set(
+    purchases.filter((p) => skuIds.has(p.sku_id as string)).map((p) => p.id),
+  );
+
+  return bottles
+    .filter((row) => purchaseIds.has(row.purchase_id as string))
+    .map((row) => ({
+      id: row.id,
+      purchase_id: row.purchase_id as string,
+      label_no: row.label_no as number,
+      status: row.status as Bottle["status"],
+      opened_on: (row.opened_on as string | null) ?? null,
+      finished_on: (row.finished_on as string | null) ?? null,
+      remaining_ml: (row.remaining_ml as number | null) ?? null,
+      storage_location: (row.storage_location as string | null) ?? null,
+      note: (row.note as string | null) ?? null,
+    }));
+}
+
 // --- 구매처 -----------------------------------------------------------------
 
 export async function getVendors(): Promise<Vendor[]> {

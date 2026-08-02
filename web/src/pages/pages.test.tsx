@@ -539,6 +539,143 @@ describe("ProductsPage", () => {
     expect(screen.getByRole("button", { name: "← 목록으로" })).toBeInTheDocument();
   });
 
+  it("제품 상세에서 수정하면 필드가 갱신된다(온라인)", async () => {
+    await seedProductWithPurchase("p1", "수정 전 이름");
+    const { calls } = stubRoutes([
+      { match: "/products/p1", method: "PATCH", body: { ...product("p1", "수정 후 이름") } },
+    ]);
+
+    renderProductsPage();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "수정 전 이름" }))[0] as Element,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "수정" }));
+
+    const nameInput = await screen.findByLabelText("이름 *");
+    expect(nameInput).toHaveValue("수정 전 이름");
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, "수정 후 이름");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const patchCall = calls.find((call) => call.method === "PATCH");
+      expect(patchCall?.body).toMatchObject({ name: "수정 후 이름" });
+    });
+    // 저장 후에는 수정 폼이 아니라 상세로 돌아간다.
+    expect(await screen.findByRole("button", { name: "수정" })).toBeInTheDocument();
+  });
+
+  it("구매 추가 폼을 제출하면 새 구매 건을 만든다", async () => {
+    await seedProductWithPurchase("p1", "구매 추가 대상");
+    const { calls } = stubRoutes([
+      { match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } },
+    ]);
+
+    renderProductsPage();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "구매 추가 대상" }))[0] as Element,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "구매 추가" }));
+    await userEvent.clear(screen.getByLabelText("병수"));
+    await userEvent.type(screen.getByLabelText("병수"), "3");
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+
+    await waitFor(() => {
+      const call = calls.find((c) => c.method === "POST" && c.url.includes("/purchases"));
+      expect(call?.body).toMatchObject({ quantity: 3, vendor_id: null });
+    });
+  });
+
+  it("구매 건 삭제를 확인하면 삭제 요청을 보낸다", async () => {
+    await seedProductWithPurchase("p1", "구매 삭제 대상");
+    const { calls } = stubRoutes([
+      { match: "/purchases/p1-pu", method: "DELETE", status: 204, body: null },
+    ]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderProductsPage();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "구매 삭제 대상" }))[0] as Element,
+    );
+    // 상단 "삭제"(제품 자체)와 구별하려고 구매 행 안에서 버튼을 찾는다.
+    const table = await screen.findByRole("table");
+    await userEvent.click(within(table).getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/purchases/p1-pu"))).toBe(
+        true,
+      );
+    });
+
+    vi.restoreAllMocks();
+  });
+
+  it("구매 건 분할 폼을 제출하면 분할 요청을 보낸다", async () => {
+    // 분할 버튼은 quantity > 1 일 때만 있다 — 병 2개로 시딩한다.
+    await seedProduct("p1", "구매 분할 대상");
+    await db.sku.put(row({ id: "p1-sku", product_id: "p1", volume_ml: 700 }));
+    await db.purchase.put(row({ id: "p1-pu", sku_id: "p1-sku", quantity: 2 }));
+    const { calls } = stubRoutes([
+      { match: "/purchases/p1-pu:split", method: "POST", body: [{ id: "a" }, { id: "b" }] },
+    ]);
+
+    renderProductsPage();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "구매 분할 대상" }))[0] as Element,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "분할" }));
+    await userEvent.click(screen.getByRole("button", { name: "분할 실행" }));
+
+    await waitFor(() => {
+      const call = calls.find((c) => c.method === "POST" && c.url.includes(":split"));
+      expect(call?.body).toEqual({
+        parts: [
+          { quantity: 1, vendor_id: null },
+          { quantity: 1, vendor_id: null },
+        ],
+      });
+    });
+  });
+
+  it("규격이 없는 제품은 규격 추가 후에야 구매를 추가할 수 있다", async () => {
+    await seedProduct("p1", "규격 없는 술");
+    const { calls } = stubRoutes([
+      { match: "/products/p1/skus", method: "POST", body: { id: "sku-new" } },
+    ]);
+
+    renderProductsPage();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "규격 없는 술" }))[0] as Element,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "구매 추가" }));
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "500");
+    await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+
+    await waitFor(() => {
+      const call = calls.find((c) => c.method === "POST" && c.url.includes("/skus"));
+      expect(call?.body).toMatchObject({ volume_ml: 500 });
+    });
+  });
+
+  it("병 섹션에서 병을 펼치면 상태 전이 버튼이 나온다", async () => {
+    await seedProductWithPurchase("p1", "병 있는 대상");
+    stubRoutes([
+      { match: "/bottles/p1-b1/tastings", body: [] },
+      {
+        match: "/tastings/summary",
+        body: { session_count: 0, average_rating: null, rating_change: null, total_poured_ml: 0 },
+      },
+    ]);
+
+    renderProductsPage();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "병 있는 대상" }))[0] as Element,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /1번 병/ }));
+
+    expect(await screen.findByRole("button", { name: "개봉" })).toBeInTheDocument();
+  });
+
   it("상세에서 목록으로 돌아온다", async () => {
     await seedProductWithPurchase("p1", "왕복 대상");
 
