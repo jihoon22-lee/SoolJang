@@ -8,20 +8,16 @@
  * "제품 상세로 이동하면 뒤로가기로 목록에 돌아온다"·"통계에서 제품/주종을 눌러 다른 탭으로
  * 점프한다" 두 가지 요구를 만족해야 해서, `products` 뷰만 하위 상태(선택된 제품 또는 주종
  * 필터)를 가진다.
+ *
+ * `bottles` 뷰가 없는 이유: "병 관리"가 원래 별도 탭이었는데 전체 병을 술 구분 없이 평면
+ * 목록으로 보여줘 무슨 술인지 알 수 없다는 문제가 있었다(사용자 실사용 보고) — 제품 상세
+ * 화면 안으로 통합했다(`ProductDetail` 의 "병" 섹션).
  */
 
-export type View =
-  | "products"
-  | "bottles"
-  | "categories"
-  | "stats"
-  | "import"
-  | "settings"
-  | "status";
+export type View = "products" | "categories" | "stats" | "import" | "settings" | "status";
 
 const VIEW_IDS: readonly View[] = [
   "products",
-  "bottles",
   "categories",
   "stats",
   "import",

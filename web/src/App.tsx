@@ -5,7 +5,6 @@ import { ApiError, authApi, setUnauthorizedHandler } from "@/api/client";
 import type { User } from "@/api/types";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
-import { BottlesPage } from "@/pages/BottlesPage";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
@@ -17,7 +16,6 @@ import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
-  { id: "bottles", label: "병 관리" },
   { id: "categories", label: "주종 관리" },
   { id: "stats", label: "통계" },
   { id: "import", label: "가져오기" },
@@ -151,7 +149,6 @@ export function App() {
               initialCategoryId={route.categoryId}
             />
           )}
-          {route.view === "bottles" && <BottlesPage />}
           {route.view === "categories" && <CategoriesPage />}
           {route.view === "stats" && <StatsPage />}
           {route.view === "import" && <ImportPage />}

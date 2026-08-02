@@ -33,7 +33,7 @@ describe("parseHash", () => {
   });
 
   it("products 가 아닌 뷰에는 productId/categoryId 를 붙이지 않는다", () => {
-    expect(parseHash("#bottles/should-be-ignored")).toEqual({ view: "bottles" });
+    expect(parseHash("#categories/should-be-ignored")).toEqual({ view: "categories" });
   });
 
   it("선행 # 이 없어도 동작한다", () => {

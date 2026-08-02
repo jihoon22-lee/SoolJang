@@ -110,12 +110,9 @@ describe("App", () => {
     expect(await screen.findByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
   });
 
-  it("병 관리·통계·가져오기 화면으로도 전환된다", async () => {
+  it("통계·가져오기 화면으로도 전환된다", async () => {
     stubAll();
     renderWithQuery(<App />);
-
-    await userEvent.click(await screen.findByRole("link", { name: "병 관리" }));
-    expect(await screen.findByRole("heading", { name: "병 관리" })).toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole("link", { name: "통계" }));
     expect(await screen.findByRole("heading", { name: "통계" })).toBeInTheDocument();

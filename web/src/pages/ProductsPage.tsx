@@ -2,16 +2,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
-import type { ProductFilters, SortKey, User } from "@/api/types";
+import type { Product, ProductFilters, SortKey, User } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { LabelOcrPanel } from "@/components/LabelOcrPanel";
-import { ProductDetail } from "@/components/ProductDetail";
+import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/components/ProductDetail";
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
 import { ProductList } from "@/components/ProductList";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import {
+  getBottlesForProduct,
   getCategoryTree,
   getProduct,
   getProducts,
@@ -236,10 +237,27 @@ export function ProductsPage({
   );
 }
 
+/** 제품 값을 `ProductForm` 의 edit 모드 프리필 형식으로 바꾼다. */
+function valuesFromProduct(product: Product): Partial<ProductFormValues> {
+  return {
+    name: product.name,
+    categoryId: product.category_id ?? "",
+    abv: product.abv ?? "",
+    vintage: product.vintage !== null ? String(product.vintage) : "",
+    personalRating: product.personal_rating ?? "",
+    varietyNames: product.varieties.join(", "),
+    note: product.note ?? "",
+  };
+}
+
 function ProductDetailView({ productId, onBack }: { productId: string; onBack: () => void }) {
-  const { triggerSync } = useSyncStatus();
+  const { state, triggerSync } = useSyncStatus();
+  const offline = state === "offline";
   const product = useLiveQuery(() => getProduct(productId), [productId]);
   const purchases = useLiveQuery(() => getPurchasesForProduct(productId), [productId]);
+  const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
+  const categoryTree = useLiveQuery(() => getCategoryTree(), []);
+  const [editing, setEditing] = useState(false);
 
   const remove = useMutation({
     mutationFn: () => enqueue({ entity: "product", op: "delete", entityId: productId, fields: {} }),
@@ -247,6 +265,85 @@ function ProductDetailView({ productId, onBack }: { productId: string; onBack: (
       triggerSync();
       onBack();
     },
+  });
+
+  const updateProduct = useMutation({
+    mutationFn: async (values: ProductFormValues) => {
+      const fields = {
+        name: values.name.trim(),
+        category_id: values.categoryId || null,
+        abv: values.abv || null,
+        vintage: values.vintage ? Number(values.vintage) : null,
+        personal_rating: values.personalRating || null,
+        note: values.note || null,
+      };
+
+      if (!offline) {
+        // variety_names 는 오프라인 제네릭 디스패치가 지원하지 않는다 — 온라인 전용으로 보낸다.
+        await productsApi.update(productId, {
+          ...fields,
+          variety_names: splitVarieties(values.varietyNames),
+        });
+        triggerSync();
+        return;
+      }
+
+      const current = await db.product.get(productId);
+      if (!current) throw new Error("제품을 찾을 수 없습니다");
+      await enqueue({
+        entity: "product",
+        op: "update",
+        entityId: productId,
+        baseUpdatedAt: current.updated_at as string,
+        fields,
+        optimisticRow: { ...current, ...fields, updated_at: new Date().toISOString() },
+      });
+    },
+    onSuccess: () => setEditing(false),
+  });
+
+  // 구매 추가·삭제·분할·규격 추가는 서버 상태 기준으로 병 라벨을 재배치하므로 온라인
+  // 전용이다(ProductDetail 이 오프라인이면 버튼 자체를 숨긴다 — 여기 mutationFn 은 항상
+  // 온라인 호출을 가정한다).
+  const addPurchase = useMutation({
+    mutationFn: async (input: AddPurchaseInput) => {
+      const vendorId = input.vendorName ? await resolveVendorId(input.vendorName) : null;
+      await purchasesApi.create({
+        sku_id: input.skuId,
+        quantity: input.quantity,
+        vendor_id: vendorId,
+        purchased_on: input.purchasedOn || null,
+        unit_list_price: input.unitListPrice || null,
+        unit_paid_price: input.unitPaidPrice || null,
+      });
+    },
+    onSuccess: () => triggerSync(),
+  });
+
+  const deletePurchase = useMutation({
+    mutationFn: (purchaseId: string) => purchasesApi.remove(purchaseId),
+    onSuccess: () => triggerSync(),
+  });
+
+  const splitPurchase = useMutation({
+    mutationFn: async ({ purchaseId, parts }: { purchaseId: string; parts: SplitPart[] }) => {
+      const resolvedParts = await Promise.all(
+        parts.map(async (part) => {
+          const vendorName = part.vendorName.trim();
+          return {
+            quantity: Number(part.quantity),
+            vendor_id: vendorName ? await resolveVendorId(vendorName) : null,
+          };
+        }),
+      );
+      await purchasesApi.split(purchaseId, resolvedParts);
+    },
+    onSuccess: () => triggerSync(),
+  });
+
+  const addSku = useMutation({
+    mutationFn: (volumeMl: number) => productsApi.addSku(productId, volumeMl),
+    onSuccess: () => triggerSync(),
   });
 
   if (product === undefined) {
@@ -266,13 +363,42 @@ function ProductDetailView({ productId, onBack }: { productId: string; onBack: (
     );
   }
 
+  if (editing) {
+    return (
+      <ProductForm
+        mode="edit"
+        categories={categoryTree?.items ?? []}
+        submitting={updateProduct.isPending}
+        error={updateProduct.error}
+        onSubmit={(values) => updateProduct.mutate(values)}
+        onCancel={() => setEditing(false)}
+        initialValues={valuesFromProduct(product)}
+      />
+    );
+  }
+
   return (
     <ProductDetail
       product={product}
       purchases={purchases ?? []}
+      bottles={bottles ?? []}
+      offline={offline}
       onBack={onBack}
+      onEdit={() => setEditing(true)}
       onDelete={() => remove.mutate()}
       deleting={remove.isPending}
+      onAddPurchase={(input) => addPurchase.mutate(input)}
+      addingPurchase={addPurchase.isPending}
+      addPurchaseError={addPurchase.error}
+      onDeletePurchase={(purchaseId) => deletePurchase.mutate(purchaseId)}
+      deletingPurchaseId={deletePurchase.isPending ? (deletePurchase.variables ?? null) : null}
+      onSplitPurchase={(purchaseId, parts) => splitPurchase.mutate({ purchaseId, parts })}
+      splittingPurchaseId={
+        splitPurchase.isPending ? (splitPurchase.variables?.purchaseId ?? null) : null
+      }
+      splitError={splitPurchase.error}
+      onAddSku={(volumeMl) => addSku.mutate(volumeMl)}
+      addingSku={addSku.isPending}
     />
   );
 }
