@@ -100,6 +100,24 @@ class TestBottleTransitions:
         assert response.json()["status"] == "open"
         assert response.json()["finished_on"] is None
 
+    def test_개봉을_미개봉으로_되돌린다(self, api_client: TestClient, prefix: str) -> None:
+        setup = _create_product_with_bottle(api_client, prefix)
+        bottle_id = setup["bottles"][0]["id"]
+
+        api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={})
+        response = api_client.post(f"{prefix}/bottles/{bottle_id}:unopen")
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "unopened"
+        assert response.json()["opened_on"] is None
+        assert response.json()["remaining_ml"] is None
+
+    def test_미개봉_병을_되돌리면_409(self, api_client: TestClient, prefix: str) -> None:
+        setup = _create_product_with_bottle(api_client, prefix)
+        bottle_id = setup["bottles"][0]["id"]
+
+        response = api_client.post(f"{prefix}/bottles/{bottle_id}:unopen")
+        assert response.status_code == 409
+
     def test_없는_병은_404(self, api_client: TestClient, prefix: str) -> None:
         missing = "00000000-0000-0000-0000-0000000000ff"
         assert api_client.post(f"{prefix}/bottles/{missing}:open", json={}).status_code == 404

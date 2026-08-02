@@ -23,6 +23,7 @@ from sooljang.application.tastings import (
     record_tasting,
     reopen_bottle,
     summarize_tastings,
+    unopen_bottle,
     validate_rating,
 )
 from sooljang.infrastructure.database.models import (
@@ -196,6 +197,28 @@ class TestReopen:
     async def test_미개봉_병은_되돌릴_수_없다(self, session: AsyncSession, bottle: Bottle) -> None:
         with pytest.raises(BottleTransitionError, match="되돌릴 상태가 없습니다"):
             await reopen_bottle(session, bottle)
+
+
+class TestUnopen:
+    async def test_개봉을_미개봉으로_되돌린다(self, session: AsyncSession, bottle: Bottle) -> None:
+        # 실수로 개봉을 눌렀을 때를 위한 되돌리기다.
+        await open_bottle(session, bottle, opened_on=TODAY, remaining_ml=500)
+        await unopen_bottle(session, bottle)
+
+        assert bottle.status == BottleStatus.UNOPENED
+        assert bottle.opened_on is None
+        assert bottle.remaining_ml is None
+
+    async def test_미개봉_병은_되돌릴_수_없다(self, session: AsyncSession, bottle: Bottle) -> None:
+        with pytest.raises(BottleTransitionError, match="개봉 상태만"):
+            await unopen_bottle(session, bottle)
+
+    async def test_소진한_병은_되돌릴_수_없다(self, session: AsyncSession, bottle: Bottle) -> None:
+        # 소진·증여·판매까지 간 병은 reopen 으로 먼저 개봉해야 한다 — 넘기거나 마신 기록을
+        # 조용히 지우면 안 된다.
+        await finish_bottle(session, bottle, finished_on=TODAY)
+        with pytest.raises(BottleTransitionError, match="개봉 상태만"):
+            await unopen_bottle(session, bottle)
 
 
 class TestRecordTasting:
