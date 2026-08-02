@@ -26,6 +26,9 @@ type Listener = (state: SyncEngineState) => void;
 //: 풀이 절대 끝나지 않는 버그가 있어도 탭이 멈추지 않게 하는 안전장치.
 const MAX_PULL_PAGES = 50;
 const POLL_INTERVAL_MS = 60_000;
+//: outbox 쓰기 직후 몇 번 더 이어지는 경우(연속 클릭, 낙관적 갱신 뒤 결과 반영)를 한
+//: triggerSync 로 묶는다. 값 자체보다 "즉시 발화하지 않는다"는 점이 성능에 중요하다.
+const OUTBOX_DEBOUNCE_MS = 300;
 
 class SyncEngine {
   private syncing = false;
@@ -33,11 +36,12 @@ class SyncEngine {
   private readonly listeners = new Set<Listener>();
   private lastSyncedAt: string | null = null;
   private lastError: string | null = null;
+  private outboxChangeTimer: ReturnType<typeof setTimeout> | null = null;
 
   start(): void {
     if (this.started) return;
     this.started = true;
-    syncEvents.addEventListener(OUTBOX_CHANGED, () => void this.triggerSync());
+    syncEvents.addEventListener(OUTBOX_CHANGED, () => this.scheduleSyncSoon());
     window.addEventListener("online", () => void this.triggerSync());
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") void this.triggerSync();
@@ -52,6 +56,21 @@ class SyncEngine {
     this.listeners.add(listener);
     listener(this.snapshot());
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * outbox 변경을 짧게 묶어 한 번만 동기화한다.
+   *
+   * 병 하나를 소진 처리하는 클릭 한 번이 outbox 쓰기 하나로 끝나지 않는다 — 낙관적 갱신 →
+   * 서버 응답 반영 → 델타 풀이 뒤이어 각자 outbox/테이블을 건드릴 수 있다. 매번 즉시
+   * `triggerSync` 를 부르면 그 사이 자잘한 네트워크 왕복이 겹친다.
+   */
+  private scheduleSyncSoon(): void {
+    if (this.outboxChangeTimer !== null) return;
+    this.outboxChangeTimer = setTimeout(() => {
+      this.outboxChangeTimer = null;
+      void this.triggerSync();
+    }, OUTBOX_DEBOUNCE_MS);
   }
 
   async triggerSync(): Promise<void> {
@@ -108,27 +127,37 @@ class SyncEngine {
 
     const response = await syncApi.batch(operations);
 
-    for (let i = 0; i < response.results.length; i += 1) {
-      const result = response.results[i];
-      const entry = pending[i];
-      if (!result || !entry) continue;
+    // 결과 적용을 트랜잭션 하나로 묶는다. 낱개로 `put`/`delete` 하면 각각이 별도
+    // 트랜잭션이 되어 `useLiveQuery` 구독자가 항목 수만큼 재평가된다 — 병 하나를 소진
+    // 처리하는 클릭 한 번에도 405개 제품 지표가 여러 번 다시 계산돼 프레임이 끊겼다.
+    await db.transaction(
+      "rw",
+      [db.outbox, ...SYNC_ENTITIES.map((entity) => db.table(entity))],
+      async () => {
+        for (let i = 0; i < response.results.length; i += 1) {
+          const result = response.results[i];
+          const entry = pending[i];
+          if (!result || !entry) continue;
 
-      if (result.status === "failed") {
-        await db.outbox.update(entry.idempotency_key, {
-          status: "failed",
-          error: result.detail ?? "동기화에 실패했습니다",
-        });
-        // head-of-line blocking — 이 항목 이후는 큐에 그대로 남겨 다음 시도를 기다린다.
-        break;
-      }
+          if (result.status === "failed") {
+            await db.outbox.update(entry.idempotency_key, {
+              status: "failed",
+              error: result.detail ?? "동기화에 실패했습니다",
+            });
+            // head-of-line blocking — 이 항목 이후는 큐에 그대로 남겨 다음 시도를 기다린다.
+            break;
+          }
 
-      // applied 또는 conflict — 서버가 처리를 끝냈다. conflict 면 스냅샷은 "패배한" 클라이언트
-      // 값이 아니라 서버가 채택한 현재 값이다(§5.4) — 그대로 로컬 미러에 확정 반영한다.
-      if (result.snapshot) {
-        await db.table(entry.entity).put(result.snapshot as SyncRow);
-      }
-      await db.outbox.delete(entry.idempotency_key);
-    }
+          // applied 또는 conflict — 서버가 처리를 끝냈다. conflict 면 스냅샷은 "패배한"
+          // 클라이언트 값이 아니라 서버가 채택한 현재 값이다(§5.4) — 그대로 로컬 미러에
+          // 확정 반영한다.
+          if (result.snapshot) {
+            await db.table(entry.entity).put(result.snapshot as SyncRow);
+          }
+          await db.outbox.delete(entry.idempotency_key);
+        }
+      },
+    );
   }
 
   private async pullDeltas(): Promise<void> {
@@ -138,13 +167,21 @@ class SyncEngine {
       const pending = await pendingEntityIds();
       const response = await syncApi.pull(cursor);
 
-      for (const entity of SYNC_ENTITIES) {
-        const rows = (response.changes[entity] ?? []) as SyncRow[];
-        for (const row of rows) {
-          if (pending.has(row.id)) continue;
-          await db.table(entity).put(row);
-        }
-      }
+      // 페이지 하나의 모든 테이블 쓰기를 트랜잭션 하나로 묶는다 — 이유는 `flushOutbox` 와
+      // 같다(위 주석 참고).
+      await db.transaction(
+        "rw",
+        SYNC_ENTITIES.map((entity) => db.table(entity)),
+        async () => {
+          for (const entity of SYNC_ENTITIES) {
+            const rows = (response.changes[entity] ?? []) as SyncRow[];
+            for (const row of rows) {
+              if (pending.has(row.id)) continue;
+              await db.table(entity).put(row);
+            }
+          }
+        },
+      );
 
       if (response.next_cursor) {
         cursor = response.next_cursor;

@@ -161,14 +161,16 @@ describe("BottlePanel", () => {
       expect(screen.getByRole("button", { name: "증여" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "판매" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "소진" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "개봉 취소" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "되돌리기" })).not.toBeInTheDocument();
     });
 
-    it("개봉 상태면 소진·증여·판매가 있다", () => {
+    it("개봉 상태면 소진·개봉 취소·증여·판매가 있다", () => {
       stubTastings("b1");
       renderWithQuery(<BottlePanel bottle={bottle({ status: "open" })} />);
 
       expect(screen.getByRole("button", { name: "소진" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "개봉 취소" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "증여" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "판매" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "개봉" })).not.toBeInTheDocument();
@@ -182,6 +184,7 @@ describe("BottlePanel", () => {
       expect(screen.getByRole("button", { name: "되돌리기" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "개봉" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "소진" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "개봉 취소" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "증여" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "판매" })).not.toBeInTheDocument();
     });
@@ -240,6 +243,22 @@ describe("BottlePanel", () => {
         expect(updated?.status).toBe("open");
         expect(updated?.finished_on).toBeNull();
         expect(updated?.opened_on).toBe("2026-01-15");
+      });
+    });
+
+    it("개봉 취소를 누르면 미개봉 상태로 돌아가고 개봉일·잔량이 지워진다", async () => {
+      const target = bottle({ status: "open", opened_on: "2026-01-15", remaining_ml: 500 });
+      await seedContext(target);
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "개봉 취소" }));
+
+      await waitFor(async () => {
+        const updated = await db.bottle.get(target.id);
+        expect(updated?.status).toBe("unopened");
+        expect(updated?.opened_on).toBeNull();
+        expect(updated?.remaining_ml).toBeNull();
       });
     });
 

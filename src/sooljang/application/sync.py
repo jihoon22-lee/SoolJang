@@ -50,6 +50,7 @@ from sooljang.application.tastings import (
     open_bottle,
     record_tasting,
     reopen_bottle,
+    unopen_bottle,
 )
 from sooljang.infrastructure.database.base import Base
 from sooljang.infrastructure.database.models import (
@@ -815,6 +816,8 @@ async def _dispatch_bottle_action(
         )
     elif op.action == "reopen":
         await reopen_bottle(session, bottle)
+    elif op.action == "unopen":
+        await unopen_bottle(session, bottle)
     else:
         raise ValidationFailedError(f"알 수 없는 병 action 입니다: {op.action}")
 

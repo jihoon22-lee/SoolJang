@@ -34,6 +34,7 @@ from sooljang.application.tastings import (
     record_tasting,
     reopen_bottle,
     summarize_tastings,
+    unopen_bottle,
 )
 from sooljang.infrastructure.database.models import Bottle, BottleStatus, Purchase
 
@@ -151,6 +152,20 @@ async def reopen_bottle_endpoint(
     record = await _get_bottle(session, user_id, bottle_id)
     try:
         await reopen_bottle(session, record)
+    except BottleTransitionError as error:
+        raise ConflictError(str(error)) from error
+    await session.refresh(record)
+    return BottleOut.model_validate(record)
+
+
+@bottles_router.post("/{bottle_id}:unopen", response_model=BottleOut, summary="개봉 취소")
+async def unopen_bottle_endpoint(
+    session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
+) -> BottleOut:
+    """실수로 개봉을 누른 경우를 위한 되돌리기. 개봉 상태만 미개봉으로 되돌릴 수 있다."""
+    record = await _get_bottle(session, user_id, bottle_id)
+    try:
+        await unopen_bottle(session, record)
     except BottleTransitionError as error:
         raise ConflictError(str(error)) from error
     await session.refresh(record)

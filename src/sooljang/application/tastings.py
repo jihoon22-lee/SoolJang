@@ -166,6 +166,24 @@ async def reopen_bottle(session: AsyncSession, bottle: Bottle) -> Bottle:
     return bottle
 
 
+async def unopen_bottle(session: AsyncSession, bottle: Bottle) -> Bottle:
+    """개봉을 실수로 눌렀을 때를 위한 되돌리기. 개봉 상태만 미개봉으로 되돌릴 수 있다.
+
+    소진·증여·판매까지 간 병은 `reopen_bottle` 로 다시 개봉한 뒤에나 미개봉으로 되돌릴 수
+    있다 — 이미 넘기거나 마신 기록을 조용히 지우면 안 되기 때문이다.
+    """
+    if bottle.status != BottleStatus.OPEN:
+        raise BottleTransitionError(
+            f"개봉 상태만 미개봉으로 되돌릴 수 있습니다 (현재 상태: {bottle.status})"
+        )
+
+    bottle.status = BottleStatus.UNOPENED
+    bottle.opened_on = None
+    bottle.remaining_ml = None
+    await session.flush()
+    return bottle
+
+
 @dataclass(frozen=True)
 class TastingInput:
     """시음 기록 입력."""

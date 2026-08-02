@@ -274,6 +274,40 @@ def test_bottle_action_and_tasting_action(api_client: TestClient, prefix: str) -
     assert refreshed["remaining_ml"] == 400
 
 
+def test_bottle_unopen_action(api_client: TestClient, prefix: str) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "되돌리기 테스트 술", "skus": [{"volume_ml": 500}]}
+    ).json()
+    sku_id = product["skus"][0]["id"]
+    purchase = api_client.post(f"{prefix}/purchases", json={"sku_id": sku_id, "quantity": 1}).json()
+    bottles = api_client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()
+    bottle_id = bottles[0]["id"]
+
+    _batch(
+        api_client,
+        prefix,
+        [_op(entity="bottle", op="action", entity_id=uuid.UUID(bottle_id), action="open")],
+    )
+    unopen_result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="bottle",
+                op="action",
+                entity_id=uuid.UUID(bottle_id),
+                idempotency_key=uuid.uuid4(),
+                action="unopen",
+            )
+        ],
+    )
+    assert unopen_result["results"][0]["status"] == "applied"
+
+    refreshed = api_client.get(f"{prefix}/bottles/{bottle_id}").json()
+    assert refreshed["status"] == "unopened"
+    assert refreshed["remaining_ml"] is None
+
+
 def test_category_parent_change_via_sync_is_rejected(api_client: TestClient, prefix: str) -> None:
     child = api_client.post(f"{prefix}/categories", json={"name": "자식"}).json()
     other_parent = api_client.post(f"{prefix}/categories", json={"name": "다른 부모"}).json()

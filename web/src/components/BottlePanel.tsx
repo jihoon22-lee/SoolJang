@@ -14,7 +14,7 @@ import { db, type SyncRow } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { newId } from "@/sync/uuid7";
 
-type TransitionAction = "open" | "finish" | "gift" | "sell" | "reopen";
+type TransitionAction = "open" | "finish" | "gift" | "sell" | "reopen" | "unopen";
 
 async function bottleVolumeMl(purchaseId: string): Promise<number | null> {
   const purchase = await db.purchase.get(purchaseId);
@@ -49,6 +49,8 @@ async function transitionFields(
       return { status: "sold", finished_on: today };
     case "reopen":
       return { status: "open", finished_on: null, opened_on: current.opened_on ?? today };
+    case "unopen":
+      return { status: "unopened", opened_on: null, remaining_ml: null };
   }
 }
 
@@ -159,6 +161,15 @@ export function BottlePanel({ bottle }: BottlePanelProps): React.JSX.Element {
             disabled={transition.isPending}
           >
             소진
+          </button>
+        ) : null}
+        {bottle.status === "open" ? (
+          <button
+            type="button"
+            onClick={() => transition.mutate("unopen")}
+            disabled={transition.isPending}
+          >
+            개봉 취소
           </button>
         ) : null}
         {bottle.status === "unopened" || bottle.status === "open" ? (
