@@ -10,6 +10,7 @@ describe("parseHash", () => {
   it("단순 뷰 해시를 해석한다", () => {
     expect(parseHash("#stats")).toEqual({ view: "stats" });
     expect(parseHash("#categories")).toEqual({ view: "categories" });
+    expect(parseHash("#vendors")).toEqual({ view: "vendors" });
   });
 
   it("모르는 뷰는 제품 목록으로 떨어진다", () => {

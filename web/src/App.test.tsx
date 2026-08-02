@@ -69,6 +69,16 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "주종 관리" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("구매처 관리로 전환한다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(await screen.findByRole("link", { name: "구매처" }));
+
+    expect(await screen.findByRole("heading", { name: "구매처 관리" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "구매처" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("서비스 상태로 전환하면 마이그레이션 리비전을 보여준다", async () => {
     stubAll();
     renderWithQuery(<App />);

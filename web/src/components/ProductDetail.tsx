@@ -182,7 +182,7 @@ export function ProductDetail({
         addingSku={addingSku}
       />
 
-      <BottleSection bottles={bottles} />
+      <BottleSection bottles={bottles} offline={offline} />
     </article>
   );
 }
@@ -640,7 +640,7 @@ function SplitPurchaseForm({
 
 const IN_STOCK_STATUSES: readonly BottleStatus[] = ["unopened", "open"];
 
-function BottleSection({ bottles }: { bottles: Bottle[] }) {
+function BottleSection({ bottles, offline }: { bottles: Bottle[]; offline: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (bottles.length === 0) {
@@ -680,7 +680,7 @@ function BottleSection({ bottles }: { bottles: Bottle[] }) {
               </span>
               <span className="bottle-list-remaining">{formatRemaining(bottle)}</span>
             </button>
-            {expandedId === bottle.id ? <BottlePanel bottle={bottle} /> : null}
+            {expandedId === bottle.id ? <BottlePanel bottle={bottle} offline={offline} /> : null}
           </li>
         ))}
       </ul>
