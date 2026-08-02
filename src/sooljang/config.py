@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65535)
 
+    # LLM API 키 등 DB 에 저장하는 시크릿을 암호화하는 Fernet 마스터 키(Task 17).
+    # `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+    # 로 생성한다. 기본값을 두지 않는다 — 잊은 채 배포되면 시크릿이 평문에 가깝게 저장된다.
+    secret_key: str = Field(min_length=32)
+
+    # 첨부파일(라벨 사진 등) 저장 루트. 상대 경로면 프로세스 작업 디렉터리 기준이다 —
+    # `docker-compose.yml` 은 `/app` 을 작업 디렉터리로 잡고 `uploads` 볼륨을 그 아래 마운트한다.
+    upload_dir: str = "uploads"
+
     # Task 12(인증) 이전에 쓰는 고정 사용자 식별자. 인증이 붙으면 세션에서 읽는다.
     # 지금부터 모든 쿼리를 user_id 로 스코프하게 강제하려고 자리를 만들어 둔다.
 

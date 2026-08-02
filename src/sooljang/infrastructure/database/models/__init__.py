@@ -16,6 +16,11 @@ from sooljang.infrastructure.database.models.inventory import (
     Vendor,
     VendorKind,
 )
+from sooljang.infrastructure.database.models.llm import (
+    DEFAULT_OPENAI_MODEL,
+    LlmProvider,
+    LlmSetting,
+)
 from sooljang.infrastructure.database.models.product import (
     MAX_PERSONAL_RATING,
     BarcodeType,
@@ -33,6 +38,7 @@ from sooljang.infrastructure.database.models.tasting import (
 )
 
 __all__ = [
+    "DEFAULT_OPENAI_MODEL",
     "MAX_RATING",
     "RATING_STEP",
     "Attachment",
@@ -44,6 +50,8 @@ __all__ = [
     "BottleStatus",
     "Category",
     "ConflictLog",
+    "LlmProvider",
+    "LlmSetting",
     "OutboxReceipt",
     "Producer",
     "Product",
