@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-02 (Task 17 PR)**
+- 최종 갱신: **2026-08-02 (Task 20 PR)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 17 까지 완료)
+- 현재 브랜치: `main` (Task 17, 20 까지 완료. Task 18·19 는 검색 API 미해결로 건너뜀)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -37,9 +37,9 @@ export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5
 uv run alembic upgrade head
 
 # 5) 검증
-uv run pytest                  # 592 passed, 28 skipped 가 정상 (skip 전부 opt-in 실측 테스트,
+uv run pytest                  # 612 passed, 28 skipped 가 정상 (skip 전부 opt-in 실측 테스트,
                                 #   live_llm 마커 포함 — 실제 OpenAI 키가 없으면 건너뛴다)
-npm --prefix web run check     # 237 passed, 커버리지 임계값(branch 80%) 통과
+npm --prefix web run check     # 254 passed, 커버리지 임계값(branch 80%) 통과
 
 # 6) 이어서 작업
 #    plan.md §1 의 "다음 착수 Task" 를 확인하고 해당 브랜치를 만든다
@@ -124,8 +124,9 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **17개 완료**. PR 24개 머지 (#1~#24, #16~#20 은 문서 전용 — 이후 규칙
-9(§6)로 금지된 관행이니 반복하지 않는다).
+전체 23개 Task 중 **18개 완료**(Task 18·19 는 검색 API 미해결로 건너뛰고 Task 20 을
+먼저 함). PR 25개 머지 (#1~#25, #16~#20 은 문서 전용 — 이후 규칙 9(§6)로 금지된 관행이니
+반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -146,6 +147,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 15. PWA와 오프라인 동기화 | ✅ | [#22](https://github.com/jihoon22-lee/SoolJang/pull/22) | `application/sync.py`(pull·apply_batch·LWW·충돌 로그), Dexie 로컬 미러, outbox, 4개 화면 오프라인 조회, `SyncStatusBadge` |
 | 16. 바코드 스캔과 제품 매칭 | ✅ | [#23](https://github.com/jihoon22-lee/SoolJang/pull/23) | `application/barcodes.py`(정규화·RCN 판별), Open Food Facts 조회, `GET /barcodes/{code}`·`PATCH /skus/{id}`, `BarcodeScanPanel`(네이티브 BarcodeDetector + ZXing 폴백) |
 | 17. 라벨 OCR 프리필 | ✅ | [#24](https://github.com/jihoon22-lee/SoolJang/pull/24) | LLM 설정 인프라(`LlmSetting` 암호화 저장, `GET·PUT·DELETE /llm-settings`), `infrastructure/external/llm.py`(OpenAI 구조화 출력), `POST /ocr/label`, `POST /attachments`(문서-코드 갭 메우기), `LabelOcrPanel`·`SettingsPage` |
+| 20. 통계 v2 (Task 18·19 를 건너뛰고 먼저 함) | ✅ | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) | `purchase_stats_rows_query`(구매 건 단위), `get_pivot`·`get_timeseries`, `SavedView`(JSONB 정의), `POST /stats/pivot`·`GET /stats/timeseries`·`GET·POST /saved-views`, `PivotExplorer.tsx`(온라인 전용), `value_for_money` 를 제품 지표에 처음 노출 |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -166,6 +168,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 오프라인 동기화 백엔드·프론트 전체 검증 | `pytest` 521 passed, 27 skipped(전부 opt-in 실측 테스트), 커버리지 90.10%. 프론트엔드 207 passed, 커버리지 89.0% stmts / 80.2% branch. `vite build` 로 PWA manifest·`sw.js`·아이콘 정상 생성 확인 |
 | 바코드 스캔 백엔드·프론트 전체 검증 | `pytest` 557 passed, 27 skipped, 커버리지 90.43%. 프론트엔드 223 passed, 커버리지 89.4% stmts / 80.17% branch. 카메라·`BarcodeDetector`·`@zxing/browser` 를 전부 가짜로 주입해 하드웨어 없이 스캐너 로직까지 검증. `docker build`(web·api) 둘 다 정상 |
 | 라벨 OCR·LLM 설정 백엔드·프론트 전체 검증 | `pytest` 592 passed, 28 skipped(opt-in `live_llm` 포함), 커버리지 90.84%. 프론트엔드 237 passed, 커버리지 89.87% stmts / 80.2% branch(임계값에 근소하게 통과). **실제 OpenAI API 로 1회 왕복 확인**(`live_llm` 마커, 사용자가 다른 프로젝트 키를 테스트용으로 제공) — 인증·요청 형식·구조화 출력 파싱이 실동작함을 확인. `docker build`(web·api) 둘 다 정상, api 이미지는 직접 실행해 `create_app()` 임포트까지 확인(§5 `httpx` 함정 재발 여부 재확인 겸함) |
+| 통계 v2(피벗·시계열·저장뷰) 백엔드·프론트 전체 검증 | `pytest` 612 passed, 28 skipped, 커버리지 90.97%. 프론트엔드 254 passed, 커버리지 90.3% stmts / 80.02% branch(임계값에 근소하게 통과). "구매처별 × 주종별 평균 할인율" 데모 시나리오를 실제 API 테스트로 재현(정가 10만원·실구매 8만원 → 할인율 20% 정확히 계산됨 확인). `docker build`(web·api) 둘 다 정상 |
 
 ---
 
@@ -216,17 +219,16 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 20(통계 v2) 권장 — Task 18·19 는 여전히 사용자 확인 필요
+### 다음 착수: Task 21(자체 통합 테스트) 권장 — Task 18·19 는 여전히 사용자 확인 필요
 
-Task 17(라벨 OCR)까지 마쳐 라벨 사진으로 등록 폼을 자동 완성할 수 있다. Q2(검색·LLM API
-제공자와 예산)는 **LLM 쪽만** 풀렸다 — 사용자가 다른 프로젝트에서 쓰던 OpenAI 키를
-"테스트로 몇 차례만" 제공했고, 상시 예산 상한은 아직 정해지지 않았다. 검색 API 제공자는
-여전히 미해결이라, Task 18(외부 소스 레지스트리)의 핵심(`search` 전략, §7.2)은 계속
-막혀 있다(`docs/plan.md` §6 Q2).
+Task 20(통계 v2)까지 마쳐 커스텀 피벗·시계열·저장뷰를 쓸 수 있다. Q2(검색·LLM API
+제공자와 예산)는 **LLM 쪽만** 풀렸다(Task 17) — 상시 예산 상한은 아직 정해지지 않았고,
+검색 API 제공자는 여전히 미해결이라 Task 18(외부 소스 레지스트리)의 핵심(`search` 전략,
+§7.2)은 계속 막혀 있다(`docs/plan.md` §6 Q2).
 
-**막히지 않는 다음 후보**: Task 20(통계 v2 — 커스텀 피벗과 취향 분석)은 외부 API 없이
-Task 14 데이터만으로 진행할 수 있고, 의존 관계상 Task 18·19 를 거치지 않아도 된다(아래
-다이어그램 참조).
+**막히지 않는 다음 후보**: Task 21(자체 통합 테스트와 다각도 분석)은 Task 18·19 를
+거치지 않고 착수할 수 있다(아래 다이어그램 참조) — 지금까지 완료한 18개 Task 를 검토하기
+좋은 시점이기도 하다.
 
 **HTTPS 공개는 여전히 미완이다**: Tailscale 설치·로그인은 Task 14 세션에서 끝났지만
 (tailnet `tail30f401.ts.net`), 이 브라우저 자동화가 동작하지 않는 샌드박스라 아직
@@ -261,12 +263,24 @@ scripts/serve-https.sh
 - LLM 실사용 예산 상한은 여전히 미정이다. Task 18(외부 소스 요약)처럼 LLM 을 상시
   호출하는 기능을 붙이기 전에는 사용자에게 다시 확인해야 한다
 
+**Task 20 에서 남긴 것** (원 사양 중 이번에 이연한 것, `plan.md` D88 참조):
+- 엑셀 내보내기 대신 CSV 만 — 새 무거운 의존성(`openpyxl` 류)을 들이지 않았다
+- 읽기 전용 공유 링크는 이연 — 보안에 민감한 설계(토큰 발급·만료·폐기)라 별도 검토가
+  필요하고, Q6(지인 공유 권한 모델)이 아직 미해결인 것과도 맞물려 있다
+- 개인 vs 외부 평점 상관은 이연 — Task 18 이 아직 외부 평점 데이터를 수집하지 않아
+  비교할 대상이 없다
+- 시계열은 월별 지출·구매 병수 2종만. "누적 자산"·"개봉 후 소진 기간"(제품 단위로는
+  `domain/metrics.ts::computeProductMetrics` 의 `averageDaysToFinish` 로 이미 존재)을
+  시계열로 다시 뽑는 건 범위를 넓히는 별도 작업이다
+- 분포 히스토그램은 이연 — 피벗·시계열만으로 데모 시나리오를 완결할 수 있었다
+- 통계 v2 전체가 온라인 전용이다(D87) — Task 16·17 과 같은 판단 기준
+
 ### 의존 관계 요약
 
 ```
 7 도메인모델 → 8 파생지표 → 9 REST API → 10 웹 UI → 12 인증·HTTPS → 13 병·시음 → 15 PWA → 16 바코드 → 17 OCR
 6 파서 ─┬→ 11 임포터 → 14 통계v1 → 18 외부소스 → 19 사이트어댑터 ─┐
-8,10 ──┘                        └→ 20 통계v2 ────────────────────┴→ 21 릴리스
+8,10 ──┘                        └→ 20 통계v2(완료) ─────────────┴→ 21 릴리스
 ```
 
 ### 마지막 Task 23 에서만 하는 일
@@ -305,6 +319,9 @@ scripts/serve-https.sh
 | **버튼이 `disabled` 면 그 안의 유효성 검사 분기는 테스트로 못 만난다** | `userEvent.click(disabled 버튼)` 은 조용히 아무 일도 안 한다 — 콘솔 경고도 없다 | disabled 조건과 함수 내부 가드가 같은 값을 검사한다면 함수 내부 가드는 죽은 코드다. 지우거나(권장), 정말 다른 경로로 호출될 수 있다면 그 경로로 테스트한다. `BarcodeScanPanel` 에서 실제로 발견(Task 16) |
 | **`EntityMixin.user_id` 는 이미 `index=True` 다** | 새 모델에 `Index("ix_<table>_user_id", "user_id")` 를 직접 추가하면 `alembic revision --autogenerate` 가 같은 이름의 인덱스를 두 번 만들려다 `DuplicateTable` 로 실패 | 단일 컬럼 `user_id` 인덱스는 mixin 이 이미 만든다. 새로 추가할 건 `(user_id, 다른컬럼)` 같은 **복합** 인덱스뿐이다. `llm_setting` 모델 작성 중 실제로 겪음(Task 17) |
 | **`httpx` 가 dev 그룹에만 있었다** | 로컬·CI 는 항상 dev 의존성이 함께 설치돼 안 터지지만, `docker build --no-dev` 운영 이미지엔 아예 설치되지 않는다 — 해당 코드가 실행되는 순간에만 `ModuleNotFoundError` | 프로덕션 코드(`api/routes/*.py`, `infrastructure/**`)가 직접 import 하는 패키지는 반드시 `[project.dependencies]`(main)에 둔다. dev 그룹은 테스트·린트 도구 전용이다. Task 16 부터 잠재했던 버그를 Task 17 에서 발견·수정(D83) |
+| **CI `migration-check` 잡이 `alembic` 을 pytest 밖에서 직접 돌린다** | `Settings` 에 필수 필드(`secret_key` 등)를 새로 추가하면 그 잡만 `ValidationError` 로 실패 — `python-quality` 잡은 `conftest.py` 의 autouse fixture 가 채워 줘서 통과한다 | 새 필수 설정을 추가할 때 `.github/workflows/quality.yml` 의 `migration-check` 잡 `env:` 에도 테스트용 값을 추가해야 한다. Task 17 에서 `SOOLJANG_SECRET_KEY` 를 추가하며 실제로 겪음 — PR 을 올리고 나서야 CI 에서 발견했다(로컬은 `.env` 가 있어 안 터진다) |
+| **의존성 상한을 너무 느슨하게 잡으면 CI `pip-audit` 이 나중에 실패한다** | `cryptography>=46,<47` 로 고정했는데 46.x 에 이미 알려진 취약점(GHSA)이 있어 `pip-audit --strict` 가 실패 | 새 의존성을 추가할 때 `pip-audit` 를 로컬에서도 한 번 돌려 본다: `uv export --frozen --no-dev --no-emit-project --format requirements.txt -o /tmp/req.txt && uv run --with pip-audit pip-audit --strict -r /tmp/req.txt`. Task 17 에서 발견 |
+| **`vi.stubGlobal("URL", {...URL, 메서드})` 로 전체 URL 을 바꿔치기하면 생성자가 사라진다** | `URL.createObjectURL` 을 목킹하려다 `{...URL}` 스프레드로 교체하면, `URL` 이 더 이상 `new URL(...)` 로 생성자 호출이 안 되는 평범한 객체가 된다 — 다른 코드가 조용히 깨진다 | 전체를 바꿔치기하지 않는다. `URL.createObjectURL = vi.fn()` 처럼 필요한 정적 메서드만 직접 얹고, 테스트 끝에 `undefined` 로 되돌린다. `PivotExplorer.test.tsx`(Task 20) CSV 내보내기 테스트에서 실제로 겪음 — 실패 증상이 "표가 안 뜬다"로 나타나 원인 파악에 시간이 걸렸다 |
 
 ---
 
@@ -337,7 +354,7 @@ scripts/serve-https.sh
 | Q2 | 검색·LLM API 제공자와 예산 | **LLM 쪽만 부분 해결(Task 17)** — OpenAI, 테스트용 키만. 검색 API·상시 예산은 미해결 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | Task 18 |
 | Q5 | 목표가 알림 채널 (웹 푸시 vs 다른 수단) | Task 19 |
-| Q6 | 지인 공유 권한 모델 상세 | Task 20 |
+| Q6 | 지인 공유 권한 모델 상세 | **미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88)**. Task 20 후속 |
 
 Q1(데이터베이스 실행 방식)은 Task 5 에서 해결했다.
 
