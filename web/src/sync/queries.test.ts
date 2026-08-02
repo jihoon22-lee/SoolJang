@@ -116,6 +116,17 @@ describe("getProducts", () => {
     expect(product?.metrics.price_per_100ml).toBe("7142.86");
   });
 
+  it("q 필터는 부분 일치와 한글 초성 검색을 모두 지원한다", async () => {
+    await db.product.bulkPut([
+      row({ id: "p1", name: "글렌고인 15년" }),
+      row({ id: "p2", name: "발베니 12년" }),
+    ]);
+
+    expect((await getProducts({ q: "글렌" })).map((p) => p.id)).toEqual(["p1"]);
+    expect((await getProducts({ q: "ㄱㄹㄱㅇ" })).map((p) => p.id)).toEqual(["p1"]);
+    expect((await getProducts({ q: "없는술" })).map((p) => p.id)).toEqual([]);
+  });
+
   it("category_id 필터는 하위 주종을 포함한다", async () => {
     await db.category.bulkPut([
       row({ id: "liquor", parent_id: null, name: "양주" }),

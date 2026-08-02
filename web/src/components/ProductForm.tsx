@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ApiError } from "@/api/client";
 import type { CategoryNode } from "@/api/types";
+import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { formatCategoryPath } from "@/format";
+import { getLastVendorName } from "@/lastVendor";
+import { normalizeNameForMatching, rankByQuery } from "@/search";
+
+//: 자동완성이 한 번에 보여줄 후보 수. 405종 목록에서도 스크롤 없이 훑을 수 있는 정도.
+const MAX_SUGGESTIONS = 8;
 
 export interface ProductFormValues {
   name: string;
@@ -49,6 +55,13 @@ interface ProductFormProps {
    * `PATCH /products/{id}` 범위 밖이고(바코드 스캔에서 별도로 다룬다), 구매 건은
    * 이 폼이 아니라 제품 상세의 "구매 이력"에서 추가한다. 기본값은 `"create"`. */
   mode?: "create" | "edit";
+  /** 이름 자동완성 후보이자 중복 등록 경고의 대상. `mode === "edit"` 이면 쓰지 않는다
+   * (수정 중인 제품 자기 자신은 항상 이름이 일치하므로 경고 대상에서 뺄 방법이 없다). */
+  existingProducts?: { id: string; name: string }[];
+  /** 이미 등록된 술과 이름이 정확히 일치하면 이 콜백으로 그 제품으로 건너뛸 수 있게 한다. */
+  onSelectExisting?: (productId: string) => void;
+  /** 구매처 자동완성 후보. */
+  vendorNames?: string[];
 }
 
 /**
@@ -69,9 +82,14 @@ export function ProductForm({
   onCancel,
   initialValues,
   mode = "create",
+  existingProducts = [],
+  onSelectExisting,
+  vendorNames = [],
 }: ProductFormProps) {
   const [values, setValues] = useState<ProductFormValues>({
     ...EMPTY_PRODUCT_FORM,
+    purchasedOn: new Date().toISOString().slice(0, 10),
+    vendorName: getLastVendorName(),
     ...initialValues,
   });
   const [localError, setLocalError] = useState<string | null>(null);
@@ -80,6 +98,25 @@ export function ProductForm({
   // outbox 경로는 일반 Error 를 던진다(서버 왕복 없이 로컬에서 바로 검증하는 경우).
   const genericError = !apiError && error instanceof Error ? error.message : null;
   const set = (patch: Partial<ProductFormValues>) => setValues((prev) => ({ ...prev, ...patch }));
+
+  const nameSuggestions = useMemo(
+    () =>
+      rankByQuery(existingProducts, values.name, (p) => p.name)
+        .slice(0, MAX_SUGGESTIONS)
+        .map((p) => p.name),
+    [existingProducts, values.name],
+  );
+  const vendorSuggestions = useMemo(
+    () => rankByQuery(vendorNames, values.vendorName, (name) => name).slice(0, MAX_SUGGESTIONS),
+    [vendorNames, values.vendorName],
+  );
+  // 수정 중인 제품은 자기 자신과 항상 이름이 일치하므로 경고 대상에서 뺀다.
+  const duplicateProduct =
+    mode === "create" && values.name.trim()
+      ? existingProducts.find(
+          (p) => normalizeNameForMatching(p.name) === normalizeNameForMatching(values.name),
+        )
+      : undefined;
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -107,17 +144,30 @@ export function ProductForm({
 
       <div className="field">
         <label htmlFor="form-name">이름 *</label>
-        <input
+        <AutocompleteInput
           id="form-name"
           required
           value={values.name}
-          onChange={(event) => set({ name: event.target.value })}
+          onChange={(name) => set({ name })}
+          suggestions={nameSuggestions}
           aria-describedby={apiError?.errorFor("name") ? "form-name-error" : undefined}
         />
         {apiError?.errorFor("name") && (
           <span className="field-error" id="form-name-error">
             {apiError.errorFor("name")}
           </span>
+        )}
+        {duplicateProduct && (
+          <output className="muted">
+            이미 등록된 술입니다 —{" "}
+            <button
+              type="button"
+              className="link-like"
+              onClick={() => onSelectExisting?.(duplicateProduct.id)}
+            >
+              구매 이력 추가하시겠어요?
+            </button>
+          </output>
         )}
       </div>
 
@@ -265,11 +315,12 @@ export function ProductForm({
           </div>
           <div className="field">
             <label htmlFor="form-vendor">구매처</label>
-            <input
+            <AutocompleteInput
               id="form-vendor"
               value={values.vendorName}
               placeholder="없으면 비워 두세요"
-              onChange={(event) => set({ vendorName: event.target.value })}
+              onChange={(vendorName) => set({ vendorName })}
+              suggestions={vendorSuggestions}
             />
           </div>
         </fieldset>

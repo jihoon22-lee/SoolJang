@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
 import type { Product, ProductFilters, SortKey, User } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
@@ -9,6 +9,7 @@ import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/componen
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
 import { ProductList } from "@/components/ProductList";
+import { setLastVendorName } from "@/lastVendor";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import {
@@ -69,13 +70,52 @@ export function ProductsPage({
 
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const vendors = useLiveQuery(() => getVendors(), []);
+  const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
   // 제품 규모가 수백 건이라 서버처럼 커서 페이지네이션을 하지 않는다 — 전체를 필터·정렬한
   // 뒤 화면에는 `visibleCount` 만큼만 보여준다("더 보기"는 이미 메모리에 있는 걸 더 드러낼
   // 뿐, 다시 조회하지 않는다).
   const allProducts = useLiveQuery(() => getProducts(filters), [filters]);
+  // 이름 자동완성·중복 등록 경고는 현재 필터와 무관하게 전체 카탈로그를 대상으로 해야 한다
+  // (필터가 걸려 있어도 "이미 등록된 술"을 놓치면 안 된다).
+  const allProductsUnfiltered = useLiveQuery(() => getProducts({}), []);
 
   const items = allProducts?.slice(0, visibleCount) ?? [];
   const hasMore = (allProducts?.length ?? 0) > visibleCount;
+
+  // 상세로 들어가기 직전 스크롤 위치를 기억해 뒤로 왔을 때 되돌린다. `visibleCount`
+  // ("더 보기" 로 펼친 개수)는 이 컴포넌트가 상세 진입/복귀 사이에 언마운트되지 않아
+  // 별도 처리 없이도 이미 유지된다 — 스크롤 위치만 브라우저가 기억해 주지 않는다.
+  const savedScrollY = useRef<number | null>(null);
+  useEffect(() => {
+    // `null` 이면 아직 상세로 들어간 적이 없다는 뜻이다(최초 마운트 포함) — 되돌릴 위치가
+    // 없으니 그냥 둔다.
+    if (selectedProductId === null && savedScrollY.current !== null) {
+      window.scrollTo(0, savedScrollY.current);
+      savedScrollY.current = null;
+    }
+  }, [selectedProductId]);
+
+  function selectProduct(productId: string): void {
+    savedScrollY.current = window.scrollY;
+    onSelectProduct(productId);
+  }
+
+  // 키보드 단축키: "/" 로 이름 검색 포커스, Esc 로 등록 폼 닫기. 이미 입력 중일 때는
+  // "/" 를 문자로 그대로 칠 수 있어야 하므로 가로채지 않는다.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      const target = event.target as HTMLElement | null;
+      const isTyping = target !== null && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+      if (event.key === "/" && !isTyping) {
+        event.preventDefault();
+        document.getElementById("filter-q")?.focus();
+      } else if (event.key === "Escape" && formOpen) {
+        closeForm();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   const createProduct = useMutation({
     mutationFn: async (values: ProductFormValues) => {
@@ -119,7 +159,8 @@ export function ProductsPage({
 
       await createProductOffline(values, queryClient.getQueryData<User>(["auth", "me"])?.id ?? "");
     },
-    onSuccess: () => {
+    onSuccess: (_result, values) => {
+      if (values.vendorName.trim()) setLastVendorName(values.vendorName);
       closeForm();
     },
   });
@@ -141,7 +182,13 @@ export function ProductsPage({
   }
 
   if (selectedProductId !== null) {
-    return <ProductDetailView productId={selectedProductId} onBack={onDeselectProduct} />;
+    return (
+      <ProductDetailView
+        productId={selectedProductId}
+        onBack={onDeselectProduct}
+        vendorNames={vendorNames}
+      />
+    );
   }
 
   return (
@@ -170,7 +217,7 @@ export function ProductsPage({
           <div className="button-row">
             {/* 스캔·라벨 인식 모두 온라인 전용 외부 호출이 필요하다(카메라+Open Food
             Facts, Vision LLM). */}
-            {!offline && <BarcodeScanPanel onSelectProduct={onSelectProduct} />}
+            {!offline && <BarcodeScanPanel onSelectProduct={selectProduct} />}
             {!offline && (
               <LabelOcrPanel
                 categories={categoryTree?.items ?? []}
@@ -209,6 +256,12 @@ export function ProductsPage({
             onSubmit={(values) => createProduct.mutate(values)}
             onCancel={closeForm}
             initialValues={formPrefill ?? undefined}
+            existingProducts={allProductsUnfiltered ?? []}
+            vendorNames={vendorNames}
+            onSelectExisting={(id) => {
+              closeForm();
+              onSelectProduct(id);
+            }}
           />
         )}
 
@@ -218,7 +271,7 @@ export function ProductsPage({
           <>
             <ProductList
               products={items}
-              onSelect={onSelectProduct}
+              onSelect={selectProduct}
               sort={filters.sort ?? "name"}
               order={filters.order ?? "asc"}
               onSort={handleSort}
@@ -250,7 +303,15 @@ function valuesFromProduct(product: Product): Partial<ProductFormValues> {
   };
 }
 
-function ProductDetailView({ productId, onBack }: { productId: string; onBack: () => void }) {
+function ProductDetailView({
+  productId,
+  onBack,
+  vendorNames,
+}: {
+  productId: string;
+  onBack: () => void;
+  vendorNames: string[];
+}) {
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
   const product = useLiveQuery(() => getProduct(productId), [productId]);
@@ -317,7 +378,10 @@ function ProductDetailView({ productId, onBack }: { productId: string; onBack: (
         unit_paid_price: input.unitPaidPrice || null,
       });
     },
-    onSuccess: () => triggerSync(),
+    onSuccess: (_result, input) => {
+      if (input.vendorName) setLastVendorName(input.vendorName);
+      triggerSync();
+    },
   });
 
   const deletePurchase = useMutation({
@@ -390,6 +454,7 @@ function ProductDetailView({ productId, onBack }: { productId: string; onBack: (
       onAddPurchase={(input) => addPurchase.mutate(input)}
       addingPurchase={addPurchase.isPending}
       addPurchaseError={addPurchase.error}
+      vendorNames={vendorNames}
       onDeletePurchase={(purchaseId) => deletePurchase.mutate(purchaseId)}
       deletingPurchaseId={deletePurchase.isPending ? (deletePurchase.variables ?? null) : null}
       onSplitPurchase={(purchaseId, parts) => splitPurchase.mutate({ purchaseId, parts })}

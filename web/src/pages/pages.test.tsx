@@ -57,6 +57,9 @@ const emptyTree: CategoryTree = { items: [], max_depth: 0, depth_limit: 8 };
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // 구매 완료 시 마지막 구매처 이름을 localStorage 에 남긴다(`lastVendor.ts`) — 다음
+  // 테스트로 새어들지 않게 매번 지운다.
+  window.localStorage.clear();
 });
 
 describe("ProductsPage", () => {
@@ -399,6 +402,7 @@ describe("ProductsPage", () => {
     await userEvent.type(within(form).getByLabelText("메모"), "선물 받음");
     await userEvent.type(within(form).getByLabelText("용량 (ml)"), "700");
     await userEvent.type(within(form).getByLabelText("병수"), "2");
+    await userEvent.clear(within(form).getByLabelText("구매일"));
     await userEvent.type(within(form).getByLabelText("구매일"), "2026-01-01");
     await userEvent.type(within(form).getByLabelText("병당 정가 (원)"), "100000");
     await userEvent.type(within(form).getByLabelText("병당 실구매가 (원)"), "90000");
@@ -685,6 +689,55 @@ describe("ProductsPage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "← 목록으로" }));
 
     expect(await screen.findByRole("table")).toBeInTheDocument();
+  });
+
+  it("상세에서 돌아오면 들어가기 전 스크롤 위치를 복원한다", async () => {
+    await seedProductWithPurchase("p1", "스크롤 대상");
+    const scrollToSpy = vi.spyOn(window, "scrollTo");
+    Object.defineProperty(window, "scrollY", { value: 500, configurable: true });
+
+    renderProductsPage();
+    const [link] = await screen.findAllByRole("button", { name: "스크롤 대상" });
+    await userEvent.click(link as Element);
+    await userEvent.click(await screen.findByRole("button", { name: "← 목록으로" }));
+
+    expect(scrollToSpy).toHaveBeenCalledWith(0, 500);
+    scrollToSpy.mockRestore();
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
+
+  describe("키보드 단축키", () => {
+    it("/ 를 누르면 이름 검색으로 포커스를 옮긴다", async () => {
+      await seedProduct("p1", "아무 술");
+      renderProductsPage();
+      await screen.findByRole("table");
+
+      await userEvent.keyboard("/");
+
+      expect(screen.getByLabelText("이름 검색")).toHaveFocus();
+    });
+
+    it("이미 입력 중이면 / 를 그냥 문자로 받는다", async () => {
+      await seedProduct("p1", "아무 술");
+      renderProductsPage();
+      const search = await screen.findByLabelText("이름 검색");
+
+      await userEvent.click(search);
+      await userEvent.keyboard("/");
+
+      expect(search).toHaveValue("/");
+    });
+
+    it("Esc 를 누르면 등록 폼을 닫는다", async () => {
+      await seedProduct("p1", "아무 술");
+      renderProductsPage();
+      await userEvent.click(await screen.findByRole("button", { name: "새 술 등록" }));
+      expect(screen.getByRole("heading", { name: "새 술 등록" })).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+
+      expect(screen.queryByRole("heading", { name: "새 술 등록" })).not.toBeInTheDocument();
+    });
   });
 
   it("보던 중 제품이 사라지면 알리고 돌아갈 길을 남긴다", async () => {
