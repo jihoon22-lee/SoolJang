@@ -106,6 +106,11 @@ class ProductMetricsOut(BaseModel):
     discount_rate: Decimal | None = None
     total_volume_ml: int = 0
     inventory_value_at_cost: Decimal | None = None
+    value_for_money: Decimal | None = Field(
+        default=None,
+        description="가성비. 내 평점 ÷ 100ml당 가격을 1,000원 기준으로 정규화. 높을수록 좋다"
+        " (Task 20)",
+    )
 
 
 class ProductOut(BaseModel):

@@ -12,7 +12,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Numeric, Select, and_, case, cast, func, literal, select
+from sqlalchemy import Numeric, Select, and_, case, cast, func, literal, null, select
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.expression import ColumnElement
 
@@ -190,6 +190,41 @@ def single_product_metrics_query(user_id: uuid.UUID, product_id: uuid.UUID) -> S
     """제품 한 건의 지표. 상세 화면에서 쓴다."""
     metrics = product_metrics_query(user_id).subquery("all_metrics")
     return select(metrics).where(metrics.c.product_id == product_id)
+
+
+def purchase_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
+    """구매 건 단위 원자 행. 통계 v2(Task 20) 피벗·시계열이 파이썬에서 자유롭게 그룹핑할
+    재료다.
+
+    `product_stats_rows_query` 처럼 제품 단위로 미리 합산하지 않는다 — 피벗의 그룹 축
+    (구매처 등)이 제품이 아니라 구매 건에 붙어 있어서, 제품 단위로 먼저 합치면 그룹을
+    나눌 수 없다(한 제품을 서로 다른 구매처에서 샀을 수 있다).
+    """
+    list_amount = _priced_amount(Purchase.unit_list_price)
+    paid_amount = _priced_amount(Purchase.unit_paid_price)
+    list_volume = _priced_volume(Purchase.unit_list_price)
+
+    return (
+        select(
+            Purchase.id.label("purchase_id"),
+            Product.category_id.label("category_id"),
+            Purchase.vendor_id.label("vendor_id"),
+            Product.country.label("country"),
+            Product.vintage.label("vintage"),
+            Product.personal_rating.label("personal_rating"),
+            Purchase.purchased_on.label("purchased_on"),
+            Purchase.quantity.label("quantity"),
+            list_amount.label("list_amount"),
+            paid_amount.label("paid_amount"),
+            list_volume.label("list_volume"),
+            case((_both_priced(), list_amount), else_=null()).label("both_priced_list_amount"),
+            case((_both_priced(), paid_amount), else_=null()).label("both_priced_paid_amount"),
+        )
+        .select_from(Product)
+        .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))
+        .join(Purchase, and_(Purchase.sku_id == Sku.id, Purchase.deleted_at.is_(None)))
+        .where(Product.user_id == user_id, Product.deleted_at.is_(None))
+    )
 
 
 def product_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:

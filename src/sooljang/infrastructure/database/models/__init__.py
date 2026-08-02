@@ -28,6 +28,7 @@ from sooljang.infrastructure.database.models.product import (
     ProductVariety,
     Sku,
 )
+from sooljang.infrastructure.database.models.saved_view import SavedView
 from sooljang.infrastructure.database.models.sync import ConflictLog, OutboxReceipt, SyncCursor
 from sooljang.infrastructure.database.models.tasting import (
     MAX_RATING,
@@ -56,6 +57,7 @@ __all__ = [
     "Producer",
     "Product",
     "ProductVariety",
+    "SavedView",
     "Session",
     "SyncCursor",
     "TastingSession",

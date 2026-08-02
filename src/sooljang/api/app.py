@@ -19,6 +19,7 @@ from sooljang.api.routes import (
     ocr,
     products,
     purchases,
+    saved_views,
     stats,
     sync,
     tastings,
@@ -90,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         attachments.router,
         llm_settings.router,
         ocr.router,
+        saved_views.router,
     ):
         app.include_router(router, prefix=API_PREFIX, dependencies=[protected])
     return app

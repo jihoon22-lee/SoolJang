@@ -141,7 +141,7 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
     items = [
         _to_out(
             row[0],
-            metrics=metrics_from_row(row),
+            metrics=metrics_from_row(row, personal_rating=row[0].personal_rating),
             category_paths=category_paths,
             producer_names=producer_names,
         )
@@ -370,7 +370,7 @@ async def _detail(session: SessionDep, user_id: uuid.UUID, product_id: uuid.UUID
     producer_names = await producer_name_map(session, user_id)
     return _to_out(
         product,
-        metrics=metrics_from_row(row),
+        metrics=metrics_from_row(row, personal_rating=product.personal_rating),
         category_paths=category_paths,
         producer_names=producer_names,
     )
@@ -386,6 +386,6 @@ async def get_metrics(
     없다" 는 정상 상태를 오류로 알리는 셈이다. 병수 0, 금액 null 로 응답한다. 제품 자체가
     없는 경우는 `load_product` 가 404 로 처리한다.
     """
-    await load_product(session, user_id=user_id, product_id=product_id)
+    product = await load_product(session, user_id=user_id, product_id=product_id)
     row = (await session.execute(single_product_metrics_query(user_id, product_id))).first()
-    return ProductMetricsOut(**metrics_from_row(row))
+    return ProductMetricsOut(**metrics_from_row(row, personal_rating=product.personal_rating))

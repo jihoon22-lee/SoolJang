@@ -31,6 +31,9 @@ EXPECTED_TABLES = {
     # 서버 전용 설정(Task 17). 의도적으로 SYNC_TARGET_TABLES 에는 넣지 않는다 — API 키가
     # 클라이언트 IndexedDB 로 미러링되면 안 된다.
     "llm_setting",
+    # 통계 v2(Task 20). 통계 v2 전체가 온라인 전용이라 이것도 SYNC_TARGET_TABLES 에 넣지
+    # 않는다 — 피벗 재실행 자체가 서버 DB 조회를 전제한다.
+    "saved_view",
 }
 
 #: 동기화 델타 조회 기준(`docs/architecture.md` §2.4) — 이 12개 테이블 모두
