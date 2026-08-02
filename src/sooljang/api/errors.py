@@ -175,3 +175,18 @@ def register_error_handlers(app: FastAPI) -> None:
             detail=detail if isinstance(detail, str) else None,
             instance=str(request.url.path),
         )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+        # DB 접속 끊김처럼 위 핸들러 어디에도 안 걸리는 예외를 위한 마지막 그물이다. 이게
+        # 없으면 Starlette 기본 처리로 떨어져 이 API 만 유일하게 일반 텍스트 500 을
+        # 돌려주고, "모든 에러를 Problem Details 로 통일한다"는 이 함수의 전제가 깨진다
+        # (Task 21 장애 주입 검증에서 발견). 원인 메시지는 스택/쿼리를 노출할 수 있어
+        # 담지 않는다 — 서버 로그에서 확인한다.
+        return problem_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_type="internal",
+            title="예기치 않은 오류가 발생했습니다",
+            detail="잠시 후 다시 시도하세요. 문제가 이어지면 관리자에게 문의하세요",
+            instance=str(request.url.path),
+        )

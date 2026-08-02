@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sooljang.api.routes.auth import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
-from tests.api.conftest import TEST_DISPLAY_NAME, TEST_EMAIL, TEST_PASSWORD
+from tests.conftest import TEST_DISPLAY_NAME, TEST_EMAIL, TEST_PASSWORD
 
 SETUP_PAYLOAD = {
     "email": TEST_EMAIL,
@@ -176,7 +176,7 @@ class TestProtectedEndpoints:
         from sqlalchemy.ext.asyncio import create_async_engine
 
         from sooljang.infrastructure.database.models import Session
-        from tests.api.conftest import _database_url
+        from tests.conftest import _database_url
 
         async def expire() -> None:
             engine = create_async_engine(_database_url())
@@ -273,7 +273,7 @@ class TestPasswordChange:
         from sqlalchemy.ext.asyncio import create_async_engine
 
         from sooljang.infrastructure.database.models import Session
-        from tests.api.conftest import _database_url
+        from tests.conftest import _database_url
 
         # 두 번째 기기에서 로그인한 상황을 만든다.
         second = TestClient(api_client.app, raise_server_exceptions=False)  # type: ignore[attr-defined]

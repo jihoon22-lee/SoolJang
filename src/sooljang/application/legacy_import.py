@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.categories import create_category, load_tree
@@ -131,6 +131,25 @@ async def apply_plan(
             result.failed_rows.append((planned.line_number, str(error)))
 
     await session.flush()
+
+    # 한 요청에서 수백 행을 한꺼번에 넣는 유일한 경로다(레거시 시트 실측 429행,
+    # `docs/legacy-schema.md` §5). autovacuum 의 ANALYZE 는 보통 수십 초~1분 뒤에나
+    # 돌기 때문에, 방금 넣은 데이터를 곧바로 조회하면 플래너가 옛 통계(빈 테이블
+    # 기준)로 `user_id` 선택도를 오판해 해시 조인 대신 중첩 루프를 고르고, 서브쿼리가
+    # 행마다 재실행돼 수십 배 느려진다(Task 21 에서 429행 기준 25~30초로 실측). 적재
+    # 직후 통계를 갱신해 이 창을 없앤다.
+    for table in (
+        "category",
+        "vendor",
+        "variety",
+        "product",
+        "product_variety",
+        "sku",
+        "purchase",
+        "bottle",
+    ):
+        await session.execute(text(f"ANALYZE {table}"))
+
     return result
 
 
