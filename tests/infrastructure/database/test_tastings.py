@@ -200,9 +200,7 @@ class TestReopen:
 
 
 class TestUnopen:
-    async def test_개봉을_미개봉으로_되돌린다(
-        self, session: AsyncSession, bottle: Bottle
-    ) -> None:
+    async def test_개봉을_미개봉으로_되돌린다(self, session: AsyncSession, bottle: Bottle) -> None:
         # 실수로 개봉을 눌렀을 때를 위한 되돌리기다.
         await open_bottle(session, bottle, opened_on=TODAY, remaining_ml=500)
         await unopen_bottle(session, bottle)
