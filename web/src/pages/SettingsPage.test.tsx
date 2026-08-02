@@ -15,7 +15,13 @@ describe("SettingsPage", () => {
       {
         match: "/llm-settings",
         method: "GET",
-        body: { configured: false, provider: null, model: null, api_key_masked: null, updated_at: null },
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+        },
       },
     ]);
 
@@ -30,7 +36,13 @@ describe("SettingsPage", () => {
       {
         match: "/llm-settings",
         method: "GET",
-        body: { configured: false, provider: null, model: null, api_key_masked: null, updated_at: null },
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+        },
       },
       {
         match: "/llm-settings",
@@ -48,7 +60,7 @@ describe("SettingsPage", () => {
     renderWithQuery(<SettingsPage />);
     await screen.findByText("설정되지 않음");
 
-    await userEvent.type(screen.getByLabelText("OpenAI API 키"), "sk-test-1234567890abcdef");
+    await userEvent.type(screen.getByLabelText("OpenAI API 키"), "sk-test-1234567890abcdef"); // scan-secrets-allow
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
     expect(await screen.findByText(/설정됨/)).toBeInTheDocument();
@@ -57,7 +69,10 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       const put = calls.find((call) => call.method === "PUT" && call.url.includes("/llm-settings"));
       expect(put).toBeDefined();
-      expect(put?.body).toMatchObject({ provider: "openai", api_key: "sk-test-1234567890abcdef" });
+      expect(put?.body).toMatchObject({
+        provider: "openai",
+        api_key: "sk-test-1234567890abcdef", // scan-secrets-allow
+      });
     });
   });
 
@@ -67,7 +82,13 @@ describe("SettingsPage", () => {
       {
         match: "/llm-settings",
         method: "GET",
-        body: { configured: false, provider: null, model: null, api_key_masked: null, updated_at: null },
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+        },
       },
       {
         match: "/llm-settings",
