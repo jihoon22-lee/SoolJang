@@ -1,5 +1,6 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Bottle, BottleStatus, Product, Purchase } from "@/api/types";
+import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottlePanel, formatRemaining, STATUS_LABELS } from "@/components/BottlePanel";
 import {
   formatAbv,
@@ -10,6 +11,11 @@ import {
   formatRating,
   formatVolume,
 } from "@/format";
+import { getLastVendorName } from "@/lastVendor";
+import { rankByQuery } from "@/search";
+
+//: `ProductForm` 과 같은 값 — 405종 목록에서도 스크롤 없이 훑을 수 있는 후보 수.
+const MAX_SUGGESTIONS = 8;
 
 export interface AddPurchaseInput {
   skuId: string;
@@ -38,6 +44,8 @@ interface ProductDetailProps {
   onAddPurchase: (input: AddPurchaseInput) => void;
   addingPurchase: boolean;
   addPurchaseError: unknown;
+  /** 구매 추가 폼의 구매처 자동완성 후보. */
+  vendorNames: string[];
 
   onDeletePurchase: (purchaseId: string) => void;
   deletingPurchaseId: string | null;
@@ -75,6 +83,7 @@ export function ProductDetail({
   onAddPurchase,
   addingPurchase,
   addPurchaseError,
+  vendorNames,
   onDeletePurchase,
   deletingPurchaseId,
   onSplitPurchase,
@@ -173,6 +182,7 @@ export function ProductDetail({
         onAddPurchase={onAddPurchase}
         addingPurchase={addingPurchase}
         addPurchaseError={addPurchaseError}
+        vendorNames={vendorNames}
         onDeletePurchase={onDeletePurchase}
         deletingPurchaseId={deletingPurchaseId}
         onSplitPurchase={onSplitPurchase}
@@ -208,6 +218,7 @@ function PurchaseSection({
   onAddPurchase,
   addingPurchase,
   addPurchaseError,
+  vendorNames,
   onDeletePurchase,
   deletingPurchaseId,
   onSplitPurchase,
@@ -222,6 +233,7 @@ function PurchaseSection({
   onAddPurchase: (input: AddPurchaseInput) => void;
   addingPurchase: boolean;
   addPurchaseError: unknown;
+  vendorNames: string[];
   onDeletePurchase: (purchaseId: string) => void;
   deletingPurchaseId: string | null;
   onSplitPurchase: (purchaseId: string, parts: SplitPart[]) => void;
@@ -267,6 +279,7 @@ function PurchaseSection({
           addingSku={addingSku}
           submitting={addingPurchase}
           error={addPurchaseError}
+          vendorNames={vendorNames}
         />
       )}
 
@@ -373,6 +386,7 @@ function AddPurchaseForm({
   addingSku,
   submitting,
   error,
+  vendorNames,
 }: {
   product: Product;
   onSubmit: (input: AddPurchaseInput) => void;
@@ -380,15 +394,21 @@ function AddPurchaseForm({
   addingSku: boolean;
   submitting: boolean;
   error: unknown;
+  vendorNames: string[];
 }) {
   const [skuId, setSkuId] = useState(product.skus[0]?.id ?? "");
   const [quantity, setQuantity] = useState("1");
-  const [vendorName, setVendorName] = useState("");
+  const [vendorName, setVendorName] = useState(() => getLastVendorName());
   const [purchasedOn, setPurchasedOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [unitListPrice, setUnitListPrice] = useState("");
   const [unitPaidPrice, setUnitPaidPrice] = useState("");
   const [newVolumeMl, setNewVolumeMl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const vendorSuggestions = useMemo(
+    () => rankByQuery(vendorNames, vendorName, (name) => name).slice(0, MAX_SUGGESTIONS),
+    [vendorNames, vendorName],
+  );
 
   const errorMessage =
     localError ?? (error instanceof Error ? error.message : error ? String(error) : null);
@@ -517,11 +537,12 @@ function AddPurchaseForm({
 
       <div className="field">
         <label htmlFor="purchase-vendor">구매처</label>
-        <input
+        <AutocompleteInput
           id="purchase-vendor"
           value={vendorName}
           placeholder="없으면 비워 두세요"
-          onChange={(event) => setVendorName(event.target.value)}
+          onChange={setVendorName}
+          suggestions={vendorSuggestions}
         />
       </div>
 

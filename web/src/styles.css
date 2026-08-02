@@ -173,6 +173,38 @@ body {
   font-size: 0.85rem;
 }
 
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete-list {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.autocomplete-list li {
+  padding: 8px 10px;
+  border-radius: calc(var(--radius) - 4px);
+  cursor: pointer;
+}
+
+.autocomplete-list li.active,
+.autocomplete-list li:hover {
+  background: var(--bg);
+}
+
 .field-row {
   display: grid;
   gap: 8px;

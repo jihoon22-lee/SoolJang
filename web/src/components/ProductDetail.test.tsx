@@ -107,6 +107,7 @@ function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
       onAddPurchase={onAddPurchase}
       addingPurchase={false}
       addPurchaseError={null}
+      vendorNames={[]}
       onDeletePurchase={onDeletePurchase}
       deletingPurchaseId={null}
       onSplitPurchase={onSplitPurchase}
@@ -293,6 +294,26 @@ describe("ProductDetail", () => {
       expect(onAddPurchase).toHaveBeenCalledWith(
         expect.objectContaining({ skuId: "s1", quantity: 3, vendorName: "새 구매처" }),
       );
+    });
+
+    it("구매처 자동완성 후보를 보여준다", async () => {
+      setup({ vendorNames: ["이마트", "이마트 트레이더스", "코스트코"] });
+
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.type(screen.getByLabelText("구매처"), "이마트");
+
+      const options = within(screen.getByRole("listbox")).getAllByRole("option");
+      expect(options.map((o) => o.textContent)).toEqual(["이마트", "이마트 트레이더스"]);
+    });
+
+    it("구매처는 직전에 쓴 값으로 미리 채워진다", async () => {
+      window.localStorage.setItem("sooljang:last-vendor-name", "이마트");
+
+      setup();
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+
+      expect(screen.getByLabelText("구매처")).toHaveValue("이마트");
+      window.localStorage.clear();
     });
 
     it("구매 건 삭제는 확인을 받은 뒤에만 호출한다", async () => {

@@ -1,9 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/client";
 import type { CategoryNode, ProblemDetail } from "@/api/types";
 import { ProductForm } from "@/components/ProductForm";
+
+afterEach(() => {
+  window.localStorage.clear();
+});
 
 const categories: CategoryNode[] = [
   {
@@ -129,6 +133,76 @@ describe("ProductForm", () => {
     await userEvent.click(screen.getByRole("button", { name: "취소" }));
 
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("구매일은 오늘로 미리 채워진다", () => {
+    setup();
+
+    const today = new Date().toISOString().slice(0, 10);
+    expect(screen.getByLabelText("구매일")).toHaveValue(today);
+  });
+
+  it("구매처는 직전에 쓴 값으로 미리 채워진다", () => {
+    window.localStorage.setItem("sooljang:last-vendor-name", "이마트");
+
+    setup();
+
+    expect(screen.getByLabelText("구매처")).toHaveValue("이마트");
+  });
+
+  it("이름 자동완성 후보를 순위대로 보여준다", async () => {
+    setup({
+      existingProducts: [
+        { id: "p1", name: "글렌알라키 12년" },
+        { id: "p2", name: "글렌고인 15년" },
+        { id: "p3", name: "발베니 12년" },
+      ],
+    });
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "글렌");
+
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["글렌고인 15년", "글렌알라키 12년"]);
+  });
+
+  it("정확히 일치하는 이름이 있으면 중복 등록을 경고한다", async () => {
+    const onSelectExisting = vi.fn();
+    setup({
+      existingProducts: [{ id: "p1", name: "글렌알라키 12년" }],
+      onSelectExisting,
+    });
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키 12년");
+    expect(await screen.findByText(/이미 등록된 술입니다/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "구매 이력 추가하시겠어요?" }));
+    expect(onSelectExisting).toHaveBeenCalledWith("p1");
+  });
+
+  it("부분 일치나 다른 이름은 중복으로 경고하지 않는다", async () => {
+    setup({ existingProducts: [{ id: "p1", name: "글렌알라키 12년" }] });
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키");
+    expect(screen.queryByText(/이미 등록된 술입니다/)).not.toBeInTheDocument();
+  });
+
+  it("수정 모드에서는 중복 경고를 하지 않는다", async () => {
+    setup({
+      mode: "edit",
+      initialValues: { name: "글렌알라키 12년" },
+      existingProducts: [{ id: "p1", name: "글렌알라키 12년" }],
+    });
+
+    expect(screen.queryByText(/이미 등록된 술입니다/)).not.toBeInTheDocument();
+  });
+
+  it("구매처 자동완성 후보를 보여준다", async () => {
+    setup({ vendorNames: ["이마트", "이마트 트레이더스", "코스트코"] });
+
+    await userEvent.type(screen.getByLabelText("구매처"), "이마트");
+
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["이마트", "이마트 트레이더스"]);
   });
 
   it("모든 입력에 라벨이 연결되어 있다", () => {

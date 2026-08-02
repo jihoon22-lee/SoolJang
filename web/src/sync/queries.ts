@@ -40,6 +40,7 @@ import {
   tallyBottles,
   valueForMoney,
 } from "@/domain/metrics";
+import { matchesQuery } from "@/search";
 import { db, type SyncRow } from "@/sync/db";
 
 //: 백엔드 `legacy/categories.py::MAX_CATEGORY_DEPTH` 와 같은 값.
@@ -325,11 +326,10 @@ async function varietyNameMap(): Promise<Map<string, string[]>> {
 }
 
 function matchesText(product: Product, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
+  if (!query.trim()) return true;
   return (
-    product.name.toLowerCase().includes(needle) ||
-    (product.name_en?.toLowerCase().includes(needle) ?? false)
+    matchesQuery(product.name, query) ||
+    (product.name_en !== null && matchesQuery(product.name_en, query))
   );
 }
 
