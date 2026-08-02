@@ -150,7 +150,12 @@ export function App() {
             />
           )}
           {route.view === "categories" && <CategoriesPage />}
-          {route.view === "stats" && <StatsPage />}
+          {route.view === "stats" && (
+            <StatsPage
+              onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+              onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+            />
+          )}
           {route.view === "import" && <ImportPage />}
           {route.view === "settings" && <SettingsPage />}
           {route.view === "status" && <HealthPanel />}

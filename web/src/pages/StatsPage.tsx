@@ -5,9 +5,13 @@
  * 없는 읽기 전용 화면이라 `CategoriesPage` 처럼 단일 쿼리 조합 + 조기 반환 패턴을 쓴다.
  *
  * 오프라인에서도 봐야 하므로 Dexie 로컬 미러 기반 `sync/queries.ts` 로 계산한다(Task 15).
+ *
+ * 랭킹의 술 이름과 주종별 집계 행은 "내 술" 탭으로 건너뛰는 크로스 링크다(사용자 요청) —
+ * `App.tsx` 가 `onSelectProduct`/`onSelectCategory` 를 `navigate` 에 연결해 준다.
  */
 
 import { useLiveQuery } from "dexie-react-hooks";
+import { useState } from "react";
 
 import type { CategoryStat, RankingEntry } from "@/api/types";
 import { PivotExplorer } from "@/components/PivotExplorer";
@@ -20,18 +24,75 @@ import {
 } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
-export function StatsPage() {
+type CategorySortKey =
+  | "name"
+  | "bottle_count"
+  | "total_spend"
+  | "avg_abv"
+  | "avg_rating"
+  | "avg_price_per_100ml"
+  | "discount_rate";
+type SortOrder = "asc" | "desc";
+
+//: `getCategoryRollup()` 의 기본 정렬(병수 내림차순)과 맞춘다 — 처음 진입했을 때 순서가
+//: 갑자기 바뀌어 보이면 안 된다.
+const DEFAULT_CATEGORY_SORT: CategorySortKey = "bottle_count";
+const DEFAULT_CATEGORY_ORDER: SortOrder = "desc";
+
+const CATEGORY_SORT_ACCESSORS: Record<CategorySortKey, (stat: CategoryStat) => number | string> = {
+  name: (stat) => stat.name,
+  bottle_count: (stat) => stat.bottle_count,
+  total_spend: (stat) => (stat.total_spend !== null ? Number(stat.total_spend) : -Infinity),
+  avg_abv: (stat) => (stat.avg_abv !== null ? Number(stat.avg_abv) : -Infinity),
+  avg_rating: (stat) => (stat.avg_rating !== null ? Number(stat.avg_rating) : -Infinity),
+  avg_price_per_100ml: (stat) =>
+    stat.avg_price_per_100ml !== null ? Number(stat.avg_price_per_100ml) : -Infinity,
+  discount_rate: (stat) => (stat.discount_rate !== null ? Number(stat.discount_rate) : -Infinity),
+};
+
+function sortCategories(
+  categories: CategoryStat[],
+  sort: CategorySortKey,
+  order: SortOrder,
+): CategoryStat[] {
+  const accessor = CATEGORY_SORT_ACCESSORS[sort];
+  return [...categories].sort((a, b) => {
+    const av = accessor(a);
+    const bv = accessor(b);
+    const cmp = av < bv ? -1 : av > bv ? 1 : a.name.localeCompare(b.name);
+    return order === "asc" ? cmp : -cmp;
+  });
+}
+
+interface StatsPageProps {
+  onSelectProduct: (productId: string) => void;
+  onSelectCategory: (categoryId: string) => void;
+}
+
+export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps) {
   const { state } = useSyncStatus();
   const offline = state === "offline";
   const rankings = useLiveQuery(() => getStatsRankings(), []);
-  const categories = useLiveQuery(() => getCategoryRollup(), []);
+  const categoriesRaw = useLiveQuery(() => getCategoryRollup(), []);
   const totals = useLiveQuery(() => getStatsSummary(), []);
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
+  const [categorySort, setCategorySort] = useState<CategorySortKey>(DEFAULT_CATEGORY_SORT);
+  const [categoryOrder, setCategoryOrder] = useState<SortOrder>(DEFAULT_CATEGORY_ORDER);
 
-  if (rankings === undefined || categories === undefined || totals === undefined) {
+  if (rankings === undefined || categoriesRaw === undefined || totals === undefined) {
     return <output aria-live="polite">통계를 불러오고 있습니다…</output>;
   }
 
+  function handleCategorySort(key: CategorySortKey) {
+    if (categorySort === key) {
+      setCategoryOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setCategorySort(key);
+      setCategoryOrder("asc");
+    }
+  }
+
+  const categories = sortCategories(categoriesRaw, categorySort, categoryOrder);
   const maxBottleCount = Math.max(1, ...categories.map((stat) => stat.bottle_count));
 
   return (
@@ -69,11 +130,23 @@ export function StatsPage() {
           <p className="muted">등록된 술이 없습니다.</p>
         ) : (
           <>
-            {/* 표가 같은 병수 데이터를 접근성 있게 담고 있으므로 막대 그래프는 장식으로 감춘다. */}
-            <div className="category-bars" aria-hidden="true">
+            {/* 표와 같은 병수 데이터를 같은 정렬 순서로 보여준다. 주종을 누르면 그 주종
+                필터가 걸린 "내 술" 탭으로 이동한다("미분류" 는 실제 카테고리가 아니라
+                건너뛸 곳이 없어 비활성이다). */}
+            <ul className="category-bars">
               {categories.map((stat) => (
-                <div className="category-bar-row" key={stat.category_id ?? "uncategorized"}>
-                  <span className="category-bar-label">{stat.name}</span>
+                <li className="category-bar-row" key={stat.category_id ?? "uncategorized"}>
+                  {stat.category_id ? (
+                    <button
+                      type="button"
+                      className="sort-button category-bar-label"
+                      onClick={() => onSelectCategory(stat.category_id as string)}
+                    >
+                      {stat.name}
+                    </button>
+                  ) : (
+                    <span className="category-bar-label">{stat.name}</span>
+                  )}
                   <span className="category-bar-track">
                     <span
                       className="category-bar-fill"
@@ -81,11 +154,17 @@ export function StatsPage() {
                     />
                   </span>
                   <span className="numeric">{stat.bottle_count.toLocaleString("ko-KR")}병</span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
 
-            <CategoryTable categories={categories} />
+            <CategoryTable
+              categories={categories}
+              sort={categorySort}
+              order={categoryOrder}
+              onSort={handleCategorySort}
+              onSelectCategory={onSelectCategory}
+            />
           </>
         )}
       </section>
@@ -98,23 +177,27 @@ export function StatsPage() {
             hint="실구매 기준"
             entries={rankings.by_bottle_price}
             formatValue={formatMoney}
+            onSelectProduct={onSelectProduct}
           />
           <RankingList
             title="총 구매액"
             hint="실구매 기준"
             entries={rankings.by_total_spend}
             formatValue={formatMoney}
+            onSelectProduct={onSelectProduct}
           />
           <RankingList
             title="100ml당 가격"
             hint="정가 기준"
             entries={rankings.by_price_per_100ml}
             formatValue={formatMoney}
+            onSelectProduct={onSelectProduct}
           />
           <RankingList
             title="개인 평점"
             entries={rankings.by_personal_rating}
             formatValue={formatRating}
+            onSelectProduct={onSelectProduct}
           />
         </div>
       </section>
@@ -138,37 +221,67 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CategoryTable({ categories }: { categories: CategoryStat[] }) {
+interface CategoryColumnDef {
+  key: CategorySortKey;
+  label: string;
+  numeric?: boolean;
+}
+
+const CATEGORY_COLUMNS: CategoryColumnDef[] = [
+  { key: "name", label: "주종" },
+  { key: "bottle_count", label: "병수", numeric: true },
+  { key: "total_spend", label: "총액", numeric: true },
+  { key: "avg_abv", label: "평균 도수", numeric: true },
+  { key: "avg_rating", label: "평균 평점", numeric: true },
+  { key: "avg_price_per_100ml", label: "평균 100ml가", numeric: true },
+  { key: "discount_rate", label: "할인율", numeric: true },
+];
+
+function CategoryTable({
+  categories,
+  sort,
+  order,
+  onSort,
+  onSelectCategory,
+}: {
+  categories: CategoryStat[];
+  sort: CategorySortKey;
+  order: SortOrder;
+  onSort: (key: CategorySortKey) => void;
+  onSelectCategory: (categoryId: string) => void;
+}) {
   return (
     <>
       <table className="stats-table">
         <thead>
           <tr>
-            <th scope="col">주종</th>
-            <th scope="col" className="numeric">
-              병수
-            </th>
-            <th scope="col" className="numeric">
-              총액
-            </th>
-            <th scope="col" className="numeric">
-              평균 도수
-            </th>
-            <th scope="col" className="numeric">
-              평균 평점
-            </th>
-            <th scope="col" className="numeric">
-              평균 100ml가
-            </th>
-            <th scope="col" className="numeric">
-              할인율
-            </th>
+            {CATEGORY_COLUMNS.map((column) => (
+              <CategoryColumnHeader
+                key={column.key}
+                column={column}
+                sort={sort}
+                order={order}
+                onSort={onSort}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>
           {categories.map((stat) => (
             <tr key={stat.category_id ?? "uncategorized"}>
-              <th scope="row">{stat.name}</th>
+              <th scope="row">
+                {stat.category_id ? (
+                  <button
+                    type="button"
+                    className="link-like"
+                    onClick={() => onSelectCategory(stat.category_id as string)}
+                  >
+                    {stat.name}
+                  </button>
+                ) : (
+                  stat.name
+                )}
+              </th>
               <td className="numeric">{stat.bottle_count.toLocaleString("ko-KR")}</td>
               <td className="numeric">{formatMoney(stat.total_spend)}</td>
               <td className="numeric">{formatAbv(stat.avg_abv)}</td>
@@ -183,7 +296,19 @@ function CategoryTable({ categories }: { categories: CategoryStat[] }) {
       <ul className="stats-cards">
         {categories.map((stat) => (
           <li className="stats-card" key={stat.category_id ?? "uncategorized"}>
-            <h4>{stat.name}</h4>
+            <h4>
+              {stat.category_id ? (
+                <button
+                  type="button"
+                  className="link-like"
+                  onClick={() => onSelectCategory(stat.category_id as string)}
+                >
+                  {stat.name}
+                </button>
+              ) : (
+                stat.name
+              )}
+            </h4>
             <dl>
               <dt>병수</dt>
               <dd>{stat.bottle_count.toLocaleString("ko-KR")}병</dd>
@@ -205,16 +330,48 @@ function CategoryTable({ categories }: { categories: CategoryStat[] }) {
   );
 }
 
+function CategoryColumnHeader({
+  column,
+  sort,
+  order,
+  onSort,
+}: {
+  column: CategoryColumnDef;
+  sort: CategorySortKey;
+  order: SortOrder;
+  onSort: (key: CategorySortKey) => void;
+}) {
+  const active = sort === column.key;
+  return (
+    <th
+      scope="col"
+      className={column.numeric ? "numeric" : undefined}
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button type="button" className="sort-button" onClick={() => onSort(column.key)}>
+        {column.label}
+        {active ? (
+          <span aria-hidden="true" className="sort-indicator">
+            {order === "asc" ? " ▲" : " ▼"}
+          </span>
+        ) : null}
+      </button>
+    </th>
+  );
+}
+
 function RankingList({
   title,
   hint,
   entries,
   formatValue,
+  onSelectProduct,
 }: {
   title: string;
   hint?: string;
   entries: RankingEntry[];
   formatValue: (value: string) => string;
+  onSelectProduct: (productId: string) => void;
 }) {
   return (
     <section aria-label={title}>
@@ -229,7 +386,13 @@ function RankingList({
           {entries.map((entry, index) => (
             <li key={entry.product_id}>
               <span className="ranking-rank">{index + 1}</span>
-              <span className="ranking-name">{entry.product_name}</span>
+              <button
+                type="button"
+                className="sort-button ranking-name"
+                onClick={() => onSelectProduct(entry.product_id)}
+              >
+                {entry.product_name}
+              </button>
               <span className="ranking-value">{formatValue(entry.value)}</span>
             </li>
           ))}

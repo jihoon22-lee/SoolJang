@@ -439,7 +439,9 @@ button:disabled {
 .category-bars {
   display: grid;
   gap: 8px;
-  margin-bottom: var(--space);
+  margin: 0 0 var(--space);
+  padding: 0;
+  list-style: none;
 }
 
 .category-bar-row {
