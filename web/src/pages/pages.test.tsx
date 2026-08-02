@@ -133,6 +133,8 @@ describe("ProductsPage", () => {
       db.bottle.clear(),
       db.category.clear(),
       db.vendor.clear(),
+      db.variety.clear(),
+      db.product_variety.clear(),
       db.outbox.clear(),
     ]);
   });
@@ -268,10 +270,86 @@ describe("ProductsPage", () => {
 
     await waitFor(() => {
       const table = screen.getByRole("table");
-      const names = within(table)
-        .getAllByRole("button")
-        .map((el) => el.textContent);
+      // 정렬 헤더도 버튼이라 tbody 로 좁혀 제품 이름 버튼만 본다.
+      const rows = within(table).getAllByRole("row").slice(1);
+      const names = rows.map((row) => within(row).getByRole("button").textContent);
       expect(names).toEqual(["비싼 술", "저렴한 술"]);
+    });
+  });
+
+  it("더 많은 필터(국가·빈티지 범위·구매처·품종·100ml당 가격 범위)를 적용한다", async () => {
+    await db.vendor.bulkPut([
+      row({ id: "vendorA", name: "가상마트A", kind: "mart" }),
+      row({ id: "vendorB", name: "가상마트B", kind: "mart" }),
+    ]);
+    await db.product.bulkPut([
+      row({
+        id: "p1",
+        name: "스코틀랜드 술",
+        category_id: null,
+        country: "스코틀랜드",
+        vintage: 2015,
+      }),
+      row({ id: "p2", name: "프랑스 술", category_id: null, country: "프랑스", vintage: 2020 }),
+    ]);
+    await db.sku.bulkPut([
+      row({ id: "s1", product_id: "p1", volume_ml: 700 }),
+      row({ id: "s2", product_id: "p2", volume_ml: 700 }),
+    ]);
+    await db.purchase.bulkPut([
+      row({ id: "pu1", sku_id: "s1", vendor_id: "vendorA", quantity: 1, unit_list_price: "70000" }),
+      row({ id: "pu2", sku_id: "s2", vendor_id: "vendorB", quantity: 1, unit_list_price: "7000" }),
+    ]);
+    await db.variety.bulkPut([row({ id: "v1", name: "싱글몰트" })]);
+    await db.product_variety.put(
+      row({ id: "pv1", product_id: "p1", variety_id: "v1", sort_order: 0 }),
+    );
+
+    renderProductsPage();
+    await screen.findAllByRole("button", { name: "스코틀랜드 술" });
+    await userEvent.click(screen.getByText("더 많은 필터"));
+
+    await userEvent.type(screen.getByLabelText("국가"), "스코틀랜드");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "스코틀랜드 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "프랑스 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    // <details> 는 리액트가 제어하지 않는 DOM 상태라 필터 초기화로 닫히지 않는다 —
+    // 다시 열 필요가 없다.
+    await userEvent.type(screen.getByLabelText("빈티지"), "2018");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "프랑스 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "스코틀랜드 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    // <details> 는 리액트가 제어하지 않는 DOM 상태라 필터 초기화로 닫히지 않는다 —
+    // 다시 열 필요가 없다.
+    await userEvent.selectOptions(screen.getByLabelText("구매처"), "vendorA");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "스코틀랜드 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "프랑스 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    // <details> 는 리액트가 제어하지 않는 DOM 상태라 필터 초기화로 닫히지 않는다 —
+    // 다시 열 필요가 없다.
+    await userEvent.type(screen.getByLabelText("품종·스타일"), "싱글몰트");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "스코틀랜드 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "프랑스 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    // <details> 는 리액트가 제어하지 않는 DOM 상태라 필터 초기화로 닫히지 않는다 —
+    // 다시 열 필요가 없다.
+    // p1: 700ml/70000원 → 100ml당 10000원. p2: 700ml/7000원 → 100ml당 1000원.
+    await userEvent.type(screen.getByLabelText("100ml당 가격 (원)"), "5000");
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "스코틀랜드 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "프랑스 술" })).not.toBeInTheDocument();
     });
   });
 

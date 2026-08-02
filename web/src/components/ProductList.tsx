@@ -1,10 +1,31 @@
-import type { Product } from "@/api/types";
+import type { Product, SortKey, SortOrder } from "@/api/types";
 import { formatAbv, formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
 
 interface ProductListProps {
   products: Product[];
   onSelect: (productId: string) => void;
+  sort: SortKey;
+  order: SortOrder;
+  onSort: (key: SortKey) => void;
 }
+
+interface ColumnDef {
+  /** `undefined` 면 정렬할 수 없는 열이다("주종" — 계층형이라 서버 `SortKey` 가 없다). */
+  sortKey: SortKey | undefined;
+  label: string;
+  numeric?: boolean;
+}
+
+const COLUMNS: ColumnDef[] = [
+  { sortKey: "name", label: "이름" },
+  { sortKey: "vintage", label: "빈티지", numeric: true },
+  { sortKey: undefined, label: "주종" },
+  { sortKey: "abv", label: "도수", numeric: true },
+  { sortKey: "in_stock_count", label: "재고", numeric: true },
+  { sortKey: "avg_list_price", label: "평단가", numeric: true },
+  { sortKey: "price_per_100ml", label: "100ml당", numeric: true },
+  { sortKey: "personal_rating", label: "내 평점", numeric: true },
+];
 
 /**
  * 제품 목록.
@@ -12,8 +33,11 @@ interface ProductListProps {
  * 같은 데이터를 테이블과 카드로 두 번 렌더하고 CSS 로 하나만 보이게 한다. JS 뷰포트 감지를
  * 쓰지 않는 이유는 초기 페인트에서 잘못된 뷰가 잠깐 보이는 문제를 피하고, 테스트에서 두 뷰를
  * 모두 검증할 수 있기 때문이다.
+ *
+ * 헤더 클릭 정렬은 새 정렬 로직을 만들지 않는다 — `ProductFilterPanel` 의 정렬 드롭다운과
+ * 똑같은 `sort`/`order` 상태를 그대로 토글할 뿐이다(부모 `ProductsPage` 가 상태를 쥔다).
  */
-export function ProductList({ products, onSelect }: ProductListProps) {
+export function ProductList({ products, onSelect, sort, order, onSort }: ProductListProps) {
   if (products.length === 0) {
     return (
       <output className="notice">
@@ -28,23 +52,15 @@ export function ProductList({ products, onSelect }: ProductListProps) {
         <caption className="sr-only">제품 목록. 이름을 선택하면 상세 화면으로 이동합니다.</caption>
         <thead>
           <tr>
-            <th scope="col">이름</th>
-            <th scope="col">주종</th>
-            <th scope="col" className="numeric">
-              도수
-            </th>
-            <th scope="col" className="numeric">
-              재고
-            </th>
-            <th scope="col" className="numeric">
-              평단가
-            </th>
-            <th scope="col" className="numeric">
-              100ml당
-            </th>
-            <th scope="col" className="numeric">
-              내 평점
-            </th>
+            {COLUMNS.map((column) => (
+              <ColumnHeader
+                key={column.label}
+                column={column}
+                sort={sort}
+                order={order}
+                onSort={onSort}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -54,8 +70,8 @@ export function ProductList({ products, onSelect }: ProductListProps) {
                 <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
                   {product.name}
                 </button>
-                {product.vintage !== null && <span className="muted"> ({product.vintage})</span>}
               </th>
+              <td className="numeric">{product.vintage ?? "—"}</td>
               <td>{formatCategoryPath(product.category_path)}</td>
               <td className="numeric">{formatAbv(product.abv)}</td>
               <td className="numeric">
@@ -101,6 +117,48 @@ export function ProductList({ products, onSelect }: ProductListProps) {
         ))}
       </ul>
     </>
+  );
+}
+
+function ColumnHeader({
+  column,
+  sort,
+  order,
+  onSort,
+}: {
+  column: ColumnDef;
+  sort: SortKey;
+  order: SortOrder;
+  onSort: (key: SortKey) => void;
+}) {
+  if (column.sortKey === undefined) {
+    return (
+      <th scope="col" className={column.numeric ? "numeric" : undefined}>
+        {column.label}
+      </th>
+    );
+  }
+
+  const active = sort === column.sortKey;
+  return (
+    <th
+      scope="col"
+      className={column.numeric ? "numeric" : undefined}
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        className="sort-button"
+        onClick={() => onSort(column.sortKey as SortKey)}
+      >
+        {column.label}
+        {active ? (
+          <span aria-hidden="true" className="sort-indicator">
+            {order === "asc" ? " ▲" : " ▼"}
+          </span>
+        ) : null}
+      </button>
+    </th>
   );
 }
 

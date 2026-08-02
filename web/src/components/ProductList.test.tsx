@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Product, ProductMetrics } from "@/api/types";
+import type { Product, ProductMetrics, SortKey, SortOrder } from "@/api/types";
 import { ProductList } from "@/components/ProductList";
 
 const emptyMetrics: ProductMetrics = {
@@ -47,16 +47,37 @@ function product(overrides: Partial<Product> = {}): Product {
   };
 }
 
+/** 정렬 상태는 매 테스트가 신경 쓸 필요 없는 대부분의 경우를 위한 기본값. */
+function renderList(
+  props: Partial<{
+    products: Product[];
+    onSelect: (id: string) => void;
+    sort: SortKey;
+    order: SortOrder;
+    onSort: (key: SortKey) => void;
+  }> = {},
+) {
+  return render(
+    <ProductList
+      products={props.products ?? [product()]}
+      onSelect={props.onSelect ?? vi.fn()}
+      sort={props.sort ?? "name"}
+      order={props.order ?? "asc"}
+      onSort={props.onSort ?? vi.fn()}
+    />,
+  );
+}
+
 describe("ProductList", () => {
   it("빈 목록에서 다음 행동을 안내한다", () => {
-    render(<ProductList products={[]} onSelect={vi.fn()} />);
+    renderList({ products: [] });
 
     expect(screen.getByRole("status")).toHaveTextContent("조건에 맞는 술이 없습니다");
   });
 
   it("테이블과 카드 두 뷰에 같은 데이터를 렌더한다", () => {
     // CSS 로 하나만 보이게 한다. JS 뷰포트 감지를 쓰지 않으므로 두 뷰가 항상 DOM 에 있다.
-    render(<ProductList products={[product()]} onSelect={vi.fn()} />);
+    renderList();
 
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: /카드 보기/ })).toBeInTheDocument();
@@ -65,7 +86,7 @@ describe("ProductList", () => {
   });
 
   it("가격 정보가 없으면 0원이 아니라 없음으로 표시한다", () => {
-    render(<ProductList products={[product()]} onSelect={vi.fn()} />);
+    renderList();
 
     const cards = screen.getByRole("list", { name: /카드 보기/ });
     expect(within(cards).getAllByText("가격 정보 없음").length).toBeGreaterThan(0);
@@ -77,7 +98,7 @@ describe("ProductList", () => {
       metrics: { ...emptyMetrics, avg_list_price: "150000.00", price_per_100ml: "21428.57" },
     });
 
-    render(<ProductList products={[withPrice]} onSelect={vi.fn()} />);
+    renderList({ products: [withPrice] });
 
     const cards = screen.getByRole("list", { name: /카드 보기/ });
     expect(within(cards).getByText("150,000원")).toBeInTheDocument();
@@ -87,29 +108,49 @@ describe("ProductList", () => {
   it("재고 유무를 배지로 구분한다", () => {
     const inStock = product({ metrics: { ...emptyMetrics, in_stock_count: 3 } });
 
-    const { unmount } = render(<ProductList products={[inStock]} onSelect={vi.fn()} />);
+    const { unmount } = renderList({ products: [inStock] });
     expect(screen.getAllByText("재고 3병").length).toBeGreaterThan(0);
     unmount();
 
-    render(<ProductList products={[product()]} onSelect={vi.fn()} />);
+    renderList();
     expect(screen.getAllByText("재고 없음").length).toBeGreaterThan(0);
   });
 
   it("주종 계층 경로를 보여준다", () => {
-    render(<ProductList products={[product()]} onSelect={vi.fn()} />);
+    renderList();
 
     expect(screen.getAllByText(/양주 › 위스키 › 싱글몰트 위스키/).length).toBeGreaterThan(0);
   });
 
-  it("빈티지가 있으면 이름 옆에 표시한다", () => {
-    render(<ProductList products={[product({ vintage: 2019 })]} onSelect={vi.fn()} />);
+  it("빈티지가 있으면 표에는 별도 열로, 카드에는 부제에 표시한다", () => {
+    renderList({ products: [product({ vintage: 2019 })] });
 
-    expect(screen.getAllByText(/2019/).length).toBeGreaterThan(0);
+    const table = screen.getByRole("table");
+    const vintageCells = within(table)
+      .getAllByRole("cell")
+      .filter((cell) => cell.textContent === "2019");
+    expect(vintageCells).toHaveLength(1);
+
+    // 이름 자체에는 더 이상 "(2019)" 가 안 붙는다.
+    const nameButtons = screen.getAllByRole("button", { name: "글렌알라키 14y" });
+    expect(nameButtons[0]?.textContent).toBe("글렌알라키 14y");
+
+    const cards = screen.getByRole("list", { name: /카드 보기/ });
+    expect(within(cards).getByText(/2019/)).toBeInTheDocument();
+  });
+
+  it("빈티지가 없으면 표에 —로 표시한다", () => {
+    renderList({ products: [product({ vintage: null })] });
+
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    // 두 번째 행(첫 데이터 행)의 두 번째 셀(빈티지 열)이 "—" 다.
+    expect(within(rows[1] as HTMLElement).getAllByRole("cell")[0]).toHaveTextContent("—");
   });
 
   it("이름을 선택하면 상세로 이동한다", async () => {
     const onSelect = vi.fn();
-    render(<ProductList products={[product()]} onSelect={onSelect} />);
+    renderList({ onSelect });
 
     await userEvent.click(screen.getAllByRole("button", { name: "글렌알라키 14y" })[0] as Element);
 
@@ -118,17 +159,44 @@ describe("ProductList", () => {
 
   it("키보드로 제품을 선택할 수 있다", async () => {
     const onSelect = vi.fn();
-    render(<ProductList products={[product()]} onSelect={onSelect} />);
+    renderList({ onSelect });
 
-    await userEvent.tab();
+    // 정렬 가능한 헤더 버튼들이 탭 순서상 먼저 온다 — 이름 버튼에 직접 포커스를 준다.
+    (screen.getAllByRole("button", { name: "글렌알라키 14y" })[0] as HTMLElement).focus();
     await userEvent.keyboard("{Enter}");
 
     expect(onSelect).toHaveBeenCalledWith("p1");
   });
 
   it("테이블에 스크린리더용 설명을 붙인다", () => {
-    render(<ProductList products={[product()]} onSelect={vi.fn()} />);
+    renderList();
 
     expect(screen.getByRole("table")).toHaveAccessibleName(/제품 목록/);
+  });
+
+  it("정렬 가능한 헤더를 누르면 그 키로 정렬을 요청한다", async () => {
+    const onSort = vi.fn();
+    renderList({ onSort });
+
+    await userEvent.click(screen.getByRole("button", { name: /도수/ }));
+
+    expect(onSort).toHaveBeenCalledWith("abv");
+  });
+
+  it("현재 정렬 중인 열에 aria-sort 와 방향 표시를 붙인다", () => {
+    renderList({ sort: "abv", order: "desc" });
+
+    const header = screen.getByRole("columnheader", { name: /도수/ });
+    expect(header).toHaveAttribute("aria-sort", "descending");
+
+    const nameHeader = screen.getByRole("columnheader", { name: "이름" });
+    expect(nameHeader).toHaveAttribute("aria-sort", "none");
+  });
+
+  it("주종 열은 정렬할 수 없다(서버 SortKey 가 없어서)", () => {
+    renderList();
+
+    const header = screen.getByRole("columnheader", { name: "주종" });
+    expect(within(header).queryByRole("button")).not.toBeInTheDocument();
   });
 });

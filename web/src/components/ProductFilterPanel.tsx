@@ -1,9 +1,10 @@
-import type { CategoryNode, ProductFilters, SortKey, SortOrder } from "@/api/types";
+import type { CategoryNode, ProductFilters, SortKey, SortOrder, Vendor } from "@/api/types";
 import { formatCategoryPath } from "@/format";
 
 interface ProductFilterPanelProps {
   filters: ProductFilters;
   categories: CategoryNode[];
+  vendors: Vendor[];
   onChange: (next: ProductFilters) => void;
   onReset: () => void;
 }
@@ -24,10 +25,15 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
  *
  * 모든 필터는 서버에서 AND 로 결합된다. 필터를 바꾸면 커서를 버리고 첫 페이지부터 다시
  * 읽어야 하는데, 그 처리는 목록 화면이 담당한다.
+ *
+ * 국가·빈티지 범위·구매처·품종·100ml당 가격 범위는 자주 쓰는 필터가 아니라
+ * `<details>` 로 접어 둔다 — 항상 펼쳐 두면 자주 쓰는 필터(이름·주종·도수)를 찾기 더
+ * 어려워진다.
  */
 export function ProductFilterPanel({
   filters,
   categories,
+  vendors,
   onChange,
   onReset,
 }: ProductFilterPanelProps) {
@@ -154,6 +160,102 @@ export function ProductFilterPanel({
           </select>
         </div>
       </div>
+
+      <details className="field">
+        <summary>더 많은 필터</summary>
+
+        <div className="field" style={{ marginTop: 8 }}>
+          <label htmlFor="filter-country">국가</label>
+          <input
+            id="filter-country"
+            value={filters.country ?? ""}
+            placeholder="예: 스코틀랜드"
+            onChange={(event) => update({ country: event.target.value || undefined })}
+          />
+        </div>
+
+        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="sr-only">빈티지 범위</legend>
+          <label htmlFor="filter-vintage-min">빈티지</label>
+          <div className="field-row">
+            <input
+              id="filter-vintage-min"
+              type="number"
+              min={1800}
+              max={2200}
+              placeholder="최소"
+              value={filters.vintage_min ?? ""}
+              onChange={(event) =>
+                update({
+                  vintage_min: event.target.value ? Number(event.target.value) : undefined,
+                })
+              }
+            />
+            <input
+              aria-label="빈티지 최대"
+              type="number"
+              min={1800}
+              max={2200}
+              placeholder="최대"
+              value={filters.vintage_max ?? ""}
+              onChange={(event) =>
+                update({
+                  vintage_max: event.target.value ? Number(event.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+        </fieldset>
+
+        <div className="field">
+          <label htmlFor="filter-vendor">구매처</label>
+          <select
+            id="filter-vendor"
+            value={filters.vendor_id ?? ""}
+            onChange={(event) => update({ vendor_id: event.target.value || undefined })}
+          >
+            <option value="">전체</option>
+            {vendors.map((vendor) => (
+              <option key={vendor.id} value={vendor.id}>
+                {vendor.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor="filter-variety">품종·스타일</label>
+          <input
+            id="filter-variety"
+            value={filters.variety ?? ""}
+            placeholder="예: Cabernet Sauvignon"
+            onChange={(event) => update({ variety: event.target.value || undefined })}
+          />
+        </div>
+
+        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="sr-only">100ml당 가격 범위</legend>
+          <label htmlFor="filter-price-min">100ml당 가격 (원)</label>
+          <div className="field-row">
+            <input
+              id="filter-price-min"
+              type="number"
+              min={0}
+              placeholder="최소"
+              value={filters.price_per_100ml_min ?? ""}
+              onChange={(event) => update({ price_per_100ml_min: event.target.value || undefined })}
+            />
+            <input
+              aria-label="100ml당 가격 최대"
+              type="number"
+              min={0}
+              placeholder="최대"
+              value={filters.price_per_100ml_max ?? ""}
+              onChange={(event) => update({ price_per_100ml_max: event.target.value || undefined })}
+            />
+          </div>
+        </fieldset>
+      </details>
 
       <button type="button" onClick={onReset}>
         필터 초기화

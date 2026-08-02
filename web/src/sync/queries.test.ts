@@ -130,6 +130,24 @@ describe("getProducts", () => {
     expect(filtered.map((p) => p.id)).toEqual(["p1"]);
   });
 
+  it("vendor_id 필터는 그 구매처에서 산 적 있는 제품만 남긴다", async () => {
+    await db.product.bulkPut([
+      row({ id: "p1", name: "A마트에서 산 술" }),
+      row({ id: "p2", name: "B마트에서 산 술" }),
+    ]);
+    await db.sku.bulkPut([
+      row({ id: "s1", product_id: "p1", volume_ml: 500 }),
+      row({ id: "s2", product_id: "p2", volume_ml: 500 }),
+    ]);
+    await db.purchase.bulkPut([
+      row({ id: "pu1", sku_id: "s1", vendor_id: "vendorA", quantity: 1 }),
+      row({ id: "pu2", sku_id: "s2", vendor_id: "vendorB", quantity: 1 }),
+    ]);
+
+    const filtered = await getProducts({ vendor_id: "vendorA" });
+    expect(filtered.map((p) => p.id)).toEqual(["p1"]);
+  });
+
   it("in_stock=false 는 재고가 없는 제품만 남긴다", async () => {
     await db.product.bulkPut([
       row({ id: "p1", name: "재고 있음" }),

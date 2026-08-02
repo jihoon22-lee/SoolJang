@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
-import type { ProductFilters, User } from "@/api/types";
+import type { ProductFilters, SortKey, User } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { LabelOcrPanel } from "@/components/LabelOcrPanel";
 import { ProductDetail } from "@/components/ProductDetail";
@@ -11,7 +11,13 @@ import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
 import { ProductList } from "@/components/ProductList";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
-import { getCategoryTree, getProduct, getProducts, getPurchasesForProduct } from "@/sync/queries";
+import {
+  getCategoryTree,
+  getProduct,
+  getProducts,
+  getPurchasesForProduct,
+  getVendors,
+} from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { newId } from "@/sync/uuid7";
 
@@ -61,6 +67,7 @@ export function ProductsPage({
   }
 
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
+  const vendors = useLiveQuery(() => getVendors(), []);
   // 제품 규모가 수백 건이라 서버처럼 커서 페이지네이션을 하지 않는다 — 전체를 필터·정렬한
   // 뒤 화면에는 `visibleCount` 만큼만 보여준다("더 보기"는 이미 메모리에 있는 걸 더 드러낼
   // 뿐, 다시 조회하지 않는다).
@@ -122,6 +129,16 @@ export function ProductsPage({
     setPendingLabelFile(null);
   }
 
+  /** 표 헤더 클릭 정렬. `ProductFilterPanel` 의 정렬 드롭다운과 같은 상태를 토글할 뿐,
+   * 별도 정렬 로직을 두지 않는다. 같은 열을 다시 누르면 방향만 뒤집는다. */
+  function handleSort(key: SortKey) {
+    setFilters((prev) => ({
+      ...prev,
+      sort: key,
+      order: prev.sort === key && prev.order === "asc" ? "desc" : "asc",
+    }));
+  }
+
   if (selectedProductId !== null) {
     return <ProductDetailView productId={selectedProductId} onBack={onDeselectProduct} />;
   }
@@ -131,6 +148,7 @@ export function ProductsPage({
       <ProductFilterPanel
         filters={filters}
         categories={categoryTree?.items ?? []}
+        vendors={vendors ?? []}
         onChange={setFilters}
         onReset={() => setFilters(DEFAULT_FILTERS)}
       />
@@ -197,7 +215,13 @@ export function ProductsPage({
 
         {allProducts !== undefined && (
           <>
-            <ProductList products={items} onSelect={onSelectProduct} />
+            <ProductList
+              products={items}
+              onSelect={onSelectProduct}
+              sort={filters.sort ?? "name"}
+              order={filters.order ?? "asc"}
+              onSort={handleSort}
+            />
             {hasMore && (
               <div className="button-row" style={{ marginTop: 12 }}>
                 <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
