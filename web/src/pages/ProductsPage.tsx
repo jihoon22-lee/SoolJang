@@ -18,13 +18,31 @@ import { newId } from "@/sync/uuid7";
 const DEFAULT_FILTERS: ProductFilters = { sort: "name", order: "asc", limit: 30 };
 const PAGE_SIZE = DEFAULT_FILTERS.limit ?? 30;
 
+interface ProductsPageProps {
+  /** 상세로 진입한 제품 id. `null` 이면 목록을 보여준다. App 이 URL 해시로 제어한다. */
+  selectedProductId: string | null;
+  onSelectProduct: (productId: string) => void;
+  onDeselectProduct: () => void;
+  /** 통계 탭 등 다른 화면에서 주종 필터를 걸고 들어올 때만 준다. 마운트 시점에만
+   * `filters.category_id` 를 시딩한다(`ProductForm` 의 `initialValues` 와 같은 패턴) —
+   * 이 화면은 탭을 바꿀 때마다 언마운트/리마운트되므로 이후 사용자가 필터를 바꿔도
+   * 다시 강제로 되돌리지 않는다. */
+  initialCategoryId?: string | undefined;
+}
+
 /** 술 목록 화면. 필터·정렬·더 보기와 등록 폼을 담는다. */
-export function ProductsPage() {
+export function ProductsPage({
+  selectedProductId,
+  onSelectProduct,
+  onDeselectProduct,
+  initialCategoryId,
+}: ProductsPageProps) {
   const queryClient = useQueryClient();
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
-  const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ProductFilters>(() =>
+    initialCategoryId ? { ...DEFAULT_FILTERS, category_id: initialCategoryId } : DEFAULT_FILTERS,
+  );
   const [formOpen, setFormOpen] = useState(false);
   // 라벨 OCR(Task 17)이 채운 값과 원본 사진. 폼이 닫힐 때마다 함께 지운다 — 그러지 않으면
   // 다음에 수동으로 연 폼에 이전 스캔의 흔적이 남는다.
@@ -104,8 +122,8 @@ export function ProductsPage() {
     setPendingLabelFile(null);
   }
 
-  if (selectedId !== null) {
-    return <ProductDetailView productId={selectedId} onBack={() => setSelectedId(null)} />;
+  if (selectedProductId !== null) {
+    return <ProductDetailView productId={selectedProductId} onBack={onDeselectProduct} />;
   }
 
   return (
@@ -133,7 +151,7 @@ export function ProductsPage() {
           <div className="button-row">
             {/* 스캔·라벨 인식 모두 온라인 전용 외부 호출이 필요하다(카메라+Open Food
             Facts, Vision LLM). */}
-            {!offline && <BarcodeScanPanel onSelectProduct={setSelectedId} />}
+            {!offline && <BarcodeScanPanel onSelectProduct={onSelectProduct} />}
             {!offline && (
               <LabelOcrPanel
                 categories={categoryTree?.items ?? []}
@@ -179,7 +197,7 @@ export function ProductsPage() {
 
         {allProducts !== undefined && (
           <>
-            <ProductList products={items} onSelect={setSelectedId} />
+            <ProductList products={items} onSelect={onSelectProduct} />
             {hasMore && (
               <div className="button-row" style={{ marginTop: 12 }}>
                 <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
