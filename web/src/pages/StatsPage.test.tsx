@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StatsPage } from "@/pages/StatsPage";
@@ -27,11 +28,14 @@ function renderStatsPage() {
     { match: "/saved-views", method: "GET", body: [] },
     { match: "/stats/timeseries", method: "GET", body: [] },
   ]);
-  return renderWithQuery(
+  const onSelectProduct = vi.fn();
+  const onSelectCategory = vi.fn();
+  const result = renderWithQuery(
     <SyncStatusProvider>
-      <StatsPage />
+      <StatsPage onSelectProduct={onSelectProduct} onSelectCategory={onSelectCategory} />
     </SyncStatusProvider>,
   );
+  return { ...result, onSelectProduct, onSelectCategory };
 }
 
 beforeEach(async () => {
@@ -65,7 +69,7 @@ describe("StatsPage", () => {
 
     renderWithQuery(
       <SyncStatusProvider>
-        <StatsPage />
+        <StatsPage onSelectProduct={vi.fn()} onSelectCategory={vi.fn()} />
       </SyncStatusProvider>,
     );
 
@@ -146,5 +150,143 @@ describe("StatsPage", () => {
     const ratingSection = screen.getByRole("region", { name: "개인 평점" });
     const [firstEntry] = within(ratingSection).getAllByRole("listitem");
     expect(firstEntry).toHaveTextContent("평점 술");
+  });
+
+  describe("크로스 링크", () => {
+    async function seedTwoCategories() {
+      await db.category.bulkPut([
+        row({ id: "liquor", parent_id: null, name: "양주" }),
+        row({ id: "whisky", parent_id: "liquor", name: "위스키" }),
+        row({ id: "beer", parent_id: null, name: "맥주" }),
+      ]);
+      await db.product.bulkPut([
+        row({ id: "p1", name: "글렌고인 25y", category_id: "whisky", personal_rating: "3.0" }),
+        row({ id: "p2", name: "무명 맥주", category_id: "beer", personal_rating: null }),
+        row({ id: "p3", name: "미분류 술", category_id: null, personal_rating: null }),
+      ]);
+      await db.sku.bulkPut([
+        row({ id: "s1", product_id: "p1", volume_ml: 500 }),
+        row({ id: "s2", product_id: "p2", volume_ml: 500 }),
+        row({ id: "s3", product_id: "p3", volume_ml: 500 }),
+      ]);
+      await db.purchase.bulkPut([
+        row({ id: "pu1", sku_id: "s1", quantity: 1 }),
+        row({ id: "pu2", sku_id: "s2", quantity: 1 }),
+        row({ id: "pu3", sku_id: "s3", quantity: 1 }),
+      ]);
+      await db.bottle.bulkPut([
+        row({ id: "b1a", purchase_id: "pu1", label_no: 1, status: "unopened" }),
+        row({ id: "b1b", purchase_id: "pu1", label_no: 2, status: "unopened" }),
+        row({ id: "b2", purchase_id: "pu2", label_no: 1, status: "unopened" }),
+        row({ id: "b3", purchase_id: "pu3", label_no: 1, status: "unopened" }),
+      ]);
+    }
+
+    it("랭킹의 술 이름을 누르면 그 제품으로 이동한다", async () => {
+      await seedTwoCategories();
+      const { onSelectProduct } = renderStatsPage();
+
+      const ratingSection = await screen.findByRole("region", { name: "개인 평점" });
+      await userEvent.click(within(ratingSection).getByRole("button", { name: "글렌고인 25y" }));
+
+      expect(onSelectProduct).toHaveBeenCalledWith("p1");
+    });
+
+    it("주종 행을 누르면 최상위 주종 필터로 이동한다", async () => {
+      await seedTwoCategories();
+      const { onSelectCategory } = renderStatsPage();
+
+      const table = await screen.findByRole("table");
+      // "위스키" 는 "양주" 의 하위 주종이라 최상위인 "양주"(liquor) 로 롤업된다.
+      await userEvent.click(within(table).getByRole("button", { name: "양주" }));
+
+      expect(onSelectCategory).toHaveBeenCalledWith("liquor");
+    });
+
+    it("미분류 행은 이동할 곳이 없어 클릭할 수 없다", async () => {
+      await seedTwoCategories();
+      renderStatsPage();
+
+      const table = await screen.findByRole("table");
+      expect(within(table).getByText("미분류")).toBeInTheDocument();
+      expect(within(table).queryByRole("button", { name: "미분류" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("주종별 집계 정렬", () => {
+    async function seedSortableCategories() {
+      await db.category.bulkPut([
+        row({ id: "liquor", parent_id: null, name: "양주" }),
+        row({ id: "beer", parent_id: null, name: "맥주" }),
+      ]);
+      await db.product.bulkPut([
+        row({ id: "p1", name: "술1", category_id: "liquor" }),
+        row({ id: "p2", name: "술2", category_id: "liquor" }),
+        row({ id: "p3", name: "술3", category_id: "beer" }),
+      ]);
+      await db.sku.bulkPut([
+        row({ id: "s1", product_id: "p1", volume_ml: 500 }),
+        row({ id: "s2", product_id: "p2", volume_ml: 500 }),
+        row({ id: "s3", product_id: "p3", volume_ml: 500 }),
+      ]);
+      await db.purchase.bulkPut([
+        row({ id: "pu1", sku_id: "s1", quantity: 1 }),
+        row({ id: "pu2", sku_id: "s2", quantity: 1 }),
+        row({ id: "pu3", sku_id: "s3", quantity: 1 }),
+      ]);
+      await db.bottle.bulkPut([
+        row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "unopened" }),
+        row({ id: "b2", purchase_id: "pu2", label_no: 1, status: "unopened" }),
+        row({ id: "b3", purchase_id: "pu3", label_no: 1, status: "unopened" }),
+      ]);
+    }
+
+    function categoryRowNames(table: HTMLElement): (string | null)[] {
+      return within(table)
+        .getAllByRole("row")
+        .slice(1) // 헤더 행 제외
+        .map((tr) => tr.querySelector("th")?.textContent ?? null);
+    }
+
+    it("기본 정렬은 병수 내림차순이다", async () => {
+      await seedSortableCategories();
+      renderStatsPage();
+
+      const table = await screen.findByRole("table");
+      // 양주(2병)가 맥주(1병)보다 먼저 온다.
+      expect(categoryRowNames(table)).toEqual(["양주", "맥주"]);
+    });
+
+    it("주종 헤더를 누르면 이름순으로 바뀌고, 막대 그래프도 같은 순서를 따른다", async () => {
+      await seedSortableCategories();
+      renderStatsPage();
+
+      const table = await screen.findByRole("table");
+      const nameHeader = screen.getByRole("columnheader", { name: /주종/ });
+      await userEvent.click(within(nameHeader).getByRole("button"));
+
+      // 이름 오름차순: "맥주" 가 "양주" 보다 먼저다.
+      expect(categoryRowNames(table)).toEqual(["맥주", "양주"]);
+      const barLabels = screen
+        .getAllByText(/양주|맥주/, {
+          selector: "button.category-bar-label, span.category-bar-label",
+        })
+        .map((el) => el.textContent);
+      expect(barLabels).toEqual(["맥주", "양주"]);
+    });
+
+    it("같은 헤더를 다시 누르면 정렬 방향이 바뀐다", async () => {
+      await seedSortableCategories();
+      renderStatsPage();
+
+      const table = await screen.findByRole("table");
+      const nameHeaderButton = () =>
+        within(screen.getByRole("columnheader", { name: /주종/ })).getByRole("button");
+      await userEvent.click(nameHeaderButton());
+      expect(categoryRowNames(table)).toEqual(["맥주", "양주"]);
+
+      await userEvent.click(nameHeaderButton());
+      expect(categoryRowNames(table)).toEqual(["양주", "맥주"]);
+    });
   });
 });
