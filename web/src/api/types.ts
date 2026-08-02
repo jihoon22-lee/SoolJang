@@ -472,3 +472,53 @@ export interface BarcodeLookupResponse {
   local_match: BarcodeLocalMatch | null;
   external_suggestion: BarcodeExternalSuggestion | null;
 }
+
+// --- LLM 설정과 라벨 OCR (Task 17) --------------------------------------------
+
+export interface LlmSettingResponse {
+  configured: boolean;
+  provider: "openai" | null;
+  model: string | null;
+  /** 예: "...ab12". 원문은 절대 내려오지 않는다. */
+  api_key_masked: string | null;
+  updated_at: string | null;
+}
+
+export interface LlmSettingInput {
+  provider: "openai";
+  api_key: string;
+  model: string;
+}
+
+export interface LabelExtractionResponse {
+  name: string | null;
+  name_confidence: number;
+  producer: string | null;
+  producer_confidence: number;
+  abv: number | null;
+  abv_confidence: number;
+  volume_ml: number | null;
+  volume_ml_confidence: number;
+  vintage: number | null;
+  vintage_confidence: number;
+  age_years: number | null;
+  age_years_confidence: number;
+  category_guess: string | null;
+  category_guess_confidence: number;
+}
+
+// --- 첨부파일 -----------------------------------------------------------------
+
+export type AttachmentKind = "label" | "tasting" | "bottle" | "other";
+
+export interface AttachmentResponse {
+  id: string;
+  kind: AttachmentKind;
+  original_filename: string | null;
+  content_type: string;
+  byte_size: number;
+  caption: string | null;
+  product_id: string | null;
+  bottle_id: string | null;
+  tasting_session_id: string | null;
+}

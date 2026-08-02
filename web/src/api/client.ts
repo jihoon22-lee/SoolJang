@@ -6,6 +6,8 @@
  */
 
 import type {
+  AttachmentKind,
+  AttachmentResponse,
   BarcodeLookupResponse,
   Bottle,
   CategoryStat,
@@ -15,6 +17,9 @@ import type {
   HealthStatus,
   ImportAnalysis,
   ImportCommitResult,
+  LabelExtractionResponse,
+  LlmSettingInput,
+  LlmSettingResponse,
   LoginResponse,
   ProblemDetail,
   Product,
@@ -282,9 +287,16 @@ export const purchasesApi = {
  * 파일 업로드는 multipart 이므로 JSON 요청 헬퍼를 쓸 수 없다. Content-Type 을 직접 지정하면
  * boundary 가 빠져 서버가 파싱하지 못하므로 브라우저가 붙이도록 둔다.
  */
-async function upload<T>(path: string, file: File): Promise<T> {
+async function upload<T>(
+  path: string,
+  file: File,
+  fields: Record<string, string> = {},
+): Promise<T> {
   const form = new FormData();
   form.append("file", file);
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
+  }
 
   const csrfToken = readCsrfToken();
   const response = await fetch(`${API_PREFIX}${path}`, {
@@ -411,5 +423,41 @@ export const barcodesApi = {
   lookup: (code: string, signal?: AbortSignal) =>
     request<BarcodeLookupResponse>(`/barcodes/${encodeURIComponent(code)}`, {
       ...(signal ? { signal } : {}),
+    }),
+};
+
+/** LLM 설정(Task 17). API 키 원문은 절대 오지 않는다 — 저장 응답에도 마스킹된 값뿐이다. */
+export const llmSettingsApi = {
+  get: (signal?: AbortSignal) =>
+    request<LlmSettingResponse>("/llm-settings", signal ? { signal } : {}),
+
+  save: (input: LlmSettingInput) =>
+    request<LlmSettingResponse>("/llm-settings", { method: "PUT", body: input }),
+
+  remove: () => request<void>("/llm-settings", { method: "DELETE" }),
+};
+
+/** 라벨 OCR(Task 17). Vision LLM 호출이라 온라인 전용이다 — outbox 를 거치지 않는다.
+ * 아무것도 저장하지 않는다 — 결과를 검수한 뒤 평소처럼 `productsApi.create` 로 저장한다. */
+export const ocrApi = {
+  extractLabel: (file: File) => upload<LabelExtractionResponse>("/ocr/label", file),
+};
+
+/** 첨부파일 업로드(Task 10 문서 갭을 Task 17 에서 채움). 지금은 이미지만 받는다. */
+export const attachmentsApi = {
+  create: (
+    file: File,
+    meta: {
+      kind: AttachmentKind;
+      product_id?: string;
+      bottle_id?: string;
+      tasting_session_id?: string;
+    },
+  ) =>
+    upload<AttachmentResponse>("/attachments", file, {
+      kind: meta.kind,
+      ...(meta.product_id ? { product_id: meta.product_id } : {}),
+      ...(meta.bottle_id ? { bottle_id: meta.bottle_id } : {}),
+      ...(meta.tasting_session_id ? { tasting_session_id: meta.tasting_session_id } : {}),
     }),
 };

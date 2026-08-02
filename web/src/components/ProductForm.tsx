@@ -42,6 +42,9 @@ interface ProductFormProps {
   error: unknown;
   onSubmit: (values: ProductFormValues) => void;
   onCancel: () => void;
+  /** 라벨 OCR(Task 17) 등이 미리 채운 값. 마운트 시점에만 반영된다 — 폼이 열린 뒤 값이
+   * 바뀌어도 다시 채우지 않는다(사용자가 이미 고친 입력을 덮어쓰지 않기 위해서다). */
+  initialValues?: Partial<ProductFormValues> | undefined;
 }
 
 /**
@@ -57,8 +60,12 @@ export function ProductForm({
   error,
   onSubmit,
   onCancel,
+  initialValues,
 }: ProductFormProps) {
-  const [values, setValues] = useState<ProductFormValues>(EMPTY_PRODUCT_FORM);
+  const [values, setValues] = useState<ProductFormValues>({
+    ...EMPTY_PRODUCT_FORM,
+    ...initialValues,
+  });
   const [localError, setLocalError] = useState<string | null>(null);
 
   const apiError = error instanceof ApiError ? error : null;

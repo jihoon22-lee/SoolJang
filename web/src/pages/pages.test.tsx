@@ -361,6 +361,60 @@ describe("ProductsPage", () => {
     expect(calls.some((call) => call.url.includes("/purchases"))).toBe(false);
   });
 
+  it("라벨 인식 결과로 폼을 채우고 등록하면 원본 사진을 첨부로 올린다", async () => {
+    const created = product("labeled", "라벨로 등록한 위스키");
+    const { calls } = stubRoutes([
+      {
+        match: "/ocr/label",
+        method: "POST",
+        body: {
+          name: "라벨로 등록한 위스키",
+          name_confidence: 0.9,
+          producer: null,
+          producer_confidence: 0,
+          abv: 43,
+          abv_confidence: 0.8,
+          volume_ml: 700,
+          volume_ml_confidence: 0.9,
+          vintage: null,
+          vintage_confidence: 0,
+          age_years: null,
+          age_years_confidence: 0,
+          category_guess: null,
+          category_guess_confidence: 0,
+        },
+      },
+      { match: "/products", method: "POST", status: 201, body: created },
+      { match: "/attachments", method: "POST", status: 201, body: { id: "att1" } },
+    ]);
+
+    renderProductsPage();
+    const fileInput = await screen.findByLabelText("라벨 사진으로 등록", { selector: "input" });
+    await userEvent.upload(
+      fileInput,
+      new File(["fake-png-bytes"], "label.png", { type: "image/png" }),
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "이 정보로 등록" }));
+
+    // 프리필된 채 폼이 열린다 — 사용자가 다시 입력할 필요가 없다.
+    const form = screen.getByRole("heading", { name: "새 술 등록" }).closest("form") as HTMLElement;
+    expect(within(form).getByLabelText("이름 *")).toHaveValue("라벨로 등록한 위스키");
+    expect(within(form).getByLabelText("도수 (%)")).toHaveValue(43);
+
+    await userEvent.click(within(form).getByRole("button", { name: "등록" }));
+
+    await waitFor(() => {
+      expect(
+        calls.some((call) => call.method === "POST" && call.url.includes("/attachments")),
+      ).toBe(true);
+    });
+    const attachmentCall = calls.find(
+      (call) => call.method === "POST" && call.url.includes("/attachments"),
+    );
+    expect(attachmentCall?.body).toMatchObject({ kind: "label", product_id: "labeled" });
+  });
+
   it("오프라인일 때는 outbox 로 제품·규격·구매·병을 한 번에 만든다", async () => {
     vi.stubGlobal("navigator", { ...navigator, onLine: false });
 

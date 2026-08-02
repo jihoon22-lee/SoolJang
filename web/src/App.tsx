@@ -9,11 +9,12 @@ import { BottlesPage } from "@/pages/BottlesPage";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { StatsPage } from "@/pages/StatsPage";
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 
-type View = "products" | "bottles" | "categories" | "stats" | "import" | "status";
+type View = "products" | "bottles" | "categories" | "stats" | "import" | "settings" | "status";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
@@ -21,6 +22,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "categories", label: "주종 관리" },
   { id: "stats", label: "통계" },
   { id: "import", label: "가져오기" },
+  { id: "settings", label: "설정" },
   { id: "status", label: "서비스 상태" },
 ];
 
@@ -129,6 +131,7 @@ export function App() {
           {view === "categories" && <CategoriesPage />}
           {view === "stats" && <StatsPage />}
           {view === "import" && <ImportPage />}
+          {view === "settings" && <SettingsPage />}
           {view === "status" && <HealthPanel />}
         </main>
       </div>
