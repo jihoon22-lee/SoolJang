@@ -174,8 +174,8 @@ describe("SettingsPage", () => {
         (call) => call.method === "POST" && call.url.includes("/auth/password"),
       );
       expect(post?.body).toMatchObject({
-        current_password: "old-password-123",
-        new_password: "new-password-456",
+        current_password: "old-password-123", // scan-secrets-allow
+        new_password: "new-password-456", // scan-secrets-allow
       });
     });
 
