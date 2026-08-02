@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
 import { CategoriesPage } from "@/pages/CategoriesPage";
@@ -72,10 +73,22 @@ describe("ProductsPage", () => {
     };
   }
 
+  /** App.tsx 가 URL 해시로 하는 선택 상태 제어를, 테스트에서는 로컬 state 로 흉내낸다. */
+  function ProductsPageHarness() {
+    const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+    return (
+      <ProductsPage
+        selectedProductId={selectedProductId}
+        onSelectProduct={setSelectedProductId}
+        onDeselectProduct={() => setSelectedProductId(null)}
+      />
+    );
+  }
+
   function renderProductsPage() {
     return renderWithQuery(
       <SyncStatusProvider>
-        <ProductsPage />
+        <ProductsPageHarness />
       </SyncStatusProvider>,
     );
   }

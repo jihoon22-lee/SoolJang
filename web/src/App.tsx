@@ -11,10 +11,9 @@ import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StatsPage } from "@/pages/StatsPage";
+import { parseHash, type Route, routeToHash, type View } from "@/router";
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
-
-type View = "products" | "bottles" | "categories" | "stats" | "import" | "settings" | "status";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
@@ -29,15 +28,33 @@ const VIEWS: { id: View; label: string }[] = [
 /**
  * 애플리케이션 루트.
  *
- * 라우터 라이브러리를 쓰지 않고 상태로 화면을 전환한다. 화면이 다섯뿐이고 URL 공유가
- * 요구사항이 아니라 의존성을 늘릴 이유가 없다. Task 15(PWA)에서 딥링크가 필요해지면 그때
- * 라우터를 도입한다.
+ * 라우터 라이브러리를 쓰지 않고 `history.pushState`/`popstate` 만으로 URL 해시에 뷰 상태를
+ * 동기화한다(`@/router`). 예전에는 순수 `useState` 로만 화면을 전환해 URL 이 안 바뀌고
+ * 브라우저 뒤로가기가 앱을 벗어나는 문제가 있었다 — 화면이 몇 개뿐이라 무거운 라우터
+ * 라이브러리를 쓰지는 않되, 해시 동기화는 필요해졌다(제품 상세 진입, 통계에서 다른 탭으로
+ * 점프하는 크로스 링크가 생기면서).
  *
  * 인증은 여기서 한 번만 막는다. 각 화면이 개별로 확인하면 빠뜨리는 곳이 생긴다.
  */
 export function App() {
-  const [view, setView] = useState<View>("products");
+  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    function onPopState(): void {
+      setRoute(parseHash(window.location.hash));
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const navigate = useCallback((next: Route) => {
+    const hash = routeToHash(next);
+    if (window.location.hash !== hash) {
+      window.history.pushState(null, "", hash);
+    }
+    setRoute(next);
+  }, []);
 
   const session = useQuery({
     queryKey: ["auth", "me"],
@@ -95,10 +112,10 @@ export function App() {
               <a
                 key={item.id}
                 href={`#${item.id}`}
-                aria-current={view === item.id ? "page" : undefined}
+                aria-current={route.view === item.id ? "page" : undefined}
                 onClick={(event) => {
                   event.preventDefault();
-                  setView(item.id);
+                  navigate({ view: item.id });
                 }}
               >
                 {item.label}
@@ -126,13 +143,20 @@ export function App() {
         </header>
 
         <main className="app-main" id="main">
-          {view === "products" && <ProductsPage />}
-          {view === "bottles" && <BottlesPage />}
-          {view === "categories" && <CategoriesPage />}
-          {view === "stats" && <StatsPage />}
-          {view === "import" && <ImportPage />}
-          {view === "settings" && <SettingsPage />}
-          {view === "status" && <HealthPanel />}
+          {route.view === "products" && (
+            <ProductsPage
+              selectedProductId={route.productId ?? null}
+              onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+              onDeselectProduct={() => navigate({ view: "products" })}
+              initialCategoryId={route.categoryId}
+            />
+          )}
+          {route.view === "bottles" && <BottlesPage />}
+          {route.view === "categories" && <CategoriesPage />}
+          {route.view === "stats" && <StatsPage />}
+          {route.view === "import" && <ImportPage />}
+          {route.view === "settings" && <SettingsPage />}
+          {route.view === "status" && <HealthPanel />}
         </main>
       </div>
     </SyncStatusProvider>
