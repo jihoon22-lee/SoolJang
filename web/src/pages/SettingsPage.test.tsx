@@ -137,4 +137,88 @@ describe("SettingsPage", () => {
 
     expect(await screen.findByText("설정되지 않음")).toBeInTheDocument();
   });
+
+  describe("비밀번호 변경", () => {
+    function stubLlmSettings() {
+      return {
+        match: "/llm-settings",
+        method: "GET",
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+        },
+      };
+    }
+
+    it("성공하면 안내를 보여주고 입력을 비운다", async () => {
+      const { calls } = stubRoutes([
+        ...authenticatedRoutes(),
+        stubLlmSettings(),
+        { match: "/auth/password", method: "POST", status: 204, body: null },
+      ]);
+
+      renderWithQuery(<SettingsPage />);
+      await userEvent.type(screen.getByLabelText("현재 비밀번호"), "old-password-123");
+      await userEvent.type(screen.getByLabelText("새 비밀번호"), "new-password-456");
+      await userEvent.type(screen.getByLabelText("새 비밀번호 확인"), "new-password-456");
+      await userEvent.click(screen.getByRole("button", { name: "비밀번호 변경" }));
+
+      expect(await screen.findByText("비밀번호를 바꿨습니다.")).toBeInTheDocument();
+      expect(screen.getByLabelText("현재 비밀번호")).toHaveValue("");
+      expect(screen.getByLabelText("새 비밀번호")).toHaveValue("");
+
+      const post = calls.find(
+        (call) => call.method === "POST" && call.url.includes("/auth/password"),
+      );
+      expect(post?.body).toMatchObject({
+        current_password: "old-password-123",
+        new_password: "new-password-456",
+      });
+    });
+
+    it("새 비밀번호와 확인이 다르면 요청을 보내지 않는다", async () => {
+      const { calls } = stubRoutes([...authenticatedRoutes(), stubLlmSettings()]);
+
+      renderWithQuery(<SettingsPage />);
+      await userEvent.type(screen.getByLabelText("현재 비밀번호"), "old-password-123");
+      await userEvent.type(screen.getByLabelText("새 비밀번호"), "new-password-456");
+      await userEvent.type(screen.getByLabelText("새 비밀번호 확인"), "다른값");
+      await userEvent.click(screen.getByRole("button", { name: "비밀번호 변경" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("서로 다릅니다");
+      expect(calls.some((call) => call.url.includes("/auth/password"))).toBe(false);
+    });
+
+    it("현재 비밀번호가 틀리면 서버 오류를 보여준다", async () => {
+      stubRoutes([
+        ...authenticatedRoutes(),
+        stubLlmSettings(),
+        {
+          match: "/auth/password",
+          method: "POST",
+          status: 401,
+          body: {
+            type: "https://sooljang.local/errors/unauthorized",
+            title: "인증되지 않았습니다",
+            status: 401,
+            detail: "현재 비밀번호가 올바르지 않습니다",
+            errors: [],
+          },
+        },
+      ]);
+
+      renderWithQuery(<SettingsPage />);
+      await userEvent.type(screen.getByLabelText("현재 비밀번호"), "wrong-password");
+      await userEvent.type(screen.getByLabelText("새 비밀번호"), "new-password-456");
+      await userEvent.type(screen.getByLabelText("새 비밀번호 확인"), "new-password-456");
+      await userEvent.click(screen.getByRole("button", { name: "비밀번호 변경" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "현재 비밀번호가 올바르지 않습니다",
+      );
+    });
+  });
 });

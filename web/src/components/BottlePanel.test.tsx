@@ -72,6 +72,7 @@ function stubTastings(
         ...opts.summary,
       },
     },
+    { match: "/tastings/", method: "DELETE", status: 204, body: null },
   ]);
 }
 
@@ -428,6 +429,63 @@ describe("BottlePanel", () => {
 
       expect(screen.getByText("2026-01-05")).toBeInTheDocument();
       expect(screen.getByText("평점 없음", { selector: "span" })).toBeInTheDocument();
+    });
+  });
+
+  describe("시음 기록 삭제", () => {
+    const item: Tasting = {
+      id: "t1",
+      bottle_id: "b1",
+      sku_id: "sku1",
+      tasted_on: "2026-01-10",
+      poured_ml: null,
+      rating: null,
+      nose: null,
+      palate: null,
+      finish: null,
+      note: null,
+      place: null,
+      companions: null,
+    };
+
+    it("오프라인이면 삭제 버튼을 숨기고 안내한다", async () => {
+      const target = bottle();
+      stubTastings(target.id, { tastings: [item] });
+      renderWithQuery(<BottlePanel bottle={target} offline={true} />);
+
+      await screen.findByText("2026-01-10");
+      expect(screen.queryByRole("button", { name: "삭제" })).not.toBeInTheDocument();
+      expect(
+        screen.getByText("시음 기록 삭제는 온라인일 때만 할 수 있습니다."),
+      ).toBeInTheDocument();
+    });
+
+    it("확인을 취소하면 삭제 요청을 보내지 않는다", async () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+      const target = bottle();
+      const { calls } = stubTastings(target.id, { tastings: [item] });
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(await screen.findByRole("button", { name: "삭제" }));
+
+      expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+      confirmSpy.mockRestore();
+    });
+
+    it("확인하면 시음 기록을 삭제한다", async () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+      const target = bottle();
+      const { calls } = stubTastings(target.id, { tastings: [item] });
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(await screen.findByRole("button", { name: "삭제" }));
+
+      await waitFor(() => {
+        expect(
+          calls.some((call) => call.method === "DELETE" && call.url.includes("/tastings/t1")),
+        ).toBe(true);
+      });
+      confirmSpy.mockRestore();
     });
   });
 

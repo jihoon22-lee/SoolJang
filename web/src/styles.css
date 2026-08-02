@@ -539,6 +539,40 @@ button:disabled {
   font-weight: 500;
 }
 
+.vendor-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.vendor-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.vendor-row .name {
+  font-weight: 500;
+}
+
+.vendor-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+.vendor-edit-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
 .alert {
   border: 1px solid var(--danger);
   color: var(--danger);
@@ -904,6 +938,12 @@ button:disabled {
 
 .tasting-meta {
   color: var(--muted);
+}
+
+.tasting-delete {
+  display: block;
+  margin-top: 0.4rem;
+  color: var(--danger);
 }
 
 @media (min-width: 40rem) {

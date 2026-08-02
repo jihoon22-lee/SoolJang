@@ -73,9 +73,11 @@ export function formatRemaining(bottle: Bottle): string {
 
 interface BottlePanelProps {
   bottle: Bottle;
+  /** 시음 기록 삭제는 서버 상태만 갖고 있어 온라인에서만 할 수 있다. */
+  offline?: boolean;
 }
 
-export function BottlePanel({ bottle }: BottlePanelProps): React.JSX.Element {
+export function BottlePanel({ bottle, offline = false }: BottlePanelProps): React.JSX.Element {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
@@ -122,6 +124,18 @@ export function BottlePanel({ bottle }: BottlePanelProps): React.JSX.Element {
     // 되돌리기가 번거로운 동작이므로 확인을 받는다.
     if (!window.confirm(`이 병을 ${label} 처리할까요? 재고에서 빠집니다.`)) return;
     transition.mutate(action);
+  }
+
+  const deleteTasting = useMutation({
+    mutationFn: (tastingId: string) => tastingsApi.remove(tastingId),
+    onSuccess: refresh,
+  });
+  const deletingTastingId = deleteTasting.isPending ? (deleteTasting.variables ?? null) : null;
+
+  function handleDeleteTasting(tastingId: string): void {
+    // 잔량은 되돌리지 않는다(백엔드 정책) — 지우기 전에 그 사실을 알려준다.
+    if (!window.confirm("이 시음 기록을 삭제할까요? 병의 잔량은 되돌리지 않습니다.")) return;
+    deleteTasting.mutate(tastingId);
   }
 
   return (
@@ -237,9 +251,20 @@ export function BottlePanel({ bottle }: BottlePanelProps): React.JSX.Element {
                   {[item.place, item.companions].filter(Boolean).join(" · ")}
                 </p>
               ) : null}
+              {!offline && (
+                <button
+                  type="button"
+                  className="sort-button tasting-delete"
+                  onClick={() => handleDeleteTasting(item.id)}
+                  disabled={deletingTastingId === item.id}
+                >
+                  {deletingTastingId === item.id ? "삭제 중…" : "삭제"}
+                </button>
+              )}
             </li>
           ))}
         </ul>
+        {offline ? <p className="muted">시음 기록 삭제는 온라인일 때만 할 수 있습니다.</p> : null}
       </div>
     </section>
   );

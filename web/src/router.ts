@@ -14,11 +14,19 @@
  * 화면 안으로 통합했다(`ProductDetail` 의 "병" 섹션).
  */
 
-export type View = "products" | "categories" | "stats" | "import" | "settings" | "status";
+export type View =
+  | "products"
+  | "categories"
+  | "vendors"
+  | "stats"
+  | "import"
+  | "settings"
+  | "status";
 
 const VIEW_IDS: readonly View[] = [
   "products",
   "categories",
+  "vendors",
   "stats",
   "import",
   "settings",

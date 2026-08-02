@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ApiError, llmSettingsApi } from "@/api/client";
+import { type FormEvent, useState } from "react";
+import { ApiError, authApi, llmSettingsApi } from "@/api/client";
 
 //: 백엔드 기본값(`models/llm.py::DEFAULT_OPENAI_MODEL`)과 맞춘다. Vision 입력을 지원하는
 //: 합리적인 기본값 — 사용자가 바꿀 수 있다.
@@ -46,9 +46,101 @@ export function SettingsPage() {
 
   const saveError = save.error instanceof ApiError ? save.error : null;
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
+  const [passwordLocalError, setPasswordLocalError] = useState<string | null>(null);
+  const [passwordChanged, setPasswordChanged] = useState(false);
+
+  const changePassword = useMutation({
+    mutationFn: () =>
+      authApi.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    onSuccess: () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setNewPasswordConfirm("");
+      setPasswordChanged(true);
+    },
+  });
+
+  function handlePasswordSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    setPasswordLocalError(null);
+    setPasswordChanged(false);
+
+    if (newPassword !== newPasswordConfirm) {
+      setPasswordLocalError("새 비밀번호가 서로 다릅니다");
+      return;
+    }
+    changePassword.mutate();
+  }
+
+  const passwordApiError = changePassword.error instanceof ApiError ? changePassword.error : null;
+  const passwordErrorMessage = passwordLocalError ?? passwordApiError?.message ?? null;
+
   return (
     <section aria-labelledby="settings-heading" className="panel">
       <h2 id="settings-heading">설정</h2>
+
+      <div className="field">
+        <h3>비밀번호 변경</h3>
+        <p className="muted">
+          비밀번호를 바꾸면 이 기기를 제외한 다른 모든 기기의 로그인이 풀립니다.
+        </p>
+
+        {passwordChanged && <output>비밀번호를 바꿨습니다.</output>}
+
+        {passwordErrorMessage && (
+          <p className="alert" role="alert">
+            {passwordErrorMessage}
+          </p>
+        )}
+
+        <form onSubmit={handlePasswordSubmit}>
+          <div className="field">
+            <label htmlFor="settings-current-password">현재 비밀번호</label>
+            <input
+              id="settings-current-password"
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="settings-new-password">새 비밀번호</label>
+            <input
+              id="settings-new-password"
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="settings-new-password-confirm">새 비밀번호 확인</label>
+            <input
+              id="settings-new-password-confirm"
+              type="password"
+              autoComplete="new-password"
+              value={newPasswordConfirm}
+              onChange={(event) => setNewPasswordConfirm(event.target.value)}
+              required
+            />
+          </div>
+          <p className="muted">비밀번호는 10자 이상이어야 합니다.</p>
+          <div className="button-row">
+            <button type="submit" className="primary" disabled={changePassword.isPending}>
+              {changePassword.isPending ? "변경 중…" : "비밀번호 변경"}
+            </button>
+          </div>
+        </form>
+      </div>
 
       <div className="field">
         <h3>LLM API 키 (라벨 OCR)</h3>
