@@ -21,6 +21,8 @@ import type {
   LlmSettingInput,
   LlmSettingResponse,
   LoginResponse,
+  PivotCell,
+  PivotRequest,
   ProblemDetail,
   Product,
   ProductCreateInput,
@@ -29,6 +31,8 @@ import type {
   Purchase,
   PurchaseCreateInput,
   Rankings,
+  SavedView,
+  SavedViewInput,
   SetupStatus,
   Sku,
   StatsSummary,
@@ -38,6 +42,7 @@ import type {
   Tasting,
   TastingInput,
   TastingSummary,
+  TimeSeriesPoint,
   User,
   Vendor,
 } from "@/api/types";
@@ -400,6 +405,26 @@ export const statsApi = {
 
   summary: (signal?: AbortSignal) =>
     request<StatsSummary>("/stats/summary", signal ? { signal } : {}),
+
+  /** 커스텀 피벗(Task 20). 온라인 전용 — outbox 를 거치지 않는다. */
+  pivot: (payload: PivotRequest) =>
+    request<PivotCell[]>("/stats/pivot", { method: "POST", body: payload }),
+
+  timeseries: (signal?: AbortSignal) =>
+    request<TimeSeriesPoint[]>("/stats/timeseries", signal ? { signal } : {}),
+};
+
+/** 저장된 피벗 뷰(Task 20). 온라인 전용 — outbox 를 거치지 않는다. */
+export const savedViewsApi = {
+  list: (signal?: AbortSignal) => request<SavedView[]>("/saved-views", signal ? { signal } : {}),
+
+  create: (input: SavedViewInput) =>
+    request<SavedView>("/saved-views", { method: "POST", body: input }),
+
+  update: (id: string, input: Partial<SavedViewInput>) =>
+    request<SavedView>(`/saved-views/${id}`, { method: "PATCH", body: input }),
+
+  remove: (id: string) => request<void>(`/saved-views/${id}`, { method: "DELETE" }),
 };
 
 /** 오프라인 동기화. `sync/engine.ts` 만 직접 호출한다 — 나머지 코드는 outbox 를 거친다. */

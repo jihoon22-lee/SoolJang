@@ -25,6 +25,7 @@ const zeroMetrics: ProductMetrics = {
   discount_rate: null,
   total_volume_ml: 0,
   inventory_value_at_cost: null,
+  value_for_money: null,
 };
 
 function product(id: string, name: string): Product {

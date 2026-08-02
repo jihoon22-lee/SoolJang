@@ -10,13 +10,23 @@
 import { useLiveQuery } from "dexie-react-hooks";
 
 import type { CategoryStat, RankingEntry } from "@/api/types";
+import { PivotExplorer } from "@/components/PivotExplorer";
 import { formatAbv, formatMoney, formatPercent, formatRating, formatVolume } from "@/format";
-import { getCategoryRollup, getStatsRankings, getStatsSummary } from "@/sync/queries";
+import {
+  getCategoryRollup,
+  getCategoryTree,
+  getStatsRankings,
+  getStatsSummary,
+} from "@/sync/queries";
+import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
 export function StatsPage() {
+  const { state } = useSyncStatus();
+  const offline = state === "offline";
   const rankings = useLiveQuery(() => getStatsRankings(), []);
   const categories = useLiveQuery(() => getCategoryRollup(), []);
   const totals = useLiveQuery(() => getStatsSummary(), []);
+  const categoryTree = useLiveQuery(() => getCategoryTree(), []);
 
   if (rankings === undefined || categories === undefined || totals === undefined) {
     return <output aria-live="polite">통계를 불러오고 있습니다…</output>;
@@ -108,6 +118,13 @@ export function StatsPage() {
           />
         </div>
       </section>
+
+      {/* 커스텀 피벗·시계열·저장된 뷰는 서버 DB 조회를 전제해 온라인 전용이다(Task 20). */}
+      {offline ? (
+        <p className="muted">커스텀 피벗과 월별 시계열은 온라인일 때만 볼 수 있습니다.</p>
+      ) : (
+        <PivotExplorer categories={categoryTree?.items ?? []} />
+      )}
     </div>
   );
 }
