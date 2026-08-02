@@ -454,11 +454,13 @@ button:disabled {
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: 1fr;
   gap: 4px;
 }
 
 .ranking-list li {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.5em minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 8px;
   padding: 4px 0;
@@ -467,11 +469,10 @@ button:disabled {
 
 .ranking-rank {
   color: var(--text-muted);
-  min-width: 1.5em;
 }
 
 .ranking-name {
-  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

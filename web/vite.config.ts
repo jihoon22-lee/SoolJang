@@ -58,6 +58,13 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    // 저장소가 WSL2 에서 Windows 드라이브(`/mnt/*`, DrvFs)에 있으면 inotify 이벤트가
+    // 전달되지 않아 파일을 고쳐도 HMR 이 반응하지 않는다(개발 서버 재시작 없이는 계속
+    // 옛 내용을 서빙한다) — 폴링으로 우회한다.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
   },
   test: {
     environment: "jsdom",
