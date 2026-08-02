@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-02 (Task 16 PR)**
+- 최종 갱신: **2026-08-02 (Task 17 PR)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 16 까지 완료)
+- 현재 브랜치: `main` (Task 17 까지 완료)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -37,14 +37,18 @@ export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5
 uv run alembic upgrade head
 
 # 5) 검증
-uv run pytest                  # 557 passed, 27 skipped 가 정상 (skip 전부 opt-in 실측 테스트)
-npm --prefix web run check     # 223 passed, 커버리지 임계값(branch 80%) 통과
+uv run pytest                  # 592 passed, 28 skipped 가 정상 (skip 전부 opt-in 실측 테스트,
+                                #   live_llm 마커 포함 — 실제 OpenAI 키가 없으면 건너뛴다)
+npm --prefix web run check     # 237 passed, 커버리지 임계값(branch 80%) 통과
 
 # 6) 이어서 작업
 #    plan.md §1 의 "다음 착수 Task" 를 확인하고 해당 브랜치를 만든다
 ```
 
-`.env` 가 없으면 `.env.example` 을 복사하고 `POSTGRES_PASSWORD` 를 채운다.
+`.env` 가 없으면 `.env.example` 을 복사하고 `POSTGRES_PASSWORD` 를 채운다. Task 17 부터
+`SOOLJANG_SECRET_KEY` 도 필수다(LLM API 키 암호화용 Fernet 마스터 키) —
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+로 생성한다. 없으면 앱이 아예 기동하지 않는다(기본값 없음, 의도적).
 Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴백을 쓴다
 (micromamba 로 홈 디렉토리에 PostgreSQL 17 설치, root 불필요, 포트 54329).
 
@@ -120,7 +124,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **16개 완료**. PR 23개 머지 (#1~#23, #16~#20 은 문서 전용 — 이후 규칙
+전체 23개 Task 중 **17개 완료**. PR 24개 머지 (#1~#24, #16~#20 은 문서 전용 — 이후 규칙
 9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
@@ -141,6 +145,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 14. 통계 대시보드 v1 | ✅ | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) | `/stats/rankings`·`/stats/by-category`·`/stats/summary`, 통계 화면. 엑셀 실측값과 대조 |
 | 15. PWA와 오프라인 동기화 | ✅ | [#22](https://github.com/jihoon22-lee/SoolJang/pull/22) | `application/sync.py`(pull·apply_batch·LWW·충돌 로그), Dexie 로컬 미러, outbox, 4개 화면 오프라인 조회, `SyncStatusBadge` |
 | 16. 바코드 스캔과 제품 매칭 | ✅ | [#23](https://github.com/jihoon22-lee/SoolJang/pull/23) | `application/barcodes.py`(정규화·RCN 판별), Open Food Facts 조회, `GET /barcodes/{code}`·`PATCH /skus/{id}`, `BarcodeScanPanel`(네이티브 BarcodeDetector + ZXing 폴백) |
+| 17. 라벨 OCR 프리필 | ✅ | [#24](https://github.com/jihoon22-lee/SoolJang/pull/24) | LLM 설정 인프라(`LlmSetting` 암호화 저장, `GET·PUT·DELETE /llm-settings`), `infrastructure/external/llm.py`(OpenAI 구조화 출력), `POST /ocr/label`, `POST /attachments`(문서-코드 갭 메우기), `LabelOcrPanel`·`SettingsPage` |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -160,6 +165,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | **실제 데이터 이관 완료** | 429행 → 제품 405종(24종 병합)·병 1,078개·구매 건 434건. 정가 ₩42,401,108·용량 704,970ml·소비 819/미개봉 225/개봉 34 모두 엑셀 합계행과 일치. 실패 0건. 재실행 시 중복 0 |
 | 오프라인 동기화 백엔드·프론트 전체 검증 | `pytest` 521 passed, 27 skipped(전부 opt-in 실측 테스트), 커버리지 90.10%. 프론트엔드 207 passed, 커버리지 89.0% stmts / 80.2% branch. `vite build` 로 PWA manifest·`sw.js`·아이콘 정상 생성 확인 |
 | 바코드 스캔 백엔드·프론트 전체 검증 | `pytest` 557 passed, 27 skipped, 커버리지 90.43%. 프론트엔드 223 passed, 커버리지 89.4% stmts / 80.17% branch. 카메라·`BarcodeDetector`·`@zxing/browser` 를 전부 가짜로 주입해 하드웨어 없이 스캐너 로직까지 검증. `docker build`(web·api) 둘 다 정상 |
+| 라벨 OCR·LLM 설정 백엔드·프론트 전체 검증 | `pytest` 592 passed, 28 skipped(opt-in `live_llm` 포함), 커버리지 90.84%. 프론트엔드 237 passed, 커버리지 89.87% stmts / 80.2% branch(임계값에 근소하게 통과). **실제 OpenAI API 로 1회 왕복 확인**(`live_llm` 마커, 사용자가 다른 프로젝트 키를 테스트용으로 제공) — 인증·요청 형식·구조화 출력 파싱이 실동작함을 확인. `docker build`(web·api) 둘 다 정상, api 이미지는 직접 실행해 `create_app()` 임포트까지 확인(§5 `httpx` 함정 재발 여부 재확인 겸함) |
 
 ---
 
@@ -210,17 +216,17 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 17 — 라벨 OCR 프리필, 단 **사용자 확인 필요**
+### 다음 착수: Task 20(통계 v2) 권장 — Task 18·19 는 여전히 사용자 확인 필요
 
-Task 16(바코드 스캔)까지 마쳐 카메라로 기존 제품을 빠르게 매칭할 수 있다. 다음은 라벨
-사진을 Vision LLM 으로 구조화 추출하는 단계인데, **Q2(검색·LLM API 제공자와 예산)가
-아직 미해결**이라(`docs/plan.md` §6) 착수할 수 없다. 기존 프로젝트에 `anthropic`·
-`google-genai`·`openai` 의존성이 있어 키를 보유하고 있을 가능성이 높지만, 어떤
-제공자·모델·예산 상한을 쓸지는 사용자가 정해야 한다.
+Task 17(라벨 OCR)까지 마쳐 라벨 사진으로 등록 폼을 자동 완성할 수 있다. Q2(검색·LLM API
+제공자와 예산)는 **LLM 쪽만** 풀렸다 — 사용자가 다른 프로젝트에서 쓰던 OpenAI 키를
+"테스트로 몇 차례만" 제공했고, 상시 예산 상한은 아직 정해지지 않았다. 검색 API 제공자는
+여전히 미해결이라, Task 18(외부 소스 레지스트리)의 핵심(`search` 전략, §7.2)은 계속
+막혀 있다(`docs/plan.md` §6 Q2).
 
-**Q2 가 풀리기 전까지 막히지 않는 대안**: Task 20(통계 v2 — 커스텀 피벗과 취향 분석)
-은 외부 API 없이 Task 14 데이터만으로 진행할 수 있고, 의존 관계상 Task 17·18·19 를
-거치지 않아도 된다(아래 다이어그램 참조).
+**막히지 않는 다음 후보**: Task 20(통계 v2 — 커스텀 피벗과 취향 분석)은 외부 API 없이
+Task 14 데이터만으로 진행할 수 있고, 의존 관계상 Task 18·19 를 거치지 않아도 된다(아래
+다이어그램 참조).
 
 **HTTPS 공개는 여전히 미완이다**: Tailscale 설치·로그인은 Task 14 세션에서 끝났지만
 (tailnet `tail30f401.ts.net`), 이 브라우저 자동화가 동작하지 않는 샌드박스라 아직
@@ -241,6 +247,19 @@ scripts/serve-https.sh
 산출물로 문서화했지만 실제로는 없었던 엔드포인트, D79). 바코드 스캔으로 만드는 새
 제품·바코드 학습은 온라인 전용이다(outbox 를 거치지 않는다, D81) — 오프라인이면 "바코드로
 스캔" 버튼 자체가 보이지 않는다.
+
+**Task 17 에서 남긴 것**:
+- `POST /attachments` 를 새로 만들었다(architecture.md 가 Task 10 산출물로 문서화했지만
+  실제로는 없었던 엔드포인트, Task 16 의 `PATCH /skus/{id}` 와 같은 종류의 갭). 지금은
+  이미지만 받는다 — 다른 파일 형식(PDF 등)은 필요해지면 그때 확장한다
+- 라벨 OCR 이 뽑는 생산자·숙성연수는 `ProductForm` 에 대응하는 입력칸이 없어(기존
+  공백, Task 17 이 새로 만들지 않았다) 메모 필드로 우회했다. 제품 생성 API 에
+  `producer_id` 프리필 경로(생산자 이름 → id 자동 매칭, `resolveVendorId` 와 같은 패턴)를
+  붙이는 게 다음 개선 후보다
+- 라벨 OCR·설정 화면 모두 온라인 전용이다(outbox 를 거치지 않는다) — Task 15/16 과 같은
+  판단 기준(카메라·LLM 호출 자체가 온라인을 전제한다)
+- LLM 실사용 예산 상한은 여전히 미정이다. Task 18(외부 소스 요약)처럼 LLM 을 상시
+  호출하는 기능을 붙이기 전에는 사용자에게 다시 확인해야 한다
 
 ### 의존 관계 요약
 
@@ -284,6 +303,8 @@ scripts/serve-https.sh
 | **`useLiveQuery` 컴포넌트를 마운트 직후 동기 `getByText` 로 단언** | 플레이키 실패(첫 계산은 비동기라 로딩 중 빈 상태를 잡을 수 있다) | `findByText`/`findByRole` 로 기다린다. `SyncStatusBadge` 충돌 패널에서 실제로 겪음(Task 15) |
 | **`web.Dockerfile` 은 `web/` 디렉터리만 이미지에 복사한다** | 저장소 루트의 다른 디렉터리(`tests/fixtures/` 등)를 상대 경로로 참조하는 프론트엔드 파일이 있으면 `Container build` 잡에서만 `tsc` 가 모듈을 못 찾는다(로컬 `npm run check` 는 통과) | 그 경로도 `COPY <경로>/ <컨테이너 내 같은 상대 위치>/` 로 명시적으로 추가한다. Task 15 의 `metrics.test.ts`(공유 골든값 픽스처) 에서 실제로 터졌다 |
 | **버튼이 `disabled` 면 그 안의 유효성 검사 분기는 테스트로 못 만난다** | `userEvent.click(disabled 버튼)` 은 조용히 아무 일도 안 한다 — 콘솔 경고도 없다 | disabled 조건과 함수 내부 가드가 같은 값을 검사한다면 함수 내부 가드는 죽은 코드다. 지우거나(권장), 정말 다른 경로로 호출될 수 있다면 그 경로로 테스트한다. `BarcodeScanPanel` 에서 실제로 발견(Task 16) |
+| **`EntityMixin.user_id` 는 이미 `index=True` 다** | 새 모델에 `Index("ix_<table>_user_id", "user_id")` 를 직접 추가하면 `alembic revision --autogenerate` 가 같은 이름의 인덱스를 두 번 만들려다 `DuplicateTable` 로 실패 | 단일 컬럼 `user_id` 인덱스는 mixin 이 이미 만든다. 새로 추가할 건 `(user_id, 다른컬럼)` 같은 **복합** 인덱스뿐이다. `llm_setting` 모델 작성 중 실제로 겪음(Task 17) |
+| **`httpx` 가 dev 그룹에만 있었다** | 로컬·CI 는 항상 dev 의존성이 함께 설치돼 안 터지지만, `docker build --no-dev` 운영 이미지엔 아예 설치되지 않는다 — 해당 코드가 실행되는 순간에만 `ModuleNotFoundError` | 프로덕션 코드(`api/routes/*.py`, `infrastructure/**`)가 직접 import 하는 패키지는 반드시 `[project.dependencies]`(main)에 둔다. dev 그룹은 테스트·린트 도구 전용이다. Task 16 부터 잠재했던 버그를 Task 17 에서 발견·수정(D83) |
 
 ---
 
@@ -313,7 +334,7 @@ scripts/serve-https.sh
 | # | 질문 | 필요 시점 |
 |---|---|---|
 | ~~Q4~~ | ~~Tailscale 설치 여부와 tailnet 이름~~ | **✅ 해결** — `tail30f401.ts.net`, `https://main.tail30f401.ts.net`. §4 참조 |
-| Q2 | 검색·LLM API 제공자와 예산 | Task 17 |
+| Q2 | 검색·LLM API 제공자와 예산 | **LLM 쪽만 부분 해결(Task 17)** — OpenAI, 테스트용 키만. 검색 API·상시 예산은 미해결 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | Task 18 |
 | Q5 | 목표가 알림 채널 (웹 푸시 vs 다른 수단) | Task 19 |
 | Q6 | 지인 공유 권한 모델 상세 | Task 20 |
@@ -334,3 +355,4 @@ Q1(데이터베이스 실행 방식)은 Task 5 에서 해결했다.
 | **카테고리를 사용자가 자유롭게 추가·수정·삭제·설정. 기본값은 기존 CSV 기준** | ✅ 설계 반영 (`architecture.md` §2.3). 깊이 제한 없음, CRUD·reparent·reorder·merge·reset-seed API 정의. 코드에서 `DEFAULT_CATEGORY_PATHS`(기본 시드)로 재프레이밍. **Task 7·9 구현 시 반드시 이 설계를 따를 것** |
 | 8/1 08:30 KST 까지 미완이면 인계 문서 남기고 종료 | ✅ 이 문서. 매 Task 완료 시 갱신한다 |
 | **모든 작업 후 자체 통합 테스트 + 다각도 분석(사용성·UI/UX·기능) → 추가 계획 수립 → 이어서 작업** | ✅ **Task 21(자체 통합 테스트와 다각도 분석)·Task 22(개선 실행) 신설.** 릴리스는 Task 23 으로 이동. 릴리스를 분석 뒤에 두어 개선 여지를 아는 상태로 `v1.0.0` 을 내보내지 않는다. 상세는 [plan.md](plan.md) §4 Task 21·22, 백로그는 §9 |
+| **LLM API 설정 등은 `.env` 대신 애플리케이션 내에서 관리** (Task 17 착수 시점, 2026-08-02) | ✅ 설정 화면(`SettingsPage.tsx`) + `GET·PUT·DELETE /llm-settings` 신설. DB 에 Fernet 암호화해 저장(D82). 예외는 암호화 마스터 키(`SOOLJANG_SECRET_KEY`) 하나 — 배포 시 1회만 환경 변수로 설정 |

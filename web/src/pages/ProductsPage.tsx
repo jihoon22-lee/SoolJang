@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { productsApi, purchasesApi, vendorsApi } from "@/api/client";
+import { attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
 import type { ProductFilters, User } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
+import { LabelOcrPanel } from "@/components/LabelOcrPanel";
 import { ProductDetail } from "@/components/ProductDetail";
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
@@ -25,6 +26,13 @@ export function ProductsPage() {
   const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  // 라벨 OCR(Task 17)이 채운 값과 원본 사진. 폼이 닫힐 때마다 함께 지운다 — 그러지 않으면
+  // 다음에 수동으로 연 폼에 이전 스캔의 흔적이 남는다.
+  const [formPrefill, setFormPrefill] = useState<Partial<ProductFormValues> | null>(null);
+  const [pendingLabelFile, setPendingLabelFile] = useState<File | null>(null);
+  // ProductForm 은 마운트 시점에만 initialValues 를 반영한다 — 폼이 이미 열려 있는 상태로
+  // 라벨을 다시 스캔하면(재촬영) 이 값을 바꿔 강제로 다시 마운트시켜야 새 프리필이 반영된다.
+  const [formInstance, setFormInstance] = useState(0);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   // 필터가 바뀌면 첫 페이지부터 다시 보여준다. 렌더 중 상태를 조정하는 편이(리액트가
   // 권장하는 방식) 이 값을 읽지 않는 useEffect 보다 의도가 분명하다.
@@ -74,6 +82,11 @@ export function ProductsPage() {
             unit_paid_price: values.unitPaidPrice || null,
           });
         }
+        if (pendingLabelFile) {
+          // 원본 사진 보관("Task 17 원본·결과 보관"). 제품 자체는 이미 만들어졌으니, 이
+          // 단계가 실패해도 앞선 단계처럼 오류로 보고한다 — 조용히 건너뛰지 않는다.
+          await attachmentsApi.create(pendingLabelFile, { kind: "label", product_id: product.id });
+        }
         triggerSync();
         return;
       }
@@ -81,9 +94,15 @@ export function ProductsPage() {
       await createProductOffline(values, queryClient.getQueryData<User>(["auth", "me"])?.id ?? "");
     },
     onSuccess: () => {
-      setFormOpen(false);
+      closeForm();
     },
   });
+
+  function closeForm() {
+    setFormOpen(false);
+    setFormPrefill(null);
+    setPendingLabelFile(null);
+  }
 
   if (selectedId !== null) {
     return <ProductDetailView productId={selectedId} onBack={() => setSelectedId(null)} />;
@@ -112,9 +131,33 @@ export function ProductsPage() {
             내 술 {(allProducts?.length ?? 0) > 0 && `(${allProducts?.length})`}
           </h2>
           <div className="button-row">
-            {/* 스캔은 카메라 + Open Food Facts 조회가 필요해 온라인 전용이다. */}
+            {/* 스캔·라벨 인식 모두 온라인 전용 외부 호출이 필요하다(카메라+Open Food
+            Facts, Vision LLM). */}
             {!offline && <BarcodeScanPanel onSelectProduct={setSelectedId} />}
-            <button type="button" className="primary" onClick={() => setFormOpen((open) => !open)}>
+            {!offline && (
+              <LabelOcrPanel
+                categories={categoryTree?.items ?? []}
+                onPrefill={(values, file) => {
+                  setFormPrefill(values);
+                  setPendingLabelFile(file);
+                  setFormInstance((instance) => instance + 1);
+                  setFormOpen(true);
+                }}
+              />
+            )}
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                if (formOpen) {
+                  closeForm();
+                } else {
+                  setFormPrefill(null);
+                  setPendingLabelFile(null);
+                  setFormOpen(true);
+                }
+              }}
+            >
               {formOpen ? "폼 닫기" : "새 술 등록"}
             </button>
           </div>
@@ -122,11 +165,13 @@ export function ProductsPage() {
 
         {formOpen && (
           <ProductForm
+            key={formInstance}
             categories={categoryTree?.items ?? []}
             submitting={createProduct.isPending}
             error={createProduct.error}
             onSubmit={(values) => createProduct.mutate(values)}
-            onCancel={() => setFormOpen(false)}
+            onCancel={closeForm}
+            initialValues={formPrefill ?? undefined}
           />
         )}
 

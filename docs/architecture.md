@@ -343,14 +343,23 @@ erDiagram
 #### 그 외
 
 - `producer`, `variety`, `product_variety`, `tag`, `product_tag`: 단순 참조·연결 테이블
-- `attachment`: `owner_type`/`owner_id` 다형 참조, `kind`(`label`/`receipt`/`tasting`),
-  `mime`, `bytes`, `sha256`, `storage_path`
+- `attachment`: `product_id`/`bottle_id`/`tasting_session_id` 중 정확히 하나만 채우는 3개
+  nullable FK 로 소유자를 표현한다(CHECK 제약으로 강제) — 다형 `owner_type`/`owner_id`
+  컬럼 하나 대신 이 방식을 쓴 이유는 FK 제약을 그대로 걸 수 있어서다(다형 참조는 DB 가
+  참조 무결성을 검사할 수 없다). `kind`(`label`/`tasting`/`bottle`/`other`), `content_type`,
+  `byte_size`, `sha256`, `storage_path`. 업로드는 `POST /attachments`(Task 17) 가 이미지만
+  받는다
 - `wishlist_item`: 구매 후보. `target_price` 도달 알림(Task 19)의 대상
 - `saved_view`: 커스텀 피벗 정의(Task 20). `definition jsonb`
 - `sync_cursor`, `outbox_receipt`, `conflict_log`: 동기화 상태(§5). `conflict_log` 는
   LWW 충돌에서 진 로컬 변경을 보관한다(§5.4) — 다른 9개 동기화 대상 테이블과 같은
   공통 컬럼(`EntityMixin`)을 써서 풀 대상에 포함시킨다. 한 기기의 충돌이 다른 기기의
   로컬 미러에도 같은 배관으로 전파된다
+- `llm_setting`: LLM 제공자·모델·API 키(Task 17). `EntityMixin` 을 쓰지만 **동기화 대상이
+  아니다** — `SYNC_ENTITIES` 레지스트리에 의도적으로 넣지 않는다. API 키가 클라이언트
+  IndexedDB 로 미러링되면 안 된다. 키는 평문이 아니라 Fernet 암호문(`api_key_ciphertext`)
+  으로 저장하고, 화면에 마스킹 값을 보여주기 위한 마지막 4자만 별도 평문 컬럼
+  (`api_key_hint`)으로 둔다
 - `user`, `session`: 인증(§6)
 
 ### 2.4 인덱스
@@ -460,7 +469,8 @@ erDiagram
 | `GET /sync?since=<cursor>` | 델타 풀 | 15 |
 | `POST /sync/batch` | outbox 일괄 전송 | 15 |
 | `GET /barcodes/{code}` | 바코드 조회 (로컬 → 외부 → 검색) | 16 |
-| `POST /ocr/label` | 라벨 OCR 구조화 추출 | 17 |
+| `GET·PUT·DELETE /llm-settings` | LLM 제공자·API 키(암호화 저장)·모델 설정 | 17 |
+| `POST /ocr/label` | 라벨 OCR 구조화 추출. 아무것도 저장하지 않는다 | 17 |
 | `GET·POST /external-sources`, `PATCH·DELETE /external-sources/{id}` | 소스 레지스트리 | 18 |
 | `POST /external-sources:discover` | 추천 소스 자동 탐색 | 19 |
 | `POST /products/{id}/external:refresh` | 외부 정보 온디맨드 조회 | 18 |
@@ -770,6 +780,25 @@ EXPLAIN 결과: Bitmap Heap Scan → Bitmap Index Scan on t_name_trgm
 
 비밀번호와 달리 느린 해시(Argon2)를 쓰지 않는 이유는, 토큰이 32바이트 무작위라 사전 공격이
 불가능하고 요청마다 검증하므로 속도가 중요하기 때문이다.
+
+### 9.14 LLM API 키는 암호화해 DB 에 저장한다 (평문 `.env` 아님)
+
+**결정**: `llm_setting.api_key_ciphertext` 에 Fernet 대칭 암호화한 바이트를 저장한다. 마스터
+키(`SOOLJANG_SECRET_KEY`)만 배포 시 환경 변수로 한 번 설정하고, 그 위의 제공자·모델·API 키는
+전부 로그인 후 설정 화면에서 관리한다(Task 17).
+
+**이유**: 세션 토큰(§9.13)과 달리 API 키는 **원문을 다시 꺼내 LLM 호출에 써야 한다** — 단방향
+해시(Argon2)로는 불가능하다. `.env` 에 고정하는 방식도 검토했지만, Task 17 착수 시점에
+사용자가 명시적으로 "설정 작업까지 애플리케이션 안에서" 하길 원했다 — `.env` 를 고치고
+프로세스를 재시작해야 하는 방식은 이 요구와 맞지 않는다.
+
+DB 에 두더라도 평문으로 두지 않는 이유는, `pg_dump` 백업 파일이나 DB 접근 권한이 있는 다른
+경로로 유출될 표면을 줄이기 위해서다. 대칭 암호화는 이 경우 유의미한 방어선이다 — 마스터 키가
+없으면 암호문만으로는 아무것도 못 한다.
+
+**대가**: 마스터 키 자체는 여전히 평문 환경 변수다 — 이 키가 유출되면 저장된 모든 LLM API 키가
+함께 노출된다. 단일 사용자 앱에서는 감수 가능한 위험으로 판단했다. 여러 사용자·조직 규모가
+되면 키 관리 서비스(KMS) 도입을 재검토해야 한다.
 
 ### 9.7 서버 세션 쿠키 (JWT 아님)
 

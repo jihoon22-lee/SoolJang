@@ -40,6 +40,8 @@ services:
     environment:
       SOOLJANG_ENVIRONMENT: production
       SOOLJANG_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sooljang}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sooljang}
+      SOOLJANG_SECRET_KEY: ${SOOLJANG_SECRET_KEY:?SOOLJANG_SECRET_KEY 를 .env 에 설정하세요}
+      SOOLJANG_UPLOAD_DIR: /app/uploads
     volumes:
       - uploads:/app/uploads
     ports:

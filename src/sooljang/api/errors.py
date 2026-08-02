@@ -69,6 +69,18 @@ class ValidationFailedError(DomainError):
     title = "요청 값이 올바르지 않습니다"
 
 
+class LlmNotConfiguredError(DomainError):
+    """라벨 OCR(Task 17) 등 LLM 이 필요한 기능인데 설정이 없을 때.
+
+    일반 `ValidationFailedError` 와 구분하는 이유는, 프론트엔드가 이 경우에만 "설정으로
+    이동" 버튼을 보여줘야 하기 때문이다 — 별도 `error_type` 이 있어야 분기할 수 있다.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_type = "llm-not-configured"
+    title = "LLM 설정이 필요합니다"
+
+
 def problem_response(
     *,
     status_code: int,

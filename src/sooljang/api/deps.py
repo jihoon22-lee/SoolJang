@@ -52,6 +52,7 @@ def settings_dependency() -> Settings:
 
 
 SessionDep = Annotated[AsyncSession, Depends(db_session)]
+SettingsDep = Annotated[Settings, Depends(settings_dependency)]
 
 
 async def active_session(request: Request, session: SessionDep) -> Session:

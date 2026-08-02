@@ -222,6 +222,9 @@ jobs:
       DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_migrate
       SOOLJANG_ENVIRONMENT: test
       SOOLJANG_DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_migrate
+      # alembic 을 pytest 밖에서 직접 돌리므로 conftest.py 의 autouse fixture 가 적용되지
+      # 않는다 — CI 전용 값(운영 키가 아니다). Fernet 이 요구하는 32바이트 형식만 맞으면 된다.
+      SOOLJANG_SECRET_KEY: "b_hsHWsTUYKT4jxk9bNuJ7Q8gl_3Fg7AVm4GzMntuEg="
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

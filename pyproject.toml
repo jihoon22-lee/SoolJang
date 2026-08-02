@@ -12,13 +12,22 @@ dependencies = [
     "alembic>=1.18.5,<2",
     # 비밀번호 해시. Argon2id 는 현재 권장되는 기본값이다.
     "argon2-cffi>=25.1,<26",
+    # LLM API 키를 DB 에 암호화해 저장한다(Task 17). Fernet 대칭 암호화.
+    # 46.x 에 알려진 취약점(GHSA-537c-gmf6-5ccf)이 있어 수정된 48.0.1 이상으로 고정한다.
+    "cryptography>=48.0.1,<51",
     # pydantic EmailStr 이 요구한다. 이메일 형식 검증.
     "email-validator>=2.3,<3",
     "fastapi>=0.139.1,<1",
+    # 외부 API 호출(Open Food Facts, OpenAI). Task 16 에서 이미 런타임에 쓰였으나
+    # dev 그룹에만 있어 프로덕션 이미지에 누락돼 있었다 — 여기서 정정한다.
+    "httpx>=0.28.1,<1",
+    # Vision LLM 호출(라벨 OCR, Task 17). OpenAI 만 지원한다 — 다른 제공자 추상화는
+    # 아직 필요가 없다.
+    "openai>=2,<3",
     "psycopg[binary]>=3.2,<4",
     "pydantic>=2.13,<3",
     "pydantic-settings>=2.7,<3",
-    # FastAPI 의 multipart 업로드(레거시 CSV 임포트)에 필요하다.
+    # FastAPI 의 multipart 업로드(레거시 CSV 임포트, 첨부파일, 라벨 사진)에 필요하다.
     "python-multipart>=0.0.20,<1",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.51.0,<1",
@@ -29,7 +38,6 @@ sooljang-api = "sooljang.api.__main__:main"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1,<1",
     "pytest>=9,<10",
     "pytest-asyncio>=1.0,<2",
     "pytest-cov>=7,<8",

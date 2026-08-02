@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { API_PREFIX, ApiError, categoriesApi, fetchHealth, productsApi } from "@/api/client";
+import {
+  API_PREFIX,
+  ApiError,
+  attachmentsApi,
+  categoriesApi,
+  fetchHealth,
+  productsApi,
+} from "@/api/client";
 import type { HealthStatus, ProblemDetail } from "@/api/types";
 
 const healthy: HealthStatus = {
@@ -149,5 +156,44 @@ describe("요청 조립", () => {
     const { url } = firstCall(spy);
     expect(url).toContain("strategy=reassign");
     expect(url).toContain("target_id=cat-2");
+  });
+});
+
+describe("attachmentsApi.create", () => {
+  const file = new File(["x"], "photo.png", { type: "image/png" });
+
+  it("product_id 만 지정하면 그 필드만 함께 보낸다", async () => {
+    const spy = stubFetch(201, { id: "a1" });
+
+    await attachmentsApi.create(file, { kind: "label", product_id: "p1" });
+
+    const { init } = firstCall(spy);
+    const form = init.body as FormData;
+    expect(form.get("kind")).toBe("label");
+    expect(form.get("product_id")).toBe("p1");
+    expect(form.get("bottle_id")).toBeNull();
+    expect(form.get("tasting_session_id")).toBeNull();
+  });
+
+  it("bottle_id 만 지정하면 그 필드만 함께 보낸다", async () => {
+    const spy = stubFetch(201, { id: "a2" });
+
+    await attachmentsApi.create(file, { kind: "bottle", bottle_id: "b1" });
+
+    const { init } = firstCall(spy);
+    const form = init.body as FormData;
+    expect(form.get("bottle_id")).toBe("b1");
+    expect(form.get("product_id")).toBeNull();
+  });
+
+  it("tasting_session_id 만 지정하면 그 필드만 함께 보낸다", async () => {
+    const spy = stubFetch(201, { id: "a3" });
+
+    await attachmentsApi.create(file, { kind: "tasting", tasting_session_id: "t1" });
+
+    const { init } = firstCall(spy);
+    const form = init.body as FormData;
+    expect(form.get("tasting_session_id")).toBe("t1");
+    expect(form.get("bottle_id")).toBeNull();
   });
 });

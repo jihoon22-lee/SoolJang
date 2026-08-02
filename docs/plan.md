@@ -16,27 +16,32 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-02 (Task 16 PR) |
-| 완료된 Task | **Task 1 ~ Task 16** |
-| 다음 착수 Task | **Task 17 — 라벨 OCR 프리필** (Q2 미해결로 차단, 아래 참조) |
-| 현재 브랜치 | `main` (Task 16 까지 머지 완료, 열린 PR 없음) |
+| 최종 갱신 | 2026-08-02 (Task 17 PR) |
+| 완료된 Task | **Task 1 ~ Task 17** |
+| 다음 착수 Task | **Task 20 — 통계 v2** (Task 18·19 는 여전히 검색 API 미해결로 차단, 아래 참조) |
+| 현재 브랜치 | `main` (Task 17 까지 머지 완료, 열린 PR 없음) |
 | 진행 중 잔여 항목 | 없음 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
 
-### 차단 요인 — Task 17·18 은 사용자 확인이 필요하다
+### 차단 요인 — Task 18·19 는 여전히 사용자 확인이 필요하다
 
-Task 17(라벨 OCR)·18(외부 소스 요약)은 **Vision·Text LLM API 제공자와 예산이 미해결**이다
-(§6 Q2). 기존 프로젝트에 `anthropic`·`google-genai`·`openai` 의존성이 있어 키를 보유하고
-있을 가능성이 높지만, 어떤 제공자·모델·월 예산 상한을 쓸지는 사용자가 정해야 한다 —
-임의로 하나를 골라 키 설정 코드를 먼저 만들면 나중에 예산 초과나 원치 않는 벤더 종속이
-생길 수 있다.
+Q2(§6)는 "검색·LLM API 제공자와 예산"을 하나로 묶고 있었지만, 실제로는 서로 다른 두
+결정이었다. Task 17 PR 에서 **LLM 쪽만** 풀렸다 — 사용자가 OpenAI API 키를 제공했고,
+`.env` 로 고정하는 대신 로그인 후 설정 화면에서 관리하게 만들었다(D82). 단,
+"테스트로 몇 차례만" 이라는 제한적 승인만 받았다 — 상시적으로 LLM 을 호출하는 기능
+(예: Task 18 의 외부 후기 요약)을 붙이기 전에는 실사용 예산 상한을 다시 확인해야 한다.
 
-**Q2 가 풀리기 전까지 막히지 않는 다음 후보**: Task 20(통계 v2 — 커스텀 피벗과 취향 분석)
-은 외부 API 없이 Task 14(통계 v1) 데이터만으로 진행할 수 있다. 의존 관계상으로도
-Task 17·18·19 를 거치지 않고 바로 시작할 수 있다(§3 의존 관계 다이어그램 참조).
+**검색 API 제공자는 여전히 미해결이다.** Task 18(외부 소스 레지스트리)의 `search` 전략은
+웹 검색 API 가 필요한데, 이건 아직 선택되지 않았다. Task 18 은 `adapter` 전략(사이트별
+셀렉터, 검색 API 불필요)만으로 부분 착수할 수는 있지만, 사양의 핵심인 "모든 주종 기본
+지원"(§7.2)은 `search` 전략에 달려 있어 실질적으로는 계속 막혀 있다고 본다.
+
+**Task 20(통계 v2)는 이미 착수 가능하다** — 외부 API 없이 Task 14(통계 v1) 데이터만으로
+진행할 수 있고, 의존 관계상으로도 Task 18·19 를 거치지 않고 바로 시작할 수 있다(§3 의존
+관계 다이어그램 참조). Task 17 완료 후 다음 착수 대상으로 이를 권장한다.
 
 ### 로컬 환경 기동
 
@@ -139,9 +144,9 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 12 | 인증과 로컬 HTTPS 접근 환경 | ✅ | `feature/auth-https` | [#13](https://github.com/jihoon22-lee/SoolJang/pull/13) |
 | 13 | 개별 병 관리와 시음 세션 | ✅ | `feature/bottles-tastings`, `feature/bottles-tastings-ui` | [#14](https://github.com/jihoon22-lee/SoolJang/pull/14), [#15](https://github.com/jihoon22-lee/SoolJang/pull/15) |
 | 14 | 통계 대시보드 v1 | ✅ | `feature/stats-v1` | [#21](https://github.com/jihoon22-lee/SoolJang/pull/21) |
-| 15 | PWA와 오프라인 동기화 | ✅ | `feature/pwa-sync` | (병합 예정) |
-| 16 | 바코드 스캔과 제품 매칭 | ✅ | `feature/barcode-scan` | (병합 예정) |
-| 17 | 라벨 OCR 프리필 | ⬜ | `feature/label-ocr` | |
+| 15 | PWA와 오프라인 동기화 | ✅ | `feature/pwa-sync` | [#22](https://github.com/jihoon22-lee/SoolJang/pull/22) |
+| 16 | 바코드 스캔과 제품 매칭 | ✅ | `feature/barcode-scan` | [#23](https://github.com/jihoon22-lee/SoolJang/pull/23) |
+| 17 | 라벨 OCR 프리필 | ✅ | `feature/label-ocr` | (이 PR) |
 | 18 | 외부 소스 레지스트리와 온디맨드 조회 | ⬜ | `feature/external-sources` | |
 | 19 | 사이트별 어댑터와 시세 이력 | ⬜ | `feature/site-adapters` | |
 | 20 | 통계 v2 — 커스텀 피벗과 취향 분석 | ⬜ | `feature/stats-v2` | |
@@ -697,13 +702,73 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
     Facts 조회 자체가 온라인을 전제하므로, 오프라인 대응 범위를 넓히는 대신 버튼을
     숨기는 쪽을 택했다(Task 15 의 주종 이동·병합 등과 같은 판단)
 
-### ⬜ Task 17 — 라벨 OCR 프리필
+### ✅ Task 17 — 라벨 OCR 프리필
 
-- **산출물**: Vision LLM 구조화 추출(이름·생산자·도수·용량·빈티지·숙성연수·주종 추정),
-  필드별 신뢰도 표시, 사용자 검수 후 저장, 원본·결과 보관
-- **테스트**: 고정 이미지 fixture로 스키마 검증(LLM 목킹), 저신뢰 필드 표시, 실패 시 수동 폴백,
-  실호출은 opt-in 마커
-- **데모**: 라벨 촬영으로 폼 자동 완성
+Q2(검색·LLM API 제공자)가 미해결이라 차단돼 있었으나, 세션 도중 사용자가 OpenAI API 키를
+제공하며 착수를 지시했다(§6 Q2 갱신 참조). 동시에 "LLM API 설정 등은 애플리케이션
+내에서 할 수 있게" 해 달라는 새 요구가 나와, Task 17 자체보다 먼저 **LLM 설정 인프라**를
+만들어야 했다 — 이 PR 은 그래서 라벨 OCR 뿐 아니라 그 전제 조건인 설정 화면·저장 방식까지
+포함한다.
+
+- **백엔드 산출물**
+  - `infrastructure/security/secrets.py`(신규) — Fernet 대칭 암호화 `encrypt_secret`/
+    `decrypt_secret`. 마스터 키(`SOOLJANG_SECRET_KEY`, 신규 필수 환경 변수, 기본값 없음)는
+    호출부가 매번 넘긴다 — 전역 상태로 두지 않아 이 모듈만 마스터 키 없이도 단위 테스트할
+    수 있다
+  - `models/llm.py`(신규) — `LlmSetting`(`EntityMixin`), API 키는 암호문(`api_key_ciphertext`,
+    `LargeBinary`)만 저장하고 마지막 4자만 평문 힌트(`api_key_hint`)로 따로 둬, 매번
+    복호화하지 않고도 조회 응답에 마스킹 값(`...ab12`)을 실을 수 있게 했다. **동기화
+    대상에서 의도적으로 제외**했다 — API 키가 클라이언트 IndexedDB 로 미러링되면 안 된다.
+    마이그레이션 `0006_llm_settings`
+  - `GET·PUT·DELETE /llm-settings`(신규) — 저장·조회·삭제. 응답은 항상 마스킹된 값뿐,
+    원문은 절대 내려주지 않는다
+  - `infrastructure/external/llm.py`(신규) — OpenAI `chat.completions.parse` 로 구조화
+    출력을 받는다(수작업 JSON 파싱 대신 SDK 가 Pydantic 모델로 직접 역직렬화). 거부·
+    스키마 불일치·네트워크 오류를 전부 `LabelExtractionFailedError` 하나로 통일해, 호출부가
+    SDK 예외 종류를 몰라도 "실패 시 수동 폴백"으로 넘어갈 수 있게 했다. `http_client`
+    주입점으로 `httpx.MockTransport` 목킹(Task 16 의 Open Food Facts 패턴과 동일)
+  - `POST /ocr/label`(신규) — 아무것도 저장하지 않는다. 설정이 없으면 별도 에러 타입
+    (`llm-not-configured`, 409)으로 구분해, 프론트가 일반 오류와 다르게(설정 화면 안내)
+    보여줄 수 있게 했다
+  - `POST /attachments`(신규) — **문서-코드 갭 메우기.** architecture.md 가 Task 10
+    산출물로 문서화했지만 실제로는 구현되지 않았던 엔드포인트다(Task 16 의
+    `PATCH /skus/{id}` 와 같은 종류). 라벨 OCR 의 "원본 보관"이 실제 첨부 저장을 요구해서
+    이번에 채웠다. 이미지만 받는다(`infrastructure/storage.py`)
+  - **부수 발견**: `httpx` 가 Task 16 부터 프로덕션 코드(`open_food_facts.py`)에서 실제로
+    쓰이는데 `pyproject.toml` 의 dev 그룹에만 있었다 — `docker build --no-dev` 로 만든
+    운영 이미지엔 `httpx` 가 아예 설치되지 않는 잠재 버그였다. 이번에 main dependencies 로
+    옮겨 정정(§5 결정 로그 D83)
+- **프론트엔드 산출물**
+  - `pages/SettingsPage.tsx`(신규) — API 키 입력·모델 지정·저장·삭제. 새 탭("설정")으로
+    노출
+  - `components/LabelOcrPanel.tsx`(신규) — `<input type="file" capture="environment">`
+    로 사진 한 장만 받는다(`BarcodeScanPanel` 과 달리 실시간 카메라 스트림이 필요 없어
+    `barcode/scanner.ts` 같은 별도 모듈이 없다 — 테스트도 `userEvent.upload` 로 바로
+    가능). 인식 결과를 필드별 신뢰도와 함께 보여주고, "이 정보로 등록"을 누르면
+    `ProductForm` 을 프리필해서 연다
+  - `ProductForm.tsx` 에 `initialValues` prop 추가(마운트 시점에만 반영). `ProductsPage.tsx`
+    는 라벨 스캔이 이미 열려 있는 폼에 다시 프리필해야 할 때(재촬영) `key` 를 바꿔 강제
+    리마운트한다
+  - **필드 매핑의 한계**: OCR 이 뽑는 생산자·숙성연수는 `ProductForm` 에 대응하는 입력칸이
+    없다(제품 생성 API 자체가 아직 `producer_id` 를 프리필할 자유 텍스트 경로를 제공하지
+    않는 기존 공백 — Task 17 이 새로 만들지 않는다). 잃어버리지 않게 메모 필드에 적어
+    둔다. 주종 추정은 카테고리 목록과 이름이 정확히 일치할 때만 채운다(오탐이 이름
+    불일치로 안 채워지는 것보다 나쁘다)
+  - 저장 성공 시 같은 사진을 `POST /attachments` 로 한 번 더 올려 원본을 보관한다("원본·
+    결과 보관" — 원본은 첨부, 결과는 저장된 제품 필드 자체다)
+- **검증 결과**
+  - 백엔드: `ruff check`·`ruff format --check`·`ty check` 전부 통과. `pytest` 592
+    passed(opt-in `live_llm` 제외), 커버리지 90.84%(임계값 85%)
+  - **실제 OpenAI API 로 1회 왕복 검증**: `live_llm` 마커 테스트를 실제 키로 1회 실행해
+    인증·요청 형식·구조화 출력 파싱이 실제로 동작함을 확인했다(평소 CI 는 이 마커를
+    제외한다 — 비용과 결정성 때문에 기본 실행 대상이 아니다)
+  - 프론트엔드: `npm run check` 전부 통과. `vitest` 237 passed, 커버리지 89.87%
+    stmts / **80.2% branch**(임계값 80%, 근소하게 통과) / 85.79% funcs / 91.96% lines
+  - `docker build -f docker/api.Dockerfile .` 로 만든 이미지를 직접 실행해
+    `create_app()` 이 새 의존성(`openai`·`cryptography`) 전부 정상 임포트하는지 확인 —
+    `httpx` 버그가 재발하지 않았는지 같은 방식으로 재확인한 것이다.
+    `docker build -f docker/web.Dockerfile .` 도 정상 빌드
+- **설계 판단** (§5 결정 로그 D82~D86 참조)
 
 ### ⬜ Task 18 — 외부 소스 레지스트리와 온디맨드 조회
 
@@ -907,12 +972,22 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 | D80 | "검색 폴백"은 별도 검색 API 를 통합하지 않고, 앱 안의 수동 등록·연결 흐름으로 구현한다 | Q2(검색·LLM API 제공자와 예산)가 아직 미해결이다. Task 18(외부 소스)까지 기다리지 않고, 로컬·Open Food Facts 양쪽에서 못 찾으면 사용자가 직접 새로 등록하거나 기존 술에 연결하게 해 Task 16 범위를 스스로 완결시켰다 |
 | D81 | 바코드 스캔으로 만드는 새 제품·바코드 학습은 outbox(Task 15)를 거치지 않고 항상 온라인 REST 로 처리한다 | 카메라 접근과 Open Food Facts 조회 자체가 온라인을 전제한다. 오프라인 대응 범위를 넓히는 대신 오프라인일 때 스캔 버튼을 감추는 쪽을 택했다(Task 15 의 주종 이동·병합과 같은 판단 기준) |
 
+### Task 17 결정 (D82~D86)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D82 | LLM API 키는 `.env` 가 아니라 **DB 에 암호화해 저장**하고, 로그인 후 설정 화면에서 관리한다. 예외는 그 암호화에 쓰는 마스터 키(`SOOLJANG_SECRET_KEY`) 하나뿐 — 이건 배포 시 한 번만 환경 변수로 넣는다 | 사용자가 Task 17 착수 시점에 명시적으로 요구했다("가능한 모든 작업(설정 작업 조차) 다 애플리케이션에서 하고 싶어"). `.env` 를 고치고 프로세스를 재시작해야 하는 방식은 이 요구에 맞지 않는다 |
+| D83 | `httpx` 를 `pyproject.toml` 의 dev 그룹에서 main dependencies 로 옮긴다 | Task 16 부터 `infrastructure/external/open_food_facts.py`(프로덕션 코드)가 이미 이걸 직접 쓰고 있었는데 dev 전용으로 잘못 분류돼 있었다 — `docker build --no-dev` 로 만드는 운영 이미지엔 설치되지 않는 잠재 버그였다(발견 당시 아직 터지지 않았던 이유: 로컬·CI 는 항상 dev 의존성이 함께 설치된다). Task 17 에서 `openai` 를 추가하며 같은 실수를 반복하지 않으려고 조사하다 발견했다 |
+| D84 | `llm_setting` 테이블은 동기화 대상(`SYNC_ENTITIES`)에 넣지 않는다 | API 키가 클라이언트 IndexedDB(Dexie)로 미러링되면 브라우저 저장소에 평문에 가깝게 노출된다. 이 값은 서버(라벨 OCR 처리)에서만 쓰인다 |
+| D85 | API 키는 Fernet 암호문과 별개로 **마지막 4자를 평문 힌트로 따로 저장**한다(`api_key_hint`) | 설정 화면이 "지금 어떤 키가 저장돼 있는지"를 보여주려면 마스킹된 값(`...ab12`)이 필요하다. 매 조회마다 복호화하는 대신, 애초에 노출해도 무해한 마지막 4자만 평문으로 남겨 둔다 |
+| D86 | `POST /ocr/label` 은 아무것도 저장하지 않는다 — 추출 결과만 반환한다. 원본 사진은 사용자가 실제로 제품을 저장하기로 결정한 **뒤**에만 `POST /attachments` 로 올린다 | 촬영만 하고 등록을 취소하는 경우가 흔할 것이다. OCR 단계에서 바로 저장하면 아무도 안 쓰는 고아 첨부·미완성 레코드가 쌓인다. "원본·결과 보관"은 저장이 실제로 일어났을 때만 의미가 있다 |
+
 ## 6. 열린 질문
 
 | # | 질문 | 상태 | 필요 시점 |
 |---|---|---|---|
 | ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
-| Q2 | 검색·LLM API 제공자와 예산. Task 17(OCR)·18(요약)에 필요. 기존 프로젝트에 `anthropic`·`google-genai`·`openai` 의존성이 있어 키 보유로 추정 | 미해결 | Task 17 |
+| Q2 | 검색·LLM API 제공자와 예산. Task 17(OCR)·18(요약)에 필요 | **LLM 쪽만 부분 해결 (Task 17 세션)** — 제공자 OpenAI, 사용자가 다른 프로젝트(naver-blog-assistant)에서 쓰던 키를 "테스트로 몇 차례만" 제공. 상시 예산 상한은 아직 정해지지 않았다 — Task 18 처럼 LLM 을 상시 호출하는 기능을 붙이기 전에 다시 확인해야 한다. **검색 API 제공자는 여전히 미해결** | Task 18 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록. 국내 가격은 데일리샷·이마트·GS25 와인25+ 등 후보. 사용자 승인 필요 | 미해결 | Task 18 |
 | ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 주소 `https://main.tail30f401.ts.net`. 폰에 Tailscale 앱 설치 + 같은 계정 로그인만 남았다. Docker 이미지 재빌드 필요(현재 컨테이너는 Task 12 이전 빌드) | — |
 | Q5 | 웹 푸시 알림 채널. 목표가 알림을 웹 푸시로 할지 다른 수단(이메일 등)으로 할지 | 미해결 | Task 19 |
