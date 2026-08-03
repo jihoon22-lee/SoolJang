@@ -206,9 +206,9 @@ describe("syncEngine.triggerSync — 동시 트리거", () => {
     );
 
     const firstSync = syncEngine.triggerSync();
-    // 첫 번째 풀이 실제로 걸려 멈출 때까지 이벤트 루프를 한 틱 양보한다.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(pullGate.resolve).not.toBeNull();
+    // 첫 번째 풀이 실제로 걸려 멈출 때까지 기다린다. 고정된 틱 수는 CI 러너 속도에
+    // 따라 불안정해(vi.waitFor 로 폴링) 실제로 멈출 때까지 기다린다.
+    await vi.waitFor(() => expect(pullGate.resolve).not.toBeNull());
 
     // 아직 첫 회차가 안 끝났다 — 조용히 버려지지 않고 dirty 로만 표시돼야 한다.
     await syncEngine.triggerSync();
@@ -217,9 +217,8 @@ describe("syncEngine.triggerSync — 동시 트리거", () => {
     pullGate.resolve?.();
     await firstSync;
 
-    // finally 에서 dirty 를 보고 자동으로 한 번 더 돈다 — fire-and-forget 이라 한 틱
-    // 더 기다려야 두 번째 풀 호출이 실제로 일어난다.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(pullCallCount).toBe(2);
+    // finally 에서 dirty 를 보고 자동으로 한 번 더 돈다 — fire-and-forget 이라 그
+    // 완료를 기다려야 두 번째 풀 호출이 실제로 일어난다.
+    await vi.waitFor(() => expect(pullCallCount).toBe(2));
   });
 });
