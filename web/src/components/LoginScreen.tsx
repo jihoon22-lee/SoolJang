@@ -150,7 +150,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps): React.JSX.El
           </p>
         ) : null}
 
-        <button type="submit" disabled={mutation.isPending}>
+        <button type="submit" className="primary" disabled={mutation.isPending}>
           {mutation.isPending ? "확인 중…" : needsSetup ? "계정 만들고 시작" : "로그인"}
         </button>
       </form>

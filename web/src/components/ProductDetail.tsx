@@ -96,7 +96,7 @@ export function ProductDetail({
 
   return (
     <article aria-labelledby="detail-heading">
-      <div className="button-row" style={{ marginBottom: 12 }}>
+      <div className="button-row mb-3">
         <button type="button" onClick={onBack}>
           ← 목록으로
         </button>
@@ -109,24 +109,24 @@ export function ProductDetail({
       </div>
 
       <div className="panel">
-        <h2 id="detail-heading" style={{ marginBottom: 4 }}>
+        <h2 id="detail-heading" className="mb-1">
           {product.name}
           {product.vintage !== null && <span className="muted"> ({product.vintage})</span>}
         </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted mt-0">
           {formatCategoryPath(product.category_path)}
           {product.producer_name && ` · ${product.producer_name}`}
           {product.country && ` · ${product.country}`}
         </p>
 
-        <dl className="product-card-dl" style={{ display: "grid", gap: 4 }}>
+        <dl className="product-card-dl">
           <div>
             <dt className="muted">도수</dt>
-            <dd style={{ margin: 0 }}>{formatAbv(product.abv)}</dd>
+            <dd>{formatAbv(product.abv)}</dd>
           </div>
           <div>
             <dt className="muted">규격</dt>
-            <dd style={{ margin: 0 }}>
+            <dd>
               {product.skus.length === 0
                 ? "등록된 규격 없음"
                 : product.skus.map((sku) => formatVolume(sku.volume_ml)).join(", ")}
@@ -134,21 +134,19 @@ export function ProductDetail({
           </div>
           <div>
             <dt className="muted">품종·스타일</dt>
-            <dd style={{ margin: 0 }}>
-              {product.varieties.length === 0 ? "—" : product.varieties.join(", ")}
-            </dd>
+            <dd>{product.varieties.length === 0 ? "—" : product.varieties.join(", ")}</dd>
           </div>
           <div>
             <dt className="muted">내 평점</dt>
-            <dd style={{ margin: 0 }}>{formatRating(product.personal_rating)}</dd>
+            <dd>{formatRating(product.personal_rating)}</dd>
           </div>
         </dl>
 
-        {product.note && <p style={{ whiteSpace: "pre-wrap" }}>{product.note}</p>}
+        {product.note && <p className="pre-wrap">{product.note}</p>}
       </div>
 
       <h3>파생 지표</h3>
-      <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+      <p className="muted text-sm mt-0">
         모두 구매 기록에서 자동 계산됩니다. 직접 입력하거나 수정할 필요가 없습니다.
       </p>
       <dl className="metrics-grid">
@@ -247,16 +245,8 @@ function PurchaseSection({
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <h3 style={{ marginBottom: 0 }}>구매 이력</h3>
+      <div className="section-header">
+        <h3>구매 이력</h3>
         {!offline && (
           <button type="button" onClick={() => setAddFormOpen((open) => !open)}>
             {addFormOpen ? "취소" : "구매 추가"}
@@ -264,9 +254,7 @@ function PurchaseSection({
         )}
       </div>
       {offline && (
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
-          구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.
-        </p>
+        <p className="muted text-sm">구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.</p>
       )}
 
       {addFormOpen && (
@@ -289,7 +277,7 @@ function PurchaseSection({
           남길 수 있습니다.
         </output>
       ) : (
-        <table className="product-table" style={{ display: "table" }}>
+        <table className="product-table product-table--always">
           <caption className="sr-only">구매 이력</caption>
           <thead>
             <tr>
@@ -423,7 +411,7 @@ function AddPurchaseForm({
           onAddSku(Number(newVolumeMl));
         }}
       >
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted mt-0">
           이 술은 아직 규격(용량)이 없습니다. 구매를 추가하려면 먼저 규격을 등록하세요.
         </p>
         <div className="field">
@@ -600,7 +588,7 @@ function SplitPurchaseForm({
         onSubmit(parts.map(({ quantity, vendorName }) => ({ quantity, vendorName })));
       }}
     >
-      <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+      <p className="muted text-sm mt-0">
         구매처별로 나눠 받은 경우처럼, 한 구매 건을 여러 건으로 쪼갭니다. 병수 합이 원래 병수(
         {totalQuantity}병)와 같아야 합니다.
       </p>
@@ -645,7 +633,7 @@ function SplitPurchaseForm({
           나눌 부분 추가
         </button>
       </div>
-      <div className="button-row" style={{ marginTop: 12 }}>
+      <div className="button-row mt-3">
         <button type="submit" className="primary" disabled={submitting}>
           {submitting ? "분할 중…" : "분할 실행"}
         </button>

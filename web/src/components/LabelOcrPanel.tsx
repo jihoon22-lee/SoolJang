@@ -65,7 +65,7 @@ export function LabelOcrPanel({ categories, onPrefill }: LabelOcrPanelProps) {
   }
 
   return (
-    <div className="field" style={{ display: "inline-block" }}>
+    <div className="field inline-block">
       <input
         ref={inputRef}
         type="file"
@@ -77,7 +77,7 @@ export function LabelOcrPanel({ categories, onPrefill }: LabelOcrPanelProps) {
           if (file) void handleFileSelected(file);
         }}
         disabled={phase.kind === "extracting"}
-        style={{ display: "none" }}
+        className="hidden"
         id="label-ocr-input"
       />
       <button type="button" onClick={() => inputRef.current?.click()}>

@@ -73,12 +73,10 @@ export function ProductFilterPanel({
             </option>
           ))}
         </select>
-        <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
-          상위 주종을 고르면 하위 주종까지 포함해 찾습니다.
-        </p>
+        <p className="muted text-sm mt-0 mb-0">상위 주종을 고르면 하위 주종까지 포함해 찾습니다.</p>
       </div>
 
-      <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+      <fieldset className="field fieldset-plain">
         <legend className="sr-only">도수 범위</legend>
         <label htmlFor="filter-abv-min">도수 (%)</label>
         <div className="field-row">
@@ -164,7 +162,7 @@ export function ProductFilterPanel({
       <details className="field">
         <summary>더 많은 필터</summary>
 
-        <div className="field" style={{ marginTop: 8 }}>
+        <div className="field mt-2">
           <label htmlFor="filter-country">국가</label>
           <input
             id="filter-country"
@@ -174,7 +172,7 @@ export function ProductFilterPanel({
           />
         </div>
 
-        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+        <fieldset className="field fieldset-plain">
           <legend className="sr-only">빈티지 범위</legend>
           <label htmlFor="filter-vintage-min">빈티지</label>
           <div className="field-row">
@@ -233,7 +231,7 @@ export function ProductFilterPanel({
           />
         </div>
 
-        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+        <fieldset className="field fieldset-plain">
           <legend className="sr-only">100ml당 가격 범위</legend>
           <label htmlFor="filter-price-min">100ml당 가격 (원)</label>
           <div className="field-row">

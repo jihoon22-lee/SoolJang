@@ -202,15 +202,7 @@ export function ProductsPage({
       />
 
       <section aria-labelledby="products-heading">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="section-header">
           <h2 id="products-heading">
             내 술 {(allProducts?.length ?? 0) > 0 && `(${allProducts?.length})`}
           </h2>
@@ -277,7 +269,7 @@ export function ProductsPage({
               onSort={handleSort}
             />
             {hasMore && (
-              <div className="button-row" style={{ marginTop: 12 }}>
+              <div className="button-row mt-3">
                 <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
                   더 보기
                 </button>

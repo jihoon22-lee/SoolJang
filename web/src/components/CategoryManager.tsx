@@ -55,7 +55,7 @@ export function CategoryManager({
   return (
     <section aria-labelledby="category-heading">
       <h2 id="category-heading">주종 관리</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         현재 최대 깊이 {tree.max_depth} / 상한 {tree.depth_limit}. 필요한 만큼 세분화할 수 있습니다.
         삭제해도 소속된 술은 지워지지 않습니다.
       </p>
@@ -75,7 +75,7 @@ export function CategoryManager({
           setNewName("");
         }}
       >
-        <h3 style={{ marginTop: 0, fontSize: "0.95rem" }}>주종 추가</h3>
+        <h3 className="form-heading">주종 추가</h3>
         <div className="field">
           <label htmlFor="new-category-name">이름</label>
           <input
@@ -104,11 +104,11 @@ export function CategoryManager({
         </button>
       </form>
 
-      <div className="button-row" style={{ margin: "12px 0" }}>
+      <div className="button-row mt-3 mb-3">
         <button type="button" onClick={onResetSeed} disabled={busy || offline}>
           기본 주종 복원
         </button>
-        <span className="muted" style={{ alignSelf: "center", fontSize: "0.85rem" }}>
+        <span className="muted text-sm self-center">
           {offline
             ? "오프라인에서는 사용할 수 없습니다."
             : "직접 만들거나 이름을 바꾼 주종은 그대로 유지됩니다."}
@@ -340,7 +340,7 @@ function DeleteControl({
   }
 
   return (
-    <fieldset className="button-row" style={{ border: 0, padding: 0, margin: 0 }}>
+    <fieldset className="button-row fieldset-plain">
       <legend className="sr-only">{node.name} 삭제 방식 선택</legend>
       {hasChildren && (
         <button
