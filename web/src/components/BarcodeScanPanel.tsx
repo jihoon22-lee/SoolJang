@@ -32,13 +32,25 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopRef = useRef<(() => void) | null>(null);
+  // 바코드 조회 응답이 늦게 오면, 그 사이 사용자가 패널을 닫거나(close) 컴포넌트가
+  // 언마운트돼도 이 setPhase 는 막을 방법이 없었다 — 이미 닫은 다이얼로그가 다시
+  // 열리는 것으로 보였다(B9). 스캔 세션이 여전히 "살아 있는지" 를 이 ref 로 추적한다.
+  const liveRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      liveRef.current = false;
+    };
+  }, []);
 
   const lookup = useCallback(async (code: string) => {
     setPhase({ kind: "looking_up" });
     try {
       const result = await barcodesApi.lookup(code);
+      if (!liveRef.current) return;
       setPhase({ kind: "result", result });
     } catch (cause) {
+      if (!liveRef.current) return;
       setPhase({
         kind: "error",
         message: cause instanceof ApiError ? cause.message : "바코드 조회에 실패했습니다.",
@@ -79,6 +91,7 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   }, [phase.kind, scan, lookup]);
 
   function close() {
+    liveRef.current = false;
     stopRef.current?.();
     stopRef.current = null;
     setPhase({ kind: "idle" });
@@ -86,7 +99,13 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
 
   if (phase.kind === "idle") {
     return (
-      <button type="button" onClick={() => setPhase({ kind: "scanning" })}>
+      <button
+        type="button"
+        onClick={() => {
+          liveRef.current = true;
+          setPhase({ kind: "scanning" });
+        }}
+      >
         바코드로 스캔
       </button>
     );

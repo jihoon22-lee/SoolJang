@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "@/App";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "@/styles.css";
 
 // autoUpdate: 새 배포가 있으면 조용히 최신 셸로 갱신한다. 사용자에게 "새로고침 하세요"
@@ -25,8 +26,10 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

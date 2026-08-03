@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-04 (Task 24 PR1 게이트 전부 통과, PR 오픈 대기) |
+| 최종 갱신 | 2026-08-04 (Task 24 PR1 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47). PR2 게이트 전부 통과, PR 오픈 대기) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR1**(`fix/sync-queue-recovery`) 코드·테스트·문서 갱신 완료, 전체 게이트(`pytest` 686 passed 91.50%, `npm run check` 403 passed 91.36%, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR2(프론트 안정성)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
-| 현재 브랜치 | `fix/sync-queue-recovery` (Task 24 PR1) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1 머지 대기, PR2~7 착수 전 |
+| 다음 착수 Task | **Task 24 PR2**(`fix/frontend-resilience`) 코드·테스트·문서 갱신 완료, 전체 게이트(`pytest` 689 passed 91%대, `npm run check` 408 passed) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR3(디자인 시스템)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
+| 현재 브랜치 | `fix/frontend-resilience` (Task 24 PR2) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1 완료, PR2 머지 대기, PR3~7 착수 전 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1/7 완료(게이트 통과, 머지 대기) | `fix/sync-queue-recovery` 외 6개(PR2~7 예정) | — |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1/7 완료·머지, PR2/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`(머지됨), `fix/frontend-resilience` 외 5개(PR3~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47) |
 
 ### 의존 관계
 
@@ -1107,6 +1107,24 @@ Tailscale Serve 관리자 콘솔 활성화 대기뿐이다.
 비밀번호는 `.env` 의 `localdevonly` 다. `docs/handoff.md` 에 이미 기록된 함정(§5)이 그대로
 재발한 사례다 — `export SOOLJANG_DATABASE_URL=...` 후 재실행하니 전부 통과했다.
 
+#### PR2 — `fix/frontend-resilience`: 화면이 죽거나 조용히 실패하는 것 (2026-08-04)
+
+PR1 이 데이터 무결성을 고쳤다면, PR2 는 "화면 자체가 복구 불가능해지거나 실패를 사용자가
+전혀 알 수 없는" 결함을 고친다.
+
+| # | 결함 | 수정 |
+|---|---|---|
+| B10 | 렌더 중 예외 하나로 전체 React 트리가 언마운트돼 백지 화면이 되고, 새로고침 외에는 복구할 방법이 없었다(`ErrorBoundary` 0건) | `components/ErrorBoundary.tsx` 신설(클래스 컴포넌트 — React 는 아직 훅으로 이걸 대체할 방법이 없다). `main.tsx` 에서 `QueryClientProvider` 를 감싸 루트에 배치. 폴백 화면은 오류 요약 + "새로고침" 버튼(기존 `.auth-screen`/`.auth-card` 톤 재사용) |
+| B8 | `SyncStatusBadge` 의 충돌 "확인" 버튼이 `try/finally` 뿐 `catch` 가 없어, `syncApi.resolveConflict` 가 실패해도 버튼이 조용히 다시 눌러지는 상태로 돌아갈 뿐이었다 — 사용자는 반응 없는 버튼을 계속 누르게 된다 | `resolve()` 에 `catch` 추가, `resolveError` 상태를 `role="alert"` 로 표시(기존 `.alert` 패턴 재사용) |
+| B9 | `BarcodeScanPanel`/`LabelOcrPanel` 모두 조회·인식 요청이 늦게 응답하면, 그 사이 사용자가 패널을 닫아도(`BarcodeScanPanel` 은 phase 를 idle 로 되돌리는 명시적 닫기 버튼이 있다) 늦게 온 응답의 `setPhase` 가 그대로 실행돼 **이미 닫은 다이얼로그가 다시 열렸다**(liveness 체크가 스캔 콜백 dispatch 전에만 있었다) | 두 컴포넌트 모두 `liveRef` 로 "이 세션이 아직 살아 있는지" 를 추적해, 언마운트·명시적 닫기 후에는 늦게 온 응답의 `setPhase` 를 무시한다. `LabelOcrPanel` 은 현재 인식 중 닫기 버튼이 없어 언마운트 경로만 실제로 닿는다(React 18 은 함수형 컴포넌트의 언마운트 후 `setState` 를 이미 조용히 무시하므로 이 경로는 방어적 성격이 강하다) — `BarcodeScanPanel` 은 닫아도 컴포넌트가 마운트된 채 phase 만 바뀌므로 실제로 다이얼로그가 재등장하는 관찰 가능한 버그였다(테스트로 재현 확인) |
+| B11 | 업로드 크기 검사가 `await file.read()` **뒤에** 있어, 사용자가 사진 대신 큰 동영상을 잘못 고르면 전량을 메모리에 올린 뒤에야 거부했다. `content_type` 만 믿고 실제 바이트(매직 바이트) 확인이 없어 임의 파일을 이미지인 척 올릴 수 있었다 | `infrastructure/storage.py` 에 `read_upload_within_limit()`(1MiB 씩 읽어 상한 초과 즉시 중단) 과 `sniff_image_extension()`(PNG/JPEG/WEBP/HEIC 매직 바이트 판별 — HEIC 는 MP4/MOV 와 같은 ISO-BMFF 컨테이너를 써서 브랜드까지 확인해야 실제로 구분된다) 을 추가해 `attachments.py`/`ocr.py`(이미지, 크기+매직 바이트)/`legacy_import.py`(CSV, 크기만) 세 라우터가 함께 쓰게 했다 |
+
+검증: `uv run pytest` 689 passed(29 skipped, 전부 opt-in), `npm run check` 408 passed, `vite
+build` 정상. B9 는 `BarcodeScanPanel.test.tsx` 에 응답 지연 중 닫기 시나리오를 회귀 테스트로
+고정했고(수정 전 코드로 되돌려 실제로 다이얼로그가 재등장함을 먼저 확인), B11 은 두 이미지
+라우터 모두에 "선언한 형식과 실제 바이트가 다르면 422" 테스트를, `legacy_import` 에는 상한
+초과 테스트를 추가했다.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1318,6 +1336,15 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D116 | 첨부 중복 제거 조회와 `Attachment` 의 `UniqueConstraint` 양쪽에 소유 대상(`product_id`/`bottle_id`/`tasting_session_id`)과 `deleted_at IS NULL` 을 추가한다 | 기존엔 `(user_id, sha256, kind)` 로만 판단해, 같은 라벨 사진을 다른 제품에 붙이면 앞서 만든 첨부가 그대로 반환되고 새 제품엔 안 붙었다(요청은 201 로 성공하지만 조용히 실패). PostgreSQL 은 UNIQUE 제약에서 NULL 을 서로 다른 값으로 취급해, 소유자 세 컬럼을 추가해도 "정확히 하나만 채운다" CHECK 제약과 함께라면 실제 소유자가 다른 행끼리는 충돌하지 않는다 |
 | D117 | `apply_cursor` 의 내림차순 분기에도 오름차순과 동일하게 `sort_column.is_(None)` 을 추가한다 | 오름차순엔 있는 NULL 분기가 내림차순엔 없어, 정렬키가 NULL 인 행이 2페이지부터 조용히 사라졌다 — 수정 전 상태로 되돌려 재현 테스트가 정확히 이 증상으로 실패함을 먼저 확인했다 |
 | D118 | `SORT_ACCESSORS.created_at`/`updated_at` 을 실제 필드값을 반환하도록 구현하고 `toProduct()` 에도 두 필드를 반영한다 | 기존엔 `() => null` 스텁이라 id 정렬로 조용히 폴백했는데, id 가 UUIDv7(시간순)이라 우연히 "그럴듯하게" 보였을 뿐 오름차순 토글이 실제로는 무효했다 |
+
+### Task 24 PR2 결정 (D119~D122)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D119 | `ErrorBoundary` 를 클래스 컴포넌트로 새로 만들어 `main.tsx` 의 `QueryClientProvider` 바깥(루트)에 배치한다. 폴백은 오류 요약 + "새로고침" 버튼 | React 는 아직 `getDerivedStateFromError`/`componentDidCatch` 를 대체할 훅을 제공하지 않는다. 이 경계가 없으면 렌더 중 예외 하나로 전체 트리가 언마운트돼 새로고침 외 복구 방법이 없는 백지 화면이 됐다(B10) |
+| D120 | `SyncStatusBadge` 의 충돌 `resolve()` 에 `catch` 를 추가해 `resolveError` 를 `role="alert"` 로 보여준다 | `catch` 없이 `finally` 만 있으면, 서버가 확인 요청을 거부해도 버튼이 조용히 다시 눌러지는 상태로 돌아가 사용자가 반응 없는 버튼을 계속 누르게 됐다(B8) |
+| D121 | `BarcodeScanPanel`/`LabelOcrPanel` 에 `liveRef` 를 추가해, 조회·인식 요청이 늦게 응답할 때 그 사이 닫힘·언마운트된 세션의 `setPhase` 를 무시한다 | 기존엔 스캔 콜백이 재호출되는 것만 막았지(`active` 플래그), 이미 시작된 네트워크 요청의 콜백 자체는 못 막아 늦게 온 응답이 이미 닫은 다이얼로그를 다시 열었다(B9). `BarcodeScanPanel` 은 닫아도 컴포넌트가 마운트된 채라 실제로 관찰 가능한 버그였고, `LabelOcrPanel` 은 유일한 트리거가 언마운트라 React 18 의 기본 동작만으로도 이미 안전했지만 향후 닫기 버튼이 생길 경우를 대비해 같은 패턴을 적용했다 |
+| D122 | `infrastructure/storage.py` 에 `read_upload_within_limit()`(청크 단위로 읽어 상한 초과 시 즉시 중단) 과 `sniff_image_extension()`(매직 바이트로 실제 형식 판별, HEIC 는 MP4/MOV 와 같은 컨테이너라 브랜드까지 확인) 을 추가해 `attachments.py`/`ocr.py`/`legacy_import.py` 세 라우터가 공유한다. 인프라 계층이 API 계층을 몰라도 되도록 `UploadTooLargeError` 라는 평범한 예외로 신호하고 변환은 라우터가 한다(`LegacySheetError` 와 같은 기존 패턴) | 기존엔 `await file.read()` 로 전체를 읽은 **뒤에** 크기를 검사해, 사용자가 사진 대신 큰 동영상을 잘못 고르면 전량이 메모리에 올라간 뒤에야 거부됐다. `content_type` 만 믿고 실제 바이트를 확인하지 않아 임의 파일을 이미지인 척 올릴 수도 있었다(B11) |
 
 ## 6. 열린 질문
 
