@@ -3,12 +3,13 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-03 (Task 21·22 완료, PR #26~#36 전부 머지)**
+- 최종 갱신: **2026-08-03 (Task 21·22 완료 + Task 23 릴리스 파이프라인 사전 점검, PR #26~#38)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 17·20·21·22 완료. Task 18 은 `adapter` 전략만 부분 완료. **이
-  개발 샌드박스에서 자동으로 이어갈 작업이 없다** — 남은 항목이 모두 이 환경 밖에서
-  해야 하는 일이다. 상세는 `plan.md` §1)
+- 현재 브랜치: `main` (Task 17·20·21·22 완료. Task 18 은 `adapter` 전략만 부분 완료. 릴리스
+  워크플로 dry-run 으로 재검증 완료(PR #38) — **이 개발 샌드박스에서 자동으로 이어갈
+  작업이 없다.** 남은 항목이 실제 인터넷 환경 또는 사용자의 명시적 승인을 필요로 한다.
+  상세는 `plan.md` §1)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -127,7 +128,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 ## 2. 지금까지 한 일
 
 전체 23개 Task 중 **18개 완료 + Task 21·22 진행중**(Task 18 은 `adapter` 전략만 부분
-완료, Task 19 는 여전히 대기). PR 35개 머지(#1~#35, #16~#20 은 문서 전용 — 이후 규칙
+완료, Task 19 는 여전히 대기). PR 38개 머지(#1~#38, #16~#20 은 문서 전용 — 이후 규칙
 9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
@@ -174,6 +175,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 통계 v2(피벗·시계열·저장뷰) 백엔드·프론트 전체 검증 | `pytest` 612 passed, 28 skipped, 커버리지 90.97%. 프론트엔드 254 passed, 커버리지 90.3% stmts / 80.02% branch(임계값에 근소하게 통과). "구매처별 × 주종별 평균 할인율" 데모 시나리오를 실제 API 테스트로 재현(정가 10만원·실구매 8만원 → 할인율 20% 정확히 계산됨 확인). `docker build`(web·api) 둘 다 정상 |
 | Task 22 Track 1~4(10 PR) 각각 백엔드·프론트 전체 검증 + 실클릭 확인 | 매 PR 이 `npm run check`(lint+typecheck+vitest 80%+)와 필요시 `uv run pytest`/`ruff`/`ty` 를 통과한 뒤에만 머지. `pytest` 최종 650 passed. PR9(외부 소스)·PR10(매장 모드)는 Playwright 로 실제 405종 데이터 대상 실클릭까지 확인(검색 랭킹, 조회 결과, 신규 등록→즉시 요약 반영, 카메라 권한 거부 시 우아한 실패) |
 | Task 21 완료(2026-08-03, `feature/self-review`) | **E2E 회귀 테스트**: 등록→검색→구매 분할→개봉→시음→통계→바코드→피벗→저장뷰→오프라인 동기화를 잇는 영구 테스트(`tests/api/test_e2e_scenario.py`) 추가. **성능 실측**: 429/1,078 규모와 10배(4,290/10,780) 규모 모두 opt-in 벤치마크(`tests/performance/test_scale_benchmarks.py`)로 실측 — 가장 느린 `POST /stats/pivot` 도 10배 규모에서 211ms. **실측 중 실제 버그 발견·수정**: 대량 임포트 직후 `ANALYZE` 미실행으로 정상 4~6ms 쿼리가 25~30초로 느려지는 문제(`legacy_import.py::apply_plan`). **장애 주입**: 외부 소스 타임아웃·셀렉터 파손·robots.txt 차단(PR9 테스트 8종), 동기화 충돌(LWW·재전송·head-of-line, 기존 `test_sync.py`), LLM 네트워크 타임아웃(`test_llm.py`), **처리되지 않은 예외(DB 연결 끊김 포함) → Problem Details 미변환 결함을 발견해 즉시 수정**(`api/errors.py` 에 `Exception` 캐치올 핸들러 추가 + `logger.exception` 으로 서버 로그에 원인 기록, `test_error_handling.py` 로 검증). **데이터 무결성**: `sooljang`(실데이터 406제품·1,079병) `pg_dump` → 새 DB `pg_restore` → 통계 재계산(summary·rankings·category rollup) 결과가 백업 전과 **바이트 단위로 동일**함을 확인, 임시 DB 는 정리함. 산출물은 [`docs/review-2026-08-03.md`](review-2026-08-03.md) |
+| Task 23 릴리스 파이프라인 사전 점검(2026-08-03, [PR #38](https://github.com/jihoon22-lee/SoolJang/pull/38)) | 태그 없이 `release.yml` 을 `workflow_dispatch` dry-run 으로 미리 돌려 보다가 실제 결함을 발견했다 — "Run full test suite" 단계에 PostgreSQL 서비스가 없어 전부 `connection refused` 로 실패했다(만들어진 이후 한 번도 실제 테스트 경로로 검증된 적이 없었다). `quality.yml` 과 같은 `services.postgres` 를 추가해 수정하고, 다시 dry-run 을 돌려 테스트~이미지 빌드(web·api 둘 다)까지 전부 통과함을 확인했다(run [30784846639](https://github.com/jihoon22-lee/SoolJang/actions/runs/30784846639)). **릴리스 파이프라인 자체는 이제 준비됐다** — 남은 건 실제 `v1.0.0` 태그 푸시뿐이고, 이건 사용자의 명시적 승인 없이는 하지 않는다 |
 
 ---
 
