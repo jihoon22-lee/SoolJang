@@ -956,6 +956,14 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
 - **데모**: 태그 1개 푸시로 릴리스 노트·이미지 생성, PC 재기동 후 폰에서 정상 동작
 - **주의**: **여기가 유일하게 태그를 푸시하는 Task다.** `pre-push` 훅이 태그 푸시를 차단하므로
   `SOOLJANG_ALLOW_TAG_PUSH=1` 로 명시적으로 우회해야 한다
+- **사전 점검(2026-08-03, 태그 푸시 없이 `workflow_dispatch` dry-run 으로 검증)**: 릴리스
+  워크플로가 실제로는 실패하고 있었다 — `release.yml` 의 "Run full test suite" 단계에
+  PostgreSQL 서비스 정의가 없어 `connection refused` 로 테스트 전체가 실패했다
+  (`quality.yml` 의 `python-quality` 잡에만 있고 `release.yml` 에는 없었다 — Task 4 때
+  만든 최초 dry-run 은 `pyproject.toml` 이 생기기 **전**이라 이 경로 자체를 안 탔다).
+  `services.postgres` 를 추가해 수정하고, 다시 dry-run 을 돌려 "Run full test suite" 부터
+  이미지 빌드까지 끝까지 통과하는지 확인했다(태그 푸시·GHCR push·릴리스 생성은 dry-run
+  이라 계속 건너뛴다 — 그 부분은 실제 태그를 푸시할 때만 검증된다)
 
 ---
 
@@ -1118,6 +1126,7 @@ Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에
 |---|---|---|
 | D96 | 대량 임포트(`legacy_import.py::apply_plan`) 직후 영향받은 8개 테이블에 `ANALYZE` 를 직접 돌린다 | 실사용 규모 성능 실측 중 429행 임포트 직후 첫 조회가 25~30초로 느려지는 걸 발견했다. `autovacuum` 의 자동 `ANALYZE` 는 수십 초~1분 뒤에나 돌아, 그 사이 플래너가 "빈 테이블" 기준 옛 통계로 계획을 짜 중첩 루프를 고른다 — 사용자가 임포트 직후 바로 목록을 열어 보는 게 자연스러운 흐름이라 그 창을 없애는 게 맞다고 판단했다 |
 | D97 | `register_error_handlers` 에 `Exception` 캐치올 핸들러를 추가한다. 원인(스택 트레이스)은 응답에 담지 않고 서버 로그(`logger.exception`)에만 남긴다 | API 설명이 "에러는 RFC 9457 Problem Details 형식이다"라고 명시했는데, 처리기 없는 예외(DB 접속 실패 등)는 Starlette 기본 일반 텍스트 500 으로 샜다 — 장애 주입 검증 중 발견한 문서-코드 괴리. 원인을 응답에 담지 않는 이유는 스키마·쿼리 정보가 노출될 수 있어서다(§9.13 세션 토큰을 해시만 저장하는 것과 같은 종류의 판단 — 민감한 내부 정보는 클라이언트로 보내지 않는다) |
+| D98 | `release.yml` 의 `release` 잡에 `quality.yml::python-quality` 와 같은 `services.postgres` 정의를 추가한다 | Task 23 전에 태그 없이 dry-run 으로 미리 검증하려고 `workflow_dispatch` 를 돌려 보니, "Run full test suite" 단계가 PostgreSQL 서비스 없이 그냥 `pytest` 를 돌려 전부 접속 거부로 실패하고 있었다 — 만들어 둔 이후로 한 번도 실제 테스트 경로로 검증된 적이 없던 잠복 결함이다(최초 dry-run 은 `pyproject.toml` 이 생기기 전이라 이 코드 경로를 안 탔다). 태그를 처음 실제로 푸시하기 전에 발견해서 다행이었다 |
 
 ## 6. 열린 질문
 
