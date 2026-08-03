@@ -189,7 +189,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 18 | 외부 소스 레지스트리와 온디맨드 조회 | 🟡 `adapter` 전략만 | `feature/improvements-external-sources` | [#34](https://github.com/jihoon22-lee/SoolJang/pull/34) |
 | 19 | 사이트별 어댑터와 시세 이력 | ⬜ | `feature/site-adapters` | |
 | 20 | 통계 v2 — 커스텀 피벗과 취향 분석 | ✅ | `feature/stats-v2` | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) |
-| 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | (예정) |
+| 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR). PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조) |
 | 23 | 첫 정식 릴리스와 배포 | ⬜ | `release/v1.0.0` | |
 
@@ -971,12 +971,18 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
 
 ## 9. 릴리스 후 백로그
 
-Task 21 분석에서 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은 근거와 함께
-기록해, 나중에 다시 판단할 때 맥락을 잃지 않게 한다.
+Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
+근거와 함께 기록해, 나중에 다시 판단할 때 맥락을 잃지 않게 한다.
 
 | 항목 | 근거 | 비고 |
 |---|---|---|
-| (Task 21 이후 채운다) | | |
+| 대량 편집(여러 제품 주종 일괄 변경) | 405종 CSV 임포트라 교정 수요가 있을 수 있으나, 개별 수정(PR3)이 먼저다 — 실제로 불편한지 써 보고 판단한다 | Task 22 감사에서 이연 |
+| 구매처 통합(merge) | 백엔드에 이 API 자체가 없어 신규 개발이 필요하다(주종 merge 는 이미 있음, `application/categories.py`) | PR6(구매처 관리 화면)에서 이연 — 레지스트리 UI 는 있지만 병합 기능은 없다 |
+| 홈/대시보드 화면 | 진입 시 바로 "내 술" 목록이 뜬다(PR1). 요약 대시보드는 새 기능 아이디어라 릴리스를 막지 않는다 | |
+| 목표가 감시·웹 푸시 알림(Task 19/PR11) | Q5(웹 푸시 채널)가 미해결이다. PR9·10(외부 정보·매장 모드)이 실제로 쓸 만한지 확인한 뒤 별도로 계획한다 | 실제 인터넷 환경에서의 확인이 선행 조건(§1 참조) |
+| 읽기 전용 공유 링크 | Q6(지인 공유 권한 모델)이 미해결이라 Task 20 에서 이미 이연했다(D88) | Task 20 후속 |
+| `search` 전략(구글 검색 결과 스크래핑, Task 18 원 사양) | ToS·신뢰성 위험이 커 PR9 범위에서 뺐다(D91). 사용자가 "adapter 만 먼저" 를 선택 | 별도 PR + 별도 위험 검토 필요 |
+| 라벨 OCR 의 생산자·숙성연수 프리필 | `ProductForm` 에 대응 입력칸이 없어 메모 필드로 우회 중이다(Task 17 에서부터, `handoff.md` §2 참조). 제품 생성 API 에 `producer_id` 프리필 경로(이름→id 자동 매칭, `resolveVendorId` 와 같은 패턴)를 붙이는 게 개선 후보 | |
 
 ---
 
