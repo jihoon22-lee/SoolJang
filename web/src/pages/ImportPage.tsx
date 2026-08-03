@@ -153,41 +153,43 @@ function AnalysisView({ analysis }: { analysis: ImportAnalysis }) {
       </ul>
 
       <h3>정규화 표본</h3>
-      <table className="product-table product-table--always">
-        <caption className="sr-only">정규화 결과 표본</caption>
-        <thead>
-          <tr>
-            <th scope="col">행</th>
-            <th scope="col">이름</th>
-            <th scope="col">주종</th>
-            <th scope="col" className="numeric">
-              빈티지
-            </th>
-            <th scope="col" className="numeric">
-              용량
-            </th>
-            <th scope="col" className="numeric">
-              병당 정가
-            </th>
-            <th scope="col" className="numeric">
-              병수
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sample.map((row) => (
-            <tr key={row.line_number}>
-              <td>{row.line_number}</td>
-              <td>{row.name}</td>
-              <td>{row.category_path.join(" › ") || "미분류"}</td>
-              <td className="numeric">{row.vintage ?? "—"}</td>
-              <td className="numeric">{formatVolume(row.volume_ml)}</td>
-              <td className="numeric">{formatMoney(row.unit_list_price, { short: true })}</td>
-              <td className="numeric">{row.quantity}</td>
+      <div className="table-scroll table-scroll--always">
+        <table className="product-table">
+          <caption className="sr-only">정규화 결과 표본</caption>
+          <thead>
+            <tr>
+              <th scope="col">행</th>
+              <th scope="col">이름</th>
+              <th scope="col">주종</th>
+              <th scope="col" className="numeric">
+                빈티지
+              </th>
+              <th scope="col" className="numeric">
+                용량
+              </th>
+              <th scope="col" className="numeric">
+                병당 정가
+              </th>
+              <th scope="col" className="numeric">
+                병수
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sample.map((row) => (
+              <tr key={row.line_number}>
+                <td>{row.line_number}</td>
+                <td>{row.name}</td>
+                <td>{row.category_path.join(" › ") || "미분류"}</td>
+                <td className="numeric">{row.vintage ?? "—"}</td>
+                <td className="numeric">{formatVolume(row.volume_ml)}</td>
+                <td className="numeric">{formatMoney(row.unit_list_price, { short: true })}</td>
+                <td className="numeric">{row.quantity}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

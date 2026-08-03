@@ -203,11 +203,35 @@ h4 {
   margin: 0;
 }
 
+/*
+ * 표를 감싸는 스크롤 영역. 두 가지 역할을 겸한다.
+ *
+ * 1. PC 는 표, 모바일은 카드 두 뷰 중 하나만 보이게 하는 전환 지점을 표 자체(`.product-table`)
+ *    에서 이 감싸는 요소로 옮겼다 — `display: table` 요소는 자기 자신에 준 `overflow` 를
+ *    스크롤 영역으로 만들지 않는다(표 레이아웃 알고리즘과 충돌한다). 높이 제한과 overflow 는
+ *    여기서, 표/카드 전환은 아래 media query 에서 함께 처리한다.
+ * 2. 높이를 제한해 목록이 길어져도(예: 405종) 페이지 자체가 한없이 길어지지 않게 한다.
+ */
+.table-scroll {
+  display: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
+}
+
 /* 모바일 카드 뷰가 따로 없는 표(구매 이력·가져오기 미리보기 등)는 좁은 화면에서도
-   가로 스크롤로라도 표를 그대로 보여준다 — `.product-table` 기본값(900px 미만에서
-   display:none)을 덮어쓴다. */
-.product-table--always {
+   가로 스크롤로라도 표를 그대로 보여준다 — 위 기본값(900px 미만에서 display:none)을
+   덮어쓴다. */
+.table-scroll--always {
+  display: block;
+}
+
+.table-scroll .product-table,
+.table-scroll .stats-table {
   display: table;
+  border: none;
+  border-radius: 0;
 }
 
 .app-shell {
@@ -477,7 +501,6 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  display: none;
 }
 
 .product-table th,
@@ -539,11 +562,13 @@ button:disabled {
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
 }
 
 @media (min-width: 900px) {
-  .product-table {
-    display: table;
+  .table-scroll {
+    display: block;
   }
 
   .product-cards {
@@ -653,7 +678,6 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  display: none;
 }
 
 .stats-table th,
@@ -670,6 +694,9 @@ button:disabled {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .stats-table td.numeric,
@@ -684,13 +711,11 @@ button:disabled {
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: min(50vh, 560px);
+  overflow-y: auto;
 }
 
 @media (min-width: 900px) {
-  .stats-table {
-    display: table;
-  }
-
   .stats-cards {
     display: none;
   }
@@ -790,6 +815,8 @@ button:disabled {
   list-style: none;
   padding-left: 0;
   margin: 0;
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
 }
 
 .category-tree ul {
@@ -817,6 +844,8 @@ button:disabled {
   list-style: none;
   padding-left: 0;
   margin: 0;
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
 }
 
 .vendor-row {
@@ -1060,6 +1089,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: min(60vh, 640px);
+  overflow-y: auto;
 }
 
 .bottle-list-item {
@@ -1205,6 +1236,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  max-height: min(50vh, 480px);
+  overflow-y: auto;
 }
 
 .tasting-timeline li {

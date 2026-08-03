@@ -277,91 +277,93 @@ function PurchaseSection({
           남길 수 있습니다.
         </output>
       ) : (
-        <table className="product-table product-table--always">
-          <caption className="sr-only">구매 이력</caption>
-          <thead>
-            <tr>
-              <th scope="col">구매일</th>
-              <th scope="col">구매처</th>
-              <th scope="col" className="numeric">
-                병수
-              </th>
-              <th scope="col" className="numeric">
-                병당 정가
-              </th>
-              <th scope="col" className="numeric">
-                병당 실구매가
-              </th>
-              <th scope="col" className="numeric">
-                총 지출
-              </th>
-              {!offline && <th scope="col">관리</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {purchases.map((purchase) => (
-              <Fragment key={purchase.id}>
-                <tr>
-                  <td>{formatDate(purchase.purchased_on)}</td>
-                  <td>{purchase.vendor_name ?? "미기록"}</td>
-                  <td className="numeric">{purchase.quantity}</td>
-                  <td className="numeric">
-                    {formatMoney(purchase.unit_list_price, { short: true })}
-                  </td>
-                  <td className="numeric">
-                    {formatMoney(purchase.unit_paid_price, { short: true })}
-                  </td>
-                  <td className="numeric">{formatMoney(purchase.paid_total, { short: true })}</td>
-                  {!offline && (
-                    <td>
-                      <div className="button-row">
-                        {purchase.quantity > 1 && (
+        <div className="table-scroll table-scroll--always">
+          <table className="product-table">
+            <caption className="sr-only">구매 이력</caption>
+            <thead>
+              <tr>
+                <th scope="col">구매일</th>
+                <th scope="col">구매처</th>
+                <th scope="col" className="numeric">
+                  병수
+                </th>
+                <th scope="col" className="numeric">
+                  병당 정가
+                </th>
+                <th scope="col" className="numeric">
+                  병당 실구매가
+                </th>
+                <th scope="col" className="numeric">
+                  총 지출
+                </th>
+                {!offline && <th scope="col">관리</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {purchases.map((purchase) => (
+                <Fragment key={purchase.id}>
+                  <tr>
+                    <td>{formatDate(purchase.purchased_on)}</td>
+                    <td>{purchase.vendor_name ?? "미기록"}</td>
+                    <td className="numeric">{purchase.quantity}</td>
+                    <td className="numeric">
+                      {formatMoney(purchase.unit_list_price, { short: true })}
+                    </td>
+                    <td className="numeric">
+                      {formatMoney(purchase.unit_paid_price, { short: true })}
+                    </td>
+                    <td className="numeric">{formatMoney(purchase.paid_total, { short: true })}</td>
+                    {!offline && (
+                      <td>
+                        <div className="button-row">
+                          {purchase.quantity > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSplittingId(splittingId === purchase.id ? null : purchase.id)
+                              }
+                            >
+                              분할
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() =>
-                              setSplittingId(splittingId === purchase.id ? null : purchase.id)
-                            }
+                            className="danger"
+                            disabled={deletingPurchaseId === purchase.id}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "이 구매 건을 삭제할까요? 연결된 병 기록도 함께 사라집니다.",
+                                )
+                              ) {
+                                onDeletePurchase(purchase.id);
+                              }
+                            }}
                           >
-                            분할
+                            {deletingPurchaseId === purchase.id ? "삭제 중…" : "삭제"}
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className="danger"
-                          disabled={deletingPurchaseId === purchase.id}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "이 구매 건을 삭제할까요? 연결된 병 기록도 함께 사라집니다.",
-                              )
-                            ) {
-                              onDeletePurchase(purchase.id);
-                            }
-                          }}
-                        >
-                          {deletingPurchaseId === purchase.id ? "삭제 중…" : "삭제"}
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-                {splittingId === purchase.id && (
-                  <tr>
-                    <td colSpan={7}>
-                      <SplitPurchaseForm
-                        totalQuantity={purchase.quantity}
-                        submitting={splittingPurchaseId === purchase.id}
-                        error={splitError}
-                        onSubmit={(parts) => onSplitPurchase(purchase.id, parts)}
-                        onCancel={() => setSplittingId(null)}
-                      />
-                    </td>
+                        </div>
+                      </td>
+                    )}
                   </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+                  {splittingId === purchase.id && (
+                    <tr>
+                      <td colSpan={7}>
+                        <SplitPurchaseForm
+                          totalQuantity={purchase.quantity}
+                          submitting={splittingPurchaseId === purchase.id}
+                          error={splitError}
+                          onSubmit={(parts) => onSplitPurchase(purchase.id, parts)}
+                          onCancel={() => setSplittingId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
