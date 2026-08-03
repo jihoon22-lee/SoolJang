@@ -209,6 +209,22 @@ describe("BottlePanel", () => {
       });
     });
 
+    it("개봉 outbox 항목에 개봉일·잔량이 담겨 서버 재접속 시 오늘 날짜로 덮이지 않는다", async () => {
+      const target = bottle({ status: "unopened" });
+      await seedContext(target, { volumeMl: 700 });
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "개봉" }));
+
+      await waitFor(async () => {
+        const [entry] = await db.outbox.toArray();
+        expect(entry?.action).toBe("open");
+        expect(entry?.fields.opened_on).toBeTruthy();
+        expect(entry?.fields.remaining_ml).toBe(700);
+      });
+    });
+
     it("소진을 누르면 상태가 finished 로 바뀌고 잔량이 0 이 된다", async () => {
       const today = new Date().toISOString().slice(0, 10);
       const target = bottle({ status: "open", opened_on: "2026-01-15", remaining_ml: 400 });
@@ -223,6 +239,21 @@ describe("BottlePanel", () => {
         expect(updated?.status).toBe("finished");
         expect(updated?.remaining_ml).toBe(0);
         expect(updated?.finished_on).toBe(today);
+      });
+    });
+
+    it("소진 outbox 항목에 소진일이 담긴다", async () => {
+      const target = bottle({ status: "open", opened_on: "2026-01-15", remaining_ml: 400 });
+      await seedContext(target);
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "소진" }));
+
+      await waitFor(async () => {
+        const [entry] = await db.outbox.toArray();
+        expect(entry?.action).toBe("finish");
+        expect(entry?.fields.finished_on).toBeTruthy();
       });
     });
 
@@ -307,6 +338,24 @@ describe("BottlePanel", () => {
       await waitFor(async () => {
         const updated = await db.bottle.get(target.id);
         expect(updated?.status).toBe("sold");
+      });
+      confirmSpy.mockRestore();
+    });
+
+    it("증여 outbox 항목은 서버가 읽는 on 필드에 날짜를 담는다(finished_on이 아니다)", async () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+      const target = bottle({ status: "unopened" });
+      await seedContext(target);
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "증여" }));
+
+      await waitFor(async () => {
+        const [entry] = await db.outbox.toArray();
+        expect(entry?.action).toBe("gift");
+        expect(entry?.fields.on).toBeTruthy();
+        expect(entry?.fields.finished_on).toBeUndefined();
       });
       confirmSpy.mockRestore();
     });
@@ -517,6 +566,37 @@ describe("BottlePanel", () => {
         const updated = await db.bottle.get(target.id);
         expect(updated?.remaining_ml).toBe(0);
         expect(updated?.status).toBe("finished");
+      });
+    });
+
+    it("잔량을 바꾸는 시음 기록의 outbox 항목은 병 id 를 touched_ids 로 남긴다", async () => {
+      const target = bottle({ status: "open", remaining_ml: 200 });
+      await seedContext(target);
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.type(screen.getByLabelText("따른 양 (ml)"), "50");
+      await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+
+      await waitFor(async () => {
+        const [entry] = await db.outbox.toArray();
+        expect(entry?.entity).toBe("tasting_session");
+        expect(entry?.touched_ids).toEqual([target.id]);
+      });
+    });
+
+    it("병 상태에 영향 없는 시음 기록(따른 양 없음)은 touched_ids 를 남기지 않는다", async () => {
+      const target = bottle({ status: "open", remaining_ml: 200 });
+      await seedContext(target);
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+
+      await waitFor(async () => {
+        const [entry] = await db.outbox.toArray();
+        expect(entry?.entity).toBe("tasting_session");
+        expect(entry?.touched_ids).toBeUndefined();
       });
     });
 

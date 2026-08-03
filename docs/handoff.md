@@ -3,15 +3,18 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-03 (Task 21·22 완료 + Task 23 릴리스 파이프라인 사전 점검 + PR9/10 사후 코드 리뷰 하드닝, PR #26~#41)**
+- 최종 갱신: **2026-08-03 (Task 21·22 완료 + Task 23 릴리스 파이프라인 사전 점검 + PR9/10·나머지 배치 사후 코드 리뷰 하드닝 2건, PR #26~#42, `v1.0.0` 태그·배포 진행 중)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
+- **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
+  확인). Docker 소켓 접근은 `sg docker -c "..."` 로 가능(현재 셸 세션엔 `docker` 그룹이
+  반영 안 돼 있을 뿐 시스템상 멤버는 맞다)
 - 현재 브랜치: `main` (Task 17·20·21·22 완료. Task 18 은 `adapter` 전략만 부분 완료. 릴리스
   워크플로 dry-run 으로 재검증 완료(PR #38). PR9(외부 소스)·PR10(매장 모드)을 적대적
-  코드 리뷰로 재검토해 나온 6개 결함을 PR #41 에서 수정 — **이 개발 샌드박스에서 자동으로
-  이어갈 작업이 없다.** 남은 항목이 실제 인터넷 환경 또는 사용자의 명시적 승인을 필요로 한다.
-  상세는 `plan.md` §1)
-- 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
+  코드 리뷰로 재검토해 나온 6개 결함을 PR #41 에서, 나머지 배치(PR1~8, 병 전이·동기화)의
+  5개 결함을 PR #42 에서 수정. **사용자가 `v1.0.0` 태그 푸시·배포를 명시적으로 승인**해
+  진행 중 — 상세는 `plan.md` §1)
+- 버전: `0.1.0` → `1.0.0`(태그 진행 중. 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
@@ -129,7 +132,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 ## 2. 지금까지 한 일
 
 전체 23개 Task 중 **18개 완료 + Task 21·22 진행중**(Task 18 은 `adapter` 전략만 부분
-완료, Task 19 는 여전히 대기). PR 41개 머지(#1~#41, #16~#20 은 문서 전용 — 이후 규칙
+완료, Task 19 는 여전히 대기). PR 42개 머지(#1~#42, #16~#20 은 문서 전용 — 이후 규칙
 9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
@@ -178,6 +181,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | Task 21 완료(2026-08-03, `feature/self-review`) | **E2E 회귀 테스트**: 등록→검색→구매 분할→개봉→시음→통계→바코드→피벗→저장뷰→오프라인 동기화를 잇는 영구 테스트(`tests/api/test_e2e_scenario.py`) 추가. **성능 실측**: 429/1,078 규모와 10배(4,290/10,780) 규모 모두 opt-in 벤치마크(`tests/performance/test_scale_benchmarks.py`)로 실측 — 가장 느린 `POST /stats/pivot` 도 10배 규모에서 211ms. **실측 중 실제 버그 발견·수정**: 대량 임포트 직후 `ANALYZE` 미실행으로 정상 4~6ms 쿼리가 25~30초로 느려지는 문제(`legacy_import.py::apply_plan`). **장애 주입**: 외부 소스 타임아웃·셀렉터 파손·robots.txt 차단(PR9 테스트 8종), 동기화 충돌(LWW·재전송·head-of-line, 기존 `test_sync.py`), LLM 네트워크 타임아웃(`test_llm.py`), **처리되지 않은 예외(DB 연결 끊김 포함) → Problem Details 미변환 결함을 발견해 즉시 수정**(`api/errors.py` 에 `Exception` 캐치올 핸들러 추가 + `logger.exception` 으로 서버 로그에 원인 기록, `test_error_handling.py` 로 검증). **데이터 무결성**: `sooljang`(실데이터 406제품·1,079병) `pg_dump` → 새 DB `pg_restore` → 통계 재계산(summary·rankings·category rollup) 결과가 백업 전과 **바이트 단위로 동일**함을 확인, 임시 DB 는 정리함. 산출물은 [`docs/review-2026-08-03.md`](review-2026-08-03.md) |
 | Task 23 릴리스 파이프라인 사전 점검(2026-08-03, [PR #38](https://github.com/jihoon22-lee/SoolJang/pull/38)) | 태그 없이 `release.yml` 을 `workflow_dispatch` dry-run 으로 미리 돌려 보다가 실제 결함을 발견했다 — "Run full test suite" 단계에 PostgreSQL 서비스가 없어 전부 `connection refused` 로 실패했다(만들어진 이후 한 번도 실제 테스트 경로로 검증된 적이 없었다). `quality.yml` 과 같은 `services.postgres` 를 추가해 수정하고, 다시 dry-run 을 돌려 테스트~이미지 빌드(web·api 둘 다)까지 전부 통과함을 확인했다(run [30784846639](https://github.com/jihoon22-lee/SoolJang/actions/runs/30784846639)). **릴리스 파이프라인 자체는 이제 준비됐다** — 남은 건 실제 `v1.0.0` 태그 푸시뿐이고, 이건 사용자의 명시적 승인 없이는 하지 않는다 |
 | PR9/10 사후 코드 리뷰 하드닝(2026-08-03, [PR #41](https://github.com/jihoon22-lee/SoolJang/pull/41)) | `code-reviewer` 서브에이전트로 외부 소스 레지스트리(PR9)·매장 모드(PR10)를 적대적으로 재검토해 6개 결함을 실행 검증(`httpx.MockTransport` 프로브, 최소 FastAPI 앱으로 CORS 헤더 유무 직접 확인)까지 마친 뒤 전부 수정했다: (1) `adapter_spec` 모양이 조금만 틀려도(오타 난 transform, 문법 오류 CSS 셀렉터 등) 크래시하던 것 → `fetch_snapshot` 을 예외를 삼키는 래퍼로 감싸고 필드 단위로 방어, (2) 검색 결과 링크를 호스트 검증 없이 그대로 조회해 SSRF 가능(+ 리다이렉트 미지원) → `_same_host()` 이중 확인 + `follow_redirects`, (3) 상세 페이지 조회 실패가 `source_url` 만 보고 캐시돼 TTL 동안 실패가 성공처럼 굳음 → `AdapterResult.ok` 필드로 분리, (4) 500 캐치올 핸들러가 `CORSMiddleware` 바깥이라 개발 환경에서 CORS 오류로 가려짐 → `cors_origins` 허용 시 직접 헤더 추가, (5) `useCreateProduct` 온라인 분기에서 구매·첨부 실패 시 로컬 미러링이 실행 안 돼 서버측 고아 제품 발생 → 미러링을 제품 생성 직후로 이동, (6) 외부 소스 CRUD 가 카테고리 소유권을 검증하지 않음 → `ensure_category_exists` 재사용. 신규 테스트 20여 개 추가, 기존 테스트 전부(백엔드 672 passed, 프론트 385 passed) 회귀 없음. 근거는 `plan.md` D99~D104 |
+| 오프라인 동기화·재고 정합성 하드닝(2026-08-03, [PR #42](https://github.com/jihoon22-lee/SoolJang/pull/42)) | `v1.0.0` 실사용·모바일 배포를 사용자가 승인한 직후, 나머지 Task 22 배치(PR1~8)의 병 상태 전이·동기화 델타 적용 코드는 Task 21 의 UX 차원 리뷰만 받았을 뿐 데이터 정합성 관점 적대적 리뷰는 없었다는 공백을 발견해 별도로 재검토했다. 실제 사용 시나리오(모바일·오프라인)에서 실제로 데이터가 틀리거나 잃어버릴 수 있는 5개 결함을 배포 전에 고쳤다: (1) **치명적** — 오프라인 병 전이(개봉·소진·증여·판매) 가 outbox `fields:{}` 를 보내 서버가 재접속 날짜로 덮어쓰던 것 → `transitionOutboxFields()` 로 실제 날짜 전달, (2) **치명적** — 실패한 동기화 작업에 receipt 가 없어 재전송마다 검증을 다시 돌려 큐 전체가 영구 정지되고, `IntegrityError` 는 아예 배치 전체를 롤백시키며 배지가 "최신 상태"라고 오표시하던 것 → 실패도 receipt 로 멱등화 + `IntegrityError` 캐치 + 배지가 `pendingCount>0` 도 반영, (3) `hand_over_bottle` 에 날짜 역전 가드가 없어 2번의 배치 롤백을 유발할 수 있던 것 → `finish_bottle` 과 같은 가드 추가, (4) `pullDeltas` 의 pending 조회가 pull 네트워크 왕복 전이라 그 사이 낙관적 쓰기가 스테일한 서버 값에 덮이던 TOCTOU + 시음 기록이 건드리는 병이 애초에 보호 대상이 아니던 것 → pending 조회를 pull 이후·같은 트랜잭션으로, `touched_ids` 로 부작용 엔티티 보호, (5) 동기화 중 트리거가 오면 조용히 버려져 최대 1분(백그라운드 탭이면 무기한) 지연되던 것 → `dirty` 플래그로 종료 후 재실행. 신규 테스트 다수 추가, 기존 테스트 전부(백엔드 675 passed, 프론트 393 passed) 회귀 없음. 근거는 `plan.md` D105~D109 |
 
 ---
 
@@ -228,14 +232,15 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: 이 샌드박스에서는 없음 — 남은 일은 전부 실제 인터넷 환경에서
+### 다음 착수: Task 23 태그·배포 진행 중 — 그 외엔 사용자가 미루기로 한 항목뿐
 
 **(이 절 전체는 2026-08-02 시점 기록이다 — Task 21·22 는 이제 완료됐다. 아래는 옛 기록으로
-남겨 두되, 최신 상태는 위 "지금까지 한 일" 표의 Task 21/22 행과 `plan.md` §1 "현재 위치"를
-본다. 요약: 남은 두 항목(7개 판매처 사이트 `adapter_spec` 등록, Task 19/PR11)이 각각
-실제 인터넷 접속과 사용자 판단을 필요로 한다 — `WebFetch`·Playwright 둘 다로 확인한 결과
-이 개발 샌드박스는 임의 외부 도메인에 DNS 조회조차 안 된다(2026-08-03). 실제 인터넷이
-되는 환경에서 이어가야 한다.)**
+남겨 두되, 최신 상태는 위 "지금까지 한 일" 표의 Task 21/22/하드닝 행과 `plan.md` §1 "현재
+위치"를 본다. 요약(2026-08-03 갱신): 사용자가 `v1.0.0` 태그 푸시·배포·모바일 접속을
+승인해 진행 중이다. 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 은 여전히 안 했지만,
+이건 사용자가 **직접 미루기로 결정**한 것이다(Q3/Q5 참조) — 이 개발 환경(WSL2, `curl`/
+`tailscale` 등 원시 셸 도구는 실제 외부 인터넷에 닿는다) 자체의 접속 제약 때문이 아니다.
+`WebFetch`/Playwright 도구가 별도 네트워크 경로를 타 DNS 조회가 막히는 것과는 별개다.)**
 
 Task 22 Track 1~4(10 PR, #26~#35)를 실행하며 Task 21 항목 상당수를 이미 채웠다. 남은 것:
 - `docs/review-<날짜>.md` 작성(아직 없음)
@@ -338,6 +343,7 @@ scripts/serve-https.sh
 | **CI `migration-check` 잡이 `alembic` 을 pytest 밖에서 직접 돌린다** | `Settings` 에 필수 필드(`secret_key` 등)를 새로 추가하면 그 잡만 `ValidationError` 로 실패 — `python-quality` 잡은 `conftest.py` 의 autouse fixture 가 채워 줘서 통과한다 | 새 필수 설정을 추가할 때 `.github/workflows/quality.yml` 의 `migration-check` 잡 `env:` 에도 테스트용 값을 추가해야 한다. Task 17 에서 `SOOLJANG_SECRET_KEY` 를 추가하며 실제로 겪음 — PR 을 올리고 나서야 CI 에서 발견했다(로컬은 `.env` 가 있어 안 터진다) |
 | **의존성 상한을 너무 느슨하게 잡으면 CI `pip-audit` 이 나중에 실패한다** | `cryptography>=46,<47` 로 고정했는데 46.x 에 이미 알려진 취약점(GHSA)이 있어 `pip-audit --strict` 가 실패 | 새 의존성을 추가할 때 `pip-audit` 를 로컬에서도 한 번 돌려 본다: `uv export --frozen --no-dev --no-emit-project --format requirements.txt -o /tmp/req.txt && uv run --with pip-audit pip-audit --strict -r /tmp/req.txt`. Task 17 에서 발견 |
 | **`vi.stubGlobal("URL", {...URL, 메서드})` 로 전체 URL 을 바꿔치기하면 생성자가 사라진다** | `URL.createObjectURL` 을 목킹하려다 `{...URL}` 스프레드로 교체하면, `URL` 이 더 이상 `new URL(...)` 로 생성자 호출이 안 되는 평범한 객체가 된다 — 다른 코드가 조용히 깨진다 | 전체를 바꿔치기하지 않는다. `URL.createObjectURL = vi.fn()` 처럼 필요한 정적 메서드만 직접 얹고, 테스트 끝에 `undefined` 로 되돌린다. `PivotExplorer.test.tsx`(Task 20) CSV 내보내기 테스트에서 실제로 겪음 — 실패 증상이 "표가 안 뜬다"로 나타나 원인 파악에 시간이 걸렸다 |
+| **이 개발 환경 자체가 사용자의 홈 PC(WSL2)다 — "샌드박스라 인터넷이 안 된다"는 도구별 얘기지 이 기기 얘기가 아니다** | `WebFetch`/Playwright 브라우저는 임의 외부 도메인 DNS 조회가 막히지만, `curl`/`ping`/`tailscale` 같은 원시 셸 명령은 실제로 외부 인터넷·tailnet(`main.tail30f401.ts.net`, 이 기기 자신)에 닿는다. `docker ps` 도 `permission denied` 지만 `sg docker -c "..."` 로 우회 가능(§5 위 행 참조) — 실제로 `docker compose` 스택(web/api/db)이 이미 떠 있었다(단, 이전 빌드라 최신 코드가 아닐 수 있다) | 배포·외부 사이트 조사처럼 "이 샌드박스는 못 한다"고 넘겨짚기 전에, Bash 로 직접 `curl`/`tailscale status`/`sg docker -c "docker ps"` 를 먼저 확인한다. `tailscale serve status` 로 현재 폰에 실제로 뭐가 노출돼 있는지도 확인할 것 — 2026-08-03 시점엔 "No serve config"였다(아무것도 안 뜬 상태) |
 | **이 개발 환경에 로컬 Postgres 인스턴스가 두 개 떠 있다** | `#scan`(매장 모드) 실클릭 검증 중 `/external-lookup` 이 500 을 반환. 원인은 코드가 아니라 프론트 dev 서버(5173)가 프록시하는 API(포트 8000/8001, `postgresql://…@127.0.0.1:5432/sooljang`, 실데이터 406종)가 `alembic upgrade`(포트 54329, `sooljang_dev`/`sooljang_test`, `scripts/dev-db.sh` 관리)와 **다른 DB** 라 새 마이그레이션(`0008_external_sources`)이 안 들어가 있었다 | `SOOLJANG_DATABASE_URL` 을 바꿔 가며 작업했다면, 실클릭 검증 전에 **실제로 요청이 가는 서버가 어느 DB 를 보는지**(`ps`/`/proc/<pid>/environ` 로 확인) 를 먼저 맞춘다. 두 DB 모두에 `alembic upgrade head` 를 돌려야 할 수 있다. Task 22 PR9/10 세션에서 실제로 겪음 |
 
 ---

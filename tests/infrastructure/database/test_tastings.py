@@ -176,6 +176,18 @@ class TestHandOver:
         with pytest.raises(BottleTransitionError, match="이미 소진"):
             await hand_over_bottle(session, bottle, status=BottleStatus.GIFTED)
 
+    async def test_증여일이_개봉일보다_앞설_수_없다(
+        self, session: AsyncSession, bottle: Bottle
+    ) -> None:
+        await open_bottle(session, bottle, opened_on=TODAY)
+        with pytest.raises(BottleTransitionError, match="앞설 수 없습니다"):
+            await hand_over_bottle(
+                session,
+                bottle,
+                status=BottleStatus.GIFTED,
+                on=TODAY - datetime.timedelta(days=1),
+            )
+
     async def test_기존_메모를_지우지_않는다(self, session: AsyncSession, bottle: Bottle) -> None:
         bottle.note = "선물받은 병"
         await session.flush()

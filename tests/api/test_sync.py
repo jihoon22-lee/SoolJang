@@ -181,6 +181,72 @@ def test_head_of_line_blocking_stops_batch_after_failure(
     assert not any(v["id"] == str(never_sent_vendor_id) for v in vendors)
 
 
+def test_db_constraint_violation_fails_only_that_op_and_keeps_prior_ops(
+    api_client: TestClient, prefix: str
+) -> None:
+    """DB 제약(여기선 구매처 이름 UNIQUE) 위반은 `IntegrityError` 로 앱 검증을 거치지 않고
+    바로 난다 — 이게 이 배치의 다른 작업까지 500 으로 함께 죽이면 안 되고, 이 배치에서
+    이미 성공한 앞선 작업도 롤백되면 안 된다."""
+    existing = api_client.post(f"{prefix}/vendors", json={"name": "이미 있는 구매처"})
+    assert existing.status_code == 201, existing.text
+
+    ok_vendor_id = uuid.uuid4()
+    never_sent_vendor_id = uuid.uuid4()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="vendor", op="create", entity_id=ok_vendor_id, fields={"name": "정상 구매처"}
+            ),
+            _op(entity="vendor", op="create", fields={"name": "이미 있는 구매처"}),
+            _op(
+                entity="vendor",
+                op="create",
+                entity_id=never_sent_vendor_id,
+                fields={"name": "실행되지 않아야 함"},
+            ),
+        ],
+    )
+
+    assert result["stopped"] is True
+    assert [r["status"] for r in result["results"]] == ["applied", "failed"]
+    # 원인(제약 이름·테이블명)을 그대로 노출하지 않는다.
+    detail = result["results"][1]["detail"]
+    assert detail is not None
+    assert "constraint" not in detail.lower() and "uq_vendor" not in detail
+
+    vendors = api_client.get(f"{prefix}/vendors").json()
+    assert any(v["id"] == str(ok_vendor_id) for v in vendors), "앞서 성공한 작업이 롤백되면 안 된다"
+    assert not any(v["id"] == str(never_sent_vendor_id) for v in vendors)
+
+
+def test_resending_a_failed_op_reuses_the_result_without_rerunning_it(
+    api_client: TestClient, prefix: str
+) -> None:
+    """실패한 작업도 receipt 를 남겨, 같은 `idempotency_key` 로 재전송하면 도메인 검증을
+    다시 돌리지 않고 같은 실패 결과를 재사용해야 한다(멱등성 — 성공·충돌과 동일)."""
+    existing = api_client.post(f"{prefix}/vendors", json={"name": "이미 있는 구매처"})
+    assert existing.status_code == 201, existing.text
+
+    op = _op(entity="vendor", op="create", fields={"name": "이미 있는 구매처"})
+
+    first = _batch(api_client, prefix, [op])
+    second = _batch(api_client, prefix, [op])
+
+    assert first["results"][0]["status"] == "failed"
+    assert second["results"][0]["status"] == "failed"
+    assert first["results"][0]["detail"] == second["results"][0]["detail"]
+    assert second["stopped"] is True
+
+    # 재실행되지 않았다 — 이름이 겹치는 구매처가 여전히 하나뿐이다.
+    vendors = [
+        v for v in api_client.get(f"{prefix}/vendors").json() if v["name"] == "이미 있는 구매처"
+    ]
+    assert len(vendors) == 1
+
+
 def test_lww_conflict_keeps_server_value_and_logs(api_client: TestClient, prefix: str) -> None:
     created = api_client.post(f"{prefix}/vendors", json={"name": "충돌 테스트 구매처"})
     assert created.status_code == 201, created.text

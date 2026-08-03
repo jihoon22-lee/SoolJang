@@ -30,9 +30,19 @@ export function SyncStatusBadge() {
   const [panelOpen, setPanelOpen] = useState(false);
 
   const hasConflicts = conflictCount > 0;
+  // 온라인이고 지금 동기화 중도 아닌데 아직 못 보낸 항목이 있다 — 네트워크 오류 등으로
+  // `flushOutbox` 자체가 조용히 실패했을 수 있다. 이 경우를 따로 구분하지 않으면
+  // "최신 상태" 라고 잘못 표시해 사용자가 반영됐다고 오해한다.
+  const stuck = state === "idle" && pendingCount > 0;
   const label = describeStatus({ state, pendingCount, failedCount, conflictCount });
   const tone =
-    failedCount > 0 ? "danger" : hasConflicts ? "warn" : state === "offline" ? "muted" : "ok";
+    failedCount > 0
+      ? "danger"
+      : hasConflicts || stuck
+        ? "warn"
+        : state === "offline"
+          ? "muted"
+          : "ok";
 
   return (
     <div className="sync-status">
@@ -69,6 +79,7 @@ function describeStatus(status: {
   if (status.state === "offline") {
     return status.pendingCount > 0 ? `오프라인 (대기 ${status.pendingCount}건)` : "오프라인";
   }
+  if (status.pendingCount > 0) return `동기화 대기 ${status.pendingCount}건`;
   return "최신 상태";
 }
 

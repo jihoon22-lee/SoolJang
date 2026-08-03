@@ -76,6 +76,32 @@ describe("SyncStatusBadge", () => {
     expect(await screen.findByRole("button", { name: "오프라인 (대기 1건)" })).toBeInTheDocument();
   });
 
+  it("온라인인데 outbox 를 못 보냈으면 최신 상태라고 하지 않는다", async () => {
+    // flushOutbox 자체가 네트워크 오류 등으로 실패해도(예: 500) 로컬 항목은 여전히
+    // pending 으로 남는다 — 이 경우 badge 가 "최신 상태" 라고 하면 사용자가 실제로
+    // 반영됐다고 오해한다.
+    await db.outbox.put({
+      idempotency_key: "op1",
+      entity: "vendor",
+      op: "create",
+      entity_id: "v1",
+      fields: { name: "동기화 안 된 구매처" },
+      created_at: NOW,
+      status: "pending",
+      error: null,
+    });
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", status: 500, body: { detail: "서버 오류" } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderBadge();
+
+    const badge = await screen.findByRole("button", { name: "동기화 대기 1건" });
+    expect(badge.className).toContain("sync-status-warn");
+  });
+
   it("충돌이 있으면 배지에 건수를 보여주고, 눌러서 패널을 열 수 있다", async () => {
     await db.conflict_log.put({
       id: "c1",

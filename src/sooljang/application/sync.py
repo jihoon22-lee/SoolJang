@@ -34,6 +34,7 @@ from typing import Any
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError, ValidationFailedError
@@ -278,6 +279,20 @@ async def apply_batch(
     for op in operations:
         existing = await session.get(OutboxReceipt, op.idempotency_key)
         if existing is not None:
+            if existing.status == "failed":
+                # 실패도 성공·충돌과 마찬가지로 재전송을 멱등하게 만든다 — 그러지 않으면
+                # 클라이언트가 같은 항목을 다시 보낼 때마다 도메인 검증을 다시 돌려 같은
+                # 실패를 반복 생성한다. head-of-line blocking(§5.2)도 그대로 지킨다: 이미
+                # 실패로 확정된 작업 뒤는 여전히 보내지 않는다.
+                results.append(
+                    OperationResult(
+                        idempotency_key=op.idempotency_key,
+                        status="failed",
+                        detail=existing.response_snapshot.get("detail"),
+                    )
+                )
+                stopped = True
+                break
             results.append(
                 OperationResult(
                     idempotency_key=op.idempotency_key,
@@ -297,6 +312,11 @@ async def apply_batch(
             BottleTransitionError,
             InsufficientRemainingError,
             InvalidRatingError,
+            # DB 제약(CHECK·UNIQUE 등) 위반도 이 배치 요청 전체를 500 으로 죽이는 대신
+            # 해당 작업만 실패로 기록한다. 이걸 놓치면 이 예외가 `apply_batch` 밖으로 새
+            # 나가 세션 전체가 롤백되고(§9.13 관련 원칙과 별개로, 여기선 세션 트랜잭션
+            # 문제다) — 이 배치에서 이미 성공한 앞선 작업들까지 함께 되돌아간다.
+            IntegrityError,
             # 잘못된 payload(필수 필드 누락, 형식이 깨진 UUID·금액)는 이 배치 요청 전체를
             # 500 으로 죽이는 대신 해당 작업만 실패로 기록한다. 클라이언트 버그로 생긴
             # 배치 하나가 서버 예외를 일으키면 안 된다.
@@ -304,11 +324,31 @@ async def apply_batch(
             ValueError,
             InvalidOperation,
         ) as error:
+            # IntegrityError 는 제약 이름·테이블명 등 스키마 정보를 담고 있어(다른 예외와
+            # 달리) 그대로 노출하면 안 된다 — 일반 메시지로 대체한다(`api/errors.py` 의
+            # 같은 예외용 핸들러와 동일한 문구).
+            detail = (
+                "이미 존재하는 값이거나 제약 조건을 위반했습니다"
+                if isinstance(error, IntegrityError)
+                else str(error)
+            )
             results.append(
-                OperationResult(
-                    idempotency_key=op.idempotency_key, status="failed", detail=str(error)
+                OperationResult(idempotency_key=op.idempotency_key, status="failed", detail=detail)
+            )
+            # 실패도 receipt 를 남겨야 재전송이 도메인 검증을 다시 돌리지 않고 이 결과를
+            # 그대로 재사용한다(위 existing.status == "failed" 분기가 이걸 읽는다).
+            session.add(
+                OutboxReceipt(
+                    id=op.idempotency_key,
+                    user_id=user_id,
+                    entity=op.entity,
+                    operation=op.op,
+                    entity_id=op.entity_id,
+                    status="failed",
+                    response_snapshot={"detail": detail},
                 )
             )
+            await session.flush()
             stopped = True
             break
 
