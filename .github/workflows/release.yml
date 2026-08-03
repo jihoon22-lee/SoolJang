@@ -44,6 +44,26 @@ jobs:
     permissions:
       contents: write # 릴리스 생성
       packages: write # GHCR push
+    # "Run full test suite" 가 실제 PostgreSQL 연결을 필요로 한다(quality.yml 의
+    # python-quality 잡과 같은 서비스 정의). 이게 없으면 테스트가 전부 접속 거부로
+    # 실패해 릴리스 전체가 막힌다 — dry-run 검증(2026-08-03) 중 실제로 겪었다.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sooljang
+          POSTGRES_PASSWORD: sooljang
+          POSTGRES_DB: sooljang_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SOOLJANG_ENVIRONMENT: test
+      SOOLJANG_DATABASE_URL: postgresql+psycopg://sooljang:sooljang@localhost:5432/sooljang_test
     steps:
       - name: Check out source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
