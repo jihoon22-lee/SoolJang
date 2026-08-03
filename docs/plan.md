@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-03 (Task 21·22 완료, 릴리스 워크플로 사전 점검·결함 수정, PR9/10·나머지 배치 사후 코드 리뷰 하드닝 2회, Task 23 버전 범프 — `v1.0.0` 태그·배포 진행 중) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Task 21 은 모바일 실기기 검증만 환경 제약으로 배포 후로 이연. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기 |
-| 다음 착수 Task | **Task 23 진행 중** — 버전 범프(PR #43) 후 실제 `v1.0.0` 태그 푸시·GHCR 배포·`tailscale serve` 모바일 접속 설정(사용자 승인 완료). 그 외 남은 항목: 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 — 사용자가 스크래핑 자체는 뒤로 미루기로 함(2026-08-03) |
-| 현재 브랜치 | `main` (PR #26~#42 머지 완료, PR #43 준비 중) |
-| 진행 중 잔여 항목 | Task 23 태그 푸시·배포·모바일 접속(사용자 승인, 진행 중) |
-| 최신 버전 | `0.1.0` → `1.0.0`(버전 범프 완료, 태그 푸시는 이 PR 머지 후) |
+| 최종 갱신 | 2026-08-03 (`v1.0.0` 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기 |
+| 다음 착수 Task | **사용자 쪽 액션 1개만 남음**: 관리자 콘솔(https://login.tailscale.com/f/serve?node=n8eiMiT7ky11CNTRL)에서 Tailscale Serve 활성화 → 완료되면 `tailscale serve --bg --https=443 http://127.0.0.1:8080` 재실행으로 Task 23 마무리. 그 외 남은 항목: 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 — 사용자가 스크래핑 자체는 뒤로 미루기로 함(2026-08-03) |
+| 현재 브랜치 | `main` (PR #26~#43 머지 완료, 열린 PR 없음) |
+| 진행 중 잔여 항목 | Task 23 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03) |
+| 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -235,7 +235,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 20 | 통계 v2 — 커스텀 피벗과 취향 분석 | ✅ | `feature/stats-v2` | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) |
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
-| 23 | 첫 정식 릴리스와 배포 | ⬜ | `release/v1.0.0` | |
+| 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
 
 ### 의존 관계
 
@@ -1028,6 +1028,29 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
   version 1.0.0 --no-git-tag-version`)을 `0.1.0` → `1.0.0` 으로 올렸다. `/health` 의
   `version` 필드는 `__version__` 을 그대로 쓰므로 테스트(`test_health.py`)가 자동으로
   따라간다 — 하드코딩된 값이 없어 별도 수정이 필요 없었다
+- **실제 릴리스·배포(2026-08-03)**: 백업(`SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh` —
+  176KB, 테이블 데이터 21개 항목 검증)을 먼저 뜬 뒤 `SOOLJANG_ALLOW_TAG_PUSH=1 git push
+  origin v1.0.0` 로 태그를 푸시했다. 릴리스 워크플로가 실제로(dry-run 아님) 돌아 GHCR 에
+  `sooljang-api:1.0.0`/`sooljang-web:1.0.0` 를 게시하고 [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0)
+  를 만들었다(자동 생성 노트에 병합된 PR 43개 전부 반영, 6분 33초).
+  **이 개발 환경 자체가 홈 PC라는 것을 이 세션에서 확인했다**(hostname `Main` = tailnet
+  노드 `main`, §5 핸드오프 참조) — 그 사실을 이용해 실제로 `docker compose` 재배포까지
+  진행했다:
+  - **GHCR pull 은 막혔다**: 이 머신의 `gh` CLI 토큰에 `read:packages` 스코프가 없어(현재
+    스코프: `gist`·`read:org`·`repo`·`workflow`) `docker pull ghcr.io/.../sooljang-*:1.0.0`
+    이 `denied` 로 실패했다. `gh auth refresh -s read:packages` 는 기기 코드 인증(브라우저
+    방문 필요)이 필요해 사용자의 실시간 상호작용 없이는 끝낼 수 없어 진행하지 않았다(중단)
+  - **대신 로컬에서 같은 소스로 재빌드**했다(`SOOLJANG_VERSION=1.0.0` 을 `.env` 에 반영 후
+    `docker compose build && docker compose up -d`) — GHCR 에 게시된 것과 내용이 동일한
+    이미지를, 출처만 pull 대신 로컬 빌드로 확보한 것이다. `db` 서비스는 이미지가 안 바뀌어
+    재시작되지 않았다(데이터 위험 없음). 배포 후 `GET /health` 로 `version: "1.0.0"`,
+    `database_connected: true`, 두 컨테이너 모두 `healthy` 확인
+  - **모바일 접속(Tailscale Serve)은 사용자 조작 대기 중**: `tailscale serve --bg
+    --https=443 http://127.0.0.1:8080` 이 "Serve is not enabled on your tailnet" 로
+    거부됐다 — 관리자 콘솔에서 한 번 활성화해야 하는 계정 단위 설정으로, API/CLI 로 우회할
+    방법이 없다. 사용자가 다음에 집에서 활성화하면 이어서 `tailscale serve` 를 다시 실행해
+    마무리하기로 함. **Task 23 의 "PC 재기동 후 폰에서 정상 동작" 데모 기준은 아직 미충족**
+    — 그 전 단계(태그·릴리스·GHCR 게시·PC 배포)까지는 전부 검증됨
 
 ---
 
