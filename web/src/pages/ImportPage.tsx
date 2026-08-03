@@ -39,7 +39,7 @@ export function ImportPage() {
   return (
     <section aria-labelledby="import-heading">
       <h2 id="import-heading">엑셀 기록 가져오기</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         엑셀에서 CSV 로 저장한 파일을 올리면 내용을 먼저 분석해 보여줍니다. 확인한 뒤에 적재하세요.
         같은 파일을 두 번 넣어도 중복이 생기지 않습니다.
       </p>
@@ -95,7 +95,7 @@ function AnalysisView({ analysis }: { analysis: ImportAnalysis }) {
   return (
     <>
       <h3>블록 분리 결과</h3>
-      <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+      <p className="muted text-sm mt-0">
         한 시트에 술 목록과 통계 표가 섞여 있어 통계 부분은 제외합니다.
       </p>
       <dl className="metrics-grid">
@@ -153,41 +153,43 @@ function AnalysisView({ analysis }: { analysis: ImportAnalysis }) {
       </ul>
 
       <h3>정규화 표본</h3>
-      <table className="product-table" style={{ display: "table" }}>
-        <caption className="sr-only">정규화 결과 표본</caption>
-        <thead>
-          <tr>
-            <th scope="col">행</th>
-            <th scope="col">이름</th>
-            <th scope="col">주종</th>
-            <th scope="col" className="numeric">
-              빈티지
-            </th>
-            <th scope="col" className="numeric">
-              용량
-            </th>
-            <th scope="col" className="numeric">
-              병당 정가
-            </th>
-            <th scope="col" className="numeric">
-              병수
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sample.map((row) => (
-            <tr key={row.line_number}>
-              <td>{row.line_number}</td>
-              <td>{row.name}</td>
-              <td>{row.category_path.join(" › ") || "미분류"}</td>
-              <td className="numeric">{row.vintage ?? "—"}</td>
-              <td className="numeric">{formatVolume(row.volume_ml)}</td>
-              <td className="numeric">{formatMoney(row.unit_list_price, { short: true })}</td>
-              <td className="numeric">{row.quantity}</td>
+      <div className="table-scroll table-scroll--always">
+        <table className="product-table">
+          <caption className="sr-only">정규화 결과 표본</caption>
+          <thead>
+            <tr>
+              <th scope="col">행</th>
+              <th scope="col">이름</th>
+              <th scope="col">주종</th>
+              <th scope="col" className="numeric">
+                빈티지
+              </th>
+              <th scope="col" className="numeric">
+                용량
+              </th>
+              <th scope="col" className="numeric">
+                병당 정가
+              </th>
+              <th scope="col" className="numeric">
+                병수
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sample.map((row) => (
+              <tr key={row.line_number}>
+                <td>{row.line_number}</td>
+                <td>{row.name}</td>
+                <td>{row.category_path.join(" › ") || "미분류"}</td>
+                <td className="numeric">{row.vintage ?? "—"}</td>
+                <td className="numeric">{formatVolume(row.volume_ml)}</td>
+                <td className="numeric">{formatMoney(row.unit_list_price, { short: true })}</td>
+                <td className="numeric">{row.quantity}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -205,9 +207,7 @@ function ResultView({ result }: { result: ImportCommitResult }) {
       {result.failed_rows.length > 0 && (
         <>
           <h4>실패한 행 {result.failed_rows.length}건</h4>
-          <p className="muted" style={{ fontSize: "0.85rem" }}>
-            나머지 행은 정상 적재되었습니다. 아래 행만 확인하세요.
-          </p>
+          <p className="muted text-sm">나머지 행은 정상 적재되었습니다. 아래 행만 확인하세요.</p>
           <ul>
             {result.failed_rows.slice(0, 20).map(([line, message]) => (
               <li key={line}>

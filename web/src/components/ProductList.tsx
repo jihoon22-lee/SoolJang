@@ -48,46 +48,50 @@ export function ProductList({ products, onSelect, sort, order, onSort }: Product
 
   return (
     <>
-      <table className="product-table">
-        <caption className="sr-only">제품 목록. 이름을 선택하면 상세 화면으로 이동합니다.</caption>
-        <thead>
-          <tr>
-            {COLUMNS.map((column) => (
-              <ColumnHeader
-                key={column.label}
-                column={column}
-                sort={sort}
-                order={order}
-                onSort={onSort}
-              />
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((product) => (
-            <tr key={product.id}>
-              <th scope="row">
-                <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
-                  {product.name}
-                </button>
-              </th>
-              <td className="numeric">{product.vintage ?? "—"}</td>
-              <td>{formatCategoryPath(product.category_path)}</td>
-              <td className="numeric">{formatAbv(product.abv)}</td>
-              <td className="numeric">
-                <StockBadge count={product.metrics.in_stock_count} />
-              </td>
-              <td className="numeric">
-                {formatMoney(product.metrics.avg_list_price, { short: true })}
-              </td>
-              <td className="numeric">
-                {formatMoney(product.metrics.price_per_100ml, { short: true })}
-              </td>
-              <td className="numeric">{formatRating(product.personal_rating)}</td>
+      <div className="table-scroll">
+        <table className="product-table">
+          <caption className="sr-only">
+            제품 목록. 이름을 선택하면 상세 화면으로 이동합니다.
+          </caption>
+          <thead>
+            <tr>
+              {COLUMNS.map((column) => (
+                <ColumnHeader
+                  key={column.label}
+                  column={column}
+                  sort={sort}
+                  order={order}
+                  onSort={onSort}
+                />
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {products.map((product) => (
+              <tr key={product.id}>
+                <th scope="row">
+                  <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
+                    {product.name}
+                  </button>
+                </th>
+                <td className="numeric">{product.vintage ?? "—"}</td>
+                <td>{formatCategoryPath(product.category_path)}</td>
+                <td className="numeric">{formatAbv(product.abv)}</td>
+                <td className="numeric">
+                  <StockBadge count={product.metrics.in_stock_count} />
+                </td>
+                <td className="numeric">
+                  {formatMoney(product.metrics.avg_list_price, { short: true })}
+                </td>
+                <td className="numeric">
+                  {formatMoney(product.metrics.price_per_100ml, { short: true })}
+                </td>
+                <td className="numeric">{formatRating(product.personal_rating)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <ul className="product-cards" aria-label="제품 목록 (카드 보기)">
         {products.map((product) => (

@@ -1,25 +1,55 @@
 /*
- * 기본 스타일.
+ * 기본 스타일 — "Cellar Dark" 디자인.
+ *
+ * 저녁 셀러·바에서 술병이 은은한 조명을 받는 느낌을 어두운 와인병 그린블랙 배경과 브라스
+ * 골드 포인트로 표현한다. 포인트 색은 버튼·활성 상태·재고 배지처럼 "지금 주목해야 할 것"
+ * 에만 은은한 광택(glow)으로 쓴다 — 화면 전체에 흩뿌리면 정작 중요한 곳이 묻힌다.
  *
  * 반응형은 JS 뷰포트 감지 없이 CSS 만으로 처리한다. 화면 폭에 따라 테이블과 카드 목록 중
  * 하나만 보이게 하면 서버 렌더링·초기 페인트에서 깜빡임이 없고, 테스트에서도 두 뷰가 항상
- * DOM 에 있어 검증하기 쉽다.
+ * DOM 에 있어 검증하기 쉽다. 브레이크포인트는 두 단계다: 600px(폰 → 태블릿 세로),
+ * 900px(태블릿 → 데스크톱 표 보기).
  *
- * 색은 명암비 4.5:1 이상을 확보하도록 골랐다.
+ * 색은 명암비 4.5:1 이상을 확보하도록 골랐다(어두운 배경 위 텍스트·포인트 색 모두 확인).
+ * 표제 글꼴("Gowun Batang")은 온라인일 때만 내려받는 점진적 개선이다 — 오프라인이거나
+ * CDN 이 막히면 OS 가 이미 갖고 있는 한글 명조체(바탕/AppleMyungjo)로 조용히 대체된다.
  */
 
 :root {
-  --bg: #faf8f5;
-  --surface: #ffffff;
-  --border: #d9d2c7;
-  --text: #241f1a;
-  --text-muted: #5c5349;
-  --accent: #7a3b2e;
-  --accent-contrast: #ffffff;
-  --danger: #9b2226;
-  --ok: #2d6a4f;
-  --radius: 8px;
+  --bg: #131f1a;
+  --bg-raised: #17251f;
+  --surface: #1b2b24;
+  --surface-raised: #24382f;
+  --border: #33473c;
+  --border-strong: #45604f;
+  --text: #ece4d3;
+  --text-muted: #a9b3a6;
+  --accent: #c99a4a;
+  --accent-strong: #ddb161;
+  --accent-contrast: #1c1206;
+  --danger: #e8837a;
+  --danger-surface: #3a2220;
+  --ok: #7fbf95;
+  --ok-surface: #1c2f22;
+
+  --font-display: "Gowun Batang", "AppleMyungjo", "Batang", "바탕", Georgia, serif;
+  --font-body:
+    "Pretendard", -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo",
+    "Segoe UI", "Noto Sans KR", sans-serif;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --space-xs: 4px;
+  --space-sm: 8px;
   --space: 12px;
+  --space-lg: 20px;
+  --space-xl: 32px;
+
+  /* 신호 요소(주 버튼·활성 탭·재고 배지)에만 쓰는 은은한 브라스 광택. */
+  --glow-accent: 0 0 0 1px rgb(201 154 74 / 35%), 0 2px 14px rgb(201 154 74 / 22%);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-float: 0 12px 32px rgb(0 0 0 / 45%);
 }
 
 * {
@@ -29,15 +59,31 @@
 body {
   margin: 0;
   background: var(--bg);
+  background-image: radial-gradient(
+    ellipse 900px 500px at 15% -10%,
+    rgb(201 154 74 / 8%),
+    transparent 60%
+  );
+  background-attachment: fixed;
   color: var(--text);
-  font-family:
-    "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
-  line-height: 1.55;
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
 }
 
 /* 키보드 포커스를 항상 보이게 한다. outline 을 지우면 키보드 사용자가 위치를 잃는다. */
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--accent-strong);
   outline-offset: 2px;
 }
 
@@ -60,13 +106,132 @@ body {
   left: -9999px;
   z-index: 100;
   padding: 8px 16px;
+  border-radius: 0 0 var(--radius-sm) 0;
   background: var(--accent);
   color: var(--accent-contrast);
+  font-weight: 600;
 }
 
 .skip-link:focus {
-  left: 8px;
-  top: 8px;
+  left: 0;
+  top: 0;
+}
+
+/* --- 작은 유틸리티: 반복되는 인라인 스타일을 대신한다 ------------------------ */
+
+.mt-0 {
+  margin-top: 0;
+}
+
+.mb-0 {
+  margin-bottom: 0;
+}
+
+.mt-1 {
+  margin-top: var(--space-xs);
+}
+
+.mb-1 {
+  margin-bottom: var(--space-xs);
+}
+
+.mt-2 {
+  margin-top: var(--space-sm);
+}
+
+.mb-2 {
+  margin-bottom: var(--space-sm);
+}
+
+.mt-3 {
+  margin-top: var(--space);
+}
+
+.mb-3 {
+  margin-bottom: var(--space);
+}
+
+.text-sm {
+  font-size: 0.85rem;
+}
+
+.fieldset-plain {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.fieldset-bordered {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.self-center {
+  align-self: center;
+}
+
+.inline-block {
+  display: inline-block;
+}
+
+.hidden {
+  display: none;
+}
+
+/* 패널·폼에 곁들이는, 본문보다 한 단계만 작은 제목(예: "주종 추가"). */
+.form-heading {
+  margin-top: 0;
+  font-size: 0.95rem;
+}
+
+/* 제목 + 동작 버튼이 한 줄에 나란히 있다가 좁아지면 접히는, 구간 제목에서 반복되는 배치. */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space);
+  flex-wrap: wrap;
+}
+
+.section-header h2,
+.section-header h3 {
+  margin: 0;
+}
+
+/*
+ * 표를 감싸는 스크롤 영역. 두 가지 역할을 겸한다.
+ *
+ * 1. PC 는 표, 모바일은 카드 두 뷰 중 하나만 보이게 하는 전환 지점을 표 자체(`.product-table`)
+ *    에서 이 감싸는 요소로 옮겼다 — `display: table` 요소는 자기 자신에 준 `overflow` 를
+ *    스크롤 영역으로 만들지 않는다(표 레이아웃 알고리즘과 충돌한다). 높이 제한과 overflow 는
+ *    여기서, 표/카드 전환은 아래 media query 에서 함께 처리한다.
+ * 2. 높이를 제한해 목록이 길어져도(예: 405종) 페이지 자체가 한없이 길어지지 않게 한다.
+ */
+.table-scroll {
+  display: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
+}
+
+/* 모바일 카드 뷰가 따로 없는 표(구매 이력·가져오기 미리보기 등)는 좁은 화면에서도
+   가로 스크롤로라도 표를 그대로 보여준다 — 위 기본값(900px 미만에서 display:none)을
+   덮어쓴다. */
+.table-scroll--always {
+  display: block;
+}
+
+.table-scroll .product-table,
+.table-scroll .stats-table {
+  display: table;
+  border: none;
+  border-radius: 0;
 }
 
 .app-shell {
@@ -76,39 +241,54 @@ body {
 }
 
 .app-header {
-  background: var(--surface);
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--border);
   padding: var(--space);
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space);
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
+  color: var(--accent-strong);
 }
 
 .app-nav {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .app-nav a {
   padding: 8px 14px;
   border-radius: var(--radius);
-  color: var(--text);
+  color: var(--text-muted);
   text-decoration: none;
   /* 터치 타깃 최소 44px. 모바일에서 누르기 어려우면 기록 자체를 안 하게 된다. */
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.app-nav a:hover {
+  background: var(--surface);
+  color: var(--text);
 }
 
 .app-nav a[aria-current="page"] {
   background: var(--accent);
   color: var(--accent-contrast);
+  font-weight: 600;
+  box-shadow: var(--glow-accent);
 }
 
 .app-main {
@@ -125,6 +305,12 @@ body {
   grid-template-columns: 1fr;
 }
 
+/* 그리드·플렉스 자식은 기본값(min-width:auto)이 내용의 고유 너비(select 의 가장 긴
+   option 등)만큼 벌어지는 걸 막지 못한다 — 좁은 화면에서 가로 스크롤이 생기던 원인. */
+.layout-with-sidebar > * {
+  min-width: 0;
+}
+
 @media (min-width: 900px) {
   .layout-with-sidebar {
     grid-template-columns: 280px 1fr;
@@ -135,13 +321,21 @@ body {
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-panel);
 }
 
 .panel h2 {
   margin-top: 0;
-  font-size: 1rem;
+  font-size: 1.05rem;
+}
+
+@media (max-width: 600px) {
+  .panel {
+    padding: var(--space);
+    border-radius: var(--radius);
+  }
 }
 
 .field {
@@ -149,6 +343,7 @@ body {
   flex-direction: column;
   gap: 4px;
   margin-bottom: var(--space);
+  min-width: 0;
 }
 
 .field label {
@@ -159,13 +354,30 @@ body {
 .field input,
 .field select,
 .field textarea {
+  width: 100%;
+  min-width: 0;
   padding: 10px;
   min-height: 44px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
   color: var(--text);
   font: inherit;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  border-color: var(--accent);
 }
 
 .field-error {
@@ -183,26 +395,27 @@ body {
   top: 100%;
   left: 0;
   right: 0;
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   padding: 4px;
   list-style: none;
   max-height: 14rem;
   overflow-y: auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-float);
 }
 
 .autocomplete-list li {
   padding: 8px 10px;
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
 .autocomplete-list li.active,
 .autocomplete-list li:hover {
   background: var(--bg);
+  color: var(--accent-strong);
 }
 
 .field-row {
@@ -211,21 +424,42 @@ body {
   grid-template-columns: 1fr 1fr;
 }
 
+@media (max-width: 600px) {
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 button {
   min-height: 44px;
   padding: 10px 16px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--text);
   font: inherit;
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--border-strong);
 }
 
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
+  font-weight: 600;
+  box-shadow: var(--glow-accent);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 
 button.danger {
@@ -233,9 +467,24 @@ button.danger {
   border-color: var(--danger);
 }
 
+button.link-like {
+  min-height: auto;
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+button.link-like:hover:not(:disabled) {
+  color: var(--accent);
+}
+
 button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .button-row {
@@ -252,7 +501,6 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  display: none;
 }
 
 .product-table th,
@@ -264,13 +512,20 @@ button:disabled {
 }
 
 .product-table th {
-  background: #f2ede6;
-  font-size: 0.85rem;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   white-space: nowrap;
   /* 405행을 스크롤해도 어느 열인지 알 수 있게 헤더를 고정한다. */
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+.product-table tbody tr:hover {
+  background: var(--surface-raised);
 }
 
 .product-table td.numeric,
@@ -294,7 +549,7 @@ button:disabled {
 }
 
 .sort-button:hover {
-  text-decoration: underline;
+  color: var(--accent-strong);
 }
 
 .sort-indicator {
@@ -304,11 +559,16 @@ button:disabled {
 .product-cards {
   display: grid;
   gap: var(--space);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
 }
 
 @media (min-width: 900px) {
-  .product-table {
-    display: table;
+  .table-scroll {
+    display: block;
   }
 
   .product-cards {
@@ -316,19 +576,22 @@ button:disabled {
   }
 }
 
-.product-card {
+.product-card,
+.stats-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space);
+  box-shadow: var(--shadow-panel);
 }
 
 .product-card h3 {
   margin: 0 0 4px;
-  font-size: 1rem;
+  font-size: 1.05rem;
 }
 
-.product-card dl {
+.product-card dl,
+.stats-card dl {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 2px 8px;
@@ -336,13 +599,27 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.product-card dt {
+.product-card dt,
+.stats-card dt {
   color: var(--text-muted);
 }
 
-.product-card dd {
+.product-card dd,
+.stats-card dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
+}
+
+/* 상세 화면 요약: `.product-card dl` 과 달리 항목마다 dt/dd 를 <div> 로 감싸 세로로
+   쌓는다(라벨 아래 값) — 나란히 두는 카드 요약과는 다른 배치라 별도 규칙을 둔다. */
+.product-card-dl {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.product-card-dl dd {
+  margin: 0;
 }
 
 .muted {
@@ -353,7 +630,7 @@ button:disabled {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #f2ede6;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   font-size: 0.8rem;
 }
@@ -365,6 +642,7 @@ button:disabled {
 .badge.stock-some {
   color: var(--ok);
   border-color: var(--ok);
+  background: var(--ok-surface);
 }
 
 .metrics-grid {
@@ -387,7 +665,8 @@ button:disabled {
 
 .metric dd {
   margin: 4px 0 0;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
 }
 
@@ -399,7 +678,6 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  display: none;
 }
 
 .stats-table th,
@@ -411,8 +689,14 @@ button:disabled {
 }
 
 .stats-table th {
-  background: #f2ede6;
-  font-size: 0.85rem;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .stats-table td.numeric,
@@ -427,45 +711,19 @@ button:disabled {
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: min(50vh, 560px);
+  overflow-y: auto;
 }
 
 @media (min-width: 900px) {
-  .stats-table {
-    display: table;
-  }
-
   .stats-cards {
     display: none;
   }
 }
 
-.stats-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space);
-}
-
 .stats-card h4 {
   margin: 0 0 4px;
-  font-size: 1rem;
-}
-
-.stats-card dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 8px;
-  margin: 8px 0 0;
-  font-size: 0.9rem;
-}
-
-.stats-card dt {
-  color: var(--text-muted);
-}
-
-.stats-card dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
 }
 
 .category-bars {
@@ -501,7 +759,7 @@ button:disabled {
 .category-bar-fill {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-strong) 100%);
 }
 
 .ranking-grid {
@@ -524,12 +782,18 @@ button:disabled {
   grid-template-columns: 1.5em minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 8px;
-  padding: 4px 0;
+  padding: 6px 4px;
   border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.ranking-list li:hover {
+  background: var(--surface-raised);
 }
 
 .ranking-rank {
   color: var(--text-muted);
+  font-family: var(--font-display);
 }
 
 .ranking-name {
@@ -542,6 +806,7 @@ button:disabled {
 .ranking-value {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  color: var(--accent-strong);
 }
 
 /* --- 카테고리 트리 --------------------------------------------------------- */
@@ -550,6 +815,8 @@ button:disabled {
   list-style: none;
   padding-left: 0;
   margin: 0;
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
 }
 
 .category-tree ul {
@@ -567,14 +834,18 @@ button:disabled {
   padding: 6px 0;
 }
 
-.category-row .name {
-  font-weight: 500;
+.category-row .name,
+.vendor-row .name {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .vendor-list {
   list-style: none;
   padding-left: 0;
   margin: 0;
+  max-height: min(65vh, 720px);
+  overflow-y: auto;
 }
 
 .vendor-row {
@@ -584,10 +855,6 @@ button:disabled {
   gap: 12px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
-}
-
-.vendor-row .name {
-  font-weight: 500;
 }
 
 .vendor-edit-form {
@@ -603,6 +870,7 @@ button:disabled {
   flex-direction: column;
   gap: 4px;
   font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .alert {
@@ -610,7 +878,7 @@ button:disabled {
   color: var(--danger);
   border-radius: var(--radius);
   padding: var(--space);
-  background: #fdf3f2;
+  background: var(--danger-surface);
 }
 
 .notice {
@@ -618,6 +886,7 @@ button:disabled {
   border-radius: var(--radius);
   padding: var(--space);
   background: var(--surface);
+  color: var(--text-muted);
 }
 
 /* --- 인증 화면 ----------------------------------------------------------- */
@@ -628,6 +897,12 @@ button:disabled {
   justify-content: center;
   min-height: 100vh;
   padding: 1.5rem;
+  background: var(--bg);
+  background-image: radial-gradient(
+    ellipse 800px 500px at 50% -10%,
+    rgb(201 154 74 / 10%),
+    transparent 60%
+  );
 }
 
 .auth-card {
@@ -636,15 +911,18 @@ button:disabled {
   gap: 0.9rem;
   width: 100%;
   max-width: 22rem;
-  padding: 1.75rem;
+  padding: 2rem 1.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-lg);
   background: var(--surface);
+  box-shadow: var(--shadow-float);
 }
 
 .auth-card h1 {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 1.6rem;
+  text-align: center;
+  color: var(--accent-strong);
 }
 
 .auth-card label {
@@ -652,6 +930,7 @@ button:disabled {
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.9rem;
+  color: var(--text-muted);
 }
 
 .auth-card button[type="submit"] {
@@ -662,16 +941,16 @@ button:disabled {
 
 .auth-hint {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .auth-error {
   margin: 0;
   padding: 0.6rem 0.75rem;
-  border-radius: 0.4rem;
-  background: var(--danger-surface, #fdecec);
-  color: var(--danger, #a4262c);
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+  color: var(--danger);
   font-size: 0.85rem;
 }
 
@@ -684,7 +963,7 @@ button:disabled {
 }
 
 .app-account-name {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .app-logout {
@@ -696,7 +975,7 @@ button:disabled {
 .app-loading {
   display: block;
   padding: 2rem;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* --- 동기화 상태 ---------------------------------------------------------- */
@@ -710,7 +989,7 @@ button:disabled {
   padding: 0 0.75rem;
   border-radius: 999px;
   font-size: 0.8rem;
-  background: var(--surface);
+  background: var(--surface-raised);
 }
 
 .sync-status-ok {
@@ -736,10 +1015,10 @@ button:disabled {
   z-index: 20;
   width: min(22rem, 90vw);
   padding: 0.9rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
   text-align: left;
 }
 
@@ -788,7 +1067,7 @@ button:disabled {
   margin: 0 0 1rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
 }
 
 .bottle-filters button,
@@ -798,7 +1077,8 @@ button:disabled {
 }
 
 .bottle-filters button[aria-pressed="true"] {
-  border-color: currentColor;
+  border-color: var(--accent);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 
@@ -809,6 +1089,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: min(60vh, 640px);
+  overflow-y: auto;
 }
 
 .bottle-list-item {
@@ -819,33 +1101,43 @@ button:disabled {
   min-height: 2.75rem;
   padding: 0.6rem 0.9rem;
   text-align: left;
+  background: var(--surface);
+}
+
+.bottle-list-item[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+.bottle-list-label {
+  font-family: var(--font-display);
 }
 
 .bottle-badge {
-  padding: 0.1rem 0.5rem;
+  padding: 0.1rem 0.6rem;
   border-radius: 999px;
   border: 1px solid var(--border);
   font-size: 0.75rem;
 }
 
 .bottle-badge-unopened {
-  background: var(--surface);
+  background: var(--surface-raised);
 }
 
 .bottle-badge-open {
-  border-color: #2b7a4b;
-  color: #2b7a4b;
+  border-color: var(--ok);
+  color: var(--ok);
+  background: var(--ok-surface);
 }
 
 .bottle-badge-finished,
 .bottle-badge-gifted,
 .bottle-badge-sold {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .bottle-list-remaining {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -853,7 +1145,8 @@ button:disabled {
   margin: 0.5rem 0 1rem;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
 }
 
 .bottle-panel-header {
@@ -868,13 +1161,13 @@ button:disabled {
   align-items: center;
   gap: 0.5rem;
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
 }
 
 .bottle-remaining {
   margin: 0;
   margin-left: auto;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .bottle-dates,
@@ -888,7 +1181,7 @@ button:disabled {
 
 .bottle-dates dt,
 .tasting-summary dt {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .bottle-dates dd,
@@ -899,9 +1192,9 @@ button:disabled {
 .bottle-error {
   margin: 0.5rem 0;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.4rem;
-  background: var(--danger-surface, #fdecec);
-  color: var(--danger, #a4262c);
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+  color: var(--danger);
   font-size: 0.85rem;
 }
 
@@ -910,8 +1203,8 @@ button:disabled {
   gap: 0.6rem;
   margin: 1rem 0;
   padding: 0.9rem;
-  border: 1px dashed var(--border);
-  border-radius: 0.5rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
 }
 
 .tasting-form h4 {
@@ -924,6 +1217,7 @@ button:disabled {
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .tasting-form button[type="submit"] {
@@ -942,23 +1236,27 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  max-height: min(50vh, 480px);
+  overflow-y: auto;
 }
 
 .tasting-timeline li {
   padding: 0.6rem 0.75rem;
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--surface);
 }
 
 .tasting-date {
   font-weight: 600;
   margin-right: 0.6rem;
+  font-family: var(--font-display);
 }
 
 .tasting-rating,
 .tasting-poured {
   margin-right: 0.6rem;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -969,7 +1267,7 @@ button:disabled {
 }
 
 .tasting-meta {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .tasting-delete {
@@ -999,13 +1297,17 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: var(--space);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
 }
 
 .barcode-scan-video {
   width: 100%;
   max-height: 20rem;
   background: #000;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   object-fit: cover;
 }

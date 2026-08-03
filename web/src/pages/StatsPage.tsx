@@ -252,46 +252,48 @@ function CategoryTable({
 }) {
   return (
     <>
-      <table className="stats-table">
-        <thead>
-          <tr>
-            {CATEGORY_COLUMNS.map((column) => (
-              <CategoryColumnHeader
-                key={column.key}
-                column={column}
-                sort={sort}
-                order={order}
-                onSort={onSort}
-              />
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {categories.map((stat) => (
-            <tr key={stat.category_id ?? "uncategorized"}>
-              <th scope="row">
-                {stat.category_id ? (
-                  <button
-                    type="button"
-                    className="link-like"
-                    onClick={() => onSelectCategory(stat.category_id as string)}
-                  >
-                    {stat.name}
-                  </button>
-                ) : (
-                  stat.name
-                )}
-              </th>
-              <td className="numeric">{stat.bottle_count.toLocaleString("ko-KR")}</td>
-              <td className="numeric">{formatMoney(stat.total_spend)}</td>
-              <td className="numeric">{formatAbv(stat.avg_abv)}</td>
-              <td className="numeric">{formatRating(stat.avg_rating)}</td>
-              <td className="numeric">{formatMoney(stat.avg_price_per_100ml)}</td>
-              <td className="numeric">{formatPercent(stat.discount_rate)}</td>
+      <div className="table-scroll">
+        <table className="stats-table">
+          <thead>
+            <tr>
+              {CATEGORY_COLUMNS.map((column) => (
+                <CategoryColumnHeader
+                  key={column.key}
+                  column={column}
+                  sort={sort}
+                  order={order}
+                  onSort={onSort}
+                />
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {categories.map((stat) => (
+              <tr key={stat.category_id ?? "uncategorized"}>
+                <th scope="row">
+                  {stat.category_id ? (
+                    <button
+                      type="button"
+                      className="link-like"
+                      onClick={() => onSelectCategory(stat.category_id as string)}
+                    >
+                      {stat.name}
+                    </button>
+                  ) : (
+                    stat.name
+                  )}
+                </th>
+                <td className="numeric">{stat.bottle_count.toLocaleString("ko-KR")}</td>
+                <td className="numeric">{formatMoney(stat.total_spend)}</td>
+                <td className="numeric">{formatAbv(stat.avg_abv)}</td>
+                <td className="numeric">{formatRating(stat.avg_rating)}</td>
+                <td className="numeric">{formatMoney(stat.avg_price_per_100ml)}</td>
+                <td className="numeric">{formatPercent(stat.discount_rate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <ul className="stats-cards">
         {categories.map((stat) => (

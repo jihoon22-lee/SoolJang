@@ -264,9 +264,9 @@ export function ProductForm({
       </div>
 
       {mode === "create" && (
-        <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
+        <fieldset className="fieldset-bordered">
           <legend>구매 정보 (선택)</legend>
-          <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+          <p className="muted text-sm mt-0">
             병수를 입력하면 구매 건과 병 기록을 함께 만듭니다. 같은 술을 나중에 다른 곳에서 사면
             구매 건을 따로 추가할 수 있습니다.
           </p>
@@ -326,7 +326,7 @@ export function ProductForm({
         </fieldset>
       )}
 
-      <div className="button-row" style={{ marginTop: 12 }}>
+      <div className="button-row mt-3">
         <button type="submit" className="primary" disabled={submitting}>
           {submitting ? "저장 중…" : mode === "edit" ? "저장" : "등록"}
         </button>

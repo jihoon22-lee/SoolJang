@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#c99a4a" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#c99a4a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glass" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ddb161"/>
+      <stop offset="100%" stop-color="#c99a4a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="100" height="100" rx="20" fill="#131f1a"/>
+  <ellipse cx="50" cy="52" rx="34" ry="38" fill="url(#glow)"/>
+
+  <!-- 병 실루엣: 셀러의 은은한 조명을 받은 술병. -->
+  <path
+    d="M44,8 L56,8 L56,30 Q69,39 69,50 L69,83 Q69,91 61,91 L39,91 Q31,91 31,83 L31,50 Q31,39 44,30 Z"
+    fill="url(#glass)"
+  />
+  <rect x="31" y="61" width="38" height="7" fill="#131f1a" opacity="0.3"/>
+</svg>

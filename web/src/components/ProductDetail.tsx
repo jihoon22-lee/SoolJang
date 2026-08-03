@@ -96,7 +96,7 @@ export function ProductDetail({
 
   return (
     <article aria-labelledby="detail-heading">
-      <div className="button-row" style={{ marginBottom: 12 }}>
+      <div className="button-row mb-3">
         <button type="button" onClick={onBack}>
           ← 목록으로
         </button>
@@ -109,24 +109,24 @@ export function ProductDetail({
       </div>
 
       <div className="panel">
-        <h2 id="detail-heading" style={{ marginBottom: 4 }}>
+        <h2 id="detail-heading" className="mb-1">
           {product.name}
           {product.vintage !== null && <span className="muted"> ({product.vintage})</span>}
         </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted mt-0">
           {formatCategoryPath(product.category_path)}
           {product.producer_name && ` · ${product.producer_name}`}
           {product.country && ` · ${product.country}`}
         </p>
 
-        <dl className="product-card-dl" style={{ display: "grid", gap: 4 }}>
+        <dl className="product-card-dl">
           <div>
             <dt className="muted">도수</dt>
-            <dd style={{ margin: 0 }}>{formatAbv(product.abv)}</dd>
+            <dd>{formatAbv(product.abv)}</dd>
           </div>
           <div>
             <dt className="muted">규격</dt>
-            <dd style={{ margin: 0 }}>
+            <dd>
               {product.skus.length === 0
                 ? "등록된 규격 없음"
                 : product.skus.map((sku) => formatVolume(sku.volume_ml)).join(", ")}
@@ -134,21 +134,19 @@ export function ProductDetail({
           </div>
           <div>
             <dt className="muted">품종·스타일</dt>
-            <dd style={{ margin: 0 }}>
-              {product.varieties.length === 0 ? "—" : product.varieties.join(", ")}
-            </dd>
+            <dd>{product.varieties.length === 0 ? "—" : product.varieties.join(", ")}</dd>
           </div>
           <div>
             <dt className="muted">내 평점</dt>
-            <dd style={{ margin: 0 }}>{formatRating(product.personal_rating)}</dd>
+            <dd>{formatRating(product.personal_rating)}</dd>
           </div>
         </dl>
 
-        {product.note && <p style={{ whiteSpace: "pre-wrap" }}>{product.note}</p>}
+        {product.note && <p className="pre-wrap">{product.note}</p>}
       </div>
 
       <h3>파생 지표</h3>
-      <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+      <p className="muted text-sm mt-0">
         모두 구매 기록에서 자동 계산됩니다. 직접 입력하거나 수정할 필요가 없습니다.
       </p>
       <dl className="metrics-grid">
@@ -247,16 +245,8 @@ function PurchaseSection({
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <h3 style={{ marginBottom: 0 }}>구매 이력</h3>
+      <div className="section-header">
+        <h3>구매 이력</h3>
         {!offline && (
           <button type="button" onClick={() => setAddFormOpen((open) => !open)}>
             {addFormOpen ? "취소" : "구매 추가"}
@@ -264,9 +254,7 @@ function PurchaseSection({
         )}
       </div>
       {offline && (
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
-          구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.
-        </p>
+        <p className="muted text-sm">구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.</p>
       )}
 
       {addFormOpen && (
@@ -289,91 +277,93 @@ function PurchaseSection({
           남길 수 있습니다.
         </output>
       ) : (
-        <table className="product-table" style={{ display: "table" }}>
-          <caption className="sr-only">구매 이력</caption>
-          <thead>
-            <tr>
-              <th scope="col">구매일</th>
-              <th scope="col">구매처</th>
-              <th scope="col" className="numeric">
-                병수
-              </th>
-              <th scope="col" className="numeric">
-                병당 정가
-              </th>
-              <th scope="col" className="numeric">
-                병당 실구매가
-              </th>
-              <th scope="col" className="numeric">
-                총 지출
-              </th>
-              {!offline && <th scope="col">관리</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {purchases.map((purchase) => (
-              <Fragment key={purchase.id}>
-                <tr>
-                  <td>{formatDate(purchase.purchased_on)}</td>
-                  <td>{purchase.vendor_name ?? "미기록"}</td>
-                  <td className="numeric">{purchase.quantity}</td>
-                  <td className="numeric">
-                    {formatMoney(purchase.unit_list_price, { short: true })}
-                  </td>
-                  <td className="numeric">
-                    {formatMoney(purchase.unit_paid_price, { short: true })}
-                  </td>
-                  <td className="numeric">{formatMoney(purchase.paid_total, { short: true })}</td>
-                  {!offline && (
-                    <td>
-                      <div className="button-row">
-                        {purchase.quantity > 1 && (
+        <div className="table-scroll table-scroll--always">
+          <table className="product-table">
+            <caption className="sr-only">구매 이력</caption>
+            <thead>
+              <tr>
+                <th scope="col">구매일</th>
+                <th scope="col">구매처</th>
+                <th scope="col" className="numeric">
+                  병수
+                </th>
+                <th scope="col" className="numeric">
+                  병당 정가
+                </th>
+                <th scope="col" className="numeric">
+                  병당 실구매가
+                </th>
+                <th scope="col" className="numeric">
+                  총 지출
+                </th>
+                {!offline && <th scope="col">관리</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {purchases.map((purchase) => (
+                <Fragment key={purchase.id}>
+                  <tr>
+                    <td>{formatDate(purchase.purchased_on)}</td>
+                    <td>{purchase.vendor_name ?? "미기록"}</td>
+                    <td className="numeric">{purchase.quantity}</td>
+                    <td className="numeric">
+                      {formatMoney(purchase.unit_list_price, { short: true })}
+                    </td>
+                    <td className="numeric">
+                      {formatMoney(purchase.unit_paid_price, { short: true })}
+                    </td>
+                    <td className="numeric">{formatMoney(purchase.paid_total, { short: true })}</td>
+                    {!offline && (
+                      <td>
+                        <div className="button-row">
+                          {purchase.quantity > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSplittingId(splittingId === purchase.id ? null : purchase.id)
+                              }
+                            >
+                              분할
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() =>
-                              setSplittingId(splittingId === purchase.id ? null : purchase.id)
-                            }
+                            className="danger"
+                            disabled={deletingPurchaseId === purchase.id}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "이 구매 건을 삭제할까요? 연결된 병 기록도 함께 사라집니다.",
+                                )
+                              ) {
+                                onDeletePurchase(purchase.id);
+                              }
+                            }}
                           >
-                            분할
+                            {deletingPurchaseId === purchase.id ? "삭제 중…" : "삭제"}
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className="danger"
-                          disabled={deletingPurchaseId === purchase.id}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "이 구매 건을 삭제할까요? 연결된 병 기록도 함께 사라집니다.",
-                              )
-                            ) {
-                              onDeletePurchase(purchase.id);
-                            }
-                          }}
-                        >
-                          {deletingPurchaseId === purchase.id ? "삭제 중…" : "삭제"}
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-                {splittingId === purchase.id && (
-                  <tr>
-                    <td colSpan={7}>
-                      <SplitPurchaseForm
-                        totalQuantity={purchase.quantity}
-                        submitting={splittingPurchaseId === purchase.id}
-                        error={splitError}
-                        onSubmit={(parts) => onSplitPurchase(purchase.id, parts)}
-                        onCancel={() => setSplittingId(null)}
-                      />
-                    </td>
+                        </div>
+                      </td>
+                    )}
                   </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+                  {splittingId === purchase.id && (
+                    <tr>
+                      <td colSpan={7}>
+                        <SplitPurchaseForm
+                          totalQuantity={purchase.quantity}
+                          submitting={splittingPurchaseId === purchase.id}
+                          error={splitError}
+                          onSubmit={(parts) => onSplitPurchase(purchase.id, parts)}
+                          onCancel={() => setSplittingId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
@@ -423,7 +413,7 @@ function AddPurchaseForm({
           onAddSku(Number(newVolumeMl));
         }}
       >
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted mt-0">
           이 술은 아직 규격(용량)이 없습니다. 구매를 추가하려면 먼저 규격을 등록하세요.
         </p>
         <div className="field">
@@ -600,7 +590,7 @@ function SplitPurchaseForm({
         onSubmit(parts.map(({ quantity, vendorName }) => ({ quantity, vendorName })));
       }}
     >
-      <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+      <p className="muted text-sm mt-0">
         구매처별로 나눠 받은 경우처럼, 한 구매 건을 여러 건으로 쪼갭니다. 병수 합이 원래 병수(
         {totalQuantity}병)와 같아야 합니다.
       </p>
@@ -645,7 +635,7 @@ function SplitPurchaseForm({
           나눌 부분 추가
         </button>
       </div>
-      <div className="button-row" style={{ marginTop: 12 }}>
+      <div className="button-row mt-3">
         <button type="submit" className="primary" disabled={submitting}>
           {submitting ? "분할 중…" : "분할 실행"}
         </button>

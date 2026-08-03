@@ -94,8 +94,8 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
 
   return (
     <div className="panel barcode-scan-panel" role="dialog" aria-label="바코드 스캔">
-      <div className="button-row" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>바코드 스캔</h2>
+      <div className="section-header">
+        <h2>바코드 스캔</h2>
         <button type="button" onClick={close}>
           닫기
         </button>
@@ -238,7 +238,7 @@ function UnmatchedBarcodeResult({
         </p>
       )}
 
-      <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
+      <fieldset className="fieldset-bordered">
         <legend>새 술로 등록</legend>
         <div className="field">
           <label htmlFor="scan-new-name">이름</label>
@@ -268,7 +268,7 @@ function UnmatchedBarcodeResult({
         </button>
       </fieldset>
 
-      <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
+      <fieldset className="fieldset-bordered">
         <legend>기존 술에 연결</legend>
         <div className="field">
           <label htmlFor="scan-existing-sku">규격 선택</label>
