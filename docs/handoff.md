@@ -3,10 +3,12 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-02 (Task 20 PR)**
+- 최종 갱신: **2026-08-03 (Task 21 검증 마무리, `feature/self-review`)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
-- 현재 브랜치: `main` (Task 17, 20 까지 완료. Task 18·19 는 검색 API 미해결로 건너뜀)
+- 현재 브랜치: `feature/self-review` (Task 17·20·21·22 완료 — Task 22 는 Track 1~4, 10 PR
+  #26~#35. Task 18 은 `adapter` 전략만 부분 완료. 다음은 이 브랜치를 PR 로 머지해 Task 21
+  을 공식 닫는 것 — 상세는 `plan.md` §1)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -124,9 +126,9 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 
 ## 2. 지금까지 한 일
 
-전체 23개 Task 중 **18개 완료**(Task 18·19 는 검색 API 미해결로 건너뛰고 Task 20 을
-먼저 함). PR 25개 머지 (#1~#25, #16~#20 은 문서 전용 — 이후 규칙 9(§6)로 금지된 관행이니
-반복하지 않는다).
+전체 23개 Task 중 **18개 완료 + Task 21·22 진행중**(Task 18 은 `adapter` 전략만 부분
+완료, Task 19 는 여전히 대기). PR 35개 머지(#1~#35, #16~#20 은 문서 전용 — 이후 규칙
+9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
 |---|---|---|---|
@@ -148,6 +150,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 16. 바코드 스캔과 제품 매칭 | ✅ | [#23](https://github.com/jihoon22-lee/SoolJang/pull/23) | `application/barcodes.py`(정규화·RCN 판별), Open Food Facts 조회, `GET /barcodes/{code}`·`PATCH /skus/{id}`, `BarcodeScanPanel`(네이티브 BarcodeDetector + ZXing 폴백) |
 | 17. 라벨 OCR 프리필 | ✅ | [#24](https://github.com/jihoon22-lee/SoolJang/pull/24) | LLM 설정 인프라(`LlmSetting` 암호화 저장, `GET·PUT·DELETE /llm-settings`), `infrastructure/external/llm.py`(OpenAI 구조화 출력), `POST /ocr/label`, `POST /attachments`(문서-코드 갭 메우기), `LabelOcrPanel`·`SettingsPage` |
 | 20. 통계 v2 (Task 18·19 를 건너뛰고 먼저 함) | ✅ | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) | `purchase_stats_rows_query`(구매 건 단위), `get_pivot`·`get_timeseries`, `SavedView`(JSONB 정의), `POST /stats/pivot`·`GET /stats/timeseries`·`GET·POST /saved-views`, `PivotExplorer.tsx`(온라인 전용), `value_for_money` 를 제품 지표에 처음 노출 |
+| 21. 자체 통합 테스트(진행중) → **22. 개선 실행 Track 1~4** | 🟡 | [#26](https://github.com/jihoon22-lee/SoolJang/pull/26)~[#35](https://github.com/jihoon22-lee/SoolJang/pull/35)(10건) | 사용자가 실데이터(405종·1,078병·64곳)로 직접 써 보고 보고한 문제 + 코드 감사 결과를 실행. URL 라우팅, 목록 밀도·정렬·필터, 제품 상세 개편(수정+병+구매 관리), 병 되돌리기+성능 수정, 통계 크로스 링크, 구매처 관리+설정, 자동완성+초성검색, 비주얼 디자인 전면 개편("Cellar Dark"), 외부 소스 레지스트리(Task 18, `adapter` 전략만), 매장 모드(`#scan`, 신규 화면). **상세는 `plan.md` §1 "Task 22 실행 요약" 표** — 각 PR 링크·근거·이연한 것(`search` 전략, 시세 이력)까지 정리돼 있다 |
 
 ### 검증된 사실 (다시 확인할 필요 없음)
 
@@ -169,6 +172,8 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | 바코드 스캔 백엔드·프론트 전체 검증 | `pytest` 557 passed, 27 skipped, 커버리지 90.43%. 프론트엔드 223 passed, 커버리지 89.4% stmts / 80.17% branch. 카메라·`BarcodeDetector`·`@zxing/browser` 를 전부 가짜로 주입해 하드웨어 없이 스캐너 로직까지 검증. `docker build`(web·api) 둘 다 정상 |
 | 라벨 OCR·LLM 설정 백엔드·프론트 전체 검증 | `pytest` 592 passed, 28 skipped(opt-in `live_llm` 포함), 커버리지 90.84%. 프론트엔드 237 passed, 커버리지 89.87% stmts / 80.2% branch(임계값에 근소하게 통과). **실제 OpenAI API 로 1회 왕복 확인**(`live_llm` 마커, 사용자가 다른 프로젝트 키를 테스트용으로 제공) — 인증·요청 형식·구조화 출력 파싱이 실동작함을 확인. `docker build`(web·api) 둘 다 정상, api 이미지는 직접 실행해 `create_app()` 임포트까지 확인(§5 `httpx` 함정 재발 여부 재확인 겸함) |
 | 통계 v2(피벗·시계열·저장뷰) 백엔드·프론트 전체 검증 | `pytest` 612 passed, 28 skipped, 커버리지 90.97%. 프론트엔드 254 passed, 커버리지 90.3% stmts / 80.02% branch(임계값에 근소하게 통과). "구매처별 × 주종별 평균 할인율" 데모 시나리오를 실제 API 테스트로 재현(정가 10만원·실구매 8만원 → 할인율 20% 정확히 계산됨 확인). `docker build`(web·api) 둘 다 정상 |
+| Task 22 Track 1~4(10 PR) 각각 백엔드·프론트 전체 검증 + 실클릭 확인 | 매 PR 이 `npm run check`(lint+typecheck+vitest 80%+)와 필요시 `uv run pytest`/`ruff`/`ty` 를 통과한 뒤에만 머지. `pytest` 최종 650 passed. PR9(외부 소스)·PR10(매장 모드)는 Playwright 로 실제 405종 데이터 대상 실클릭까지 확인(검색 랭킹, 조회 결과, 신규 등록→즉시 요약 반영, 카메라 권한 거부 시 우아한 실패) |
+| Task 21 완료(2026-08-03, `feature/self-review`) | **E2E 회귀 테스트**: 등록→검색→구매 분할→개봉→시음→통계→바코드→피벗→저장뷰→오프라인 동기화를 잇는 영구 테스트(`tests/api/test_e2e_scenario.py`) 추가. **성능 실측**: 429/1,078 규모와 10배(4,290/10,780) 규모 모두 opt-in 벤치마크(`tests/performance/test_scale_benchmarks.py`)로 실측 — 가장 느린 `POST /stats/pivot` 도 10배 규모에서 211ms. **실측 중 실제 버그 발견·수정**: 대량 임포트 직후 `ANALYZE` 미실행으로 정상 4~6ms 쿼리가 25~30초로 느려지는 문제(`legacy_import.py::apply_plan`). **장애 주입**: 외부 소스 타임아웃·셀렉터 파손·robots.txt 차단(PR9 테스트 8종), 동기화 충돌(LWW·재전송·head-of-line, 기존 `test_sync.py`), LLM 네트워크 타임아웃(`test_llm.py`), **처리되지 않은 예외(DB 연결 끊김 포함) → Problem Details 미변환 결함을 발견해 즉시 수정**(`api/errors.py` 에 `Exception` 캐치올 핸들러 추가 + `logger.exception` 으로 서버 로그에 원인 기록, `test_error_handling.py` 로 검증). **데이터 무결성**: `sooljang`(실데이터 406제품·1,079병) `pg_dump` → 새 DB `pg_restore` → 통계 재계산(summary·rankings·category rollup) 결과가 백업 전과 **바이트 단위로 동일**함을 확인, 임시 DB 는 정리함. 산출물은 [`docs/review-2026-08-03.md`](review-2026-08-03.md) |
 
 ---
 
@@ -219,16 +224,19 @@ python3 scripts/generate_legacy_fixture.py
 `docs/plan.md` §3·§4 에 Task 7~21 의 목표·산출물·테스트 요구사항·데모 기준이 모두 있다.
 아래는 우선순위와 주의점만 요약한다.
 
-### 다음 착수: Task 21(자체 통합 테스트) 권장 — Task 18·19 는 여전히 사용자 확인 필요
+### 다음 착수: Task 21 잔여 검증 마무리 (`feature/self-review`)
 
-Task 20(통계 v2)까지 마쳐 커스텀 피벗·시계열·저장뷰를 쓸 수 있다. Q2(검색·LLM API
-제공자와 예산)는 **LLM 쪽만** 풀렸다(Task 17) — 상시 예산 상한은 아직 정해지지 않았고,
-검색 API 제공자는 여전히 미해결이라 Task 18(외부 소스 레지스트리)의 핵심(`search` 전략,
-§7.2)은 계속 막혀 있다(`docs/plan.md` §6 Q2).
+**(이 절은 2026-08-02 시점 기록이다 — 그 뒤 진행 상황은 위 "지금까지 한 일" 표의
+Task 21/22 행과 `plan.md` §1 "현재 위치"를 우선한다.)**
 
-**막히지 않는 다음 후보**: Task 21(자체 통합 테스트와 다각도 분석)은 Task 18·19 를
-거치지 않고 착수할 수 있다(아래 다이어그램 참조) — 지금까지 완료한 18개 Task 를 검토하기
-좋은 시점이기도 하다.
+Task 22 Track 1~4(10 PR, #26~#35)를 실행하며 Task 21 항목 상당수를 이미 채웠다. 남은 것:
+- `docs/review-<날짜>.md` 작성(아직 없음)
+- 모바일 실기기 검증(이 샌드박스엔 실기기가 없어 여전히 불가능 — 배포 후 수동 확인)
+- Task 21 완료 표시(§3 체크리스트)와 이 문서·`plan.md` 최종 정리
+
+그 다음은 **PR11(시세 이력·알림, Task 19)** 인데 Q5(웹 푸시 채널)가 미해결이고 "PR9·10 이
+실제로 쓸 만한지 확인한 뒤" 라는 조건도 아직 충족되지 않았다 — 바로 착수하지 않는다.
+검색 API 제공자(Q2 후반, `search` 전략)도 여전히 미해결이다.
 
 **HTTPS 공개는 여전히 미완이다**: Tailscale 설치·로그인은 Task 14 세션에서 끝났지만
 (tailnet `tail30f401.ts.net`), 이 브라우저 자동화가 동작하지 않는 샌드박스라 아직
@@ -322,6 +330,7 @@ scripts/serve-https.sh
 | **CI `migration-check` 잡이 `alembic` 을 pytest 밖에서 직접 돌린다** | `Settings` 에 필수 필드(`secret_key` 등)를 새로 추가하면 그 잡만 `ValidationError` 로 실패 — `python-quality` 잡은 `conftest.py` 의 autouse fixture 가 채워 줘서 통과한다 | 새 필수 설정을 추가할 때 `.github/workflows/quality.yml` 의 `migration-check` 잡 `env:` 에도 테스트용 값을 추가해야 한다. Task 17 에서 `SOOLJANG_SECRET_KEY` 를 추가하며 실제로 겪음 — PR 을 올리고 나서야 CI 에서 발견했다(로컬은 `.env` 가 있어 안 터진다) |
 | **의존성 상한을 너무 느슨하게 잡으면 CI `pip-audit` 이 나중에 실패한다** | `cryptography>=46,<47` 로 고정했는데 46.x 에 이미 알려진 취약점(GHSA)이 있어 `pip-audit --strict` 가 실패 | 새 의존성을 추가할 때 `pip-audit` 를 로컬에서도 한 번 돌려 본다: `uv export --frozen --no-dev --no-emit-project --format requirements.txt -o /tmp/req.txt && uv run --with pip-audit pip-audit --strict -r /tmp/req.txt`. Task 17 에서 발견 |
 | **`vi.stubGlobal("URL", {...URL, 메서드})` 로 전체 URL 을 바꿔치기하면 생성자가 사라진다** | `URL.createObjectURL` 을 목킹하려다 `{...URL}` 스프레드로 교체하면, `URL` 이 더 이상 `new URL(...)` 로 생성자 호출이 안 되는 평범한 객체가 된다 — 다른 코드가 조용히 깨진다 | 전체를 바꿔치기하지 않는다. `URL.createObjectURL = vi.fn()` 처럼 필요한 정적 메서드만 직접 얹고, 테스트 끝에 `undefined` 로 되돌린다. `PivotExplorer.test.tsx`(Task 20) CSV 내보내기 테스트에서 실제로 겪음 — 실패 증상이 "표가 안 뜬다"로 나타나 원인 파악에 시간이 걸렸다 |
+| **이 개발 환경에 로컬 Postgres 인스턴스가 두 개 떠 있다** | `#scan`(매장 모드) 실클릭 검증 중 `/external-lookup` 이 500 을 반환. 원인은 코드가 아니라 프론트 dev 서버(5173)가 프록시하는 API(포트 8000/8001, `postgresql://…@127.0.0.1:5432/sooljang`, 실데이터 406종)가 `alembic upgrade`(포트 54329, `sooljang_dev`/`sooljang_test`, `scripts/dev-db.sh` 관리)와 **다른 DB** 라 새 마이그레이션(`0008_external_sources`)이 안 들어가 있었다 | `SOOLJANG_DATABASE_URL` 을 바꿔 가며 작업했다면, 실클릭 검증 전에 **실제로 요청이 가는 서버가 어느 DB 를 보는지**(`ps`/`/proc/<pid>/environ` 로 확인) 를 먼저 맞춘다. 두 DB 모두에 `alembic upgrade head` 를 돌려야 할 수 있다. Task 22 PR9/10 세션에서 실제로 겪음 |
 
 ---
 
@@ -351,8 +360,8 @@ scripts/serve-https.sh
 | # | 질문 | 필요 시점 |
 |---|---|---|
 | ~~Q4~~ | ~~Tailscale 설치 여부와 tailnet 이름~~ | **✅ 해결** — `tail30f401.ts.net`, `https://main.tail30f401.ts.net`. §4 참조 |
-| Q2 | 검색·LLM API 제공자와 예산 | **LLM 쪽만 부분 해결(Task 17)** — OpenAI, 테스트용 키만. 검색 API·상시 예산은 미해결 |
-| Q3 | 초기 등록할 외부 소스 사이트 목록 | Task 18 |
+| Q2 | 검색·LLM API 제공자와 예산 | **LLM 쪽 부분 해결(Task 17)** — OpenAI, 테스트용 키만. **`adapter` 전략은 LLM 없이 PR9 에서 구현 완료.** `search` 전략(검색 API)·상시 LLM 예산은 여전히 미해결 |
+| Q3 | 초기 등록할 외부 소스 사이트 목록 | **답 받음(2026-08-03)** — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24. 레지스트리 UI(`#sources`)는 준비됐지만 실제 `adapter_spec` 등록은 아직 안 함 — Task 19/PR11 전 남은 작업 |
 | Q5 | 목표가 알림 채널 (웹 푸시 vs 다른 수단) | Task 19 |
 | Q6 | 지인 공유 권한 모델 상세 | **미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88)**. Task 20 후속 |
 

@@ -69,6 +69,7 @@ markers = [
     "requires_db: 실제 PostgreSQL 연결이 필요한 테스트",
     "requires_legacy_sheet: 실제 레거시 시트 파일이 필요한 opt-in 테스트",
     "live_llm: 실제 LLM API 를 호출하는 opt-in 테스트",
+    "benchmark: 대량 합성 데이터로 응답 시간을 측정하는 opt-in 테스트 (Task 21)",
 ]
 
 [tool.coverage.run]

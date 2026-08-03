@@ -122,6 +122,34 @@ def test_commit_creates_categories_and_vendors(committed: Any) -> None:
     assert committed["vendors_created"] > 0
 
 
+def test_commit_analyzes_written_tables(committed: Any) -> None:
+    """대량 적재 직후 플래너 통계를 갱신해 두지 않으면, 곧바로 이어지는 조회가
+    빈 테이블 기준 옛 통계로 계획을 짜 중첩 루프를 골라 수십 배 느려질 수 있다
+    (Task 21 실측: 429행 기준 정상 수 ms 가 25~30초로). `apply_plan` 이 적재 직후
+    `ANALYZE` 를 직접 돌리는지 `pg_stat_user_tables.last_analyze` 로 확인한다 —
+    이 컬럼은 autovacuum 이 아니라 수동 `ANALYZE` 에서만 채워진다.
+    """
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from tests.conftest import _database_url
+
+    async def _last_analyze() -> object:
+        engine = create_async_engine(_database_url())
+        try:
+            async with engine.begin() as conn:
+                result = await conn.execute(
+                    text("select last_analyze from pg_stat_user_tables where relname = 'product'")
+                )
+                return result.scalar()
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(_last_analyze()) is not None
+
+
 def test_committed_products_appear_in_list(
     api_client: TestClient, prefix: str, committed: Any
 ) -> None:

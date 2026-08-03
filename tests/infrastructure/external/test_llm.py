@@ -134,6 +134,20 @@ async def test_인증_오류는_실패로_통일한다() -> None:
         await _extract(handler)
 
 
+async def test_네트워크_타임아웃도_실패로_통일한다() -> None:
+    """`extract_label` 의 `except Exception` 은 인증·형식 오류뿐 아니라 연결 타임아웃 같은
+    네트워크 계층 예외도 잡아야 한다(Task 21 장애 주입 검증) — 그래야 라우터가 항상
+    `LabelExtractionFailedError` 하나만 알면 되고, `httpx` 예외가 그대로 새어 나가 500 으로
+    비치지 않는다.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    with pytest.raises(LabelExtractionFailedError):
+        await _extract(handler)
+
+
 @pytest.mark.live_llm
 async def test_실제_openai_api로_라벨을_인식한다() -> None:
     """opt-in 실호출 테스트. `OPENAI_API_KEY` 환경 변수가 있어야 실행된다.
