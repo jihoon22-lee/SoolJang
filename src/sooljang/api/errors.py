@@ -4,6 +4,7 @@
 `{"detail": ...}` 는 필드별 오류를 표현하기 어렵고 타입 식별자가 없다.
 """
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -17,6 +18,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 ERROR_TYPE_BASE = "https://sooljang.local/errors"
 
 PROBLEM_CONTENT_TYPE = "application/problem+json"
+
+logger = logging.getLogger(__name__)
 
 
 class FieldError(BaseModel):
@@ -182,7 +185,8 @@ def register_error_handlers(app: FastAPI) -> None:
         # 없으면 Starlette 기본 처리로 떨어져 이 API 만 유일하게 일반 텍스트 500 을
         # 돌려주고, "모든 에러를 Problem Details 로 통일한다"는 이 함수의 전제가 깨진다
         # (Task 21 장애 주입 검증에서 발견). 원인 메시지는 스택/쿼리를 노출할 수 있어
-        # 담지 않는다 — 서버 로그에서 확인한다.
+        # 응답에는 담지 않는다 — 서버 로그에는 남긴다.
+        logger.exception("처리되지 않은 예외", exc_info=exc)
         return problem_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             error_type="internal",
