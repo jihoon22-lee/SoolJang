@@ -385,6 +385,30 @@ h4 {
   font-size: 0.85rem;
 }
 
+.checkbox-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  height: 20px;
+  width: 20px;
+  flex: none;
+}
+
+.code-textarea {
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+  font-size: 0.85rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 .autocomplete {
   position: relative;
 }
@@ -1286,6 +1310,47 @@ button:disabled {
   .tasting-form .bottle-error {
     grid-column: 1 / -1;
   }
+}
+
+/* --- 외부 정보(Task 18) ------------------------------------------------------ */
+
+.external-info-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.external-info-item {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+.external-info-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.external-info-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.external-info-fields dt {
+  text-transform: capitalize;
+}
+
+.external-info-fields dd {
+  margin: 0;
 }
 
 /* --- 바코드 스캔 ----------------------------------------------------------- */

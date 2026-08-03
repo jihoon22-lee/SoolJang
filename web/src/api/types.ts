@@ -577,3 +577,47 @@ export interface AttachmentResponse {
   bottle_id: string | null;
   tasting_session_id: string | null;
 }
+
+// --- 외부 소스 레지스트리와 조회 (Task 18) --------------------------------------
+
+/** `docs/architecture.md` §7.2 의 YAML 스키마와 같은 모양의 JSON. 필드 형태가
+ * 사이트마다 달라 여기서 세부 타입을 고정하지 않는다 — 등록 화면이 원문 그대로
+ * 편집한다. */
+export type AdapterSpec = Record<string, unknown>;
+
+export interface ExternalSource {
+  id: string;
+  name: string;
+  base_url: string;
+  adapter_spec: AdapterSpec;
+  category_id: string | null;
+  priority: number;
+  is_active: boolean;
+  rate_limit_per_min: number;
+  ttl_hours: number;
+  note: string | null;
+}
+
+export interface ExternalSourceInput {
+  name: string;
+  base_url: string;
+  adapter_spec: AdapterSpec;
+  category_id?: string | null;
+  priority?: number;
+  is_active?: boolean;
+  rate_limit_per_min?: number;
+  ttl_hours?: number;
+  note?: string | null;
+}
+
+export interface SourceLookupResult {
+  source_id: string;
+  source_name: string;
+  cached: boolean;
+  source_url: string | null;
+  fields: Record<string, unknown>;
+  raw_excerpt: string | null;
+  degraded: boolean;
+  warning: string | null;
+  fetched_at: string | null;
+}

@@ -13,6 +13,8 @@ import type {
   CategoryStat,
   CategoryTree,
   DeleteStrategy,
+  ExternalSource,
+  ExternalSourceInput,
   FieldError,
   HealthStatus,
   ImportAnalysis,
@@ -35,6 +37,7 @@ import type {
   SavedViewInput,
   SetupStatus,
   Sku,
+  SourceLookupResult,
   StatsSummary,
   SyncBatchResponse,
   SyncOperationRequest,
@@ -463,6 +466,24 @@ export const llmSettingsApi = {
     request<LlmSettingResponse>("/llm-settings", { method: "PUT", body: input }),
 
   remove: () => request<void>("/llm-settings", { method: "DELETE" }),
+};
+
+/** 외부 소스 레지스트리(Task 18). 등록·조회 모두 온라인 전용이다 — outbox 를 거치지 않는다. */
+export const externalSourcesApi = {
+  list: (signal?: AbortSignal) =>
+    request<ExternalSource[]>("/external-sources", signal ? { signal } : {}),
+
+  create: (input: ExternalSourceInput) =>
+    request<ExternalSource>("/external-sources", { method: "POST", body: input }),
+
+  update: (id: string, patch: Partial<ExternalSourceInput>) =>
+    request<ExternalSource>(`/external-sources/${id}`, { method: "PATCH", body: patch }),
+
+  remove: (id: string) => request<void>(`/external-sources/${id}`, { method: "DELETE" }),
+
+  /** 제품 상세 "외부 정보" 카드가 사용자 조작(버튼 클릭) 시점에만 호출한다 — 자동 조회 없음. */
+  lookup: (productId: string) =>
+    request<SourceLookupResult[]>(`/products/${productId}/external-lookup`, { method: "POST" }),
 };
 
 /** 라벨 OCR(Task 17). Vision LLM 호출이라 온라인 전용이다 — outbox 를 거치지 않는다.

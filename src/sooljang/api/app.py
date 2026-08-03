@@ -13,6 +13,7 @@ from sooljang.api.routes import (
     auth,
     barcodes,
     categories,
+    external_sources,
     health,
     legacy_import,
     llm_settings,
@@ -92,6 +93,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         llm_settings.router,
         ocr.router,
         saved_views.router,
+        external_sources.router,
+        external_sources.lookup_router,
     ):
         app.include_router(router, prefix=API_PREFIX, dependencies=[protected])
     return app

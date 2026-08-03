@@ -1,9 +1,9 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Product, ProductMetrics, Purchase } from "@/api/types";
 import { ProductDetail } from "@/components/ProductDetail";
-import { renderWithQuery } from "@/testing";
+import { renderWithQuery, stubRoutes } from "@/testing";
 
 const metrics: ProductMetrics = {
   purchased_count: 3,
@@ -279,7 +279,9 @@ describe("ProductDetail", () => {
       expect(screen.queryByRole("button", { name: "분할" })).not.toBeInTheDocument();
       // 제품 자체의 "삭제" 버튼(항상 보임)만 남고, 구매 행별 "삭제" 버튼은 없다.
       expect(screen.getAllByRole("button", { name: "삭제" })).toHaveLength(1);
-      expect(screen.getByText(/온라인일 때만/)).toBeInTheDocument();
+      expect(
+        screen.getByText("구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다."),
+      ).toBeInTheDocument();
     });
 
     it("구매 추가 폼을 열고 제출하면 입력값을 그대로 넘긴다", async () => {
@@ -377,6 +379,99 @@ describe("ProductDetail", () => {
       await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
 
       expect(onAddSku).toHaveBeenCalledWith(700);
+    });
+  });
+
+  describe("외부 정보", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("버튼을 누르기 전에는 조회하지 않는다", () => {
+      const { spy } = stubRoutes([{ match: "/external-lookup", method: "POST", body: [] }]);
+
+      setup();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("버튼을 누르면 조회 결과를 보여준다", async () => {
+      stubRoutes([
+        {
+          match: "/external-lookup",
+          method: "POST",
+          body: [
+            {
+              source_id: "src-1",
+              source_name: "데일리샷",
+              cached: false,
+              source_url: "https://example.com/product/1",
+              fields: { price: 35000, rating: 4.5 },
+              raw_excerpt: null,
+              degraded: false,
+              warning: null,
+              fetched_at: "2026-08-01T00:00:00Z",
+            },
+          ],
+        },
+      ]);
+
+      setup();
+      await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+      expect(await screen.findByText("데일리샷")).toBeInTheDocument();
+      expect(screen.getByText("35000")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute(
+        "href",
+        "https://example.com/product/1",
+      );
+    });
+
+    it("degraded 결과는 경고와 함께 보여준다", async () => {
+      stubRoutes([
+        {
+          match: "/external-lookup",
+          method: "POST",
+          body: [
+            {
+              source_id: "src-1",
+              source_name: "데일리샷",
+              cached: false,
+              source_url: null,
+              fields: {},
+              raw_excerpt: null,
+              degraded: true,
+              warning: "검색 결과에서 후보를 찾지 못했습니다",
+              fetched_at: "2026-08-01T00:00:00Z",
+            },
+          ],
+        },
+      ]);
+
+      setup();
+      await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+      expect(await screen.findByText("일부 정보만 확인됨")).toBeInTheDocument();
+      expect(screen.getByText("검색 결과에서 후보를 찾지 못했습니다")).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "출처 보기" })).not.toBeInTheDocument();
+    });
+
+    it("등록된 소스가 없으면 안내한다", async () => {
+      stubRoutes([{ match: "/external-lookup", method: "POST", body: [] }]);
+
+      setup();
+      await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+      expect(await screen.findByText(/등록된 외부 소스가 없습니다/)).toBeInTheDocument();
+    });
+
+    it("오프라인이면 조회 버튼을 비활성화한다", () => {
+      setup({ offline: true });
+
+      expect(screen.getByRole("button", { name: "외부 정보 조회" })).toBeDisabled();
+      expect(
+        screen.getByText("외부 정보 조회는 온라인일 때만 할 수 있습니다."),
+      ).toBeInTheDocument();
     });
   });
 });

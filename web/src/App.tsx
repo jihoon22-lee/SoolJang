@@ -9,6 +9,7 @@ import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { SourcesPage } from "@/pages/SourcesPage";
 import { StatsPage } from "@/pages/StatsPage";
 import { VendorsPage } from "@/pages/VendorsPage";
 import { parseHash, type Route, routeToHash, type View } from "@/router";
@@ -19,6 +20,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
   { id: "categories", label: "주종 관리" },
   { id: "vendors", label: "구매처" },
+  { id: "sources", label: "외부 소스" },
   { id: "stats", label: "통계" },
   { id: "import", label: "가져오기" },
   { id: "settings", label: "설정" },
@@ -153,6 +155,7 @@ export function App() {
           )}
           {route.view === "categories" && <CategoriesPage />}
           {route.view === "vendors" && <VendorsPage />}
+          {route.view === "sources" && <SourcesPage />}
           {route.view === "stats" && (
             <StatsPage
               onSelectProduct={(id) => navigate({ view: "products", productId: id })}

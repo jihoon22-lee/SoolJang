@@ -363,6 +363,14 @@ erDiagram
   IndexedDB 로 미러링되면 안 된다. 키는 평문이 아니라 Fernet 암호문(`api_key_ciphertext`)
   으로 저장하고, 화면에 마스킹 값을 보여주기 위한 마지막 4자만 별도 평문 컬럼
   (`api_key_hint`)으로 둔다
+- `external_source`: 사용자가 등록한 조회 대상 사이트 하나(Task 18, §7). `name`,
+  `base_url`, `adapter_spec jsonb`(§7.2 스키마), `category_id`(FK, `NULL` 이면 전역 소스),
+  `priority`, `is_active`, `rate_limit_per_min`, `ttl_hours`. `llm_setting` 과 같은 이유로
+  동기화 대상이 아니다 — 지금은 `adapter` 전략만 저장한다(`search` 전략은 별도 PR)
+- `external_lookup_cache`: 소스·제품별 최근 조회 결과(§7.1 `FetchedSnapshot`). `source_id`,
+  `product_id`, `snapshot jsonb`(`source_url`/`fields`/`raw_excerpt`), `degraded`,
+  `warning`, `fetched_at`. `ttl_hours` 내 재조회 요청은 이 값을 그대로 돌려준다(§7.3).
+  `source_url` 없는 결과는 저장하지 않는다(§7.1 절대 규칙) — 동기화 대상이 아니다
 - `user`, `session`: 인증(§6)
 
 ### 2.4 인덱스
@@ -617,6 +625,11 @@ detail:
 - `ttl_hours` 내 재조회는 캐시를 반환한다
 - User-Agent에 프로젝트 식별자와 연락 수단을 넣는다
 - 대량 백그라운드 크롤링은 하지 않는다. 시세 추적(Task 19)도 관심 등록 품목에 한해 저빈도로 수행한다
+
+**구현 결정(Task 18)**: robots.txt 파서 캐시와 rate limit 카운터는 DB 가 아니라 프로세스
+메모리에 둔다. §8.1 토폴로지가 단일 프로세스 배포라 재시작 사이에 카운트가 리셋되는 정도는
+안전 마진 안이다 — `llm_setting`(§9.14)의 "단일 활성 행을 애플리케이션 계층에서 강제" 판단과
+같은 종류의 단순화다. 재조회 자체를 피하기 위한 TTL 캐시(`external_lookup_cache`)만 DB 에 둔다.
 
 ## 8. 배포
 
