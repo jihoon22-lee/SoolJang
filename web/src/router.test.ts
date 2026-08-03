@@ -11,6 +11,7 @@ describe("parseHash", () => {
     expect(parseHash("#stats")).toEqual({ view: "stats" });
     expect(parseHash("#categories")).toEqual({ view: "categories" });
     expect(parseHash("#vendors")).toEqual({ view: "vendors" });
+    expect(parseHash("#sources")).toEqual({ view: "sources" });
   });
 
   it("모르는 뷰는 제품 목록으로 떨어진다", () => {
