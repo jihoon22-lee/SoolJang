@@ -29,6 +29,8 @@ const product: Product = {
   id: "p1",
   name: "가상 증류소 싱글몰트 12y",
   name_en: null,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
   category_id: "c1",
   category_path: ["양주", "위스키", "싱글몰트 위스키"],
   producer_id: null,

@@ -158,7 +158,20 @@ class Attachment(Base, EntityMixin):
             " + (tasting_session_id IS NOT NULL)::int = 1",
             name="attachment_has_exactly_one_owner",
         ),
-        UniqueConstraint("user_id", "sha256", "kind", name="uq_attachment_user_sha256_kind"),
+        # 소유 대상까지 포함해야 "같은 업로드" 다 — 대상을 빼면 같은 사진을 다른
+        # 제품/병/시음 기록에 붙일 수 없었다(라우터가 앞서 만든 첨부를 그대로 돌려주고
+        # 새 대상엔 안 붙는 결함). PostgreSQL 은 UNIQUE 제약에서 NULL 을 서로 다른 값으로
+        # 보므로, 한 행에서 셋 중 둘은 항상 NULL(위 attachment_has_exactly_one_owner)이라도
+        # 실제 소유자(0이 아닌 하나)가 다르면 충돌하지 않는다.
+        UniqueConstraint(
+            "user_id",
+            "sha256",
+            "kind",
+            "product_id",
+            "bottle_id",
+            "tasting_session_id",
+            name="uq_attachment_user_sha256_kind_owner",
+        ),
         Index("ix_attachment_product_id", "product_id"),
         Index("ix_attachment_bottle_id", "bottle_id"),
         Index("ix_attachment_tasting_session_id", "tasting_session_id"),

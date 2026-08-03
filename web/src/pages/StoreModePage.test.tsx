@@ -34,6 +34,8 @@ function apiProduct(id: string, name: string): Product {
     id,
     name,
     name_en: null,
+    created_at: NOW,
+    updated_at: NOW,
     category_id: null,
     category_path: [],
     producer_id: null,
@@ -185,5 +187,73 @@ describe("StoreModePage", () => {
       expect(await db.product.get("new-1")).toMatchObject({ name: "새로 등록한 술" });
     });
     expect(await screen.findByRole("heading", { name: "새로 등록한 술" })).toBeInTheDocument();
+  });
+
+  it("구매 저장이 실패한 뒤 재시도해도 제품을 다시 만들지 않는다(B7)", async () => {
+    // 제품 생성은 항상 성공하지만 구매 생성은 첫 호출만 실패시킨다 — "제품은 이미
+    // 서버에 있는데 구매 저장에 실패해 폼이 다시 열리는" 상황을 재현한다. 재시도가
+    // `POST /products` 를 또 부르면(멱등키가 없어) 중복 제품이 생긴다.
+    const created = {
+      ...apiProduct("new-2", "재시도 테스트 술"),
+      skus: [
+        { id: "sku-2", volume_ml: 700, barcode: null, barcode_type: null, package_note: null },
+      ],
+    };
+    let purchaseCalls = 0;
+    const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/products") && method === "POST") {
+        return new Response(JSON.stringify(created), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/purchases") && method === "POST") {
+        purchaseCalls += 1;
+        if (purchaseCalls === 1) {
+          return new Response(JSON.stringify({ detail: "일시적 오류" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ id: "pu-1" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ detail: `스텁 없음: ${method} ${url}` }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", spy);
+
+    renderStoreMode();
+
+    await userEvent.type(screen.getByLabelText("이름으로 찾기"), "재시도 테스트 술");
+    await userEvent.click(
+      await screen.findByRole("button", { name: '"재시도 테스트 술" 새로 등록' }),
+    );
+    await screen.findByRole("heading", { name: "새 술 등록" });
+    // 이름은 검색어로 이미 채워져 있다 — 다시 입력하면 값이 겹쳐 붙는다.
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+    await userEvent.type(screen.getByLabelText("병수"), "1");
+
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+    expect(await screen.findByText(/재시도 테스트 술.*이미 등록됐습니다/)).toBeInTheDocument();
+    await waitFor(async () => {
+      expect(await db.product.get("new-2")).toMatchObject({ name: "재시도 테스트 술" });
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+    expect(await screen.findByRole("heading", { name: "재시도 테스트 술" })).toBeInTheDocument();
+
+    const productCalls = spy.mock.calls.filter(([input, init]) => {
+      const url = typeof input === "string" ? input : String(input);
+      return url.includes("/products") && (init?.method ?? "GET").toUpperCase() === "POST";
+    });
+    expect(productCalls).toHaveLength(1);
+    expect(purchaseCalls).toBe(2);
   });
 });

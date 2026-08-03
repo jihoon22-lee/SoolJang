@@ -95,6 +95,35 @@ def test_같은_파일을_다시_올리면_기존_첨부를_재사용한다(
     assert first.json()["id"] == second.json()["id"]
 
 
+def test_같은_파일이어도_다른_제품에_붙이면_각자_새_첨부가_된다(
+    api_client: TestClient, prefix: str
+) -> None:
+    """중복 제거를 `(user_id, sha256, kind)` 로만 판단하면 소유 대상(product_id)을
+    무시해, 같은 라벨 사진을 다른 제품에 붙일 때 앞서 만든 첨부가 그대로 반환되고
+    새 제품엔 아무것도 안 붙는다 — 요청은 201 로 성공하는데 실제로는 조용히 실패하는
+    셈이었다."""
+    product_a = _seed_product(api_client, prefix, name="첫 번째 위스키")
+    product_b = _seed_product(api_client, prefix, name="두 번째 위스키")
+    png = _minimal_png()
+
+    first = api_client.post(
+        f"{prefix}/attachments",
+        files={"file": ("label.png", png, "image/png")},
+        data={"kind": "label", "product_id": product_a["id"]},
+    )
+    second = api_client.post(
+        f"{prefix}/attachments",
+        files={"file": ("label.png", png, "image/png")},
+        data={"kind": "label", "product_id": product_b["id"]},
+    )
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["id"] != second.json()["id"]
+    assert first.json()["product_id"] == product_a["id"]
+    assert second.json()["product_id"] == product_b["id"]
+
+
 def test_소유자를_지정하지_않으면_422(api_client: TestClient, prefix: str) -> None:
     response = api_client.post(
         f"{prefix}/attachments",

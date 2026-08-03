@@ -89,6 +89,44 @@ describe("ProductForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("용량이 필요합니다");
   });
 
+  it("병수가 정수가 아니면 막는다", async () => {
+    // 실사용 중 발견된 결함: 병수에 "2.5" 를 입력하면 낙관적으로 만드는 병 id 개수(2개)
+    // 와 서버에 보내는 quantity(2.5)가 어긋나 오프라인 동기화 큐가 영구히 막혔다.
+    const { onSubmit } = setup();
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "가상 위스키");
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+    await userEvent.type(screen.getByLabelText("병수"), "2.5");
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("병수는 1 이상의 정수를 입력하세요");
+  });
+
+  it("용량이 정수가 아니면 막는다", async () => {
+    const { onSubmit } = setup();
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "가상 위스키");
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700.5");
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("용량(ml)은 1 이상의 정수를 입력하세요");
+  });
+
+  it("병수·용량이 정수면 정상 제출된다", async () => {
+    const { onSubmit } = setup();
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "가상 위스키");
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+    await userEvent.type(screen.getByLabelText("병수"), "2");
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "2", volumeMl: "700" }),
+    );
+  });
+
   it("주종을 계층 경로로 고를 수 있다", async () => {
     const { onSubmit } = setup();
 

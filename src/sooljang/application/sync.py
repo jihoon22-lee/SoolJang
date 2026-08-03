@@ -34,7 +34,7 @@ from typing import Any
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError, ValidationFailedError
@@ -135,6 +135,35 @@ def _decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _bounded_int(value: Any, *, field_name: str, gt: int = 0, le: int) -> int:
+    """정수 필드를 검증한다. 온라인 라우트의 Pydantic 경계(`gt`/`le`)와 맞춘다.
+
+    `/sync/batch` 의 `fields` 는 느슨한 `dict[str, Any]`(모듈 docstring 참고)라, 여기서
+    막지 않으면 정수가 아닌 값(예: 병수 입력 폼에 `step` 제한이 없어 생기는 "2.5")이
+    그대로 정수 컬럼에 들어가려다 `DataError` 를 내며 배치 전체를 실패시킨다 —
+    실사용 중 실제로 발견된 경로다. `bool` 은 `int` 의 서브클래스라 별도로 걸러낸다.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationFailedError(f"{field_name} 은(는) 정수여야 합니다")
+    if value <= gt:
+        raise ValidationFailedError(f"{field_name} 은(는) {gt}보다 커야 합니다")
+    if value > le:
+        raise ValidationFailedError(f"{field_name} 은(는) {le} 이하여야 합니다")
+    return value
+
+
+def _bounded_str(value: Any, *, field_name: str, max_length: int) -> str:
+    """문자열 필드의 길이를 온라인 라우트의 Pydantic 경계와 맞춘다."""
+    if not isinstance(value, str):
+        raise ValidationFailedError(f"{field_name} 은(는) 문자열이어야 합니다")
+    stripped = value.strip()
+    if not stripped:
+        raise ValidationFailedError(f"{field_name} 은(는) 필수입니다")
+    if len(stripped) > max_length:
+        raise ValidationFailedError(f"{field_name} 은(는) {max_length}자 이하여야 합니다")
+    return stripped
 
 
 # --- 풀 --------------------------------------------------------------------
@@ -317,6 +346,12 @@ async def apply_batch(
             # 나가 세션 전체가 롤백되고(§9.13 관련 원칙과 별개로, 여기선 세션 트랜잭션
             # 문제다) — 이 배치에서 이미 성공한 앞선 작업들까지 함께 되돌아간다.
             IntegrityError,
+            # DataError(타입이 안 맞는 값, 예: 정수 컬럼에 소수)·ProgrammingError 는
+            # IntegrityError 의 형제 예외라 별도 클래스다 — 위 `_bounded_int`/`_bounded_str`
+            # 로 흔한 경로는 앱 계층에서 먼저 막지만, 방어선이 없는 다른 필드가 여전히
+            # 있을 수 있어 마지막 안전망으로 여기서도 잡는다.
+            DataError,
+            ProgrammingError,
             # 잘못된 payload(필수 필드 누락, 형식이 깨진 UUID·금액)는 이 배치 요청 전체를
             # 500 으로 죽이는 대신 해당 작업만 실패로 기록한다. 클라이언트 버그로 생긴
             # 배치 하나가 서버 예외를 일으키면 안 된다.
@@ -324,12 +359,12 @@ async def apply_batch(
             ValueError,
             InvalidOperation,
         ) as error:
-            # IntegrityError 는 제약 이름·테이블명 등 스키마 정보를 담고 있어(다른 예외와
-            # 달리) 그대로 노출하면 안 된다 — 일반 메시지로 대체한다(`api/errors.py` 의
-            # 같은 예외용 핸들러와 동일한 문구).
+            # IntegrityError/DataError/ProgrammingError 는 제약·컬럼 이름 등 스키마 정보를
+            # 담고 있어(다른 예외와 달리) 그대로 노출하면 안 된다 — 일반 메시지로 대체한다
+            # (`api/errors.py` 의 같은 예외용 핸들러와 동일한 문구).
             detail = (
                 "이미 존재하는 값이거나 제약 조건을 위반했습니다"
-                if isinstance(error, IntegrityError)
+                if isinstance(error, (IntegrityError, DataError, ProgrammingError))
                 else str(error)
             )
             results.append(
@@ -471,7 +506,7 @@ async def _dispatch_category(
             category = await create_category(
                 session,
                 user_id=user_id,
-                name=fields["name"],
+                name=_bounded_str(fields["name"], field_name="name", max_length=120),
                 parent_id=_uuid(fields.get("parent_id")),
                 sort_order=fields.get("sort_order", 0),
                 id=op.entity_id,
@@ -505,8 +540,8 @@ async def _dispatch_category(
             "주종 이동은 오프라인에서 지원하지 않습니다. 온라인에서 다시 시도하세요"
         )
     if fields.get("name") is not None:
-        category.name = fields["name"].strip()
-        category.slug = make_slug(fields["name"])
+        category.name = _bounded_str(fields["name"], field_name="name", max_length=120)
+        category.slug = make_slug(category.name)
     if "sort_order" in fields and fields["sort_order"] is not None:
         category.sort_order = fields["sort_order"]
     if "note" in fields:
@@ -526,11 +561,11 @@ async def _dispatch_product(
     if op.op == "create":
         category_id = _uuid(fields.get("category_id"))
         await ensure_category_exists(session, user_id=user_id, category_id=category_id)
-        name = fields["name"]
+        name = _bounded_str(fields["name"], field_name="name", max_length=300)
         product = Product(
             id=op.entity_id,
             user_id=user_id,
-            name=name.strip(),
+            name=name,
             name_en=fields.get("name_en"),
             normalized_name=normalized_name_of(name),
             category_id=category_id,
@@ -568,8 +603,8 @@ async def _dispatch_product(
     if "producer_id" in fields:
         product.producer_id = _uuid(fields["producer_id"])
     if fields.get("name") is not None:
-        product.name = fields["name"].strip()
-        product.normalized_name = normalized_name_of(fields["name"])
+        product.name = _bounded_str(fields["name"], field_name="name", max_length=300)
+        product.normalized_name = normalized_name_of(product.name)
     for key in ("name_en", "country", "region", "note"):
         if key in fields:
             setattr(product, key, fields[key])
@@ -602,7 +637,7 @@ async def _dispatch_sku(
             id=op.entity_id,
             user_id=user_id,
             product_id=product.id,
-            volume_ml=fields["volume_ml"],
+            volume_ml=_bounded_int(fields["volume_ml"], field_name="volume_ml", le=100_000),
             barcode=fields.get("barcode"),
             barcode_type=BarcodeType(fields["barcode_type"])
             if fields.get("barcode_type")
@@ -626,7 +661,7 @@ async def _dispatch_sku(
         return conflict
 
     if "volume_ml" in fields:
-        sku.volume_ml = fields["volume_ml"]
+        sku.volume_ml = _bounded_int(fields["volume_ml"], field_name="volume_ml", le=100_000)
     if "barcode" in fields:
         sku.barcode = fields["barcode"]
     if "barcode_type" in fields:
@@ -649,7 +684,7 @@ async def _dispatch_vendor(
         vendor = Vendor(
             id=op.entity_id,
             user_id=user_id,
-            name=fields["name"].strip(),
+            name=_bounded_str(fields["name"], field_name="name", max_length=200),
             kind=VendorKind(fields["kind"]) if fields.get("kind") else VendorKind.OTHER,
             url=fields.get("url"),
             note=fields.get("note"),
@@ -680,7 +715,7 @@ async def _dispatch_vendor(
         return conflict
 
     if fields.get("name") is not None:
-        vendor.name = fields["name"].strip()
+        vendor.name = _bounded_str(fields["name"], field_name="name", max_length=200)
     if "kind" in fields and fields["kind"]:
         vendor.kind = VendorKind(fields["kind"])
     for key in ("url", "note"):
@@ -709,7 +744,7 @@ async def _dispatch_purchase(
         vendor_id = _uuid(fields.get("vendor_id"))
         if vendor_id is not None:
             await _load_writable(session, Vendor, user_id=user_id, entity_id=vendor_id, op="create")
-        quantity = fields.get("quantity", 1)
+        quantity = _bounded_int(fields.get("quantity", 1), field_name="quantity", le=1000)
 
         purchase = Purchase(
             id=op.entity_id,

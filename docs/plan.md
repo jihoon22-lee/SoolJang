@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-03 (`v1.0.0` 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기 |
-| 다음 착수 Task | **사용자 쪽 액션 1개만 남음**: 관리자 콘솔(https://login.tailscale.com/f/serve?node=n8eiMiT7ky11CNTRL)에서 Tailscale Serve 활성화 → 완료되면 `tailscale serve --bg --https=443 http://127.0.0.1:8080` 재실행으로 Task 23 마무리. 그 외 남은 항목: 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 — 사용자가 스크래핑 자체는 뒤로 미루기로 함(2026-08-03) |
-| 현재 브랜치 | `main` (PR #26~#43 머지 완료, 열린 PR 없음) |
-| 진행 중 잔여 항목 | Task 23 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03) |
+| 최종 갱신 | 2026-08-04 (Task 24 PR1 게이트 전부 통과, PR 오픈 대기) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
+| 다음 착수 Task | **Task 24 PR1**(`fix/sync-queue-recovery`) 코드·테스트·문서 갱신 완료, 전체 게이트(`pytest` 686 passed 91.50%, `npm run check` 403 passed 91.36%, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR2(프론트 안정성)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
+| 현재 브랜치 | `fix/sync-queue-recovery` (Task 24 PR1) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1 머지 대기, PR2~7 착수 전 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,6 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1/7 완료(게이트 통과, 머지 대기) | `fix/sync-queue-recovery` 외 6개(PR2~7 예정) | — |
 
 ### 의존 관계
 
@@ -264,6 +265,7 @@ flowchart LR
     T21 --> T22[22 개선 실행]
     T22 -.재검증.-> T21
     T22 --> T23[23 릴리스]
+    T23 --> T24[24 실사용 피드백 개선]
 ```
 
 Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실행하고 다시 검증하며, 남은
@@ -1065,6 +1067,46 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
     운영 배포를 굳이 흔들 이유가 없어 하지 않았다** — 필요해지면 그때 수행한다. Task 23
     "테스트" 항목은 이 정도로 충분히 충족됐다고 본다
 
+### 🟡 Task 24 — 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영
+
+`v1.0.0` 배포 후 사용자가 실사용하며 보고한 6가지 불편(모바일 접속, 구매처 드릴다운, 설정
+탭 정리, 통계 빈약, 주종 관리 불편, UI 일관성)과 함께 코드베이스 전면 감사를 요청받았다.
+감사 결과 사용자가 보고하지 않은 심각한 결함들도 나왔다 — 특히 정상 UI 조작만으로 오프라인
+동기화 큐가 **영구히 막히는** 경로(B6). 항목 1(모바일 접속)은 이 세션에서 Tailscale 설정을
+실측 검증해 이미 정상 동작함을 확인했다(코드 변경 없음) — 남은 원인은 Task 23 항목의
+Tailscale Serve 관리자 콘솔 활성화 대기뿐이다.
+
+세션 로컬 plan 파일에 7개 PR 로 분할한 상세 계획을 먼저 정리했다(항목·근거·검증 계획).
+매장 모드는 PC 탭에서 제거하고 모바일 전용 진입 버튼으로, 통계는 사내 SVG 차트 + 사용자가
+기준·측정값을 직접 조합하는 방식으로, 색감은 "Cellar Dark" 를 유지하고 치수 체계(크기·
+간격·줄바꿈)만 통일하기로 사용자가 결정했다(2026-08-04).
+
+#### PR1 — `fix/sync-queue-recovery`: 큐 영구 정지 + 데이터 무결성 (2026-08-04)
+
+사용자가 실사용을 시작한 시점이라 가장 급한 결함부터 처리했다 — 병수에 `2.5` 를 입력하는
+정상 UI 조작 한 번이면 그 뒤 모든 오프라인 기록이 조용히 안 올라가는 경로였다.
+
+| # | 결함 | 수정 |
+|---|---|---|
+| B6 | `ProductForm` 병수 입력이 `min={1}` 뿐 `step`/`max` 가 없어 `2.5` 입력이 가능 → 낙관적으로 만드는 병 id 개수(`Array.from({length:2.5})`→2개)와 서버에 보내는 `quantity`(2.5)가 어긋나 `_create_bottles` 가 거부 → PR #42 의 실패 멱등화 때문에 30일간 같은 실패가 캐시되고 그 뒤 모든 오프라인 쓰기가 막힘. 지우는 UI 도 없었음 | `ProductForm` 에 `step={1}`+`max` 추가, `handleSubmit`/`useCreateProduct`/`createProductOffline` 모두 `Number.isInteger` 아닌 수량을 거부(방어 3중화). `noValidate` 로 네이티브 검증이 `handleSubmit` 실행 자체를 막던 문제도 해결. `SyncStatusBadge` 의 `ConflictPanel` 을 `SyncIssuesPanel` 로 확장해 실패한 outbox 항목 목록 + "건너뛰기"(`discardFailedEntry`, 해당 항목만 `db.outbox.delete`) 제공 |
+| B4 | `/sync/batch` 가 온라인 라우트의 Pydantic 경계 검증(quantity `le=1000` 등)을 전부 우회 — `quantity: 10_000_000` 한 번이면 병 1천만 행이 한 트랜잭션에 들어감 | `application/sync.py` 에 `_bounded_int`/`_bounded_str` 헬퍼를 추가해 각 디스패처(카테고리·제품·SKU·구매처 이름, 구매 `quantity`, SKU `volume_ml`)가 온라인 스키마와 동일한 경계를 강제 |
+| B5 | `apply_batch` 가 `IntegrityError` 는 잡지만 형제 예외인 `DataError`(예: 300자 초과 이름)는 안 잡아 배치 전체가 500 + 롤백 — 이미 성공한 앞선 op 들까지 되돌아감 | 예외 목록에 `DataError`/`ProgrammingError` 추가(`IntegrityError` 의 서브클래스가 아니라 형제라 별도로 나열 필요). 실제로 `sqlalchemy.exc.DataError` 가 발생함을 프로브 스크립트로 확인 |
+| B7 | 온라인 제품 등록에서 구매/첨부 단계가 실패하면 제품은 이미 서버에 커밋된 채 폼이 열려 있어, 사용자가 다시 저장하면 `POST /products` 에 멱등키가 없어 **중복 제품이 생김** | `useCreateProduct` 가 `PartialProductCreationError`(제품·구매 완료 여부를 담음)를 던지고, `ProductsPage`/`StoreModePage` 가 재시도 시 이를 읽어 `existingProduct`/`purchaseAlreadyCreated` 로 넘겨 이미 성공한 단계를 되풀이하지 않게 함. 첨부는 B1 의 서버 측 중복 제거(sha256+소유 대상)로 재시도해도 안전해 별도 추적 불필요. 폼을 취소·성공으로 닫을 때는 `createProduct.reset()` 으로 이 상태를 지워 무관한 다음 등록에 재사용되지 않게 함 |
+| B1 | 첨부 중복 제거 쿼리가 `(user_id, sha256, kind)` 로만 조회해 `product_id` 등 소유 대상을 무시 — 같은 라벨 사진을 다른 제품에 붙이면 앞서 만든 첨부가 그대로 반환되고 새 제품엔 안 붙음(201 로 성공하지만 조용히 실패) | 조회·`UniqueConstraint` 양쪽에 소유 대상(`product_id`/`bottle_id`/`tasting_session_id`) 과 `deleted_at IS NULL` 추가. 새 마이그레이션(`b3f6ef67c93a`)으로 제약 교체 |
+| B2 | 커서 페이지네이션 내림차순에서 NULL 정렬키 행이 2페이지부터 조용히 사라짐(오름차순엔 있는 `is_(None)` 분기가 내림차순엔 없었음) | `apply_cursor` 내림차순 분기에 `sort_column.is_(None)` 추가. 스태시로 수정 전 상태에서 재현 테스트가 예측한 증상 그대로 실패함을 먼저 확인한 뒤 고쳤다 |
+| B12 | 정렬 "등록일" 이 동작하지 않고 방향까지 반대 — `SORT_ACCESSORS.created_at` 이 `() => null` 스텁이라 id 정렬로 폴백하는데, UUIDv7 이라 id 오름차순 = 오래된 것 먼저 | `SORT_ACCESSORS.created_at`/`updated_at` 을 실제 값으로 구현. `toProduct()` 에도 두 필드를 반영 |
+
+검증: `uv run pytest` 686 passed(29 skipped, 전부 opt-in), 커버리지 91.50%. `npm run check`
+403 passed, 커버리지 91.36% stmts / 83.2% branch, `vite build` 정상. `alembic check` 클린,
+마이그레이션 왕복 확인. 시크릿 스캔 통과. B7 은 구매 생성이 1회 실패 후 재시도하는 시나리오를
+`StoreModePage.test.tsx` 에 회귀 테스트로 고정(`POST /products` 가 정확히 1회만 호출됨을 확인).
+
+**환경 노트**: 이 세션에서 전체 `pytest` 를 처음 돌릴 때 `tests/infrastructure/database/*`·
+`tests/performance/*` 전체가 `password authentication failed` 로 실패했다 — 새 셸에 `SOOLJANG_DATABASE_URL`
+을 안 실어서 `conftest.py` 의 하드코딩 기본값(비밀번호 `sooljang`)이 쓰였는데 실제 컨테이너
+비밀번호는 `.env` 의 `localdevonly` 다. `docs/handoff.md` 에 이미 기록된 함정(§5)이 그대로
+재발한 사례다 — `export SOOLJANG_DATABASE_URL=...` 후 재실행하니 전부 통과했다.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1262,6 +1304,20 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D107 | `apply_batch` 의 per-op 예외 목록에 `sqlalchemy.exc.IntegrityError` 를 추가한다. 메시지는(다른 도메인 예외와 달리) 원문을 쓰지 않고 `_integrity_error` 핸들러와 같은 일반 문구로 대체한다 | DB 제약(CHECK·UNIQUE) 위반은 이 목록에 없어 `apply_batch` 밖으로 새 나갔다 — 라우터 단의 `IntegrityError` 핸들러가 요청 전체를 409 로 응답하기 전에 세션이 롤백돼, 이 배치에서 이미 성공한 앞선 작업까지 함께 되돌아갔다. 원문을 안 쓰는 이유는 제약·테이블명 노출을 막기 위해서다(D97 과 같은 판단) |
 | D108 | `SyncStatusBadge` 의 상태 판정에 `state === "idle" && pendingCount > 0` 을 별도 케이스로 추가해 "동기화 대기 N건"(경고 톤) 을 보여준다 | 기존 판정은 `failedCount`/`conflictCount` 만 봐서, 네트워크 오류 등으로 `flushOutbox` 자체가 던져 로컬 항목이 하나도 `failed` 로 표시되지 못한 경우 "최신 상태"라고 잘못 보여줬다 |
 | D109 | `pullDeltas` 의 `pendingEntityIds()` 조회를 `syncApi.pull` 이후, 행 적용과 같은 Dexie 트랜잭션(outbox 도 테이블 목록에 포함) 안으로 옮긴다. `OutboxEntry`/`enqueue()` 에 `touched_ids` 를 추가해, 시음 기록처럼 주 엔티티 외에 다른 엔티티(병)를 부작용으로 직접 바꾸는 작업이 그 엔티티도 보호 대상으로 등록하게 한다 | 전자는 TOCTOU(pull 왕복 중 생긴 낙관적 쓰기가 보호되지 않음), 후자는 애초에 보호 대상 자체가 아니었던 문제(시음 기록의 outbox `entity_id` 는 시음 id 지, 그게 건드리는 병 id 가 아니다) — 둘 다 동시에 도는 풀이 방금 바뀐 로컬 값을 스테일한 서버 값으로 덮을 수 있었다 |
+
+### Task 24 PR1 결정 (D110~D118)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D110 | `ProductForm` 병수·용량 입력에 `step={1}`+`max` 를 추가하고, `handleSubmit` 이 `Number.isInteger` 로 한 번 더 검증한다. `<form>` 에는 `noValidate` 를 추가한다 | 네이티브 HTML5 `step`/`min` 제약이 `handleSubmit` 실행 자체를 막아, `noValidate` 없이는 새로 추가한 검증 로직이 전혀 실행되지 않았다(테스트로 실제 확인) |
+| D111 | `useCreateProduct`(온라인)·`createProductOffline`(오프라인) 양쪽 모두 `parseQuantity` 로 비정수 수량을 outbox 적재·API 호출 전에 거부한다 | 폼이 이미 막지만, 이 값이 그대로 서버 요청/outbox 항목이 되는 신뢰 경계라 독립적으로도 막아야 한다 — B6 은 실제로 이 경계가 뚫려 발견됐다 |
+| D112 | `SyncStatusBadge` 의 `ConflictPanel` 을 `SyncIssuesPanel` 로 확장해 실패한 outbox 항목 목록과 "건너뛰기"(`discardFailedEntry`, 해당 항목만 `db.outbox.delete`)를 제공한다 | 실패가 멱등화(D106)돼 30일 캐시되는데 지우는 UI 가 없어, 한 번 막힌 큐가 사용자 개입 없이는 영구히 안 풀렸다 |
+| D113 | `application/sync.py` 에 `_bounded_int`/`_bounded_str` 헬퍼를 추가해 `/sync/batch` 각 디스패처가 온라인 라우트와 동일한 Pydantic 경계(quantity `le=1000`, `volume_ml` `le=100_000`, 이름 길이 등)를 강제한다 | `/sync/batch` 는 `dict[str, Any]` 설계(문서화된 의도)라 Pydantic 검증을 완전히 우회했다 — `quantity: 10_000_000` 한 번으로 병 1천만 행이 한 트랜잭션에 들어갈 수 있었다 |
+| D114 | `apply_batch` 의 예외 목록에 `DataError`/`ProgrammingError` 를 `IntegrityError` 와 나란히 추가한다 | 둘은 `IntegrityError` 의 서브클래스가 아니라 형제 예외라 기존 목록에서 빠져 있었다 — 실제로 정수 컬럼에 문자열을 써서 `DataError` 가 발생함을 프로브로 확인했다. 잡지 않으면 배치가 500 으로 죽으며 그 배치에서 이미 성공한 앞선 op 들까지 롤백됐다 |
+| D115 | `useCreateProduct` 가 `PartialProductCreationError`(제품·구매 완료 여부 포함)를 던지고, 호출자(`ProductsPage`/`StoreModePage`)가 재시도 시 `existingProduct`/`purchaseAlreadyCreated` 로 되돌려 넘긴다. 폼을 취소·성공으로 닫을 때는 `createProduct.reset()` 으로 이 상태를 지운다 | `POST /products`·`POST /purchases` 모두 멱등키가 없어, 구매/첨부 단계 실패 후 같은 폼으로 재시도하면 제품(또는 구매)이 중복 생성됐다. 첨부는 B1(D116)의 서버 측 중복 제거 덕에 별도 추적이 필요 없다. `reset()` 이 없으면 폼을 취소하고 전혀 다른 제품을 등록할 때도 이전 시도의 제품을 재사용하려 들었다 |
+| D116 | 첨부 중복 제거 조회와 `Attachment` 의 `UniqueConstraint` 양쪽에 소유 대상(`product_id`/`bottle_id`/`tasting_session_id`)과 `deleted_at IS NULL` 을 추가한다 | 기존엔 `(user_id, sha256, kind)` 로만 판단해, 같은 라벨 사진을 다른 제품에 붙이면 앞서 만든 첨부가 그대로 반환되고 새 제품엔 안 붙었다(요청은 201 로 성공하지만 조용히 실패). PostgreSQL 은 UNIQUE 제약에서 NULL 을 서로 다른 값으로 취급해, 소유자 세 컬럼을 추가해도 "정확히 하나만 채운다" CHECK 제약과 함께라면 실제 소유자가 다른 행끼리는 충돌하지 않는다 |
+| D117 | `apply_cursor` 의 내림차순 분기에도 오름차순과 동일하게 `sort_column.is_(None)` 을 추가한다 | 오름차순엔 있는 NULL 분기가 내림차순엔 없어, 정렬키가 NULL 인 행이 2페이지부터 조용히 사라졌다 — 수정 전 상태로 되돌려 재현 테스트가 정확히 이 증상으로 실패함을 먼저 확인했다 |
+| D118 | `SORT_ACCESSORS.created_at`/`updated_at` 을 실제 필드값을 반환하도록 구현하고 `toProduct()` 에도 두 필드를 반영한다 | 기존엔 `() => null` 스텁이라 id 정렬로 조용히 폴백했는데, id 가 UUIDv7(시간순)이라 우연히 "그럴듯하게" 보였을 뿐 오름차순 토글이 실제로는 무효했다 |
 
 ## 6. 열린 질문
 

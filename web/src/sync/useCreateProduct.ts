@@ -14,6 +14,28 @@ export interface CreateProductInput {
   /** 라벨 OCR(Task 17) 원본 사진. 온라인일 때만 첨부된다. `ProductsPage` 의 등록 폼만 쓴다 —
    * 매장 모드(Task 22 PR10)는 사진 촬영 흐름이 없어 생략한다. */
   labelFile?: File | null;
+  /** 이전 시도에서 이미 서버에 만들어진 제품. 호출자가 `PartialProductCreationError` 를
+   * 받은 뒤 같은 폼으로 재시도할 때 넘긴다 — `POST /products` 는 멱등키가 없어서, 이 값이
+   * 없으면 재시도마다 새 제품이 또 생긴다(B7). */
+  existingProduct?: Product | null;
+  /** `existingProduct` 재시도 시, 구매 건까지는 이미 성공했는지. `purchasesApi.create` 도
+   * 멱등키가 없어 이 값이 없으면 구매(와 그만큼의 병)가 중복 생성된다. 첨부는 `sha256` +
+   * 소유 대상으로 서버가 중복 제거하므로(B1) 별도 추적이 필요 없다. */
+  purchaseAlreadyCreated?: boolean;
+}
+
+/** 제품은 이미 서버에 커밋됐는데 구매/첨부 단계가 실패했을 때 던진다. 폼을 닫지 않고 이
+ * 안의 `product`/`purchaseCreated` 를 다음 `CreateProductInput` 에 그대로 넘기면, 이미
+ * 성공한 단계를 되풀이하지 않고 실패한 부분부터 재시도할 수 있다. */
+export class PartialProductCreationError extends Error {
+  constructor(
+    message: string,
+    readonly product: Product,
+    readonly purchaseCreated: boolean,
+  ) {
+    super(message);
+    this.name = "PartialProductCreationError";
+  }
 }
 
 /**
@@ -29,52 +51,79 @@ export function useCreateProduct() {
   const offline = state === "offline";
 
   return useMutation({
-    mutationFn: async ({ values, labelFile }: CreateProductInput) => {
+    mutationFn: async ({
+      values,
+      labelFile,
+      existingProduct,
+      purchaseAlreadyCreated,
+    }: CreateProductInput) => {
       if (!offline) {
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
-        const product = await productsApi.create({
-          name: values.name.trim(),
-          category_id: values.categoryId || null,
-          abv: values.abv || null,
-          vintage: values.vintage ? Number(values.vintage) : null,
-          personal_rating: values.personalRating || null,
-          note: values.note || null,
-          variety_names: splitVarieties(values.varietyNames),
-          skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
-        });
+        //
+        // `existingProduct` 가 있으면 이전 시도에서 이미 만든 제품을 재사용한다 —
+        // `POST /products` 는 멱등키가 없어서, 구매/첨부 단계 실패 뒤 재시도할 때마다
+        // 다시 부르면 중복 제품이 생긴다(B7).
+        const product =
+          existingProduct ??
+          (await productsApi.create({
+            name: values.name.trim(),
+            category_id: values.categoryId || null,
+            abv: values.abv || null,
+            vintage: values.vintage ? Number(values.vintage) : null,
+            personal_rating: values.personalRating || null,
+            note: values.note || null,
+            variety_names: splitVarieties(values.varietyNames),
+            skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
+          }));
 
-        // 서버 응답을 로컬 미러에 낙관적으로 반영한다. 아래 구매·첨부 호출이 실패해도
-        // 제품 자체는 이미 서버에 만들어졌으므로, 미러링을 여기서 바로 해 둬야 그 실패가
-        // "서버엔 있는데 로컬 미러엔 없는" 고아 제품을 만들지 않는다 — 델타 풀
-        // (triggerSync)로 내려오기 전까지 `getProduct()` 가 null 을 돌려줘 매장 모드
-        // (Task 22 PR10)처럼 등록 직후 그 제품 화면으로 바로 넘어가는 흐름에서
-        // "제품을 찾을 수 없습니다" 가 보이고, 재시도 시 중복 생성으로 이어질 수 있다.
-        // 구매·병 행까지는 여기서 만들지 않는다(서버가 만드는 병 id 를 알 수 없다) —
-        // 그 부분은 곧 sync 가 채운다.
-        await mirrorProductOptimistically(
-          product,
-          queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
-        );
-        triggerSync();
-
-        const quantity = Number(values.quantity);
-        const skuId = product.skus[0]?.id;
-        if (quantity > 0 && skuId) {
-          const vendorId = values.vendorName.trim()
-            ? await resolveVendorId(values.vendorName.trim())
-            : null;
-          await purchasesApi.create({
-            sku_id: skuId,
-            quantity,
-            vendor_id: vendorId,
-            purchased_on: values.purchasedOn || null,
-            unit_list_price: values.unitListPrice || null,
-            unit_paid_price: values.unitPaidPrice || null,
-          });
+        if (!existingProduct) {
+          // 서버 응답을 로컬 미러에 낙관적으로 반영한다. 아래 구매·첨부 호출이 실패해도
+          // 제품 자체는 이미 서버에 만들어졌으므로, 미러링을 여기서 바로 해 둬야 그 실패가
+          // "서버엔 있는데 로컬 미러엔 없는" 고아 제품을 만들지 않는다 — 델타 풀
+          // (triggerSync)로 내려오기 전까지 `getProduct()` 가 null 을 돌려줘 매장 모드
+          // (Task 22 PR10)처럼 등록 직후 그 제품 화면으로 바로 넘어가는 흐름에서
+          // "제품을 찾을 수 없습니다" 가 보이고, 재시도 시 중복 생성으로 이어질 수 있다.
+          // 구매·병 행까지는 여기서 만들지 않는다(서버가 만드는 병 id 를 알 수 없다) —
+          // 그 부분은 곧 sync 가 채운다.
+          await mirrorProductOptimistically(
+            product,
+            queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
+          );
+          triggerSync();
         }
-        if (labelFile) {
-          await attachmentsApi.create(labelFile, { kind: "label", product_id: product.id });
+
+        const quantity = parseQuantity(values.quantity);
+        const skuId = product.skus[0]?.id;
+        let purchaseCreated = purchaseAlreadyCreated ?? false;
+        try {
+          if (!purchaseCreated && quantity > 0 && skuId) {
+            const vendorId = values.vendorName.trim()
+              ? await resolveVendorId(values.vendorName.trim())
+              : null;
+            await purchasesApi.create({
+              sku_id: skuId,
+              quantity,
+              vendor_id: vendorId,
+              purchased_on: values.purchasedOn || null,
+              unit_list_price: values.unitListPrice || null,
+              unit_paid_price: values.unitPaidPrice || null,
+            });
+            purchaseCreated = true;
+          }
+          if (labelFile) {
+            // `attachmentsApi.create` 는 (user_id, sha256, kind, 소유 대상) 으로 서버가
+            // 중복 제거하므로(B1) 재시도로 같은 파일을 다시 보내도 새 첨부가 안 생긴다 —
+            // 구매와 달리 별도 추적이 필요 없다.
+            await attachmentsApi.create(labelFile, { kind: "label", product_id: product.id });
+          }
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          throw new PartialProductCreationError(
+            `"${values.name.trim()}" 제품은 이미 등록됐습니다. 나머지 항목 저장에 실패했습니다: ${message}`,
+            product,
+            purchaseCreated,
+          );
         }
         return product.id;
       }
@@ -129,6 +178,24 @@ async function mirrorProductOptimistically(product: Product, userId: string): Pr
       });
     }
   });
+}
+
+/**
+ * 병수 입력을 검증한다. 빈 값은 "구매 정보 없음" 이라 0 을 돌려준다.
+ *
+ * `ProductForm` 이 이미 폼 단계에서 이 조건을 막지만, 이 훅 자체도(신뢰 경계 — 여기서
+ * 만든 값이 그대로 서버 요청/outbox 항목이 된다) 독립적으로 확인한다. 정수가 아닌
+ * 병수가 여기까지 오면 낙관적으로 만드는 병 id 개수와 서버에 보내는 `quantity` 가
+ * 어긋나(예: "2.5" → 병 2개, quantity 2.5) 오프라인 동기화 큐가 영구히 막히는
+ * 결함으로 실사용 중 발견됐다.
+ */
+function parseQuantity(raw: string): number {
+  if (!raw.trim()) return 0;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("병수는 1 이상의 정수를 입력하세요");
+  }
+  return value;
 }
 
 export function splitVarieties(raw: string): string[] {
@@ -226,7 +293,7 @@ async function createProductOffline(values: ProductFormValues, userId: string): 
     });
   }
 
-  const quantity = Number(values.quantity);
+  const quantity = parseQuantity(values.quantity);
   if (quantity > 0 && skuId) {
     const vendorId = values.vendorName.trim()
       ? await resolveVendorIdOffline(values.vendorName.trim(), userId)

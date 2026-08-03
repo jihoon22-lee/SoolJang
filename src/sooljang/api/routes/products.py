@@ -72,6 +72,8 @@ def _to_out(
         varieties=[link.variety.name for link in product.varieties],
         skus=[SkuOut.model_validate(sku) for sku in product.skus if sku.deleted_at is None],
         metrics=ProductMetricsOut(**metrics),
+        created_at=product.created_at,
+        updated_at=product.updated_at,
     )
 
 
