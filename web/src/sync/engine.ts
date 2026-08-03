@@ -32,6 +32,11 @@ const OUTBOX_DEBOUNCE_MS = 300;
 
 class SyncEngine {
   private syncing = false;
+  //: 진행 중인 동기화가 끝나기 전에 새 트리거가 도착했다는 표시. 그 트리거를 그냥
+  //: 버리면(기존 버그) 해당 쓰기가 다음 60초 폴링이나 visibilitychange/online 이벤트
+  //: 까지(탭이 백그라운드면 그마저도 없이 무기한) 미뤄진다 — `finally` 에서 확인해
+  //: 한 번 더 돈다.
+  private dirty = false;
   private started = false;
   private readonly listeners = new Set<Listener>();
   private lastSyncedAt: string | null = null;
@@ -74,7 +79,12 @@ class SyncEngine {
   }
 
   async triggerSync(): Promise<void> {
-    if (this.syncing) return;
+    if (this.syncing) {
+      // 지금 도는 동기화가 이미 이전 스냅샷으로 flushOutbox 를 마쳤을 수 있다 — 이
+      // 트리거는 조용히 버리지 않고 이번 회차가 끝난 뒤 한 번 더 돈다(아래 finally).
+      this.dirty = true;
+      return;
+    }
     if (!navigator.onLine) {
       this.emit("offline");
       return;
@@ -91,6 +101,10 @@ class SyncEngine {
     } finally {
       this.syncing = false;
       this.emit(navigator.onLine ? "idle" : "offline");
+      if (this.dirty) {
+        this.dirty = false;
+        void this.triggerSync();
+      }
     }
   }
 
@@ -164,15 +178,18 @@ class SyncEngine {
     let cursor = (await db.sync_meta.get("cursor"))?.value ?? null;
 
     for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
-      const pending = await pendingEntityIds();
       const response = await syncApi.pull(cursor);
 
-      // 페이지 하나의 모든 테이블 쓰기를 트랜잭션 하나로 묶는다 — 이유는 `flushOutbox` 와
-      // 같다(위 주석 참고).
+      // pending 조회와 행 적용을 같은 트랜잭션으로 묶는다(outbox 도 테이블 목록에 넣어
+      // 트랜잭션 범위 안에서 읽는다). `syncApi.pull` 네트워크 왕복을 기다리는 동안
+      // 사용자가 만든 낙관적 쓰기는 그 왕복 시작 시점의 스냅샷에 없다 — pending 조회를
+      // pull *이후*, 그리고 행 적용과 같은 트랜잭션 안에서 하지 않으면, 그 사이에 생긴
+      // 낙관적 쓰기가 스테일한 서버 값에 덮인다(TOCTOU).
       await db.transaction(
         "rw",
-        SYNC_ENTITIES.map((entity) => db.table(entity)),
+        [db.outbox, ...SYNC_ENTITIES.map((entity) => db.table(entity))],
         async () => {
+          const pending = await pendingEntityIds();
           for (const entity of SYNC_ENTITIES) {
             const rows = (response.changes[entity] ?? []) as SyncRow[];
             for (const row of rows) {

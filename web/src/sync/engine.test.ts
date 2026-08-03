@@ -168,3 +168,58 @@ describe("syncEngine.triggerSync — 델타 풀", () => {
     expect(vendor?.name).toBe("로컬에서 아직 안 보낸 이름");
   });
 });
+
+describe("syncEngine.triggerSync — 동시 트리거", () => {
+  it("동기화 중에 트리거가 또 오면 버리지 않고, 끝난 뒤 한 번 더 돈다", async () => {
+    // 클로저 안에서만 채워지는 값을 재할당 `let` 대신 컨테이너 객체로 들고 있는다 —
+    // TS 가 재할당을 놓치고 `never` 로 좁혀 버리는 걸 피한다.
+    const pullGate: { resolve: (() => void) | null } = { resolve: null };
+    let pullCallCount = 0;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "Content-Type": "application/json" },
+          });
+
+        if (url.includes("/sync/batch") && method === "POST") {
+          return json({ stopped: false, results: [] });
+        }
+        if (url.includes("/sync") && method === "GET") {
+          pullCallCount += 1;
+          if (pullCallCount === 1) {
+            // 이 테스트가 명시적으로 풀어 줄 때까지 첫 번째 풀을 붙잡아 둬 "동기화가
+            // 아직 진행 중"인 상태를 만든다.
+            await new Promise<void>((resolve) => {
+              pullGate.resolve = resolve;
+            });
+          }
+          return json({ changes: {}, next_cursor: null, has_more: false });
+        }
+        throw new Error(`예상하지 못한 요청: ${method} ${url}`);
+      }),
+    );
+
+    const firstSync = syncEngine.triggerSync();
+    // 첫 번째 풀이 실제로 걸려 멈출 때까지 이벤트 루프를 한 틱 양보한다.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(pullGate.resolve).not.toBeNull();
+
+    // 아직 첫 회차가 안 끝났다 — 조용히 버려지지 않고 dirty 로만 표시돼야 한다.
+    await syncEngine.triggerSync();
+    expect(pullCallCount).toBe(1);
+
+    pullGate.resolve?.();
+    await firstSync;
+
+    // finally 에서 dirty 를 보고 자동으로 한 번 더 돈다 — fire-and-forget 이라 한 틱
+    // 더 기다려야 두 번째 풀 호출이 실제로 일어난다.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(pullCallCount).toBe(2);
+  });
+});

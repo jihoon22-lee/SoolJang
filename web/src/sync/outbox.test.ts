@@ -68,4 +68,20 @@ describe("enqueue", () => {
     expect(ids.has("v3")).toBe(true);
     expect(ids.size).toBe(1);
   });
+
+  it("pendingEntityIds 는 touchedIds(부작용으로 건드리는 다른 엔티티)도 포함한다", async () => {
+    await enqueue({
+      entity: "tasting_session",
+      op: "action",
+      entityId: "t1",
+      action: "record_tasting",
+      fields: {},
+      touchedIds: ["bottle1"],
+    });
+
+    const ids = await pendingEntityIds();
+    expect(ids.has("t1")).toBe(true);
+    expect(ids.has("bottle1")).toBe(true);
+    expect(ids.size).toBe(2);
+  });
 });

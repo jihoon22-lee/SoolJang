@@ -54,6 +54,33 @@ async function transitionFields(
   }
 }
 
+/**
+ * `transitionFields()` 가 만든 낙관적 필드 중 서버 `_dispatch_bottle_action` 이 실제로
+ * 읽는 것만 골라 outbox `fields` 로 옮긴다.
+ *
+ * 이전에는 `fields: {}` 를 그대로 보내 서버가 `opened_on`/`finished_on`/`on` 을 전부
+ * 오늘 날짜로 채웠다 — 오프라인 상태에서 한 행동의 실제 날짜가 재접속 시점 날짜로
+ * 조용히 바뀌는 버그였다. 필드 이름은 로컬 낙관적 행(`bottle.opened_on`/`finished_on`)과
+ * 서버 페이로드(`on`)가 gift/sell 에서만 다르다 — 나머지는 그대로 대응한다.
+ */
+function transitionOutboxFields(
+  action: TransitionAction,
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  switch (action) {
+    case "open":
+      return { opened_on: fields.opened_on, remaining_ml: fields.remaining_ml };
+    case "finish":
+      return { finished_on: fields.finished_on };
+    case "gift":
+    case "sell":
+      return { on: fields.finished_on };
+    case "reopen":
+    case "unopen":
+      return {};
+  }
+}
+
 export const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
   open: "개봉",
@@ -106,7 +133,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
         op: "action",
         entityId: bottle.id,
         action,
-        fields: {},
+        fields: transitionOutboxFields(action, fields),
         optimisticRow: { ...current, ...fields, updated_at: new Date().toISOString() },
       });
     },
@@ -364,6 +391,11 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
           ...(trimmedPlace ? { place: trimmedPlace } : {}),
           ...(trimmedCompanions ? { companions: trimmedCompanions } : {}),
         },
+        // 이 오퍼레이션은 시음 기록 생성만이 아니라 병의 상태·잔량도 부작용으로
+        // 바꾼다(아래 db.bottle.update). 그 사실을 outbox 항목에 남겨 둬야
+        // `pendingEntityIds()` 가 이 병도 "아직 서버에 안 보낸 로컬 변경이 있음"으로
+        // 보고, 동시에 도는 풀이 방금 바꾼 잔량을 스테일한 서버 값으로 덮지 않는다.
+        touchedIds: Object.keys(bottleUpdates).length > 0 ? [bottleId] : undefined,
         optimisticRow: {
           id: tastingId,
           user_id: currentUser?.id ?? "",

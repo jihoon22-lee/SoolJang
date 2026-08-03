@@ -60,6 +60,13 @@ export interface OutboxEntry {
   created_at: string;
   /** 서버로 전송을 시도했는지. FIFO 순서를 지키기 위해 앞 항목이 실패하면 뒤는 시도하지 않는다. */
   status: "pending" | "failed";
+  /**
+   * `entity_id` 말고 이 작업이 로컬에서 부작용으로 직접 건드리는 다른 엔티티 id들
+   * (예: 시음 기록 하나가 병의 잔량·상태도 같이 바꾼다). `pendingEntityIds()` 가
+   * `entity_id` 뿐 아니라 이 id들도 "아직 서버에 안 보낸 로컬 변경이 있다"로 보고
+   * `pullDeltas` 가 스테일한 서버 값으로 덮지 않게 보호한다.
+   */
+  touched_ids?: string[] | undefined;
   /** 실패한 경우 서버가 돌려준 사유. UI 에 보여준다. */
   error: string | null;
 }

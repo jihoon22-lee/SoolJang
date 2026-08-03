@@ -16,10 +16,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-03 (Task 21·22 완료, 릴리스 워크플로 사전 점검·결함 수정, PR9/10 사후 코드 리뷰 하드닝) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 1개). Task 18 은 `adapter` 전략만 부분 완료. Task 21 은 모바일 실기기 검증만 환경 제약으로 배포 후로 이연. **Task 23 릴리스 파이프라인은 사전 점검·결함 수정까지 끝나 태그 푸시만 하면 되는 상태** |
-| 다음 착수 Task | **이 개발 샌드박스에서 자동으로 더 이어갈 작업이 없다.** 남은 항목: (1) 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 — 실제 인터넷 접속과 사용자 판단(Q5, 실사용 확인)이 필요, (2) Task 23 의 실제 `v1.0.0` 태그 푸시·PC 배포 — 프로젝트 절대 규칙상 사용자의 명시적 승인과 사용자의 홈 PC 접근이 필요해 자동으로 진행하지 않는다 |
-| 현재 브랜치 | `main` (PR #26~#41 머지 완료, 열린 PR 없음) |
+| 최종 갱신 | 2026-08-03 (Task 21·22 완료, 릴리스 워크플로 사전 점검·결함 수정, PR9/10 사후 코드 리뷰 하드닝 2회 — 외부 소스/매장 모드 + 오프라인 동기화·재고 정합성) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Task 21 은 모바일 실기기 검증만 환경 제약으로 배포 후로 이연. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기 |
+| 다음 착수 Task | Task 23 의 실제 `v1.0.0` 태그 푸시·PC 배포(사용자 승인 완료, 진행 중). 그 외 남은 항목: 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 — 실제 인터넷 접속과 "PR9·10 실사용 확인"이 필요해 사용자가 스크래핑 자체는 뒤로 미루기로 함(2026-08-03) |
+| 현재 브랜치 | `main` (PR #26~#41 머지 완료, PR #42 준비 중) |
 | 진행 중 잔여 항목 | 없음. 남은 모든 항목이 이 샌드박스 밖(실제 인터넷 환경, 또는 사용자의 명시적 승인)에서 이뤄져야 한다 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
@@ -87,6 +87,29 @@ PR9(외부 소스 레지스트리)·PR10(매장 모드)이 실제 인터넷 접�
 매장 모드(`StoreModeRegister`)가 `ProductForm` 에 `existingProducts`/`vendorNames` 를 안
 넘겨 중복 등록 경고·자동완성이 조용히 빠져 있던 것도 같은 리뷰에서 함께 발견해 이 PR 에서
 고쳤다(PR7 이 만든 기능이 매장 모드 등록 경로에서만 누락돼 있었다).
+
+#### 오프라인 동기화·재고 정합성 하드닝 (PR #42, 2026-08-03)
+
+`v1.0.0` 태그·실사용 배포를 승인받은 직후, PR9/10 에는 이미 적대적 리뷰를 돌렸지만 나머지
+Task 22 배치(PR1~8)의 **병 상태 전이·동기화 델타 적용·구매 관리** 코드는 Task 21 의 UX
+차원 리뷰(입력효율·정보밀도·…)만 거쳤을 뿐 데이터 정합성 관점의 적대적 리뷰는 받지 않았다는
+공백을 발견해, 별도로 `code-reviewer` 서브에이전트를 돌렸다. 실사용(모바일·오프라인)을
+시작하기 직전에 발견해 전부 이 PR 에서 고쳤다 — 상세 근거는 아래 결정 로그 D105~D109.
+
+| # | 결함 | 수정 |
+|---|---|---|
+| 1(치명) | 오프라인에서 병을 개봉·소진·증여·판매하면 `BottlePanel.tsx` 가 outbox `fields` 를 `{}` 로 보내, 서버가 재접속 시점 날짜(`today()`)로 채웠다 — 실제 행동 날짜가 조용히 사라졌다 | 로컬 낙관적 계산(`transitionFields`)의 날짜·잔량을 서버가 읽는 필드명(`opened_on`/`finished_on`/`on`/`remaining_ml`)에 맞춰 outbox `fields` 로도 그대로 전달(`transitionOutboxFields`) |
+| 2(치명) | `apply_batch` 가 실패한 작업에 `OutboxReceipt` 를 안 남겨, 같은 작업이 재전송될 때마다 도메인 검증을 다시 돌려 같은 실패를 반복 생성했다(그 뒤 큐 전체가 영구 정지). `IntegrityError` 는 그 예외 목록에도 없어 배치 전체가 500 으로 죽으며 이 배치에서 이미 성공한 앞선 작업까지 롤백됐다 — 이 경우 클라이언트 어느 항목도 로컬에서 실패로 표시되지 않아 배지가 "최신 상태"라고 잘못 표시했다 | `apply_batch` 가 실패도 `status="failed"` receipt 를 남겨(재전송은 도메인 검증 없이 캐시된 결과만 재사용) `IntegrityError` 도 다른 도메인 예외와 같은 방식으로 그 작업만 실패 처리하게 했다(제약 이름은 노출하지 않고 일반 문구로 대체) |
+| 2(배지) | `SyncStatusBadge` 의 상태 문구가 `failedCount`/`conflictCount` 만 보고 "최신 상태"를 판단해, 네트워크 오류 등으로 `flushOutbox` 자체가 실패해 아무 항목도 로컬에서 실패로 표시되지 않은 경우를 놓쳤다 | `state === "idle" && pendingCount > 0` 을 별도 "동기화 대기 N건"(경고 톤) 상태로 추가 |
+| 3 | `hand_over_bottle`(증여·판매) 는 `finish_bottle` 과 달리 날짜 역전 검사가 없어, 개봉일보다 이른 증여·판매일이 DB `CHECK` 제약을 직접 건드려 위 2번의 배치 전체 롤백을 유발할 수 있었다 | `finish_bottle` 과 같은 방식으로 "증여·판매일이 개봉일보다 앞설 수 없습니다" 가드 추가 |
+| 4 | `pullDeltas` 가 `pendingEntityIds()` 를 `syncApi.pull` 네트워크 왕복 **전**에 스냅샷해, 그 왕복 도중 사용자가 만든 낙관적 쓰기가 보호되지 않고 스테일한 서버 값에 덮였다(TOCTOU) | pending 조회를 pull *이후*, 행 적용과 같은 Dexie 트랜잭션 안(outbox 도 테이블 목록에 포함)으로 옮겨 완전히 원자적으로 만들었다 |
+| 4 | 시음 기록(`TastingForm`)이 병의 잔량·상태를 `db.bottle.update()` 로 직접 바꾸지만 그 병 id 에 대한 outbox 항목이 전혀 없어, `pendingEntityIds()` 가 이 병을 보호 대상으로 보지 못해 동시에 도는 풀이 방금 바뀐 잔량을 덮을 수 있었다 | `OutboxEntry`/`enqueue()` 에 `touched_ids`(주 `entity_id` 외에 부작용으로 건드리는 엔티티) 를 추가하고, 시음 기록이 병 잔량을 바꿀 때 병 id 를 여기 담아 `pendingEntityIds()` 가 함께 보호하게 했다 |
+| 5 | `scheduleSyncSoon` 의 디바운스 타이머가 만료될 때 동기화가 이미 진행 중이면 `triggerSync()` 가 조용히 no-op 하고 아무것도 다시 예약하지 않아, 그 사이 생긴 쓰기가 다음 60초 폴링이나 `visibilitychange`/`online` 이벤트까지(탭이 백그라운드면 그마저 없이 무기한) 미뤄졌다 | `dirty` 플래그를 추가해, 진행 중 트리거는 버리지 않고 표시만 해 뒀다가 현재 회차가 끝난 `finally` 에서 한 번 더 자동으로 돈다 |
+
+**남은 것(이 PR 범위 밖, 의도적으로 미룸)**: 실패한 outbox 항목을 사용자가 직접 건너뛰거나
+재시도할 수 있는 UI(현재는 위 수정으로 "무한 재시도"는 막았지만, 여전히 그 항목 뒤로는
+막힌 채로 사용자가 문제를 고치거나 기다려야 한다 — receipt 30일 보관 정책이 지나면 자동
+소멸). 실사용 중 실제로 이 상황을 겪으면 그때 UI 를 추가한다.
 
 ### 차단 요인
 
@@ -211,7 +234,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 19 | 사이트별 어댑터와 시세 이력 | ⬜ | `feature/site-adapters` | |
 | 20 | 통계 v2 — 커스텀 피벗과 취향 분석 | ✅ | `feature/stats-v2` | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) |
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
-| 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41) |
+| 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | ⬜ | `release/v1.0.0` | |
 
 ### 의존 관계
@@ -963,10 +986,16 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
   비주얼 디자인, 외부 소스 레지스트리(Task 18 부분), 매장 모드. 이후 PR9/10 을 적대적
   코드 리뷰로 재검토해 나온 6개 결함(§7.2 계약을 깨는 크래시, SSRF, 캐시 오염, CORS 누락,
   오프라인 미러 고아 제품, 카테고리 소유권 미검증)을 [PR #41](https://github.com/jihoon22-lee/SoolJang/pull/41)
-  에서 모두 고쳤다(위 "PR9/10 사후 코드 리뷰 하드닝" 절, D99~D104 참조)
-- **남은 것**: PR11(시세 이력·목표가 알림, Task 19) — Q5(웹 푸시 채널) 미해결 + "PR9·10 이
-  실제로 쓸 만한지 확인 후" 라는 조건이 아직 충족되지 않아 미착수. Task 21 잔여 검증도
-  마쳐야 이 Task 를 완료로 볼 수 있다(Task21↔22 재검증 루프)
+  에서 모두 고쳤다(위 "PR9/10 사후 코드 리뷰 하드닝" 절, D99~D104 참조). 이어서 나머지
+  배치(PR1~8)의 병 상태 전이·동기화 델타 적용도 같은 방식으로 재검토해 나온 5개 결함
+  (오프라인 날짜 오기록, 동기화 큐 영구 정지+배지 오표시, 날짜 역전 가드 누락, 풀 TOCTOU
+  경쟁, 디바운스 트리거 유실)을 [PR #42](https://github.com/jihoon22-lee/SoolJang/pull/42)
+  에서 고쳤다(위 "오프라인 동기화·재고 정합성 하드닝" 절, D105~D109 참조) — `v1.0.0`
+  실사용·모바일 배포를 앞두고 발견해 태그 푸시 전에 반영했다
+- **남은 것**: PR11(시세 이력·목표가 알림, Task 19) — Q5(웹 푸시 채널) 는 해결됐지만
+  Q3 의 판매처 시세 조사·등록을 사용자가 뒤로 미루기로 해(2026-08-03) 비교할 시세 데이터
+  자체가 없다. Task 21 잔여 검증도 마쳐야 이 Task 를 완료로 볼 수 있다(Task21↔22 재검증
+  루프)
 - **완료 조건**: 릴리스 전 처리로 분류한 항목이 모두 반영되고 재검증을 통과. 미룬 항목은
   백로그에 근거와 함께 기록
 - **주의**: 이 단계에서 범위가 무한히 늘어날 수 있다. Task 21 에서 정한 우선순위를 임의로
@@ -1175,15 +1204,29 @@ FastAPI 앱)로 재현해 확인한 뒤 고쳤다 — 위 "PR9/10 사후 코드 
 | D103 | `useCreateProduct` 온라인 분기에서 로컬 Dexie 미러 반영(D93)·`triggerSync` 호출을 `productsApi.create` 성공 직후, 구매·첨부 호출보다 앞으로 옮긴다 | 미러링이 구매·첨부 호출 뒤에 있으면, 제품은 서버에 이미 만들어졌는데 그 뒤 단계가 실패할 때 미러링이 실행되지 않아 로컬에서는 안 보이는(델타 풀 전까지) 서버 측 "고아" 제품이 남는다 — 재시도 시 중복 생성으로 이어질 수 있다 |
 | D104 | `application/external_sources.py::create_source`/신설 `update_source` 가 `category_id` 를 `ensure_category_exists`(`application/products.py` 의 기존 함수)로 검증한다. PATCH 라우터는 인라인 `setattr` 루프 대신 이 `update_source` 를 쓴다(이름·주소 앞뒤 공백도 지운다) | 다른 사용자의 카테고리, 또는 존재하지 않는 카테고리 id 를 그대로 저장할 수 있었다 — `products`·`categories` 등 다른 CRUD 가 이미 지키는 소유권 검증 기준과 어긋났다 |
 
+### 오프라인 동기화·재고 정합성 하드닝 결정 (D105~D109)
+
+`v1.0.0` 실사용·모바일 배포를 앞두고 병 상태 전이·동기화 델타 적용 코드를 `code-reviewer`
+서브에이전트로 별도 재검토했다 — 위 "오프라인 동기화·재고 정합성 하드닝" 절 참조. 실제
+Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D105 | `BottlePanel.tsx` 의 병 전이(`open`/`finish`/`gift`/`sell`) 가 낙관적으로 계산한 날짜·잔량을 `transitionOutboxFields()` 로 서버가 읽는 필드명에 맞춰 outbox `fields` 에도 그대로 담는다(이전엔 `fields: {}` 였다) | 오프라인에서 한 행동의 실제 날짜가, 서버가 `fields` 에 값이 없을 때 쓰는 기본값(`datetime.date.today()`, 재접속 시점)으로 조용히 바뀌었다 — 이 앱이 기록하려는 바로 그 데이터다 |
+| D106 | `apply_batch` 가 캐치한 도메인 예외(및 새로 추가한 `IntegrityError`)에도 `status="failed"` `OutboxReceipt` 를 남긴다. 재전송(같은 `idempotency_key`) 은 도메인 검증을 다시 돌리지 않고 이 receipt 를 그대로 재사용하며, head-of-line blocking(§5.2) 도 그대로 지킨다(캐시된 failed 도 `stopped=True` 로 처리) | 실패에 receipt 가 없으면 클라이언트가 outbox 전체를 매번 통째로 재전송하는 구조(`flushOutbox`) 상, 이미 실패가 확정된 작업이 재시도마다 같은 검증을 다시 돌려 같은 실패를 반복 생성하고 그 뒤 큐 전체를 영구히 막았다 |
+| D107 | `apply_batch` 의 per-op 예외 목록에 `sqlalchemy.exc.IntegrityError` 를 추가한다. 메시지는(다른 도메인 예외와 달리) 원문을 쓰지 않고 `_integrity_error` 핸들러와 같은 일반 문구로 대체한다 | DB 제약(CHECK·UNIQUE) 위반은 이 목록에 없어 `apply_batch` 밖으로 새 나갔다 — 라우터 단의 `IntegrityError` 핸들러가 요청 전체를 409 로 응답하기 전에 세션이 롤백돼, 이 배치에서 이미 성공한 앞선 작업까지 함께 되돌아갔다. 원문을 안 쓰는 이유는 제약·테이블명 노출을 막기 위해서다(D97 과 같은 판단) |
+| D108 | `SyncStatusBadge` 의 상태 판정에 `state === "idle" && pendingCount > 0` 을 별도 케이스로 추가해 "동기화 대기 N건"(경고 톤) 을 보여준다 | 기존 판정은 `failedCount`/`conflictCount` 만 봐서, 네트워크 오류 등으로 `flushOutbox` 자체가 던져 로컬 항목이 하나도 `failed` 로 표시되지 못한 경우 "최신 상태"라고 잘못 보여줬다 |
+| D109 | `pullDeltas` 의 `pendingEntityIds()` 조회를 `syncApi.pull` 이후, 행 적용과 같은 Dexie 트랜잭션(outbox 도 테이블 목록에 포함) 안으로 옮긴다. `OutboxEntry`/`enqueue()` 에 `touched_ids` 를 추가해, 시음 기록처럼 주 엔티티 외에 다른 엔티티(병)를 부작용으로 직접 바꾸는 작업이 그 엔티티도 보호 대상으로 등록하게 한다 | 전자는 TOCTOU(pull 왕복 중 생긴 낙관적 쓰기가 보호되지 않음), 후자는 애초에 보호 대상 자체가 아니었던 문제(시음 기록의 outbox `entity_id` 는 시음 id 지, 그게 건드리는 병 id 가 아니다) — 둘 다 동시에 도는 풀이 방금 바뀐 로컬 값을 스테일한 서버 값으로 덮을 수 있었다 |
+
 ## 6. 열린 질문
 
 | # | 질문 | 상태 | 필요 시점 |
 |---|---|---|---|
 | ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
 | Q2 | 검색·LLM API 제공자와 예산. Task 17(OCR)·18(요약)에 필요 | **LLM 쪽 부분 해결 (Task 17 세션)** — 제공자 OpenAI, 사용자가 다른 프로젝트(naver-blog-assistant)에서 쓰던 키를 "테스트로 몇 차례만" 제공. 상시 예산 상한은 아직 정해지지 않았다. **`adapter` 전략은 LLM 을 쓰지 않아 이 제한과 무관하게 PR9 에서 구현했다(D91).** **검색 API 제공자(`search` 전략)는 여전히 미해결** | `search` 전략(PR11 이후) |
-| Q3 | 초기 등록할 외부 소스 사이트 목록 | **답 받음(세션 로컬 plan, 2026-08-03) — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24.** 단 실제 `adapter_spec`(CSS 셀렉터) 등록은 아직 안 했다 — **이 개발 샌드박스는 외부 인터넷 접속 자체가 안 돼(2026-08-03 확인) 여기서는 조사할 수 없다.** 레지스트리 UI(`#sources`)는 PR9 에서 이미 준비됐으니, 실제 인터넷이 되는 환경(사용자 로컬 머신 등)에서 각 사이트를 조사해 등록해야 한다 | Task 19/PR11 착수 전, 실제 인터넷 환경에서 |
-| ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 주소 `https://main.tail30f401.ts.net`. 폰에 Tailscale 앱 설치 + 같은 계정 로그인만 남았다. Docker 이미지 재빌드 필요(현재 컨테이너는 Task 12 이전 빌드) | — |
-| Q5 | 웹 푸시 알림 채널. 목표가 알림을 웹 푸시로 할지 다른 수단(이메일 등)으로 할지 | 미해결 | Task 19 |
+| Q3 | 초기 등록할 외부 소스 사이트 목록 | **답 받음(세션 로컬 plan, 2026-08-03) — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24.** 단 실제 `adapter_spec`(CSS 셀렉터) 등록은 아직 안 했다. **사용자가 이 조사·등록 작업 자체를 뒤로 미루기로 결정함(2026-08-03)** — 레지스트리 UI(`#sources`)는 PR9 에서 이미 준비돼 있으니, 나중에 하고 싶을 때 각 사이트를 조사해 등록하면 된다 | Task 19/PR11 착수 전 |
+| ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션, 2026-08-03 재확인)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 개발 환경 자체가 이 tailnet 의 `main` 노드(홈 PC)다. `docker compose`(web/api/db, 2026-07-31 빌드 — Task 22 배치 이전) 가 이미 떠 있으나 `tailscale serve` 는 아직 설정 안 돼 있어 폰에서 아직 접속 불가. 폰에 Tailscale 앱 설치 + 같은 계정 로그인 + `tailscale serve` 실행 + 최신 이미지 재배포가 남았다(Task 23 진행 중) | — |
+| ~~Q5~~ | ~~웹 푸시 알림 채널~~ | **✅ 해결(사용자 결정, 2026-08-03)** — 웹 푸시로 간다. 단 Task 19 는 목표가를 비교할 시세 데이터(Q3 의 스크래핑) 가 있어야 값이 있어, 그 조사·등록을 미루기로 한 결정과 함께 Task 19 실행도 자연히 미뤄진다 | Task 19 |
 | Q6 | 지인 공유 시 권한 모델 상세. 읽기 전용 링크만으로 충분한지, 계정 발급이 필요한지 | 미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88) | Task 20 후속 |
 
 ---

@@ -141,8 +141,12 @@ async def hand_over_bottle(
     if bottle.status == BottleStatus.FINISHED:
         raise BottleTransitionError("이미 소진한 병은 넘길 수 없습니다")
 
+    when = on or datetime.date.today()
+    if bottle.opened_on is not None and when < bottle.opened_on:
+        raise BottleTransitionError("증여·판매일이 개봉일보다 앞설 수 없습니다")
+
     bottle.status = status
-    bottle.finished_on = on or datetime.date.today()
+    bottle.finished_on = when
     if note:
         bottle.note = f"{bottle.note}\n{note}" if bottle.note else note
     await session.flush()

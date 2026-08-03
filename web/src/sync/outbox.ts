@@ -20,6 +20,8 @@ export interface EnqueueInput {
   fields: Record<string, unknown>;
   /** 낙관적으로 반영할 로컬 미러 행. `create`/`update` 에서만 준다. */
   optimisticRow?: SyncRow | undefined;
+  /** `entityId` 외에 이 작업이 로컬에서 부작용으로 직접 건드리는 다른 엔티티 id들. */
+  touchedIds?: string[] | undefined;
 }
 
 /** outbox 항목 하나를 적재하고, 있으면 로컬 미러도 낙관적으로 갱신한다. */
@@ -38,6 +40,7 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
     created_at: now,
     status: "pending",
     error: null,
+    touched_ids: input.touchedIds,
   };
 
   await db.transaction("rw", db.outbox, db.table(input.entity), async () => {
@@ -56,8 +59,19 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
   return idempotencyKey;
 }
 
-/** 아직 서버에 반영되지 않은 outbox 항목이 가리키는 엔티티 id 집합. */
+/**
+ * 아직 서버에 반영되지 않은 outbox 항목이 가리키는 엔티티 id 집합.
+ *
+ * `entity_id` 뿐 아니라 `touched_ids`(부작용으로 같이 바뀐 다른 엔티티, 예: 시음 기록이
+ * 건드리는 병)도 포함한다 — 그러지 않으면 `pullDeltas` 가 그 엔티티를 "대기 중인 로컬
+ * 변경 없음"으로 오판해 스테일한 서버 값으로 덮어쓴다.
+ */
 export async function pendingEntityIds(): Promise<Set<string>> {
   const entries = await db.outbox.toArray();
-  return new Set(entries.map((entry) => entry.entity_id));
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    ids.add(entry.entity_id);
+    for (const touchedId of entry.touched_ids ?? []) ids.add(touchedId);
+  }
+  return ids;
 }
