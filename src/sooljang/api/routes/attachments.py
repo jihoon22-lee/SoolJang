@@ -111,14 +111,27 @@ async def upload_attachment(
 
     sha256 = compute_sha256(data)
 
+    # 소유 대상(product_id/bottle_id/tasting_session_id)까지 같아야 "같은 업로드" 다 —
+    # 대상을 빼면 라벨 사진 하나를 다른 제품에 붙일 때 앞서 만든 첨부가 그대로 반환돼
+    # 새로 등록하는 제품엔 첨부가 안 붙는다(요청은 201 로 성공하는데 실제로는 조용히
+    # 실패하는 셈이다). soft delete 된 행도 부활시키면 안 되니 `deleted_at IS NULL` 도
+    # 확인한다. 셋 중 정확히 하나만 채워지므로(위 검증) 나머지 둘은 양쪽 다 `NULL` 이라
+    # `==` 비교가 SQLAlchemy 에서 자동으로 `IS NULL` 로 바뀐다.
     existing = await session.scalar(
         select(Attachment).where(
-            Attachment.user_id == user_id, Attachment.sha256 == sha256, Attachment.kind == kind
+            Attachment.user_id == user_id,
+            Attachment.sha256 == sha256,
+            Attachment.kind == kind,
+            Attachment.product_id == product_id,
+            Attachment.bottle_id == bottle_id,
+            Attachment.tasting_session_id == tasting_session_id,
+            Attachment.deleted_at.is_(None),
         )
     )
     if existing is not None:
-        # 같은 파일을 다시 올린 것 — 새로 만들지 않고 기존 걸 그대로 돌려준다. 폰에서 같은
-        # 사진을 다시 고르는 일이 흔하다(`models/tasting.py::Attachment` 문서 참조).
+        # 같은 파일을 같은 대상에 다시 올린 것 — 새로 만들지 않고 기존 걸 그대로
+        # 돌려준다. 폰에서 같은 사진을 다시 고르는 일이 흔하다
+        # (`models/tasting.py::Attachment` 문서 참조).
         return existing
 
     storage_path = save_upload(

@@ -82,6 +82,17 @@ def test_get_product_detail(api_client: TestClient, prefix: str) -> None:
     assert response.json()["id"] == created["id"]
 
 
+def test_product_out_includes_created_and_updated_at(api_client: TestClient, prefix: str) -> None:
+    """오프라인 Dexie 미러(`SyncRow`)는 이 값들을 이미 갖고 있었는데 온라인 응답에만
+    빠져 있었다 — 프론트 "등록일" 정렬 선택지가 실제로는 아무 효과가 없던 원인이다."""
+    created = _seed_product(api_client, prefix, name="생성 시각 확인 대상")
+
+    body = api_client.get(f"{prefix}/products/{created['id']}").json()
+
+    assert body["created_at"] is not None
+    assert body["updated_at"] is not None
+
+
 def test_unknown_product_returns_problem_details(api_client: TestClient, prefix: str) -> None:
     response = api_client.get(f"{prefix}/products/00000000-0000-0000-0000-0000000000ff")
 
@@ -295,6 +306,40 @@ def test_pagination_with_null_sort_values_loses_nothing(
     cursor: str | None = None
     for _ in range(10):
         params: dict[str, Any] = {"limit": 1, "sort": "abv", "order": "asc"}
+        if cursor:
+            params["cursor"] = cursor
+        page = _list(api_client, prefix, **params)
+        collected.extend(item["name"] for item in page["items"])
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+
+    assert sorted(collected) == [
+        "도수 없음 1",
+        "도수 없음 2",
+        "도수 있음 1",
+        "도수 있음 2",
+    ]
+    assert len(collected) == len(set(collected))
+
+
+def test_pagination_with_null_sort_values_loses_nothing_descending(
+    api_client: TestClient, prefix: str
+) -> None:
+    """위 오름차순 테스트의 내림차순 짝.
+
+    `apply_cursor` 의 내림차순 분기엔 오름차순과 달리 `sort_column.is_(None)` 이
+    없었다 — 커서가 NULL 아닌 값을 가리키게 되는 순간(2페이지부터)부터 NULL 정렬키
+    행이 경계 조건에 안 걸려 전부 조용히 사라지는 결함이었다."""
+    _seed_product(api_client, prefix, name="도수 있음 1", abv="40.0")
+    _seed_product(api_client, prefix, name="도수 있음 2", abv="46.0")
+    _seed_product(api_client, prefix, name="도수 없음 1")
+    _seed_product(api_client, prefix, name="도수 없음 2")
+
+    collected: list[str] = []
+    cursor: str | None = None
+    for _ in range(10):
+        params: dict[str, Any] = {"limit": 1, "sort": "abv", "order": "desc"}
         if cursor:
             params["cursor"] = cursor
         page = _list(api_client, prefix, **params)

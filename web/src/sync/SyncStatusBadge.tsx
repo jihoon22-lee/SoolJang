@@ -9,7 +9,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 
 import { syncApi } from "@/api/client";
-import { db } from "@/sync/db";
+import { db, type OutboxEntry } from "@/sync/db";
+import { discardFailedEntry } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -30,6 +31,7 @@ export function SyncStatusBadge() {
   const [panelOpen, setPanelOpen] = useState(false);
 
   const hasConflicts = conflictCount > 0;
+  const hasFailed = failedCount > 0;
   // 온라인이고 지금 동기화 중도 아닌데 아직 못 보낸 항목이 있다 — 네트워크 오류 등으로
   // `flushOutbox` 자체가 조용히 실패했을 수 있다. 이 경우를 따로 구분하지 않으면
   // "최신 상태" 라고 잘못 표시해 사용자가 반영됐다고 오해한다.
@@ -43,15 +45,16 @@ export function SyncStatusBadge() {
         : state === "offline"
           ? "muted"
           : "ok";
+  const opensPanel = hasConflicts || hasFailed;
 
   return (
     <div className="sync-status">
       <button
         type="button"
         className={`sync-status-badge sync-status-${tone}`}
-        aria-expanded={hasConflicts ? panelOpen : undefined}
+        aria-expanded={opensPanel ? panelOpen : undefined}
         onClick={() => {
-          if (hasConflicts) {
+          if (opensPanel) {
             setPanelOpen((open) => !open);
           } else {
             triggerSync();
@@ -60,9 +63,9 @@ export function SyncStatusBadge() {
       >
         {label}
       </button>
-      {/* 마지막 충돌을 확인한 직후에도 "확인할 충돌이 없습니다" 를 보여줘야 하므로
-          hasConflicts 가 아니라 panelOpen 에만 걸어 둔다. */}
-      {panelOpen && <ConflictPanel onClose={() => setPanelOpen(false)} />}
+      {/* 마지막 항목을 확인/건너뛴 직후에도 "확인할 게 없습니다" 를 보여줘야 하므로
+          opensPanel 이 아니라 panelOpen 에만 걸어 둔다. */}
+      {panelOpen && <SyncIssuesPanel onClose={() => setPanelOpen(false)} />}
     </div>
   );
 }
@@ -83,12 +86,27 @@ function describeStatus(status: {
   return "최신 상태";
 }
 
-function ConflictPanel({ onClose }: { onClose: () => void }) {
+/** outbox 항목 하나를 사람이 알아볼 수 있는 한 줄로 요약한다. */
+function describeEntry(entry: OutboxEntry): string {
+  const entityLabel = ENTITY_LABELS[entry.entity] ?? entry.entity;
+  const name = entry.fields.name;
+  if (typeof name === "string" && name.trim()) return `${entityLabel} · ${name}`;
+  if (entry.action) return `${entityLabel} · ${entry.action}`;
+  const opLabel = { create: "등록", update: "수정", delete: "삭제", action: "처리" }[entry.op];
+  return `${entityLabel} ${opLabel}`;
+}
+
+function SyncIssuesPanel({ onClose }: { onClose: () => void }) {
   const conflicts = useLiveQuery(
     () => db.conflict_log.filter((row) => row.deleted_at === null).toArray(),
     [],
   );
+  const failedEntries = useLiveQuery(
+    () => db.outbox.where("status").equals("failed").toArray(),
+    [],
+  );
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [discardingKey, setDiscardingKey] = useState<string | null>(null);
 
   async function resolve(id: string) {
     setResolvingId(id);
@@ -101,43 +119,87 @@ function ConflictPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
+  async function discard(entry: OutboxEntry) {
+    // 되돌릴 수 없는 조작이다(이 변경 자체를 포기하는 것) — 확인을 받는다.
+    if (!window.confirm(`"${describeEntry(entry)}" 항목을 포기하고 건너뛸까요?`)) return;
+    setDiscardingKey(entry.idempotency_key);
+    try {
+      await discardFailedEntry(entry.idempotency_key);
+    } finally {
+      setDiscardingKey(null);
+    }
+  }
+
+  const nothingToShow =
+    (!conflicts || conflicts.length === 0) && (!failedEntries || failedEntries.length === 0);
+
   return (
-    <div className="sync-conflict-panel" role="dialog" aria-label="동기화 충돌">
+    <div className="sync-conflict-panel" role="dialog" aria-label="동기화 문제">
       <div className="sync-conflict-panel-header">
-        <h3>동기화 충돌</h3>
+        <h3>동기화 문제</h3>
         <button type="button" onClick={onClose}>
           닫기
         </button>
       </div>
-      {!conflicts || conflicts.length === 0 ? (
-        <p className="muted">확인할 충돌이 없습니다.</p>
-      ) : (
-        <ul>
-          {conflicts.map((conflict) => {
-            const snapshot = conflict.client_snapshot as Record<string, unknown> | null;
-            const name = typeof snapshot?.name === "string" ? snapshot.name : null;
-            const entityLabel =
-              ENTITY_LABELS[conflict.entity as string] ?? (conflict.entity as string);
-            return (
-              <li key={conflict.id}>
-                <span>
-                  {entityLabel}
-                  {name ? ` · ${name}` : ""}
-                </span>
-                <span className="muted">
-                  내 변경이 서버의 더 최신 값에 밀렸습니다({conflict.server_updated_at as string}).
-                </span>
+
+      {nothingToShow && <p className="muted">확인할 문제가 없습니다.</p>}
+
+      {failedEntries && failedEntries.length > 0 && (
+        <section aria-labelledby="sync-failed-heading">
+          <h4 id="sync-failed-heading">실패한 항목</h4>
+          <p className="muted text-sm">
+            서버가 이 작업을 거부했습니다. 뒤에 쌓인 항목은 이 항목을 정리해야 다시 흐릅니다.
+          </p>
+          <ul>
+            {failedEntries.map((entry) => (
+              <li key={entry.idempotency_key}>
+                <span>{describeEntry(entry)}</span>
+                <span className="muted">{entry.error ?? "원인을 알 수 없는 오류입니다."}</span>
                 <button
                   type="button"
-                  disabled={resolvingId === conflict.id}
-                  onClick={() => void resolve(conflict.id)}
+                  className="danger"
+                  disabled={discardingKey === entry.idempotency_key}
+                  onClick={() => void discard(entry)}
                 >
-                  확인
+                  건너뛰기
                 </button>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {conflicts && conflicts.length > 0 && (
+        <section aria-labelledby="sync-conflicts-heading">
+          <h4 id="sync-conflicts-heading">동기화 충돌</h4>
+          <ul>
+            {conflicts.map((conflict) => {
+              const snapshot = conflict.client_snapshot as Record<string, unknown> | null;
+              const name = typeof snapshot?.name === "string" ? snapshot.name : null;
+              const entityLabel =
+                ENTITY_LABELS[conflict.entity as string] ?? (conflict.entity as string);
+              return (
+                <li key={conflict.id}>
+                  <span>
+                    {entityLabel}
+                    {name ? ` · ${name}` : ""}
+                  </span>
+                  <span className="muted">
+                    내 변경이 서버의 더 최신 값에 밀렸습니다({conflict.server_updated_at as string}
+                    ).
+                  </span>
+                  <button
+                    type="button"
+                    disabled={resolvingId === conflict.id}
+                    onClick={() => void resolve(conflict.id)}
+                  >
+                    확인
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
     </div>
   );

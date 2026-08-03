@@ -145,6 +145,10 @@ def apply_cursor(
         boundary = or_(
             sort_column < sort_value,
             and_(sort_column == sort_value, id_column < cursor.id),
+            # `nullslast()` 는 두 방향 다 NULL 을 맨 뒤로 보낸다 — 오름차순 분기처럼
+            # 여기도 NULL 을 포함해야 한다. 안 그러면 커서 값이 NULL 이 아닌 순간부터
+            # (즉 2페이지부터) NULL 키 행 전체가 경계 조건에 안 걸려 조용히 사라진다.
+            sort_column.is_(None),
         )
     return statement.where(boundary)
 

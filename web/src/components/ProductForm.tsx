@@ -26,6 +26,11 @@ export interface ProductFormValues {
   vendorName: string;
 }
 
+function isPositiveInteger(raw: string): boolean {
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0;
+}
+
 export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   name: "",
   categoryId: "",
@@ -128,12 +133,32 @@ export function ProductForm({
       setLocalError("구매 정보를 입력하려면 용량이 필요합니다");
       return;
     }
+    // 정수가 아닌 병수(예: "2.5")는 낙관적 병 id 개수와 서버가 저장하는 병수가
+    // 어긋나 오프라인 동기화 큐가 영구히 막히는 결함으로 실사용 중 발견됐다 —
+    // `step={1}` 만으로는 브라우저 기본 검증에만 의존하게 되므로 여기서도 확실히 막는다.
+    if (values.quantity.trim() && !isPositiveInteger(values.quantity)) {
+      setLocalError("병수는 1 이상의 정수를 입력하세요");
+      return;
+    }
+    if (values.volumeMl.trim() && !isPositiveInteger(values.volumeMl)) {
+      setLocalError("용량(ml)은 1 이상의 정수를 입력하세요");
+      return;
+    }
     setLocalError(null);
     onSubmit(values);
   };
 
   return (
-    <form className="panel" aria-labelledby="product-form-heading" onSubmit={handleSubmit}>
+    <form
+      className="panel"
+      aria-labelledby="product-form-heading"
+      onSubmit={handleSubmit}
+      // `step`/`min`/`max` 는 스피너·모바일 키패드 힌트로만 쓴다 — 브라우저 기본 검증에
+      // 맡기면 브라우저마다 다른 말풍선이 뜨고 제출 이벤트 자체가 안 일어나(위 `step`
+      // 위반 시 `handleSubmit` 이 아예 호출 안 됨), 다른 모든 검증과 다르게 이 페이지
+      // 톤에 안 맞는 UI 가 튀어나온다. 검증은 전부 `handleSubmit` 의 `.alert` 로 통일한다.
+      noValidate
+    >
       <h2 id="product-form-heading">{mode === "edit" ? "정보 수정" : "새 술 등록"}</h2>
 
       {(localError || apiError || genericError) && (
@@ -207,6 +232,8 @@ export function ProductForm({
               id="form-volume"
               type="number"
               min={1}
+              max={100_000}
+              step={1}
               value={values.volumeMl}
               onChange={(event) => set({ volumeMl: event.target.value })}
             />
@@ -277,6 +304,8 @@ export function ProductForm({
                 id="form-quantity"
                 type="number"
                 min={1}
+                max={1000}
+                step={1}
                 value={values.quantity}
                 onChange={(event) => set({ quantity: event.target.value })}
               />

@@ -104,6 +104,8 @@ export interface Product {
   varieties: string[];
   skus: Sku[];
   metrics: ProductMetrics;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProductPage {

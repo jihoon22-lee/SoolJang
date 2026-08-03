@@ -180,6 +180,23 @@ describe("getProducts", () => {
     const inStock = await getProducts({ in_stock: true });
     expect(inStock.map((p) => p.id)).toEqual(["p1"]);
   });
+
+  it("sort=created_at 은 실제 등록 시각순으로 정렬하고, 방향 토글도 반영된다", async () => {
+    // 예전엔 이 접근자가 항상 null 을 돌려줘 등록일 정렬이 조용히 id(UUIDv7, 생성
+    // 시각순) 순으로 폴백했다 — "등록일" 을 골라도 실제로는 아무 효과가 없었고,
+    // 그 폴백이 방향 반전 전에 끝나 오름/내림 토글도 무효했다. id 를 일부러
+    // created_at 과 반대 순서로 둬서, 폴백이 아니라 실제 created_at 을 쓰는지 확인한다.
+    await db.product.bulkPut([
+      row({ id: "z-먼저", name: "먼저 등록", created_at: "2026-01-01T00:00:00Z" }),
+      row({ id: "a-나중", name: "나중 등록", created_at: "2026-06-01T00:00:00Z" }),
+    ]);
+
+    const ascending = await getProducts({ sort: "created_at", order: "asc" });
+    expect(ascending.map((p) => p.id)).toEqual(["z-먼저", "a-나중"]);
+
+    const descending = await getProducts({ sort: "created_at", order: "desc" });
+    expect(descending.map((p) => p.id)).toEqual(["a-나중", "z-먼저"]);
+  });
 });
 
 describe("getBottles", () => {

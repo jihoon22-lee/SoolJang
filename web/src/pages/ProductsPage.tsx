@@ -21,7 +21,12 @@ import {
   getVendors,
 } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
-import { resolveVendorId, splitVarieties, useCreateProduct } from "@/sync/useCreateProduct";
+import {
+  PartialProductCreationError,
+  resolveVendorId,
+  splitVarieties,
+  useCreateProduct,
+} from "@/sync/useCreateProduct";
 
 const DEFAULT_FILTERS: ProductFilters = { sort: "name", order: "asc", limit: 30 };
 const PAGE_SIZE = DEFAULT_FILTERS.limit ?? 30;
@@ -122,6 +127,9 @@ export function ProductsPage({
     setFormOpen(false);
     setFormPrefill(null);
     setPendingLabelFile(null);
+    // 실패 후 남은 `PartialProductCreationError` 를 지운다 — 안 지우면 폼을 취소하고
+    // 전혀 다른 제품을 새로 등록할 때도 이전 시도의 제품을 재사용하려 든다(B7).
+    createProduct.reset();
   }
 
   /** 표 헤더 클릭 정렬. `ProductFilterPanel` 의 정렬 드롭다운과 같은 상태를 토글할 뿐,
@@ -198,12 +206,22 @@ export function ProductsPage({
             categories={categoryTree?.items ?? []}
             submitting={createProduct.isPending}
             error={createProduct.error}
-            onSubmit={(values) =>
+            onSubmit={(values) => {
+              // 직전 시도가 "제품은 만들어졌는데 나머지가 실패" 였다면(B7), 그 제품과
+              // 진행 상태를 그대로 넘겨 재시도가 중복 생성을 하지 않게 한다.
+              const priorError = createProduct.error;
+              const retry =
+                priorError instanceof PartialProductCreationError
+                  ? {
+                      existingProduct: priorError.product,
+                      purchaseAlreadyCreated: priorError.purchaseCreated,
+                    }
+                  : {};
               createProduct.mutate(
-                { values, labelFile: pendingLabelFile },
+                { values, labelFile: pendingLabelFile, ...retry },
                 { onSuccess: closeForm },
-              )
-            }
+              );
+            }}
             onCancel={closeForm}
             initialValues={formPrefill ?? undefined}
             existingProducts={allProductsUnfiltered ?? []}

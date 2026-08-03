@@ -133,6 +133,11 @@ class ProductOut(BaseModel):
     varieties: list[str] = Field(default_factory=list)
     skus: list[SkuOut] = Field(default_factory=list)
     metrics: ProductMetricsOut = Field(default_factory=ProductMetricsOut)
+    #: "등록일" 정렬(`SortKey.created_at`/`updated_at`)에 쓴다. 오프라인 Dexie 미러의
+    #: `SyncRow` 는 이미 이 값들을 갖고 있었는데 온라인 응답에만 빠져 있었다 — 정렬
+    #: 선택지에는 있지만 실제로는 동작하지 않는 결함이었다.
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
 
 class ProductPage(BaseModel):

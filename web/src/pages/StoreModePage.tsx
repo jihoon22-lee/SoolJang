@@ -14,7 +14,7 @@ import {
   getVendors,
 } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
-import { useCreateProduct } from "@/sync/useCreateProduct";
+import { PartialProductCreationError, useCreateProduct } from "@/sync/useCreateProduct";
 
 //: 검색창 아래 보여줄 후보 수. 매장에서 화면을 크게 스크롤하지 않아도 훑을 수 있는 정도.
 const MAX_RESULTS = 8;
@@ -147,9 +147,22 @@ function StoreModeRegister({
         categories={categoryTree?.items ?? []}
         submitting={createProduct.isPending}
         error={createProduct.error}
-        onSubmit={(values) =>
-          createProduct.mutate({ values }, { onSuccess: (productId) => onDone(productId) })
-        }
+        onSubmit={(values) => {
+          // 직전 시도가 "제품은 만들어졌는데 나머지가 실패" 였다면(B7), 그 제품과
+          // 진행 상태를 그대로 넘겨 재시도가 중복 생성을 하지 않게 한다.
+          const priorError = createProduct.error;
+          const retry =
+            priorError instanceof PartialProductCreationError
+              ? {
+                  existingProduct: priorError.product,
+                  purchaseAlreadyCreated: priorError.purchaseCreated,
+                }
+              : {};
+          createProduct.mutate(
+            { values, ...retry },
+            { onSuccess: (productId) => onDone(productId) },
+          );
+        }}
         onCancel={onCancel}
         initialValues={{ name: initialName }}
         existingProducts={existingProducts}

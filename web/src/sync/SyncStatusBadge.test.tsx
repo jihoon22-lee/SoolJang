@@ -17,6 +17,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   await db.conflict_log.clear();
   await db.outbox.clear();
+  await db.vendor.clear();
 });
 
 function renderBadge() {
@@ -127,8 +128,8 @@ describe("SyncStatusBadge", () => {
     const badge = await screen.findByRole("button", { name: "충돌 1건" });
     await userEvent.click(badge);
 
-    expect(await screen.findByRole("dialog", { name: "동기화 충돌" })).toBeInTheDocument();
-    // ConflictPanel 은 열리자마자 자체 useLiveQuery 를 새로 구독한다 — 첫 계산이 비동기로
+    expect(await screen.findByRole("dialog", { name: "동기화 문제" })).toBeInTheDocument();
+    // SyncIssuesPanel 은 열리자마자 자체 useLiveQuery 를 새로 구독한다 — 첫 계산이 비동기로
     // 끝나므로 동기 getByText 가 아니라 findByText 로 기다려야 한다.
     expect(await screen.findByText(/내가 바꾸려던 이름/)).toBeInTheDocument();
   });
@@ -161,7 +162,58 @@ describe("SyncStatusBadge", () => {
     await waitFor(() => {
       expect(calls.some((call) => call.url.includes(":resolve"))).toBe(true);
     });
-    expect(await screen.findByText("확인할 충돌이 없습니다.")).toBeInTheDocument();
+    expect(await screen.findByText("확인할 문제가 없습니다.")).toBeInTheDocument();
     expect((await db.conflict_log.get("c1"))?.deleted_at).not.toBeNull();
+  });
+
+  it("실패한 항목이 있으면 배지에 표시하고, 패널에서 건너뛰면 사라진다", async () => {
+    await db.vendor.put({
+      id: "v1",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      name: "실패한 구매처",
+      kind: "other",
+      url: null,
+      note: null,
+      purchase_count: 0,
+    });
+    await db.outbox.put({
+      idempotency_key: "op1",
+      entity: "vendor",
+      op: "create",
+      entity_id: "v1",
+      fields: { name: "실패한 구매처" },
+      created_at: NOW,
+      status: "failed",
+      error: "이미 존재하는 값이거나 제약 조건을 위반했습니다",
+    });
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderBadge();
+
+    const badge = await screen.findByRole("button", { name: "동기화 실패 1건" });
+    expect(badge.className).toContain("sync-status-danger");
+    await userEvent.click(badge);
+
+    expect(await screen.findByRole("dialog", { name: "동기화 문제" })).toBeInTheDocument();
+    expect(screen.getByText("구매처 · 실패한 구매처")).toBeInTheDocument();
+    expect(screen.getByText("이미 존재하는 값이거나 제약 조건을 위반했습니다")).toBeInTheDocument();
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await userEvent.click(screen.getByRole("button", { name: "건너뛰기" }));
+
+    await waitFor(async () => {
+      expect(await db.outbox.get("op1")).toBeUndefined();
+    });
+    // create 실패는 로컬에 남아 있던 낙관적 행(가짜 구매처)도 함께 지운다.
+    expect(await db.vendor.get("v1")).toBeUndefined();
+    expect(await screen.findByText("확인할 문제가 없습니다.")).toBeInTheDocument();
+    vi.restoreAllMocks();
   });
 });

@@ -392,3 +392,162 @@ def test_category_parent_change_via_sync_is_rejected(api_client: TestClient, pre
     )
 
     assert result["results"][0]["status"] == "failed"
+
+
+def test_구매_병수가_정수가_아니면_배치_전체를_안_죽이고_해당_작업만_실패한다(
+    api_client: TestClient, prefix: str
+) -> None:
+    """실사용 중 발견된 결함의 재현: `ProductForm` 병수 입력에 `step` 제한이 없어 "2.5"
+    가 입력될 수 있었다. 오프라인이면 병 id 2개(`Array.from({length:2.5})`)와 서버로
+    보내는 `quantity: 2.5` 가 어긋난 채로 도착한다 — 이게 그대로 DB 에 들어가려다
+    `DataError` 를 내며 배치 전체를 죽이면 안 되고(§9.13 과 별개로 세션 롤백 문제),
+    이 작업 하나만 실패로 기록하고 앞서 성공한 카테고리·제품·규격은 그대로 남아야 한다."""
+    category_id = uuid.uuid4()
+    product_id = uuid.uuid4()
+    sku_id = uuid.uuid4()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(entity="category", op="create", entity_id=category_id, fields={"name": "위스키"}),
+            _op(
+                entity="product",
+                op="create",
+                entity_id=product_id,
+                fields={"name": "병수 오류 테스트 위스키", "category_id": str(category_id)},
+            ),
+            _op(
+                entity="sku",
+                op="create",
+                entity_id=sku_id,
+                fields={"product_id": str(product_id), "volume_ml": 700},
+            ),
+            _op(
+                entity="purchase",
+                op="create",
+                fields={"sku_id": str(sku_id), "quantity": 2.5},
+            ),
+        ],
+    )
+
+    assert result["stopped"] is True
+    assert [r["status"] for r in result["results"]] == ["applied", "applied", "applied", "failed"]
+    assert "정수" in (result["results"][3]["detail"] or "")
+
+    # 앞서 성공한 카테고리·제품·규격은 롤백되지 않는다.
+    detail = api_client.get(f"{prefix}/products/{product_id}").json()
+    assert detail["name"] == "병수 오류 테스트 위스키"
+    # 실패한 구매 건이 만들어지지 않았으니 병도 없다.
+    bottles = api_client.get(f"{prefix}/bottles").json()
+    assert not any(b["sku_id"] == str(sku_id) for b in bottles)
+
+
+def test_구매_병수_상한_초과는_거부된다(api_client: TestClient, prefix: str) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "병수 상한 테스트", "skus": [{"volume_ml": 500}]}
+    ).json()
+    sku_id = product["skus"][0]["id"]
+
+    result = _batch(
+        api_client,
+        prefix,
+        [_op(entity="purchase", op="create", fields={"sku_id": sku_id, "quantity": 1001})],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "1000" in (result["results"][0]["detail"] or "")
+
+
+def test_규격_용량이_정수가_아니면_거부된다(api_client: TestClient, prefix: str) -> None:
+    product = api_client.post(f"{prefix}/products", json={"name": "용량 오류 테스트"}).json()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="sku",
+                op="create",
+                fields={"product_id": product["id"], "volume_ml": 700.5},
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "정수" in (result["results"][0]["detail"] or "")
+
+
+def test_제품_이름이_너무_길면_거부된다(api_client: TestClient, prefix: str) -> None:
+    result = _batch(
+        api_client,
+        prefix,
+        [_op(entity="product", op="create", fields={"name": "가" * 301})],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "300" in (result["results"][0]["detail"] or "")
+
+
+def test_구매처_이름이_너무_길면_거부된다(api_client: TestClient, prefix: str) -> None:
+    result = _batch(
+        api_client,
+        prefix,
+        [_op(entity="vendor", op="create", fields={"name": "가" * 201})],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "200" in (result["results"][0]["detail"] or "")
+
+
+def test_주종_이름이_너무_길면_거부된다(api_client: TestClient, prefix: str) -> None:
+    result = _batch(
+        api_client,
+        prefix,
+        [_op(entity="category", op="create", fields={"name": "가" * 121})],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "120" in (result["results"][0]["detail"] or "")
+
+
+def test_타입이_안_맞는_값도_DataError로_배치_전체를_안_죽인다(
+    api_client: TestClient, prefix: str
+) -> None:
+    """`vintage` 는 정수 컬럼인데 명시적 경계 검증이 없다(연도라 상한이 이미 넉넉하다) —
+    문자열이 오면 DB 플러시 시점에 `DataError` 가 난다. `_bounded_int`/`_bounded_str` 로
+    막지 못하는 필드에 대한 마지막 안전망(D107 의 IntegrityError 처리와 같은 종류)이
+    실제로 동작하는지 확인한다."""
+    ok_vendor_id = uuid.uuid4()
+    never_sent_vendor_id = uuid.uuid4()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="vendor", op="create", entity_id=ok_vendor_id, fields={"name": "정상 구매처"}
+            ),
+            _op(
+                entity="product",
+                op="create",
+                fields={"name": "이상한 빈티지 테스트", "vintage": "특급반"},
+            ),
+            _op(
+                entity="vendor",
+                op="create",
+                entity_id=never_sent_vendor_id,
+                fields={"name": "실행되지 않아야 함"},
+            ),
+        ],
+    )
+
+    assert result["stopped"] is True
+    assert [r["status"] for r in result["results"]] == ["applied", "failed"]
+    detail = result["results"][1]["detail"]
+    assert detail is not None
+    assert "vintage" not in detail.lower() and "integer" not in detail.lower()
+
+    vendors = api_client.get(f"{prefix}/vendors").json()
+    assert any(v["id"] == str(ok_vendor_id) for v in vendors), "앞서 성공한 작업이 롤백되면 안 된다"
+    assert not any(v["id"] == str(never_sent_vendor_id) for v in vendors)

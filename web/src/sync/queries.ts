@@ -264,6 +264,8 @@ function toProduct(
     personal_rating: personalRating ?? null,
     note: (row.note as string | null) ?? null,
     varieties: varietyNamesByProduct.get(row.id) ?? [],
+    created_at: row.created_at,
+    updated_at: row.updated_at,
     skus: skus.map((sku) => ({
       id: sku.id,
       volume_ml: sku.volume_ml as number,
@@ -335,8 +337,12 @@ function matchesText(product: Product, query: string): boolean {
 
 const SORT_ACCESSORS: Record<SortKey, (p: Product) => number | string | null> = {
   name: (p) => p.name,
-  created_at: () => null,
-  updated_at: () => null,
+  // ISO 8601 문자열은 사전식 비교가 시간순 비교와 같다 — 별도 Date 변환 없이 그대로
+  // `<`/`>` 로 비교할 수 있다. 예전엔 이 두 접근자가 항상 `null` 을 돌려줘 정렬이
+  // 조용히 id(UUIDv7, 생성 시각순) 순으로 폴백했다 — "등록일" 을 골라도 아무 효과가
+  // 없었고, 그 폴백이 오름/내림 방향 반전 전에 끝나 방향 토글도 무효했다.
+  created_at: (p) => p.created_at,
+  updated_at: (p) => p.updated_at,
   abv: (p) => (p.abv !== null ? Number(p.abv) : null),
   vintage: (p) => p.vintage,
   personal_rating: (p) => (p.personal_rating !== null ? Number(p.personal_rating) : null),
