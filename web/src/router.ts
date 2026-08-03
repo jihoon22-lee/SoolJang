@@ -19,6 +19,7 @@ export type View =
   | "categories"
   | "vendors"
   | "sources"
+  | "scan"
   | "stats"
   | "import"
   | "settings"
@@ -29,6 +30,7 @@ const VIEW_IDS: readonly View[] = [
   "categories",
   "vendors",
   "sources",
+  "scan",
   "stats",
   "import",
   "settings",

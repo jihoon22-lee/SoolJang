@@ -87,3 +87,4 @@ desktop.ini
 tmp/
 .tmp/
 scratch/
+.playwright-mcp/
