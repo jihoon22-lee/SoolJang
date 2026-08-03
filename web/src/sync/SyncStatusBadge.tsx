@@ -106,14 +106,20 @@ function SyncIssuesPanel({ onClose }: { onClose: () => void }) {
     [],
   );
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
   const [discardingKey, setDiscardingKey] = useState<string | null>(null);
 
   async function resolve(id: string) {
     setResolvingId(id);
+    setResolveError(null);
     try {
       await syncApi.resolveConflict(id);
       // 서버가 soft delete 했다 — 다음 풀을 기다리지 않고 바로 반영한다.
       await db.conflict_log.update(id, { deleted_at: new Date().toISOString() });
+    } catch (cause) {
+      // catch 가 없으면 실패해도 버튼이 조용히 다시 눌러지는 상태로 돌아갈 뿐이라, 사용자가
+      // 반응 없는 버튼을 계속 누르게 된다(B8).
+      setResolveError(cause instanceof Error ? cause.message : "충돌 확인에 실패했습니다");
     } finally {
       setResolvingId(null);
     }
@@ -172,6 +178,11 @@ function SyncIssuesPanel({ onClose }: { onClose: () => void }) {
       {conflicts && conflicts.length > 0 && (
         <section aria-labelledby="sync-conflicts-heading">
           <h4 id="sync-conflicts-heading">동기화 충돌</h4>
+          {resolveError && (
+            <p className="alert" role="alert">
+              {resolveError}
+            </p>
+          )}
           <ul>
             {conflicts.map((conflict) => {
               const snapshot = conflict.client_snapshot as Record<string, unknown> | null;

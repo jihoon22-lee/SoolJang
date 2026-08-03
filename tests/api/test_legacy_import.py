@@ -90,6 +90,19 @@ def test_empty_file_is_rejected(api_client: TestClient, prefix: str) -> None:
     assert "빈 파일" in response.json()["detail"]
 
 
+def test_oversized_file_is_rejected(api_client: TestClient, prefix: str) -> None:
+    # 상한 초과는 전체를 다 읽기 전에 감지해야 한다(B11) — 이 테스트는 그 결과(422)만
+    # 확인한다.
+    oversized = b"x" * (20 * 1024 * 1024 + 1)
+    response = api_client.post(
+        f"{prefix}/imports/legacy:analyze",
+        files={"file": ("huge.csv", oversized, "text/csv")},
+    )
+
+    assert response.status_code == 422
+    assert "너무 큽니다" in response.json()["detail"]
+
+
 def test_unrecognized_sheet_is_rejected(api_client: TestClient, prefix: str) -> None:
     response = api_client.post(
         f"{prefix}/imports/legacy:analyze",

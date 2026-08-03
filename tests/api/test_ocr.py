@@ -7,6 +7,10 @@ from sooljang.infrastructure.external import llm
 
 FAKE_API_KEY = "sk-test-1234567890abcdef"  # scan-secrets-allow
 
+#: 매직 바이트 검증(B11)을 통과하려면 실제 JPEG 서명이 필요하다 — 내용 자체는 이 테스트가
+#: `llm.extract_label` 을 몽키패치하므로 상관없다.
+FAKE_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF-fake-bytes"
+
 _CANNED_EXTRACTION = llm.LabelExtraction(
     name="글렌알라키 12년",
     name_confidence=0.9,
@@ -35,7 +39,7 @@ def _configure_llm(client: TestClient, prefix: str) -> None:
 
 def test_설정이_없으면_409(api_client: TestClient, prefix: str) -> None:
     response = api_client.post(
-        f"{prefix}/ocr/label", files={"file": ("label.jpg", b"fake-bytes", "image/jpeg")}
+        f"{prefix}/ocr/label", files={"file": ("label.jpg", FAKE_JPEG_BYTES, "image/jpeg")}
     )
 
     assert response.status_code == 409, response.text
@@ -48,7 +52,7 @@ def test_설정이_있으면_추출한_필드를_돌려준다(
     _configure_llm(api_client, prefix)
 
     async def fake_extract_label(image_bytes: bytes, **kwargs: object) -> llm.LabelExtraction:
-        assert image_bytes == b"fake-bytes"
+        assert image_bytes == FAKE_JPEG_BYTES
         assert kwargs["api_key"] == FAKE_API_KEY
         assert kwargs["model"] == "gpt-4o-mini"
         return _CANNED_EXTRACTION
@@ -56,7 +60,7 @@ def test_설정이_있으면_추출한_필드를_돌려준다(
     monkeypatch.setattr(llm, "extract_label", fake_extract_label)
 
     response = api_client.post(
-        f"{prefix}/ocr/label", files={"file": ("label.jpg", b"fake-bytes", "image/jpeg")}
+        f"{prefix}/ocr/label", files={"file": ("label.jpg", FAKE_JPEG_BYTES, "image/jpeg")}
     )
 
     assert response.status_code == 200, response.text
@@ -78,7 +82,7 @@ def test_추출_실패는_422로_수동_입력을_유도한다(
     monkeypatch.setattr(llm, "extract_label", failing_extract_label)
 
     response = api_client.post(
-        f"{prefix}/ocr/label", files={"file": ("label.jpg", b"fake-bytes", "image/jpeg")}
+        f"{prefix}/ocr/label", files={"file": ("label.jpg", FAKE_JPEG_BYTES, "image/jpeg")}
     )
 
     assert response.status_code == 422, response.text
@@ -98,6 +102,17 @@ def test_빈_파일은_422(api_client: TestClient, prefix: str) -> None:
 
     response = api_client.post(
         f"{prefix}/ocr/label", files={"file": ("label.jpg", b"", "image/jpeg")}
+    )
+
+    assert response.status_code == 422, response.text
+
+
+def test_내용이_선언한_형식과_다르면_설정_없이도_422(api_client: TestClient, prefix: str) -> None:
+    # content_type 은 클라이언트가 보낸 값이라 신뢰할 수 없다(B11) — 실제 바이트가 JPEG
+    # 서명과 다르면(여기서는 그냥 평범한 텍스트) 거부해야 한다.
+    response = api_client.post(
+        f"{prefix}/ocr/label",
+        files={"file": ("label.jpg", b"this is not actually a jpeg", "image/jpeg")},
     )
 
     assert response.status_code == 422, response.text

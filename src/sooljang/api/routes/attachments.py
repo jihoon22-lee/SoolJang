@@ -25,7 +25,14 @@ from sooljang.infrastructure.database.models import (
     Bottle,
     TastingSession,
 )
-from sooljang.infrastructure.storage import ALLOWED_IMAGE_EXTENSIONS, compute_sha256, save_upload
+from sooljang.infrastructure.storage import (
+    ALLOWED_IMAGE_EXTENSIONS,
+    UploadTooLargeError,
+    compute_sha256,
+    read_upload_within_limit,
+    save_upload,
+    sniff_image_extension,
+)
 
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
@@ -101,12 +108,19 @@ async def upload_attachment(
             f"허용: {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}"
         )
 
-    data = await file.read()
+    try:
+        data = await read_upload_within_limit(file, max_bytes=MAX_UPLOAD_BYTES)
+    except UploadTooLargeError as error:
+        raise ValidationFailedError(
+            f"파일이 너무 큽니다. 상한은 {MAX_UPLOAD_BYTES:,} bytes 입니다"
+        ) from error
     if not data:
         raise ValidationFailedError("빈 파일입니다")
-    if len(data) > MAX_UPLOAD_BYTES:
+    if sniff_image_extension(data) != extension:
+        # content_type 은 클라이언트가 보낸 값이라 신뢰할 수 없다 — 실제 바이트가
+        # 선언한 형식과 다르면(엉뚱한 파일을 이미지인 척 올리는 경우 포함) 거부한다.
         raise ValidationFailedError(
-            f"파일이 너무 큽니다 ({len(data):,} bytes). 상한은 {MAX_UPLOAD_BYTES:,} bytes 입니다"
+            f"파일 내용이 선언한 형식({file.content_type})과 일치하지 않습니다"
         )
 
     sha256 = compute_sha256(data)

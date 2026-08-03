@@ -224,3 +224,17 @@ def test_빈_파일은_422(api_client: TestClient, prefix: str) -> None:
     )
 
     assert response.status_code == 422, response.text
+
+
+def test_내용이_선언한_형식과_다르면_422(api_client: TestClient, prefix: str) -> None:
+    # content_type 은 클라이언트가 보낸 값이라 신뢰할 수 없다(B11) — PNG 라고 주장하는
+    # 파일의 실제 바이트가 PNG 서명과 다르면 거부해야 한다.
+    product = _seed_product(api_client, prefix)
+
+    response = api_client.post(
+        f"{prefix}/attachments",
+        files={"file": ("label.png", b"this is not actually a png", "image/png")},
+        data={"kind": "label", "product_id": product["id"]},
+    )
+
+    assert response.status_code == 422, response.text

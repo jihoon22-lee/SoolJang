@@ -166,6 +166,47 @@ describe("SyncStatusBadge", () => {
     expect((await db.conflict_log.get("c1"))?.deleted_at).not.toBeNull();
   });
 
+  it("확인이 서버 오류로 실패하면 알림을 보여주고 목록에 남는다(B8)", async () => {
+    await db.conflict_log.put({
+      id: "c1",
+      user_id: "u1",
+      created_at: NOW,
+      updated_at: NOW,
+      deleted_at: null,
+      entity: "category",
+      entity_id: "cat1",
+      server_updated_at: NOW,
+      client_updated_at: NOW,
+      client_snapshot: { name: "내가 바꾸려던 이름" },
+      idempotency_key: "op1",
+    });
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+      {
+        match: "/sync/conflicts/c1:resolve",
+        method: "POST",
+        status: 500,
+        body: {
+          type: "https://sooljang.local/errors/internal",
+          title: "서버 오류",
+          status: 500,
+          detail: "서버 오류",
+          instance: "/api/v1/sync/conflicts/c1:resolve",
+        },
+      },
+    ]);
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "충돌 1건" }));
+    await userEvent.click(await screen.findByRole("button", { name: "확인" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("서버 오류");
+    expect(screen.getByText(/내가 바꾸려던 이름/)).toBeInTheDocument();
+    expect((await db.conflict_log.get("c1"))?.deleted_at).toBeNull();
+  });
+
   it("실패한 항목이 있으면 배지에 표시하고, 패널에서 건너뛰면 사라진다", async () => {
     await db.vendor.put({
       id: "v1",

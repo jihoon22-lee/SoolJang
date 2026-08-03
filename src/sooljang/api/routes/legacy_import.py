@@ -22,6 +22,7 @@ from sooljang.application.import_plan import ImportPlan, build_plan, summarize_w
 from sooljang.application.legacy_import import apply_plan
 from sooljang.infrastructure.legacy.blocks import LEGACY_ENCODING, LegacySheetError
 from sooljang.infrastructure.legacy.records import parse_sheet
+from sooljang.infrastructure.storage import UploadTooLargeError, read_upload_within_limit
 
 router = APIRouter(prefix="/imports/legacy", tags=["imports"])
 
@@ -31,13 +32,14 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 async def _plan_from_upload(file: UploadFile) -> ImportPlan:
     """업로드 파일을 계획으로 바꾼다. 인코딩·구조 오류를 사용자에게 알린다."""
-    raw = await file.read()
+    try:
+        raw = await read_upload_within_limit(file, max_bytes=MAX_UPLOAD_BYTES)
+    except UploadTooLargeError as error:
+        raise ValidationFailedError(
+            f"파일이 너무 큽니다. 상한은 {MAX_UPLOAD_BYTES:,} bytes 입니다"
+        ) from error
     if len(raw) == 0:
         raise ValidationFailedError("빈 파일입니다")
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise ValidationFailedError(
-            f"파일이 너무 큽니다 ({len(raw):,} bytes). 상한은 {MAX_UPLOAD_BYTES:,} bytes 입니다"
-        )
 
     try:
         report = parse_sheet(raw)

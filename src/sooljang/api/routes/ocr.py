@@ -15,7 +15,12 @@ from sooljang.api.errors import LlmNotConfiguredError, ValidationFailedError
 from sooljang.api.schemas.ocr import LabelExtractionOut
 from sooljang.application.llm_settings import get_decrypted_api_key
 from sooljang.infrastructure.external import llm
-from sooljang.infrastructure.storage import ALLOWED_IMAGE_EXTENSIONS
+from sooljang.infrastructure.storage import (
+    ALLOWED_IMAGE_EXTENSIONS,
+    UploadTooLargeError,
+    read_upload_within_limit,
+    sniff_image_extension,
+)
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
 
@@ -31,18 +36,24 @@ async def extract_label_fields(
     file: Annotated[UploadFile, File(description="라벨 사진")],
 ) -> LabelExtractionOut:
     """라벨 사진에서 이름·생산자·도수 등을 추출한다. 실패하면 수동 입력으로 폴백한다."""
-    if (file.content_type or "") not in ALLOWED_IMAGE_EXTENSIONS:
+    extension = ALLOWED_IMAGE_EXTENSIONS.get(file.content_type or "")
+    if extension is None:
         raise ValidationFailedError(
             f"지원하지 않는 파일 형식입니다: {file.content_type!r}. "
             f"허용: {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}"
         )
 
-    data = await file.read()
+    try:
+        data = await read_upload_within_limit(file, max_bytes=MAX_UPLOAD_BYTES)
+    except UploadTooLargeError as error:
+        raise ValidationFailedError(
+            f"파일이 너무 큽니다. 상한은 {MAX_UPLOAD_BYTES:,} bytes 입니다"
+        ) from error
     if not data:
         raise ValidationFailedError("빈 파일입니다")
-    if len(data) > MAX_UPLOAD_BYTES:
+    if sniff_image_extension(data) != extension:
         raise ValidationFailedError(
-            f"파일이 너무 큽니다 ({len(data):,} bytes). 상한은 {MAX_UPLOAD_BYTES:,} bytes 입니다"
+            f"파일 내용이 선언한 형식({file.content_type})과 일치하지 않습니다"
         )
 
     configured = await get_decrypted_api_key(

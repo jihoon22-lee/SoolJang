@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { barcodesApi } from "@/api/client";
 import type { ScannerController } from "@/barcode/scanner";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { db } from "@/sync/db";
@@ -310,6 +311,39 @@ describe("BarcodeScanPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "닫기" }));
 
     expect(screen.getByRole("button", { name: "바코드로 스캔" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("조회 응답이 늦게 오는 동안 닫으면 다시 열리지 않는다(B9)", async () => {
+    stubRoutes([...authenticatedRoutes()]);
+    let resolveLookup: (value: Awaited<ReturnType<typeof barcodesApi.lookup>>) => void = () => {};
+    const pending = new Promise<Awaited<ReturnType<typeof barcodesApi.lookup>>>((resolve) => {
+      resolveLookup = resolve;
+    });
+    vi.spyOn(barcodesApi, "lookup").mockReturnValue(pending);
+
+    renderWithQuery(
+      <BarcodeScanPanel onSelectProduct={vi.fn()} scan={fakeScanDetecting("8801234567890")} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "바코드로 스캔" }));
+    await screen.findByText("조회하는 중…");
+
+    await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.getByRole("button", { name: "바코드로 스캔" })).toBeInTheDocument();
+
+    resolveLookup({
+      barcode: "8801234567890",
+      barcode_type: "ean13",
+      is_rcn: false,
+      source: "local",
+      local_match: { product_id: "p1", product_name: "테스트 술", sku_id: "s1", volume_ml: 700 },
+      external_suggestion: null,
+    });
+    // 늦게 도착한 응답의 setPhase 가 다이얼로그를 다시 열지 않는지 확인한다 — 열렸다면
+    // 아래 쿼리가 실패해야 하므로, 이미 안정된 이 시점에 바로 확인해도 된다.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "바코드로 스캔" })).toBeInTheDocument();
+    });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

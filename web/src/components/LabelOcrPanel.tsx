@@ -11,7 +11,7 @@
  * 그때 부모가 원본 사진을 `POST /attachments` 로 올린다("원본·결과 보관").
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, ocrApi } from "@/api/client";
 import type { CategoryNode } from "@/api/types";
 import type { ProductFormValues } from "@/components/ProductForm";
@@ -40,15 +40,26 @@ export function LabelOcrPanel({ categories, onPrefill }: LabelOcrPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // 라벨 인식 응답이 늦게 오는 동안 컴포넌트가 언마운트되면(예: 다른 탭으로 이동) 이
+  // setPhase 를 막을 방법이 없었다(B9, BarcodeScanPanel 과 같은 결함).
+  const liveRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      liveRef.current = false;
+    };
+  }, []);
 
   async function handleFileSelected(file: File) {
     fileRef.current = file;
     setPhase({ kind: "extracting" });
     try {
       const extraction = await ocrApi.extractLabel(file);
+      if (!liveRef.current) return;
       const prefill = toPrefill(extraction, categories);
       setPhase({ kind: "result", prefill, summary: toSummary(extraction) });
     } catch (cause) {
+      if (!liveRef.current) return;
       const apiError = cause instanceof ApiError ? cause : null;
       setPhase({
         kind: "error",

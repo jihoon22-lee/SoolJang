@@ -3,8 +3,8 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-04 (Task 24 PR1 — 동기화 큐 영구 정지 + 데이터 무결성 수정, 게이트
-  전부 통과·머지 대기)**
+- 최종 갱신: **2026-08-04 (Task 24 PR1 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47).
+  PR2 — 프론트 안정성, 게이트 전부 통과·머지 대기)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
@@ -12,11 +12,12 @@
   반영 안 돼 있을 뿐 시스템상 멤버는 맞다). **주의**: 이 환경에 `ast-grep` 이 `sg` 라는
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다
-- 현재 브랜치: `fix/sync-queue-recovery`(Task 24 PR1). Task 1~17·20~23 완료(Task 18 은
+- 현재 브랜치: `fix/frontend-resilience`(Task 24 PR2). Task 1~17·20~23 완료(Task 18 은
   `adapter` 전략만; Task 23 은 태그·릴리스·PC 배포 완료, 모바일 접속만 사용자 조작 대기).
   **`v1.0.0` 태그를 실제로 푸시해 GitHub 릴리스·GHCR 이미지 게시·홈 PC 재배포까지 마쳤다.**
-  이어서 Task 24(실사용 피드백 개선) PR1 을 코드·테스트·문서까지 완료하고 전체 게이트를
-  통과시켰다 — 상세는 `plan.md` §1, Task 24 절
+  이어서 Task 24(실사용 피드백 개선) PR1(동기화 큐 영구 정지 + 데이터 무결성, #47)을 머지했고,
+  PR2(프론트 안정성)를 코드·테스트·문서까지 완료해 전체 게이트를 통과시켰다 — 상세는
+  `plan.md` §1, Task 24 절
 - 버전: **`1.0.0`**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0))
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -186,7 +187,8 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | PR9/10 사후 코드 리뷰 하드닝(2026-08-03, [PR #41](https://github.com/jihoon22-lee/SoolJang/pull/41)) | `code-reviewer` 서브에이전트로 외부 소스 레지스트리(PR9)·매장 모드(PR10)를 적대적으로 재검토해 6개 결함을 실행 검증(`httpx.MockTransport` 프로브, 최소 FastAPI 앱으로 CORS 헤더 유무 직접 확인)까지 마친 뒤 전부 수정했다: (1) `adapter_spec` 모양이 조금만 틀려도(오타 난 transform, 문법 오류 CSS 셀렉터 등) 크래시하던 것 → `fetch_snapshot` 을 예외를 삼키는 래퍼로 감싸고 필드 단위로 방어, (2) 검색 결과 링크를 호스트 검증 없이 그대로 조회해 SSRF 가능(+ 리다이렉트 미지원) → `_same_host()` 이중 확인 + `follow_redirects`, (3) 상세 페이지 조회 실패가 `source_url` 만 보고 캐시돼 TTL 동안 실패가 성공처럼 굳음 → `AdapterResult.ok` 필드로 분리, (4) 500 캐치올 핸들러가 `CORSMiddleware` 바깥이라 개발 환경에서 CORS 오류로 가려짐 → `cors_origins` 허용 시 직접 헤더 추가, (5) `useCreateProduct` 온라인 분기에서 구매·첨부 실패 시 로컬 미러링이 실행 안 돼 서버측 고아 제품 발생 → 미러링을 제품 생성 직후로 이동, (6) 외부 소스 CRUD 가 카테고리 소유권을 검증하지 않음 → `ensure_category_exists` 재사용. 신규 테스트 20여 개 추가, 기존 테스트 전부(백엔드 672 passed, 프론트 385 passed) 회귀 없음. 근거는 `plan.md` D99~D104 |
 | 오프라인 동기화·재고 정합성 하드닝(2026-08-03, [PR #42](https://github.com/jihoon22-lee/SoolJang/pull/42)) | `v1.0.0` 실사용·모바일 배포를 사용자가 승인한 직후, 나머지 Task 22 배치(PR1~8)의 병 상태 전이·동기화 델타 적용 코드는 Task 21 의 UX 차원 리뷰만 받았을 뿐 데이터 정합성 관점 적대적 리뷰는 없었다는 공백을 발견해 별도로 재검토했다. 실제 사용 시나리오(모바일·오프라인)에서 실제로 데이터가 틀리거나 잃어버릴 수 있는 5개 결함을 배포 전에 고쳤다: (1) **치명적** — 오프라인 병 전이(개봉·소진·증여·판매) 가 outbox `fields:{}` 를 보내 서버가 재접속 날짜로 덮어쓰던 것 → `transitionOutboxFields()` 로 실제 날짜 전달, (2) **치명적** — 실패한 동기화 작업에 receipt 가 없어 재전송마다 검증을 다시 돌려 큐 전체가 영구 정지되고, `IntegrityError` 는 아예 배치 전체를 롤백시키며 배지가 "최신 상태"라고 오표시하던 것 → 실패도 receipt 로 멱등화 + `IntegrityError` 캐치 + 배지가 `pendingCount>0` 도 반영, (3) `hand_over_bottle` 에 날짜 역전 가드가 없어 2번의 배치 롤백을 유발할 수 있던 것 → `finish_bottle` 과 같은 가드 추가, (4) `pullDeltas` 의 pending 조회가 pull 네트워크 왕복 전이라 그 사이 낙관적 쓰기가 스테일한 서버 값에 덮이던 TOCTOU + 시음 기록이 건드리는 병이 애초에 보호 대상이 아니던 것 → pending 조회를 pull 이후·같은 트랜잭션으로, `touched_ids` 로 부작용 엔티티 보호, (5) 동기화 중 트리거가 오면 조용히 버려져 최대 1분(백그라운드 탭이면 무기한) 지연되던 것 → `dirty` 플래그로 종료 후 재실행. 신규 테스트 다수 추가, 기존 테스트 전부(백엔드 675 passed, 프론트 393 passed) 회귀 없음. 근거는 `plan.md` D105~D109 |
 | **`v1.0.0` 정식 릴리스·배포(2026-08-03, [PR #43](https://github.com/jihoon22-lee/SoolJang/pull/43) + 실제 태그 푸시)** | 버전 범프(PR #43) 후 `SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh` 로 백업(176KB, 테이블 21개 검증)을 먼저 뜨고, `SOOLJANG_ALLOW_TAG_PUSH=1 git push origin v1.0.0` 으로 태그를 푸시했다. 릴리스 워크플로가 실제로(dry-run 아님) 돌아 GHCR 이미지 게시 + [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) 생성까지 6분 33초에 끝났다. 이 세션 자체가 사용자의 홈 PC(hostname `Main` = tailnet 노드 `main`)라는 걸 확인하고 실제 재배포까지 진행했다 — 단 `gh` CLI 토큰에 `read:packages` 스코프가 없어 GHCR pull 은 `denied`(스코프 추가는 브라우저 기기 인증이 필요해 사용자 상호작용 없이 완료 불가, 진행 안 함), 대신 같은 소스로 **로컬 재빌드**(`docker compose build && up -d`, `SOOLJANG_VERSION=1.0.0`)해 동등한 이미지를 배포했다. `db` 서비스는 이미지가 안 바뀌어 재시작되지 않았고(데이터 위험 없음), 배포 후 `GET /health` 로 `version:"1.0.0"`·`database_connected:true`·컨테이너 둘 다 `healthy` 확인. **모바일 접속(`tailscale serve --bg --https=443 http://127.0.0.1:8080`)은 "Serve is not enabled on your tailnet" 로 거부됐다** — 관리자 콘솔(`https://login.tailscale.com/f/serve?node=n8eiMiT7ky11CNTRL`)에서 사용자가 한 번 활성화해야 하는 계정 단위 설정이라 API/CLI 로 우회 불가. 사용자가 활성화하면 위 명령을 다시 실행해 마무리한다 |
-| Task 24 PR1 — 동기화 큐 영구 정지 + 데이터 무결성(2026-08-04, `fix/sync-queue-recovery`) | 실사용 중 발견된 B6(병수 `2.5` 입력 → 오프라인 큐 영구 정지)를 포함해 B4·B5·B7·B1·B2·B12 총 7개 결함을 수정했다. `pytest` 686 passed(29 skipped, 전부 opt-in), 커버리지 91.50%. `npm run check` 403 passed, 커버리지 91.36% stmts / 83.2% branch, `vite build` 정상. `alembic check` 클린. 시크릿 스캔 통과. **전체 `pytest` 를 처음 돌릴 때 §5 표에 이미 기록된 `SOOLJANG_DATABASE_URL` 함정이 그대로 재발**(새 셸이라 export 가 안 돼 있어 `tests/infrastructure/database/*`·`tests/performance/*` 전체가 `password authentication failed`)해, 이 문서의 기존 기록이 정확함을 재확인했다. 근거는 `plan.md` Task 24 PR1 절, D110~D118 |
+| Task 24 PR1 — 동기화 큐 영구 정지 + 데이터 무결성(2026-08-04, [#47](https://github.com/jihoon22-lee/SoolJang/pull/47) `fix/sync-queue-recovery`, 머지됨) | 실사용 중 발견된 B6(병수 `2.5` 입력 → 오프라인 큐 영구 정지)를 포함해 B4·B5·B7·B1·B2·B12 총 7개 결함을 수정했다. `pytest` 686 passed(29 skipped, 전부 opt-in), 커버리지 91.50%. `npm run check` 403 passed, 커버리지 91.36% stmts / 83.2% branch, `vite build` 정상. `alembic check` 클린. 시크릿 스캔 통과. **전체 `pytest` 를 처음 돌릴 때 §5 표에 이미 기록된 `SOOLJANG_DATABASE_URL` 함정이 그대로 재발**(새 셸이라 export 가 안 돼 있어 `tests/infrastructure/database/*`·`tests/performance/*` 전체가 `password authentication failed`)해, 이 문서의 기존 기록이 정확함을 재확인했다. CI 의 `pip-audit` 단계가 `pypi.org` 타임아웃으로 1회 실패했으나 이 PR 변경과 무관한 일시적 네트워크 문제로 판단해 재실행으로 통과시켰다. 근거는 `plan.md` Task 24 PR1 절, D110~D118 |
+| Task 24 PR2 — 프론트 안정성(2026-08-04, `fix/frontend-resilience`, 게이트 통과·머지 대기) | 화면이 죽거나 실패가 조용히 사라지는 4개 결함(B10 루트 에러 바운더리 부재, B8 충돌 확인 실패 시 무반응, B9 바코드/라벨 인식 응답 지연 중 닫은 다이얼로그 재등장, B11 업로드 크기 검사가 전체 읽기 뒤에 있고 매직 바이트 확인 없음)을 수정했다. `pytest` 689 passed(29 skipped), `npm run check` 408 passed, `vite build` 정상. B9 는 수정 전 코드로 되돌려 다이얼로그가 실제로 재등장함을 먼저 확인한 뒤 고쳤다. 근거는 `plan.md` Task 24 PR2 절, D119~D122 |
 
 ---
 
