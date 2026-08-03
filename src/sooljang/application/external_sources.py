@@ -21,6 +21,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sooljang.application.products import ensure_category_exists
 from sooljang.infrastructure.database.models import ExternalLookupCache, ExternalSource, Product
 from sooljang.infrastructure.external.adapter import fetch_snapshot
 
@@ -72,6 +73,7 @@ async def create_source(
     ttl_hours: int = 24,
     note: str | None = None,
 ) -> ExternalSource:
+    await ensure_category_exists(session, user_id=user_id, category_id=category_id)
     source = ExternalSource(
         user_id=user_id,
         name=name,
@@ -95,6 +97,21 @@ async def get_owned_source(
     source = await session.get(ExternalSource, source_id)
     if source is None or source.deleted_at is not None or source.user_id != user_id:
         return None
+    return source
+
+
+async def update_source(
+    session: AsyncSession, source: ExternalSource, *, user_id: uuid.UUID, fields: dict[str, Any]
+) -> ExternalSource:
+    """부분 갱신. `fields` 는 요청에서 실제로 지정된 항목만 담는다(`exclude_unset`)."""
+    if "category_id" in fields:
+        await ensure_category_exists(session, user_id=user_id, category_id=fields["category_id"])
+    for key in ("name", "base_url"):
+        if key in fields and isinstance(fields[key], str):
+            fields[key] = fields[key].strip()
+    for key, value in fields.items():
+        setattr(source, key, value)
+    await session.flush()
     return source
 
 
@@ -217,10 +234,12 @@ async def lookup_product(
         )
         fetched_at = datetime.now(UTC)
 
-        # 절대 규칙(§7.1): 출처 URL 이 없는 결과는 캐시에 저장하지 않는다. 매번 새로
-        # 시도하도록 두되(다음 조회에서 다시 시도할 기회를 준다), 화면에는 이번 결과만
-        # 보여준다.
-        if adapter_result.source_url is not None:
+        # 절대 규칙(§7.1): 출처 URL 이 없는 결과는 캐시에 저장하지 않는다. `ok` 도 함께
+        # 확인한다 — 상세 페이지 조회 자체가 실패해도 `source_url` 은 채워져 있을 수
+        # 있는데(어느 URL 을 시도했는지는 남긴다), 그 실패를 성공인 것처럼 TTL 동안
+        # 캐시해 버리면 다음 조회도 계속 빈 결과만 돌려주게 된다. 매번 새로 시도하도록
+        # 두되(다음 조회에서 다시 시도할 기회를 준다), 화면에는 이번 결과만 보여준다.
+        if adapter_result.ok and adapter_result.source_url is not None:
             session.add(
                 ExternalLookupCache(
                     user_id=user_id,

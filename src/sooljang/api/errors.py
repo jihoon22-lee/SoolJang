@@ -5,6 +5,7 @@
 """
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -120,8 +121,26 @@ def _http_status_title(status_code: int) -> str:
     }.get(status_code, "요청을 처리할 수 없습니다")
 
 
-def register_error_handlers(app: FastAPI) -> None:
-    """모든 에러를 Problem Details 로 통일한다."""
+def register_error_handlers(app: FastAPI, *, cors_origins: Sequence[str] = ()) -> None:
+    """모든 에러를 Problem Details 로 통일한다.
+
+    `cors_origins` 는 `Exception` 캐치올 핸들러에만 쓰인다 — FastAPI/Starlette 의
+    `Exception` 핸들러는 `ServerErrorMiddleware` 에서 실행되는데, 이 미들웨어는
+    `CORSMiddleware` 보다 바깥(더 먼저 요청을 받고, 더 나중에 응답을 내보내는 계층)에
+    있어 평소 CORS 헤더가 안 붙는다. 개발 환경처럼 프론트(5173)와 API(8000)가 다른
+    origin 이면, 브라우저가 이 500 응답을 CORS 오류로 가려 버려 실제 에러 메시지를
+    볼 수 없다. 운영은 단일 리버스 프록시라 origin 이 같아 원래도 문제가 없다.
+    """
+
+    def _cors_headers(request: Request) -> dict[str, str]:
+        origin = request.headers.get("origin")
+        if origin and origin in cors_origins:
+            return {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+                "Vary": "Origin",
+            }
+        return {}
 
     @app.exception_handler(DomainError)
     async def _domain_error(request: Request, exc: Exception) -> JSONResponse:
@@ -187,10 +206,12 @@ def register_error_handlers(app: FastAPI) -> None:
         # (Task 21 장애 주입 검증에서 발견). 원인 메시지는 스택/쿼리를 노출할 수 있어
         # 응답에는 담지 않는다 — 서버 로그에는 남긴다.
         logger.exception("처리되지 않은 예외", exc_info=exc)
-        return problem_response(
+        response = problem_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             error_type="internal",
             title="예기치 않은 오류가 발생했습니다",
             detail="잠시 후 다시 시도하세요. 문제가 이어지면 관리자에게 문의하세요",
             instance=str(request.url.path),
         )
+        response.headers.update(_cors_headers(request))
+        return response

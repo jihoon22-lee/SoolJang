@@ -3,12 +3,13 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-03 (Task 21·22 완료 + Task 23 릴리스 파이프라인 사전 점검, PR #26~#38)**
+- 최종 갱신: **2026-08-03 (Task 21·22 완료 + Task 23 릴리스 파이프라인 사전 점검 + PR9/10 사후 코드 리뷰 하드닝, PR #26~#41)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - 현재 브랜치: `main` (Task 17·20·21·22 완료. Task 18 은 `adapter` 전략만 부분 완료. 릴리스
-  워크플로 dry-run 으로 재검증 완료(PR #38) — **이 개발 샌드박스에서 자동으로 이어갈
-  작업이 없다.** 남은 항목이 실제 인터넷 환경 또는 사용자의 명시적 승인을 필요로 한다.
+  워크플로 dry-run 으로 재검증 완료(PR #38). PR9(외부 소스)·PR10(매장 모드)을 적대적
+  코드 리뷰로 재검토해 나온 6개 결함을 PR #41 에서 수정 — **이 개발 샌드박스에서 자동으로
+  이어갈 작업이 없다.** 남은 항목이 실제 인터넷 환경 또는 사용자의 명시적 승인을 필요로 한다.
   상세는 `plan.md` §1)
 - 버전: `0.1.0` (**태그 없음.** 릴리스는 Task 23에서 1회만)
 
@@ -128,7 +129,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 ## 2. 지금까지 한 일
 
 전체 23개 Task 중 **18개 완료 + Task 21·22 진행중**(Task 18 은 `adapter` 전략만 부분
-완료, Task 19 는 여전히 대기). PR 38개 머지(#1~#38, #16~#20 은 문서 전용 — 이후 규칙
+완료, Task 19 는 여전히 대기). PR 41개 머지(#1~#41, #16~#20 은 문서 전용 — 이후 규칙
 9(§6)로 금지된 관행이니 반복하지 않는다).
 
 | Task | 상태 | PR | 핵심 산출물 |
@@ -176,6 +177,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | Task 22 Track 1~4(10 PR) 각각 백엔드·프론트 전체 검증 + 실클릭 확인 | 매 PR 이 `npm run check`(lint+typecheck+vitest 80%+)와 필요시 `uv run pytest`/`ruff`/`ty` 를 통과한 뒤에만 머지. `pytest` 최종 650 passed. PR9(외부 소스)·PR10(매장 모드)는 Playwright 로 실제 405종 데이터 대상 실클릭까지 확인(검색 랭킹, 조회 결과, 신규 등록→즉시 요약 반영, 카메라 권한 거부 시 우아한 실패) |
 | Task 21 완료(2026-08-03, `feature/self-review`) | **E2E 회귀 테스트**: 등록→검색→구매 분할→개봉→시음→통계→바코드→피벗→저장뷰→오프라인 동기화를 잇는 영구 테스트(`tests/api/test_e2e_scenario.py`) 추가. **성능 실측**: 429/1,078 규모와 10배(4,290/10,780) 규모 모두 opt-in 벤치마크(`tests/performance/test_scale_benchmarks.py`)로 실측 — 가장 느린 `POST /stats/pivot` 도 10배 규모에서 211ms. **실측 중 실제 버그 발견·수정**: 대량 임포트 직후 `ANALYZE` 미실행으로 정상 4~6ms 쿼리가 25~30초로 느려지는 문제(`legacy_import.py::apply_plan`). **장애 주입**: 외부 소스 타임아웃·셀렉터 파손·robots.txt 차단(PR9 테스트 8종), 동기화 충돌(LWW·재전송·head-of-line, 기존 `test_sync.py`), LLM 네트워크 타임아웃(`test_llm.py`), **처리되지 않은 예외(DB 연결 끊김 포함) → Problem Details 미변환 결함을 발견해 즉시 수정**(`api/errors.py` 에 `Exception` 캐치올 핸들러 추가 + `logger.exception` 으로 서버 로그에 원인 기록, `test_error_handling.py` 로 검증). **데이터 무결성**: `sooljang`(실데이터 406제품·1,079병) `pg_dump` → 새 DB `pg_restore` → 통계 재계산(summary·rankings·category rollup) 결과가 백업 전과 **바이트 단위로 동일**함을 확인, 임시 DB 는 정리함. 산출물은 [`docs/review-2026-08-03.md`](review-2026-08-03.md) |
 | Task 23 릴리스 파이프라인 사전 점검(2026-08-03, [PR #38](https://github.com/jihoon22-lee/SoolJang/pull/38)) | 태그 없이 `release.yml` 을 `workflow_dispatch` dry-run 으로 미리 돌려 보다가 실제 결함을 발견했다 — "Run full test suite" 단계에 PostgreSQL 서비스가 없어 전부 `connection refused` 로 실패했다(만들어진 이후 한 번도 실제 테스트 경로로 검증된 적이 없었다). `quality.yml` 과 같은 `services.postgres` 를 추가해 수정하고, 다시 dry-run 을 돌려 테스트~이미지 빌드(web·api 둘 다)까지 전부 통과함을 확인했다(run [30784846639](https://github.com/jihoon22-lee/SoolJang/actions/runs/30784846639)). **릴리스 파이프라인 자체는 이제 준비됐다** — 남은 건 실제 `v1.0.0` 태그 푸시뿐이고, 이건 사용자의 명시적 승인 없이는 하지 않는다 |
+| PR9/10 사후 코드 리뷰 하드닝(2026-08-03, [PR #41](https://github.com/jihoon22-lee/SoolJang/pull/41)) | `code-reviewer` 서브에이전트로 외부 소스 레지스트리(PR9)·매장 모드(PR10)를 적대적으로 재검토해 6개 결함을 실행 검증(`httpx.MockTransport` 프로브, 최소 FastAPI 앱으로 CORS 헤더 유무 직접 확인)까지 마친 뒤 전부 수정했다: (1) `adapter_spec` 모양이 조금만 틀려도(오타 난 transform, 문법 오류 CSS 셀렉터 등) 크래시하던 것 → `fetch_snapshot` 을 예외를 삼키는 래퍼로 감싸고 필드 단위로 방어, (2) 검색 결과 링크를 호스트 검증 없이 그대로 조회해 SSRF 가능(+ 리다이렉트 미지원) → `_same_host()` 이중 확인 + `follow_redirects`, (3) 상세 페이지 조회 실패가 `source_url` 만 보고 캐시돼 TTL 동안 실패가 성공처럼 굳음 → `AdapterResult.ok` 필드로 분리, (4) 500 캐치올 핸들러가 `CORSMiddleware` 바깥이라 개발 환경에서 CORS 오류로 가려짐 → `cors_origins` 허용 시 직접 헤더 추가, (5) `useCreateProduct` 온라인 분기에서 구매·첨부 실패 시 로컬 미러링이 실행 안 돼 서버측 고아 제품 발생 → 미러링을 제품 생성 직후로 이동, (6) 외부 소스 CRUD 가 카테고리 소유권을 검증하지 않음 → `ensure_category_exists` 재사용. 신규 테스트 20여 개 추가, 기존 테스트 전부(백엔드 672 passed, 프론트 385 passed) 회귀 없음. 근거는 `plan.md` D99~D104 |
 
 ---
 

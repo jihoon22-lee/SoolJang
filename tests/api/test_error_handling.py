@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from sooljang.api import deps as deps_module
+from sooljang.api.app import API_PREFIX, create_app
+from sooljang.config import get_settings
 
 
 def test_예상치_못한_예외는_문제상세_형식_500으로_응답한다(
@@ -53,3 +55,44 @@ def test_예상치_못한_예외_후에도_후속_요청은_정상_처리된다(
 
     recovered = api_client.get(f"{prefix}/products")
     assert recovered.status_code == 200
+
+
+def test_500_응답도_허용된_origin이면_CORS_헤더가_붙는다(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`Exception` 캐치올 핸들러는 `ServerErrorMiddleware` 안에서 실행돼 `CORSMiddleware`
+    보다 바깥이라 평소 CORS 헤더가 안 붙는다(`register_error_handlers` 문서 참고). 개발
+    환경처럼 프론트(5173)와 API 가 다른 origin 이면, 이 500 응답이 브라우저에서 CORS
+    오류로 가려져 실제 에러 메시지를 볼 수 없다 — `cors_origins` 로 허용한 origin 이면
+    이 핸들러가 직접 헤더를 붙여야 한다.
+    """
+    monkeypatch.setenv("SOOLJANG_CORS_ORIGINS", "http://localhost:5173")
+    get_settings.cache_clear()
+
+    def _broken_session_factory() -> Any:
+        raise OperationalError("connection failed", None, Exception("connection refused"))
+
+    monkeypatch.setattr(deps_module, "get_session_factory", _broken_session_factory)
+
+    with TestClient(create_app(), raise_server_exceptions=False) as client:
+        response = client.get(f"{API_PREFIX}/products", headers={"Origin": "http://localhost:5173"})
+
+    assert response.status_code == 500
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_500_응답은_허용되지_않은_origin이면_CORS_헤더가_없다(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SOOLJANG_CORS_ORIGINS", "http://localhost:5173")
+    get_settings.cache_clear()
+
+    def _broken_session_factory() -> Any:
+        raise OperationalError("connection failed", None, Exception("connection refused"))
+
+    monkeypatch.setattr(deps_module, "get_session_factory", _broken_session_factory)
+
+    with TestClient(create_app(), raise_server_exceptions=False) as client:
+        response = client.get(f"{API_PREFIX}/products", headers={"Origin": "http://evil.example"})
+
+    assert response.status_code == 500
+    assert "access-control-allow-origin" not in response.headers

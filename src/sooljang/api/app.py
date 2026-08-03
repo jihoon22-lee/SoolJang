@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
 
-    register_error_handlers(app)
+    register_error_handlers(app, cors_origins=settings.cors_origins)
 
     # `/health` 와 `/auth` 만 인증 없이 접근한다. 나머지는 **라우터 단위로** 인증을 걸어,
     # 새 라우터를 추가할 때 인증을 빠뜨려 조용히 공개 엔드포인트가 되는 일을 막는다.

@@ -70,6 +70,42 @@ def test_수정하면_반영된다(api_client: TestClient, prefix: str) -> None:
     assert body["name"] == "데일리샷"
 
 
+def test_수정하면_이름의_앞뒤_공백을_지운다(api_client: TestClient, prefix: str) -> None:
+    source = _create_source(api_client, prefix)
+
+    response = api_client.patch(
+        f"{prefix}/external-sources/{source['id']}", json={"name": "  새 이름  "}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "새 이름"
+
+
+def test_수정시_존재하지_않는_카테고리면_404(api_client: TestClient, prefix: str) -> None:
+    source = _create_source(api_client, prefix)
+
+    response = api_client.patch(
+        f"{prefix}/external-sources/{source['id']}",
+        json={"category_id": "00000000-0000-0000-0000-0000000000ff"},
+    )
+
+    assert response.status_code == 404, response.text
+
+
+def test_존재하지_않는_카테고리로_등록하면_404(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(
+        f"{prefix}/external-sources",
+        json={
+            "name": "데일리샷",
+            "base_url": "https://example.com",
+            "adapter_spec": ADAPTER_SPEC,
+            "category_id": "00000000-0000-0000-0000-0000000000ff",
+        },
+    )
+
+    assert response.status_code == 404, response.text
+
+
 def test_없는_소스를_수정하면_404(api_client: TestClient, prefix: str) -> None:
     response = api_client.patch(
         f"{prefix}/external-sources/00000000-0000-0000-0000-0000000000ff",

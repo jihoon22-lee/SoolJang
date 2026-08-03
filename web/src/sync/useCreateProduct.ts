@@ -44,6 +44,20 @@ export function useCreateProduct() {
           skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
         });
 
+        // 서버 응답을 로컬 미러에 낙관적으로 반영한다. 아래 구매·첨부 호출이 실패해도
+        // 제품 자체는 이미 서버에 만들어졌으므로, 미러링을 여기서 바로 해 둬야 그 실패가
+        // "서버엔 있는데 로컬 미러엔 없는" 고아 제품을 만들지 않는다 — 델타 풀
+        // (triggerSync)로 내려오기 전까지 `getProduct()` 가 null 을 돌려줘 매장 모드
+        // (Task 22 PR10)처럼 등록 직후 그 제품 화면으로 바로 넘어가는 흐름에서
+        // "제품을 찾을 수 없습니다" 가 보이고, 재시도 시 중복 생성으로 이어질 수 있다.
+        // 구매·병 행까지는 여기서 만들지 않는다(서버가 만드는 병 id 를 알 수 없다) —
+        // 그 부분은 곧 sync 가 채운다.
+        await mirrorProductOptimistically(
+          product,
+          queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
+        );
+        triggerSync();
+
         const quantity = Number(values.quantity);
         const skuId = product.skus[0]?.id;
         if (quantity > 0 && skuId) {
@@ -62,16 +76,6 @@ export function useCreateProduct() {
         if (labelFile) {
           await attachmentsApi.create(labelFile, { kind: "label", product_id: product.id });
         }
-        // 서버 응답을 로컬 미러에 낙관적으로 반영한다. 그러지 않으면 방금 만든 제품이
-        // 델타 풀(triggerSync)로 내려오기 전까지 `getProduct()` 가 null 을 돌려준다 —
-        // 매장 모드(Task 22 PR10)처럼 등록 직후 그 제품 화면으로 바로 넘어가는 흐름에서
-        // "제품을 찾을 수 없습니다" 가 순간적으로 보인다. 구매·병 행까지는 여기서 만들지
-        // 않는다(서버가 만드는 병 id 를 알 수 없다) — 그 부분은 곧 sync 가 채운다.
-        await mirrorProductOptimistically(
-          product,
-          queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
-        );
-        triggerSync();
         return product.id;
       }
 

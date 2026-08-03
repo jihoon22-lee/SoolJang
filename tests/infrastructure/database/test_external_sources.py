@@ -12,6 +12,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sooljang.api.errors import NotFoundError
 from sooljang.application.external_sources import (
     create_source,
     delete_source,
@@ -19,6 +20,7 @@ from sooljang.application.external_sources import (
     list_sources,
     lookup_product,
     reset_rate_limit_history,
+    update_source,
 )
 from sooljang.infrastructure.database.models import Category, ExternalLookupCache, Product
 from sooljang.infrastructure.external.adapter import reset_robots_cache
@@ -109,6 +111,28 @@ def _not_found_transport() -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
+def _detail_fails_transport() -> httpx.MockTransport:
+    """후보는 찾지만(그래서 `source_url` 은 채워지지만) 상세 페이지 조회가 실패한다."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            query = request.url.params.get("q", "")
+            body = (
+                '<div class="product-card">'
+                f'<span class="title">{query}</span>'
+                '<a href="/product/1">보기</a>'
+                "</div>"
+            )
+            return httpx.Response(200, text=body)
+        if request.url.path == "/product/1":
+            return httpx.Response(500, text="internal error")
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    return httpx.MockTransport(handler)
+
+
 class TestRegistry:
     async def test_소스를_등록하고_목록에서_본다(self, session: AsyncSession) -> None:
         await create_source(
@@ -160,6 +184,79 @@ class TestRegistry:
         await session.flush()
 
         assert await list_sources(session, user_id=USER_ID) == []
+
+    async def test_존재하지_않는_카테고리로_등록하면_거부한다(self, session: AsyncSession) -> None:
+        with pytest.raises(NotFoundError):
+            await create_source(
+                session,
+                user_id=USER_ID,
+                name="데일리샷",
+                base_url="https://example.com",
+                adapter_spec=ADAPTER_SPEC,
+                category_id=uuid.uuid4(),
+            )
+
+    async def test_다른_사용자의_카테고리로_등록하면_거부한다(
+        self, session: AsyncSession, category: Category
+    ) -> None:
+        with pytest.raises(NotFoundError):
+            await create_source(
+                session,
+                user_id=OTHER_USER_ID,
+                name="데일리샷",
+                base_url="https://example.com",
+                adapter_spec=ADAPTER_SPEC,
+                category_id=category.id,
+            )
+
+    async def test_수정하면_이름과_주소의_앞뒤_공백을_지운다(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        updated = await update_source(
+            session,
+            source,
+            user_id=USER_ID,
+            fields={"name": "  새 이름  ", "base_url": "  https://new.example.com  "},
+        )
+
+        assert updated.name == "새 이름"
+        assert updated.base_url == "https://new.example.com"
+
+    async def test_수정시_존재하지_않는_카테고리면_거부한다(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(NotFoundError):
+            await update_source(
+                session, source, user_id=USER_ID, fields={"category_id": uuid.uuid4()}
+            )
+
+    async def test_수정시_다른_사용자의_카테고리면_거부한다(
+        self, session: AsyncSession, category: Category
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(NotFoundError):
+            await update_source(
+                session, source, user_id=OTHER_USER_ID, fields={"category_id": category.id}
+            )
 
 
 class TestLookup:
@@ -276,6 +373,34 @@ class TestLookup:
         assert first[0].source_url is None
         assert first[0].degraded is True
         # 캐시에 안 남았으니 두 번째 호출도 여전히 cached=False(다시 시도)다.
+        assert second[0].cached is False
+
+        cached_rows = list(await session.scalars(select(ExternalLookupCache)))
+        assert cached_rows == []
+
+    async def test_상세_페이지_조회가_실패하면_출처_URL이_있어도_캐시에_저장하지_않는다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        # 후보는 찾아 source_url 은 채워지지만 상세 페이지 자체를 못 가져온 경우다.
+        # `source_url` 만 보고 캐시하면 이 실패가 TTL 동안 성공인 것처럼 굳어 버린다.
+        await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        first = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_detail_fails_transport()
+        )
+        second = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_detail_fails_transport()
+        )
+
+        assert first[0].source_url == "https://example.com/product/1"
+        assert first[0].degraded is True
+        # 캐시에 안 남았으니 두 번째 호출도 다시 시도한다(cached=False).
         assert second[0].cached is False
 
         cached_rows = list(await session.scalars(select(ExternalLookupCache)))
