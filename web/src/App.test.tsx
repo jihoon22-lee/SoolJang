@@ -95,6 +95,16 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "외부 소스" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("매장 모드로 전환한다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(await screen.findByRole("link", { name: "매장 모드" }));
+
+    expect(await screen.findByRole("heading", { name: "매장 모드" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "매장 모드" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("서비스 상태로 전환하면 마이그레이션 리비전을 보여준다", async () => {
     stubAll();
     renderWithQuery(<App />);

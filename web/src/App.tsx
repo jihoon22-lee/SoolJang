@@ -11,6 +11,7 @@ import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SourcesPage } from "@/pages/SourcesPage";
 import { StatsPage } from "@/pages/StatsPage";
+import { StoreModePage } from "@/pages/StoreModePage";
 import { VendorsPage } from "@/pages/VendorsPage";
 import { parseHash, type Route, routeToHash, type View } from "@/router";
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
@@ -18,6 +19,7 @@ import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
+  { id: "scan", label: "매장 모드" },
   { id: "categories", label: "주종 관리" },
   { id: "vendors", label: "구매처" },
   { id: "sources", label: "외부 소스" },
@@ -152,6 +154,9 @@ export function App() {
               onDeselectProduct={() => navigate({ view: "products" })}
               initialCategoryId={route.categoryId}
             />
+          )}
+          {route.view === "scan" && (
+            <StoreModePage onOpenDetail={(id) => navigate({ view: "products", productId: id })} />
           )}
           {route.view === "categories" && <CategoriesPage />}
           {route.view === "vendors" && <VendorsPage />}
