@@ -6,10 +6,16 @@
 셀렉터가 깨지거나 robots.txt 가 막으면 예외 대신 `degraded=True` 부분 결과를 반환한다 —
 사이트 구조 변경이나 접근 제한은 정상적으로 발생하는 일이라 전체 조회를 막아서는 안 된다
 (§7.2). `source_url` 이 없는 결과는 호출자가 저장을 거부해야 한다(§7.1 절대 규칙).
-"""
+
+`adapter_spec` 은 사용자가 등록 화면에서 직접 쓰는 JSON 이라 모양이 자유롭게 틀릴 수
+있다(오타 난 transform 이름, `{}` 만 있는 url_template, 문자열이어야 할 자리에 dict 가
+아닌 값 등) — 이런 입력이 예외를 던지면 그 소스 하나 때문에 같은 요청에 포함된 다른
+소스의 결과까지 500 으로 함께 죽는다(어댑터 계약 위반). 그래서 필드 추출과 이 모듈의
+공개 함수 전체를 방어적으로 감싼다: 여기서 예외가 새 나가는 일은 없어야 한다."""
 
 import difflib
 import logging
+import math
 import re
 import time
 import urllib.parse
@@ -28,6 +34,8 @@ USER_AGENT = "SoolJangBot/1.0 (+https://github.com/jihoon22-lee/sooljang; person
 #: 검색 후보 중 이 유사도 미만이면 "다른 술" 로 보고 후보 없음 취급한다.
 _MIN_SIMILARITY = 0.4
 _ROBOTS_TTL_SECONDS = 24 * 3600
+#: 리다이렉트를 따라가되 무한 루프성 설정을 방어한다.
+_MAX_REDIRECTS = 5
 
 #: 도메인별 robots.txt 파서 캐시. 단일 프로세스 배포(§8.1)라 인메모리로 충분하다 —
 #: 재시작하면 다시 받아올 뿐 정확성 문제는 없다.
@@ -49,6 +57,10 @@ class AdapterResult:
     raw_excerpt: str | None
     degraded: bool
     warning: str | None
+    #: 상세 페이지를 실제로 성공적으로 가져와 파싱했는지. `source_url` 이 채워져 있어도
+    #: 이 값이 `False` 면(예: 상세 페이지 조회 자체가 실패) 호출자는 결과를 캐시하면 안
+    #: 된다 — 실패를 성공처럼 TTL 동안 붙잡아 두게 된다.
+    ok: bool = False
 
 
 def _normalize(text: str) -> str:
@@ -65,35 +77,53 @@ def _apply_transform(value: Any, transform: str) -> Any:
         if not cleaned:
             return None
         try:
-            return float(cleaned)
+            number = float(cleaned)
         except ValueError:
             return None
-    raise ValueError(f"알 수 없는 transform: {transform!r}")
+        # "Infinity"/"nan" 처럼 파이썬은 파싱하지만 JSON/Postgres JSONB 는 담을 수 없는
+        # 값은 애초에 필드가 없었던 것으로 취급한다.
+        return number if math.isfinite(number) else None
+    # 등록 화면에서 오타를 낸 transform 이름 — 이 필드 하나만 못 뽑을 뿐, 조회 전체를
+    # 막을 이유가 없다.
+    logger.warning("알 수 없는 transform 이라 건너뜁니다: %r", transform)
+    return None
 
 
-def _extract_field(scope: Tag | BeautifulSoup, spec: dict[str, Any], *, base_url: str) -> Any:
-    """`adapter_spec` 의 필드 하나(`{selector, attr, transform}` 또는 `{const}`)를 계산한다."""
+def _extract_field(scope: Tag | BeautifulSoup, spec: Any, *, base_url: str) -> Any:
+    """`adapter_spec` 의 필드 하나(`{selector, attr, transform}` 또는 `{const}`)를 계산한다.
+
+    `spec` 자체가 dict 가 아니거나(예: 필드 값에 문자열을 직접 씀), 셀렉터 문법이
+    잘못됐거나(soupsieve 가 예외를 던진다), 그 밖의 예상 못 한 모양이어도 예외를 밖으로
+    내보내지 않는다 — 그 필드만 조용히 빠진다(§7.2 의 "부분 결과 + 경고" 계약).
+    """
+    if not isinstance(spec, dict):
+        return None
     if "const" in spec:
         return spec["const"]
 
-    selector = spec.get("selector")
-    node = scope.select_one(selector) if selector else scope
-    if node is None:
-        return None
+    try:
+        selector = spec.get("selector")
+        node = scope.select_one(selector) if selector else scope
+        if node is None:
+            return None
 
-    attr = spec.get("attr", "text")
-    raw: Any = node.get_text(strip=True) or None if attr == "text" else node.get(attr)
-    if raw is None:
-        return None
-
-    for transform in spec.get("transform", []):
-        raw = _apply_transform(raw, transform)
+        attr = spec.get("attr", "text")
+        raw: Any = node.get_text(strip=True) or None if attr == "text" else node.get(attr)
         if raw is None:
             return None
 
-    if spec.get("absolute") and isinstance(raw, str):
-        raw = urllib.parse.urljoin(base_url, raw)
-    return raw
+        transforms = spec.get("transform", [])
+        for transform in transforms if isinstance(transforms, list) else []:
+            raw = _apply_transform(raw, transform)
+            if raw is None:
+                return None
+
+        if spec.get("absolute") and isinstance(raw, str):
+            raw = urllib.parse.urljoin(base_url, raw)
+        return raw
+    except Exception:
+        logger.warning("필드 추출 중 예외가 나 건너뜁니다: spec=%r", spec, exc_info=True)
+        return None
 
 
 async def _allowed(base_url: str, target_url: str, *, client: httpx.AsyncClient) -> bool:
@@ -120,6 +150,19 @@ async def _allowed(base_url: str, target_url: str, *, client: httpx.AsyncClient)
     return parser.can_fetch(USER_AGENT, target_url)
 
 
+def _same_host(base_url: str, candidate_url: str) -> bool:
+    """`candidate_url` 이 `base_url` 과 같은 호스트의 http(s) 주소인지.
+
+    검색 결과 페이지의 링크는 신뢰할 수 없는 원격 콘텐츠다 — 검색된 링크를 그대로
+    따라가면, 등록한 사이트가 (또는 그 사이트에 실린 광고·제휴 링크가) 사설망·클라우드
+    메타데이터 엔드포인트 등 전혀 다른 호스트를 가리키게 만들 수 있다(SSRF). 등록된
+    소스와 같은 호스트가 아니면 상세 페이지를 아예 조회하지 않는다.
+    """
+    base_host = urllib.parse.urlparse(base_url).netloc.lower()
+    candidate = urllib.parse.urlparse(candidate_url)
+    return candidate.scheme in ("http", "https") and candidate.netloc.lower() == base_host
+
+
 async def fetch_snapshot(
     adapter_spec: dict[str, Any],
     *,
@@ -132,15 +175,43 @@ async def fetch_snapshot(
     `transport` 는 테스트가 `httpx.MockTransport` 로 실제 네트워크 없이 응답을 흉내 낼 수
     있게 하는 자리다 — 운영에서는 항상 `None`(기본 전송).
     """
+    try:
+        return await _fetch_snapshot_unsafe(
+            adapter_spec, base_url=base_url, query=query, transport=transport
+        )
+    except Exception as error:
+        # 여기까지 오는 건 아래 구체적인 방어로도 못 잡은 진짜 예상 밖의 adapter_spec
+        # 모양이다 — 그래도 이 함수의 계약("절대 예외를 던지지 않는다")은 지킨다.
+        logger.warning("adapter_spec 처리 중 예상 못 한 예외: %s", error, exc_info=True)
+        return AdapterResult(None, {}, None, True, f"adapter_spec 처리 실패: {error}")
+
+
+async def _fetch_snapshot_unsafe(
+    adapter_spec: dict[str, Any],
+    *,
+    base_url: str,
+    query: str,
+    transport: httpx.AsyncBaseTransport | None,
+) -> AdapterResult:
     search_spec = adapter_spec.get("search")
-    if not search_spec:
+    if not isinstance(search_spec, dict):
         return AdapterResult(None, {}, None, True, "adapter_spec 에 search 설정이 없습니다")
 
-    async with httpx.AsyncClient(
-        timeout=_TIMEOUT_SECONDS, transport=transport, headers={"User-Agent": USER_AGENT}
-    ) as client:
-        search_url = search_spec["url_template"].format(query=urllib.parse.quote(query))
+    url_template = search_spec.get("url_template")
+    if not isinstance(url_template, str):
+        return AdapterResult(None, {}, None, True, "adapter_spec.search.url_template 이 없습니다")
+    try:
+        search_url = url_template.format(query=urllib.parse.quote(query))
+    except (KeyError, IndexError, ValueError) as error:
+        return AdapterResult(None, {}, None, True, f"url_template 형식이 잘못됐습니다: {error}")
 
+    async with httpx.AsyncClient(
+        timeout=_TIMEOUT_SECONDS,
+        transport=transport,
+        headers={"User-Agent": USER_AGENT},
+        follow_redirects=True,
+        max_redirects=_MAX_REDIRECTS,
+    ) as client:
         if not await _allowed(base_url, search_url, client=client):
             return AdapterResult(
                 None, {}, None, True, "robots.txt 가 검색 페이지 접근을 금지합니다"
@@ -154,12 +225,14 @@ async def fetch_snapshot(
 
         soup = BeautifulSoup(response.text, "html.parser")
         item_selector = search_spec.get("item")
-        items = soup.select(item_selector) if item_selector else []
-        fields_spec = search_spec.get("fields", {})
+        items = soup.select(item_selector) if isinstance(item_selector, str) else []
+        fields_spec = search_spec.get("fields")
+        if not isinstance(fields_spec, dict):
+            fields_spec = {}
         candidates: list[tuple[str, str]] = []
         for item in items:
-            name = _extract_field(item, fields_spec.get("name", {}), base_url=base_url)
-            url = _extract_field(item, fields_spec.get("url", {}), base_url=base_url)
+            name = _extract_field(item, fields_spec.get("name"), base_url=base_url)
+            url = _extract_field(item, fields_spec.get("url"), base_url=base_url)
             if isinstance(name, str) and isinstance(url, str):
                 candidates.append((name, url))
 
@@ -178,6 +251,11 @@ async def fetch_snapshot(
                 None, {}, None, True, f"충분히 비슷한 후보가 없습니다(가장 가까움: {best_name!r})"
             )
 
+        if not _same_host(base_url, best_url):
+            return AdapterResult(
+                None, {}, None, True, "검색 결과 링크가 등록된 사이트 밖을 가리켜 건너뜁니다"
+            )
+
         if not await _allowed(base_url, best_url, client=client):
             return AdapterResult(
                 None, {}, None, True, "robots.txt 가 상세 페이지 접근을 금지합니다"
@@ -189,8 +267,20 @@ async def fetch_snapshot(
         except httpx.HTTPError as error:
             return AdapterResult(best_url, {}, None, True, f"상세 페이지 조회 실패: {error}")
 
+        # 리다이렉트를 따라간 뒤 최종 주소도 같은 호스트인지 다시 확인한다 — 등록한
+        # 사이트 자체가 공격받아 다른 호스트로 리다이렉트하도록 바뀌었을 가능성을 막는다.
+        if not _same_host(base_url, str(detail_response.url)):
+            return AdapterResult(
+                None, {}, None, True, "상세 페이지가 등록된 사이트 밖으로 리다이렉트됐습니다"
+            )
+
         detail_soup = BeautifulSoup(detail_response.text, "html.parser")
-        detail_fields_spec: dict[str, Any] = adapter_spec.get("detail", {}).get("fields", {})
+        detail_section = adapter_spec.get("detail")
+        detail_fields_spec = (
+            detail_section.get("fields") if isinstance(detail_section, dict) else None
+        )
+        if not isinstance(detail_fields_spec, dict):
+            detail_fields_spec = {}
         fields: dict[str, Any] = {}
         missing: list[str] = []
         for field_name, field_spec in detail_fields_spec.items():
@@ -202,4 +292,4 @@ async def fetch_snapshot(
         excerpt = detail_soup.get_text(" ", strip=True)[:500] or None
         degraded = bool(missing)
         warning = f"일부 항목을 확인하지 못했습니다: {', '.join(missing)}" if missing else None
-        return AdapterResult(best_url, fields, excerpt, degraded, warning)
+        return AdapterResult(best_url, fields, excerpt, degraded, warning, ok=True)

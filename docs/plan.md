@@ -16,10 +16,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-03 (Task 21·22 완료, 릴리스 워크플로 사전 점검·결함 수정) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR). Task 18 은 `adapter` 전략만 부분 완료. Task 21 은 모바일 실기기 검증만 환경 제약으로 배포 후로 이연. **Task 23 릴리스 파이프라인은 사전 점검·결함 수정까지 끝나 태그 푸시만 하면 되는 상태** |
+| 최종 갱신 | 2026-08-03 (Task 21·22 완료, 릴리스 워크플로 사전 점검·결함 수정, PR9/10 사후 코드 리뷰 하드닝) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 1개). Task 18 은 `adapter` 전략만 부분 완료. Task 21 은 모바일 실기기 검증만 환경 제약으로 배포 후로 이연. **Task 23 릴리스 파이프라인은 사전 점검·결함 수정까지 끝나 태그 푸시만 하면 되는 상태** |
 | 다음 착수 Task | **이 개발 샌드박스에서 자동으로 더 이어갈 작업이 없다.** 남은 항목: (1) 7개 판매처 사이트 `adapter_spec` 등록·Task 19/PR11 — 실제 인터넷 접속과 사용자 판단(Q5, 실사용 확인)이 필요, (2) Task 23 의 실제 `v1.0.0` 태그 푸시·PC 배포 — 프로젝트 절대 규칙상 사용자의 명시적 승인과 사용자의 홈 PC 접근이 필요해 자동으로 진행하지 않는다 |
-| 현재 브랜치 | `main` (PR #26~#38 머지 완료, 열린 PR 없음) |
+| 현재 브랜치 | `main` (PR #26~#41 머지 완료, 열린 PR 없음) |
 | 진행 중 잔여 항목 | 없음. 남은 모든 항목이 이 샌드박스 밖(실제 인터넷 환경, 또는 사용자의 명시적 승인)에서 이뤄져야 한다 |
 | 최신 버전 | `0.1.0` (미태그. 태그는 Task 23에서만) |
 
@@ -66,6 +66,27 @@ Task 22 실행의 입력이 됐다 — 상세 계획은 세션 로컬 plan 파�
 구조 조사·`adapter_spec` 작성은 실제 인터넷 접속이 되는 환경(사용자의 로컬 머신, 또는
 §8.1 의 배포된 홈 PC)에서 해야 한다 — Task 19/PR11 착수 전 남은 작업이라는 점은
 그대로다.
+
+#### PR9/10 사후 코드 리뷰 하드닝 (PR #41, 2026-08-03)
+
+PR9(외부 소스 레지스트리)·PR10(매장 모드)이 실제 인터넷 접속 없이도 검증할 수 있는 위험
+영역(오탈자 있는 사용자 입력, 악성 원격 콘텐츠, 캐시·에러 처리 경계 조건)이 남아 있어,
+`code-reviewer` 서브에이전트로 별도 적대적 코드 리뷰를 돌렸다. 실행 검증(실제 프로브
+스크립트로 각 주장을 직접 재현)까지 마친 6개 결함을 모두 이 PR 에서 고쳤다 — 상세 근거는
+아래 결정 로그 D99~D104.
+
+| # | 결함 | 수정 |
+|---|---|---|
+| 1 | `adapter_spec` 모양이 조금만 틀려도(오타 난 transform 이름, `url_template` 형식 오류, 문법 오류 있는 CSS 셀렉터 등) `infrastructure/external/adapter.py` 가 예외를 던져 그 요청에 포함된 다른 소스의 결과까지 500 으로 함께 죽었다 | `fetch_snapshot` 을 예외를 삼키는 공개 래퍼로 감싸고, 필드 추출(`_extract_field`)·`_apply_transform`·검색 아이템 파싱 각각을 방어적으로 처리해 그 필드·소스 하나만 `degraded=True` 로 건너뛰게 했다 |
+| 2 | 검색 결과에서 뽑은 상세 페이지 링크(`best_url`)를 호스트 검증 없이 그대로 조회했다 — 등록한 사이트(또는 그 사이트에 실린 악성 링크)가 사설망·클라우드 메타데이터 엔드포인트를 가리키게 만들 수 있었다(SSRF). 리다이렉트도 안 따라가 정상 사이트의 흔한 트래킹 리다이렉트조차 실패로 처리됐다 | `_same_host()` 로 등록된 소스와 같은 호스트인지 조회 **전**과 리다이렉트 **후**(최종 URL) 두 번 확인. `httpx.AsyncClient` 에 `follow_redirects=True, max_redirects=5` 추가 |
+| 3 | 상세 페이지 조회 자체가 실패해도 `source_url` 만 채워져 있으면 캐시에 저장돼, 그 실패가 TTL(기본 24시간) 동안 성공처럼 굳어 재조회도 계속 빈 결과만 돌려줬다 | `AdapterResult` 에 `ok: bool` 필드를 추가해 "상세 페이지를 실제로 성공적으로 가져와 파싱했는지"를 `source_url` 유무와 분리했다. `lookup_product` 의 캐시 저장 조건을 `source_url is not None` → `ok and source_url is not None` 으로 좁혔다 |
+| 4 | `register_error_handlers` 의 `Exception` 캐치올 핸들러(D97)가 `ServerErrorMiddleware` 안에서 실행돼(`CORSMiddleware` 보다 바깥) CORS 헤더가 안 붙었다 — 개발 환경처럼 프론트(5173)와 API 가 다른 origin 이면 이 500 응답이 브라우저에서 CORS 오류로 가려져 실제 에러 메시지를 볼 수 없었다 | `register_error_handlers` 가 `cors_origins` 를 받아, 요청 `Origin` 이 허용 목록에 있으면 이 핸들러가 직접 `Access-Control-Allow-Origin`/`-Credentials`/`Vary` 헤더를 붙이게 했다 |
+| 5 | `useCreateProduct` 온라인 분기에서 로컬 Dexie 미러 반영(D93)·`triggerSync` 가 구매·첨부 호출 **뒤**에 있었다 — 제품은 서버에 이미 만들어졌는데 그 뒤 구매·첨부 호출이 실패하면 미러링이 실행되지 않아, 로컬에서는 안 보이는(델타 풀 전까지) 서버 측 "고아" 제품이 남고 재시도 시 중복 생성으로 이어질 수 있었다 | 미러링·`triggerSync` 를 `productsApi.create` 성공 직후, 구매·첨부 호출 **전**으로 옮겼다 |
+| 6 | `external_sources` 생성·수정이 `category_id` 소유권을 확인하지 않아(다른 사용자의 카테고리, 또는 존재하지 않는 카테고리 id 를 그대로 저장) 다른 CRUD(`products`·`categories`)와 다른 기준을 썼다. PATCH 도 이름·주소 앞뒤 공백을 안 지웠다 | `create_source`/`update_source` 가 `ensure_category_exists`(기존 `application/products.py` 함수 재사용)로 카테고리를 검증하고, PATCH 라우터를 인라인 `setattr` 루프 대신 이 새 `update_source` 를 쓰게 바꿨다 |
+
+매장 모드(`StoreModeRegister`)가 `ProductForm` 에 `existingProducts`/`vendorNames` 를 안
+넘겨 중복 등록 경고·자동완성이 조용히 빠져 있던 것도 같은 리뷰에서 함께 발견해 이 PR 에서
+고쳤다(PR7 이 만든 기능이 매장 모드 등록 경로에서만 누락돼 있었다).
 
 ### 차단 요인
 
@@ -190,7 +211,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 19 | 사이트별 어댑터와 시세 이력 | ⬜ | `feature/site-adapters` | |
 | 20 | 통계 v2 — 커스텀 피벗과 취향 분석 | ✅ | `feature/stats-v2` | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) |
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
-| 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR). PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조) |
+| 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41) |
 | 23 | 첫 정식 릴리스와 배포 | ⬜ | `release/v1.0.0` | |
 
 ### 의존 관계
@@ -939,7 +960,10 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
   아이디어는 `docs/plan.md` §9(릴리스 후 백로그)로 옮기고 `v1.0.0` 을 막지 않는다
 - **실행 완료**: 위 "Task 22 실행 요약" 표의 10개 PR(#26~#35) — 라우팅, 목록 밀도·정렬·
   필터, 제품 상세 개편, 병 되돌리기+성능, 통계 크로스 링크, 구매처 관리+설정, 자동완성,
-  비주얼 디자인, 외부 소스 레지스트리(Task 18 부분), 매장 모드
+  비주얼 디자인, 외부 소스 레지스트리(Task 18 부분), 매장 모드. 이후 PR9/10 을 적대적
+  코드 리뷰로 재검토해 나온 6개 결함(§7.2 계약을 깨는 크래시, SSRF, 캐시 오염, CORS 누락,
+  오프라인 미러 고아 제품, 카테고리 소유권 미검증)을 [PR #41](https://github.com/jihoon22-lee/SoolJang/pull/41)
+  에서 모두 고쳤다(위 "PR9/10 사후 코드 리뷰 하드닝" 절, D99~D104 참조)
 - **남은 것**: PR11(시세 이력·목표가 알림, Task 19) — Q5(웹 푸시 채널) 미해결 + "PR9·10 이
   실제로 쓸 만한지 확인 후" 라는 조건이 아직 충족되지 않아 미착수. Task 21 잔여 검증도
   마쳐야 이 Task 를 완료로 볼 수 있다(Task21↔22 재검증 루프)
@@ -1135,6 +1159,21 @@ Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항�
 | D96 | 대량 임포트(`legacy_import.py::apply_plan`) 직후 영향받은 8개 테이블에 `ANALYZE` 를 직접 돌린다 | 실사용 규모 성능 실측 중 429행 임포트 직후 첫 조회가 25~30초로 느려지는 걸 발견했다. `autovacuum` 의 자동 `ANALYZE` 는 수십 초~1분 뒤에나 돌아, 그 사이 플래너가 "빈 테이블" 기준 옛 통계로 계획을 짜 중첩 루프를 고른다 — 사용자가 임포트 직후 바로 목록을 열어 보는 게 자연스러운 흐름이라 그 창을 없애는 게 맞다고 판단했다 |
 | D97 | `register_error_handlers` 에 `Exception` 캐치올 핸들러를 추가한다. 원인(스택 트레이스)은 응답에 담지 않고 서버 로그(`logger.exception`)에만 남긴다 | API 설명이 "에러는 RFC 9457 Problem Details 형식이다"라고 명시했는데, 처리기 없는 예외(DB 접속 실패 등)는 Starlette 기본 일반 텍스트 500 으로 샜다 — 장애 주입 검증 중 발견한 문서-코드 괴리. 원인을 응답에 담지 않는 이유는 스키마·쿼리 정보가 노출될 수 있어서다(§9.13 세션 토큰을 해시만 저장하는 것과 같은 종류의 판단 — 민감한 내부 정보는 클라이언트로 보내지 않는다) |
 | D98 | `release.yml` 의 `release` 잡에 `quality.yml::python-quality` 와 같은 `services.postgres` 정의를 추가한다 | Task 23 전에 태그 없이 dry-run 으로 미리 검증하려고 `workflow_dispatch` 를 돌려 보니, "Run full test suite" 단계가 PostgreSQL 서비스 없이 그냥 `pytest` 를 돌려 전부 접속 거부로 실패하고 있었다 — 만들어 둔 이후로 한 번도 실제 테스트 경로로 검증된 적이 없던 잠복 결함이다(최초 dry-run 은 `pyproject.toml` 이 생기기 전이라 이 코드 경로를 안 탔다). 태그를 처음 실제로 푸시하기 전에 발견해서 다행이었다 |
+
+### PR9/10 사후 코드 리뷰 하드닝 결정 (D99~D104)
+
+`code-reviewer` 서브에이전트로 PR9(외부 소스 레지스트리)·PR10(매장 모드)을 적대적으로
+재검토해 나온 6개 결함 수정. 각 결함은 실제 프로브 스크립트(`httpx.MockTransport`, 최소
+FastAPI 앱)로 재현해 확인한 뒤 고쳤다 — 위 "PR9/10 사후 코드 리뷰 하드닝" 절 참조.
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D99 | `infrastructure/external/adapter.py::fetch_snapshot` 을 예외를 삼키는 공개 래퍼(`_fetch_snapshot_unsafe` 를 감싼다)로 만들고, 필드·변환 추출을 각각 방어적으로 처리한다 | `adapter_spec` 은 사용자가 등록 화면에서 직접 쓰는 JSON 이라 모양이 자유롭게 틀릴 수 있다 — 오타 난 transform 이름, 문법 오류 있는 CSS 셀렉터 등. 이런 입력이 예외를 던지면 그 소스 하나 때문에 같은 요청에 포함된 다른 소스의 결과까지 500 으로 함께 죽는다(§7.2 "셀렉터가 깨지면 예외 대신 degraded" 계약 위반) |
+| D100 | 상세 페이지 링크(`best_url`)를 조회하기 전과 리다이렉트를 따라간 뒤 두 번 `_same_host()` 로 등록된 소스와 같은 호스트인지 확인한다. `httpx.AsyncClient` 에 `follow_redirects=True, max_redirects=5` 를 추가한다 | 검색 결과 페이지의 링크는 신뢰할 수 없는 원격 콘텐츠다 — 그대로 따라가면 등록한 사이트(또는 거기 실린 악성/제휴 링크)가 사설망·클라우드 메타데이터 엔드포인트 등 전혀 다른 호스트를 가리키게 만들 수 있다(SSRF). 리다이렉트를 안 따라가면 정상 사이트의 흔한 트래킹 리다이렉트조차 실패로 처리되는 부작용도 있었다 |
+| D101 | `AdapterResult` 에 `ok: bool` 필드를 추가해 "상세 페이지를 실제로 성공적으로 가져와 파싱했는지"를 `source_url` 유무와 분리한다. `lookup_product` 의 캐시 저장 조건을 `ok and source_url is not None` 으로 좁힌다 | `source_url` 만 보고 캐시하면, 상세 페이지 조회 자체가 실패한 경우(어느 URL 을 시도했는지는 남지만 실패는 실패다)에도 그 실패가 TTL(기본 24시간) 동안 성공인 것처럼 굳어 재조회도 계속 빈 결과만 돌려주게 된다 |
+| D102 | `register_error_handlers` 가 `cors_origins` 를 받아, `Exception` 캐치올 핸들러(D97)가 요청 `Origin` 이 허용 목록에 있을 때 `Access-Control-Allow-Origin`/`-Credentials`/`Vary` 헤더를 직접 붙이게 한다 | `Exception` 핸들러는 `ServerErrorMiddleware` 안에서 실행돼 `CORSMiddleware` 보다 바깥(더 먼저 요청을 받고 더 나중에 응답을 내보내는 계층)이라 평소 CORS 헤더가 안 붙는다. 개발 환경처럼 프론트(5173)와 API(8000)가 다른 origin 이면 이 500 응답이 브라우저에서 CORS 오류로 가려져 실제 에러 메시지를 볼 수 없다. 운영은 단일 리버스 프록시라 origin 이 같아 원래도 문제가 없다 |
+| D103 | `useCreateProduct` 온라인 분기에서 로컬 Dexie 미러 반영(D93)·`triggerSync` 호출을 `productsApi.create` 성공 직후, 구매·첨부 호출보다 앞으로 옮긴다 | 미러링이 구매·첨부 호출 뒤에 있으면, 제품은 서버에 이미 만들어졌는데 그 뒤 단계가 실패할 때 미러링이 실행되지 않아 로컬에서는 안 보이는(델타 풀 전까지) 서버 측 "고아" 제품이 남는다 — 재시도 시 중복 생성으로 이어질 수 있다 |
+| D104 | `application/external_sources.py::create_source`/신설 `update_source` 가 `category_id` 를 `ensure_category_exists`(`application/products.py` 의 기존 함수)로 검증한다. PATCH 라우터는 인라인 `setattr` 루프 대신 이 `update_source` 를 쓴다(이름·주소 앞뒤 공백도 지운다) | 다른 사용자의 카테고리, 또는 존재하지 않는 카테고리 id 를 그대로 저장할 수 있었다 — `products`·`categories` 등 다른 CRUD 가 이미 지키는 소유권 검증 기준과 어긋났다 |
 
 ## 6. 열린 질문
 

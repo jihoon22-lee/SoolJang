@@ -23,6 +23,7 @@ from sooljang.application.external_sources import (
     get_owned_source,
     list_sources,
     lookup_product,
+    update_source,
 )
 from sooljang.application.products import load_product
 
@@ -68,9 +69,9 @@ async def update_external_source(
     source = await get_owned_source(session, user_id=user_id, source_id=source_id)
     if source is None:
         raise NotFoundError(f"외부 소스를 찾을 수 없습니다: {source_id}")
-    for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(source, key, value)
-    await session.flush()
+    source = await update_source(
+        session, source, user_id=user_id, fields=payload.model_dump(exclude_unset=True)
+    )
     return ExternalSourceOut.model_validate(source)
 
 

@@ -6,7 +6,13 @@ import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { ProductForm } from "@/components/ProductForm";
 import { formatCategoryPath, formatMoney, formatRating } from "@/format";
 import { rankByQuery } from "@/search";
-import { getCategoryTree, getProduct, getProducts, getPurchasesForProduct } from "@/sync/queries";
+import {
+  getCategoryTree,
+  getProduct,
+  getProducts,
+  getPurchasesForProduct,
+  getVendors,
+} from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { useCreateProduct } from "@/sync/useCreateProduct";
 
@@ -32,6 +38,8 @@ export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: stri
   const [registering, setRegistering] = useState(false);
 
   const products = useLiveQuery(() => getProducts({}), []);
+  const vendors = useLiveQuery(() => getVendors(), []);
+  const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
   const results = query.trim()
     ? rankByQuery(products ?? [], query, (product) => product.name).slice(0, MAX_RESULTS)
     : [];
@@ -57,6 +65,8 @@ export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: stri
     return (
       <StoreModeRegister
         initialName={query.trim()}
+        existingProducts={products ?? []}
+        vendorNames={vendorNames}
         onDone={(productId) => setSelectedProductId(productId)}
         onCancel={() => setRegistering(false)}
       />
@@ -114,10 +124,14 @@ export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: stri
 
 function StoreModeRegister({
   initialName,
+  existingProducts,
+  vendorNames,
   onDone,
   onCancel,
 }: {
   initialName: string;
+  existingProducts: { id: string; name: string }[];
+  vendorNames: string[];
   onDone: (productId: string) => void;
   onCancel: () => void;
 }) {
@@ -138,6 +152,8 @@ function StoreModeRegister({
         }
         onCancel={onCancel}
         initialValues={{ name: initialName }}
+        existingProducts={existingProducts}
+        vendorNames={vendorNames}
       />
     </div>
   );

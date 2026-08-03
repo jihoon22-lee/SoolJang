@@ -4,6 +4,8 @@
 계약(§7.2)을 각 실패 유형별로 확인한다.
 """
 
+from typing import Any
+
 import httpx
 import pytest
 
@@ -19,7 +21,10 @@ def _reset_robots_cache() -> None:
     reset_robots_cache()
 
 
-ADAPTER_SPEC = {
+#: 여러 테스트가 이 스펙 일부를 스프레드(`**ADAPTER_SPEC["detail"]["fields"]`)로 변형해
+#: 재사용한다. 명시적으로 `dict[str, Any]` 로 두지 않으면 리터럴에서 추론된 좁은 유니온
+#: 타입 때문에 타입 체커가 그 스프레드를 매핑이 아니라고 오판한다.
+ADAPTER_SPEC: dict[str, Any] = {
     "search": {
         "url_template": "https://example.com/search?q={query}",
         "item": ".product-card",
@@ -203,3 +208,156 @@ async def test_search_설정이_없으면_바로_degraded를_반환한다() -> N
     assert result.source_url is None
     assert result.degraded is True
     assert result.warning is not None
+
+
+async def test_성공하면_ok가_True다() -> None:
+    transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.ok is True
+
+
+async def test_상세_페이지_조회_실패시_ok는_False다() -> None:
+    # source_url 은 채워지지만(어느 URL 을 시도했는지 남긴다) 실패는 실패다 — 호출자가
+    # 이 결과를 성공처럼 캐시하지 않도록 `ok` 로 구분한다.
+    transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (500, "internal error")})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url == "https://example.com/product/1"
+    assert result.ok is False
+
+
+async def test_search가_dict가_아니면_예외_대신_degraded를_반환한다() -> None:
+    result = await fetch_snapshot(
+        {"search": "이건 문자열입니다"},
+        base_url="https://example.com",
+        query="아무거나",
+        transport=None,
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+
+
+async def test_url_template에_알_수_없는_치환자가_있으면_예외_대신_degraded를_반환한다() -> None:
+    spec = {
+        **ADAPTER_SPEC,
+        "search": {**ADAPTER_SPEC["search"], "url_template": "https://example.com/search?q={oops}"},
+    }
+
+    result = await fetch_snapshot(
+        spec, base_url="https://example.com", query="글렌피딕", transport=None
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "url_template" in result.warning
+
+
+async def test_검색_아이템_셀렉터가_문법_오류여도_예외_대신_degraded를_반환한다() -> None:
+    spec = {
+        **ADAPTER_SPEC,
+        "search": {**ADAPTER_SPEC["search"], "item": ":::not-a-real-selector:::"},
+    }
+    transport = _transport({"/search": (200, _SEARCH_PAGE)})
+
+    result = await fetch_snapshot(
+        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None
+
+
+async def test_알_수_없는_transform은_해당_필드만_건너뛴다() -> None:
+    spec = {
+        **ADAPTER_SPEC,
+        "detail": {
+            "fields": {
+                **ADAPTER_SPEC["detail"]["fields"],
+                "price": {"selector": ".price", "attr": "text", "transform": ["nonexistent"]},
+            }
+        },
+    }
+    transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url == "https://example.com/product/1"
+    assert result.fields["price"] is None
+    assert result.fields["rating"] == 4.5
+    assert result.degraded is True
+
+
+async def test_필드_스펙이_dict가_아니면_그_필드만_건너뛴다() -> None:
+    spec = {
+        **ADAPTER_SPEC,
+        "detail": {"fields": {**ADAPTER_SPEC["detail"]["fields"], "price": "그냥 문자열"}},
+    }
+    transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.fields["price"] is None
+    assert result.degraded is True
+
+
+async def test_검색_결과_링크가_다른_호스트면_상세를_조회하지_않는다() -> None:
+    search_page_off_host = """
+    <div class="product-card">
+      <span class="title">글렌피딕 12년</span>
+      <a href="https://evil.example/steal">보기</a>
+    </div>
+    """
+    transport = _transport({"/search": (200, search_page_off_host)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "밖" in result.warning
+
+
+async def test_상세_페이지가_다른_호스트로_리다이렉트되면_거부한다() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "example.com":
+            if request.url.path == "/robots.txt":
+                return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+            if request.url.path == "/search":
+                return httpx.Response(200, text=_SEARCH_PAGE)
+            if request.url.path == "/product/1":
+                return httpx.Response(302, headers={"location": "https://evil.example/stolen"})
+        if request.url.host == "evil.example":
+            return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+        raise AssertionError(f"예상하지 못한 요청: {request.url}")
+
+    transport = httpx.MockTransport(handler)
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "리다이렉트" in result.warning
