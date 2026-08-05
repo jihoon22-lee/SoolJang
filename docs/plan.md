@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-04 (Task 24 PR1 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47). PR2 게이트 전부 통과, PR 오픈 대기) |
+| 최종 갱신 | 2026-08-05 (Task 24 PR1·PR2 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48). PR3 게이트 전부 통과, PR 오픈 대기) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR2**(`fix/frontend-resilience`) 코드·테스트·문서 갱신 완료, 전체 게이트(`pytest` 689 passed 91%대, `npm run check` 408 passed) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR3(디자인 시스템)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
-| 현재 브랜치 | `fix/frontend-resilience` (Task 24 PR2) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1 완료, PR2 머지 대기, PR3~7 착수 전 |
+| 다음 착수 Task | **Task 24 PR3**(`refactor/design-system`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 408 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR4(탭 정리+구매처 드릴다운)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
+| 현재 브랜치 | `refactor/design-system` (Task 24 PR3) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1·PR2 완료, PR3 머지 대기, PR4~7 착수 전 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1/7 완료·머지, PR2/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`(머지됨), `fix/frontend-resilience` 외 5개(PR3~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1·PR2/7 완료·머지, PR3/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`(머지됨), `refactor/design-system` 외 4개(PR4~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48) |
 
 ### 의존 관계
 
@@ -1125,6 +1125,51 @@ build` 정상. B9 는 `BarcodeScanPanel.test.tsx` 에 응답 지연 중 닫기 �
 라우터 모두에 "선언한 형식과 실제 바이트가 다르면 422" 테스트를, `legacy_import` 에는 상한
 초과 테스트를 추가했다.
 
+#### PR3 — `refactor/design-system`: 치수 체계 확립 후 전면 적용 (2026-08-05, 사용자 항목 7)
+
+색은 "Cellar Dark" 를 그대로 두고(사용자 결정) **치수만** 통일했다. `styles.css` 한 파일만
+바꾼 순수 CSS 리팩터라 백엔드·JSX 변경이 전혀 없다.
+
+- **타입 스케일 6단계 도입**: `--text-xs`(0.75rem)~`--text-2xl`(1.75rem) 를 `:root` 에
+  추가하고, 흩어져 있던 12종의 폰트 크기(0.75em·0.75/0.8/0.85/0.9/0.95/1/1.05/1.1/1.15/
+  1.35/1.6rem)를 전부 이 6단계로 옮겼다. 같은 역할이면 같은 토큰을 쓰게 했다 — 예를 들어
+  "카드·패널 안 소제목" 역할에 0.95/1.05/1.1rem 세 값이 섞여 있던 것을 전부 `--text-md`
+  하나로 합쳤다
+- **버튼 크기 통일**: `--control-h-sm`(2rem, `.sort-button` 같은 밀집 데스크톱 전용 예외)·
+  `--control-h-md`(**44px** — rem 이 아니라 px 다. rem 이면 사용자가 브라우저 기본 글자
+  크기를 줄일 때 실제 터치 타깃도 함께 줄어든다)·`--control-h-lg`(3rem) 를 도입해, `44px`
+  와 `2.75rem` 두 가지로 흩어져 있던 표기를 `--control-h-md` 하나로 통일했다(17곳)
+- **`--font-weight-semibold`/`--font-weight-normal` 토큰화**: 흩어진 `font-weight: 600`
+  리터럴을 전부 토큰으로 교체
+- **`--font-mono` 정의**: `.code-textarea` 가 정의되지 않은 `var(--font-mono, ...)` 폴백
+  체인에 기대고 있었다 — `:root` 에 실제로 정의해 간접 표현을 없앴다
+- **브레이크포인트 정리**: 문서화된 600px/900px 외에 `.tasting-form` 에서만 몰래 쓰던
+  `40rem`(640px)을 제거하고 600px 로 흡수했다(같은 "짧은 입력 두 개를 나란히" 패턴을 쓰는
+  `.field-row` 와 같은 기준을 쓰게 함) — "화면 크기에 따라 줄바꿈이 제멋대로" 라는 인상의
+  직접 원인이었다
+- **말줄임·줄바꿈 규칙**: `.category-bar-row` 의 `grid-template-columns` 를 `6em` 고정에서
+  `minmax(0, 6em)` 으로 바꿔 긴 이름이 행 전체를 밀어내지 않게 했고, `.category-bar-label`/
+  `.ranking-name` 에 `display: block` 을 추가해 `.sort-button` 의 `inline-flex` 가 무효화
+  하던 `text-overflow: ellipsis` 를 되살렸다(flex 컨테이너의 넘치는 텍스트는 익명 flex
+  아이템으로 감싸져 `text-overflow` 가 안 먹는다는 CSS 함정). 표 데이터 셀(`.product-table
+  td`/`.stats-table td`)과 카드 제목(`.product-card h3`/`.stats-card h4`)에는
+  `overflow-wrap: anywhere` 를 추가했다 — 이전엔 `word-break`/`overflow-wrap` 이 파일
+  전체에 0건이었다
+- **접근성 회귀 복구**: `.sort-button { all: unset }` 이 지워 버리던 `:focus-visible`
+  아웃라인을 `.sort-button:focus-visible` 규칙으로 되살렸다(소스 순서상 뒤에 둬 이기게
+  함) — 정렬 헤더·랭킹 항목·주종 라벨에 키보드 포커스가 다시 보인다. `.link-like` 는
+  `min-height: auto` 를 `var(--control-h-md)` 로 바꿔 모바일 카드에서 제품 상세로 들어가는
+  주 진입점의 터치 타깃을 20px 안팎에서 44px 로 늘렸다
+- **죽은 CSS 제거**: JSX 어디서도 안 쓰는 `.bottle-filters`(관련 `[aria-pressed]` 규칙
+  포함)·`.fieldset-plain`·`.self-center` 삭제, 아무 데도 참조 안 되던 `--space-xl` 토큰
+  삭제(억지로 쓸 자리를 만들지 않고 정직하게 지웠다)
+
+검증: `npm run check` 408 passed(회귀 0건 — 동작을 바꾸는 변경이 아니라 CSS 전용), `vite
+build` 정상, 시크릿 스캔 통과. Playwright 로 360/768/1280px 세 폭에서 내 술 목록·통계·
+주종 관리 화면을 직접 렌더링해 확인했다 — 표 안 긴 이름이 셀 안에서 줄바꿈되고(전엔 표를
+밀어냈다), 모바일 카드 뷰의 제품명 링크가 눈에 띄게 넓어진 터치 영역으로 보이고, 내비게이션
+줄바꿈·버튼 높이가 세 폭 모두에서 고르게 나타남을 확인했다.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1345,6 +1390,18 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D120 | `SyncStatusBadge` 의 충돌 `resolve()` 에 `catch` 를 추가해 `resolveError` 를 `role="alert"` 로 보여준다 | `catch` 없이 `finally` 만 있으면, 서버가 확인 요청을 거부해도 버튼이 조용히 다시 눌러지는 상태로 돌아가 사용자가 반응 없는 버튼을 계속 누르게 됐다(B8) |
 | D121 | `BarcodeScanPanel`/`LabelOcrPanel` 에 `liveRef` 를 추가해, 조회·인식 요청이 늦게 응답할 때 그 사이 닫힘·언마운트된 세션의 `setPhase` 를 무시한다 | 기존엔 스캔 콜백이 재호출되는 것만 막았지(`active` 플래그), 이미 시작된 네트워크 요청의 콜백 자체는 못 막아 늦게 온 응답이 이미 닫은 다이얼로그를 다시 열었다(B9). `BarcodeScanPanel` 은 닫아도 컴포넌트가 마운트된 채라 실제로 관찰 가능한 버그였고, `LabelOcrPanel` 은 유일한 트리거가 언마운트라 React 18 의 기본 동작만으로도 이미 안전했지만 향후 닫기 버튼이 생길 경우를 대비해 같은 패턴을 적용했다 |
 | D122 | `infrastructure/storage.py` 에 `read_upload_within_limit()`(청크 단위로 읽어 상한 초과 시 즉시 중단) 과 `sniff_image_extension()`(매직 바이트로 실제 형식 판별, HEIC 는 MP4/MOV 와 같은 컨테이너라 브랜드까지 확인) 을 추가해 `attachments.py`/`ocr.py`/`legacy_import.py` 세 라우터가 공유한다. 인프라 계층이 API 계층을 몰라도 되도록 `UploadTooLargeError` 라는 평범한 예외로 신호하고 변환은 라우터가 한다(`LegacySheetError` 와 같은 기존 패턴) | 기존엔 `await file.read()` 로 전체를 읽은 **뒤에** 크기를 검사해, 사용자가 사진 대신 큰 동영상을 잘못 고르면 전량이 메모리에 올라간 뒤에야 거부됐다. `content_type` 만 믿고 실제 바이트를 확인하지 않아 임의 파일을 이미지인 척 올릴 수도 있었다(B11) |
+
+### Task 24 PR3 결정 (D123~D129)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D123 | `:root` 에 `--text-xs`~`--text-2xl` 6단계 타입 스케일을 추가하고, 기존 12종 폰트 크기를 "같은 역할이면 같은 값" 기준으로 이 6단계에 흡수시킨다(예: 카드·패널 소제목 0.95/1.05/1.1rem → `--text-md` 하나) | 사용자가 "글자 크기가 어디는 애매하게 크고 어디는 애매하게 작다" 고 지적한 항목(항목 7)의 직접 원인 — 감사 결과 실제로 12종이 쓰이고 있었고, 그중 다수가 같은 역할에 다른 값을 쓴 결과였다 |
+| D124 | `--control-h-md` 를 `44px`(px, rem 아님)로 고정하고 `2.75rem`/`44px` 두 표기를 여기로 통일한다. 마우스 전용 밀집 UI 를 위한 `--control-h-sm`(2rem), 향후 큰 CTA 용 `--control-h-lg`(3rem) 도 함께 정의한다 | rem 은 사용자가 브라우저 기본 글자 크기를 줄이면 실제 터치 타깃도 함께 줄어든다 — 44px 는 WCAG 최소 접근성 규격이라 이 값만큼은 절대 단위여야 한다는 게 기존 코드 주석에도 이미 있던 판단이다. 그런데도 실제로는 두 표기가 섞여 있었다 |
+| D125 | `.category-bar-row` 의 `grid-template-columns` 를 `6em` 고정에서 `minmax(0, 6em)` 으로 바꾼다. `.category-bar-label`/`.ranking-name` 에 `display: block` 을 추가해 `.sort-button` 의 `inline-flex` 를 무효화한다 | 그리드 아이템은 기본적으로 `min-width: auto`(내용의 최소 크기)를 가져 고정 트랙이어도 밀어낼 수 있다 — 긴 주종명이 행 전체를 넓히던 원인이었다. 또한 flex 컨테이너의 넘치는 텍스트는 익명 flex 아이템으로 감싸져 `text-overflow: ellipsis` 가 적용되지 않는다 — `.sort-button` 과 겹쳐 쓰이는 라벨의 말줄임이 실제로 한 번도 동작한 적이 없었다 |
+| D126 | `.sort-button:focus-visible` 규칙을 `.sort-button { all: unset; ... }` 뒤에 명시적으로 추가한다 | `all: unset` 은 전역 `:focus-visible` 규칙의 outline 도 함께 지운다 — 소스 순서상 더 뒤에 있는 규칙이 같은 특이도에서 이기므로, 뒤에 별도로 다시 선언해야 정렬 헤더·랭킹·주종 라벨의 키보드 포커스 표시가 돌아온다 |
+| D127 | `button.link-like` 의 `min-height: auto` 를 `var(--control-h-md)` 로 바꾼다 | 모바일 카드에서 제품 상세로 들어가는 주 진입점으로 쓰이는데, 기존 `padding: 2px 4px` 뿐인 상태에서는 실제 탭 영역이 20px 안팎이었다 |
+| D128 | `.tasting-form` 전용 `40rem`(640px) 브레이크포인트를 제거하고 기존 600px 로 흡수한다 | 문서화된 브레이크포인트는 600px/900px 뿐인데 이 한 곳만 몰래 세 번째 값을 썼다 — "화면 크기에 따라 줄바꿈이 제멋대로" 인상의 직접 원인이었다. 이 폼의 두 입력(날짜·평점)은 짧아 같은 "필드 두 개 나란히" 패턴을 쓰는 `.field-row` 와 같은 기준(600px)으로도 충분하다 |
+| D129 | `.product-table td`/`.stats-table td`/`.product-card h3`/`.stats-card h4` 에 `overflow-wrap: anywhere` 를 추가한다. JSX 어디서도 안 쓰는 `.bottle-filters`(관련 `[aria-pressed]` 규칙 포함)·`.fieldset-plain`·`.self-center`, 참조되지 않던 `--space-xl` 토큰을 삭제한다 | `word-break`/`overflow-wrap` 이 파일 전체에 0건이라 긴 이름이 표를 밀어내거나 카드 레이아웃을 깨뜨릴 수 있었다. 죽은 CSS 는 억지로 쓸 자리를 만들어 정당화하는 대신 정직하게 삭제했다 — `--space-xl` 처럼 실제 쓰임이 없는 토큰을 남겨두면 나중에 "이거 왜 있지" 하는 조사 비용만 남는다 |
 
 ## 6. 열린 질문
 
