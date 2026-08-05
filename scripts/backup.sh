@@ -32,11 +32,16 @@ fail() {
 # `sg -c` 는 명령을 문자열 하나로 받으므로, 인자를 그대로 이어 붙이면 `--format '{{.Service}}
 # {{.State}}'` 처럼 공백이 든 인자가 두 개로 쪼개진다. `printf %q` 로 각 인자를 이스케이프해
 # 원래 경계를 보존한다.
+#
+# 절대 경로(`/usr/bin/sg`)를 쓴다 — 이 환경에는 `ast-grep` 이 `sg` 라는 이름으로 `PATH`
+# 앞쪽(`~/.local/bin`)에 설치돼 있어, 그냥 `sg` 를 쓰면 그룹 전환 대신 ast-grep 이 실행돼
+# `compose ps` 결과가 조용히 비고 "db 컨테이너가 실행 중이 아닙니다" 오류로 이어진다
+# (docs/handoff.md §5 에 이미 기록된 함정 — 실제로 릴리스 백업 중 재발했다).
 compose() {
   if [[ -n "${SOOLJANG_DOCKER_SG:-}" ]]; then
     local quoted
     quoted="$(printf '%q ' "$@")"
-    sg docker -c "docker compose ${quoted}"
+    /usr/bin/sg docker -c "docker compose ${quoted}"
   else
     docker compose "$@"
   fi
