@@ -86,6 +86,7 @@ describe("ProductsPage", () => {
         selectedProductId={selectedProductId}
         onSelectProduct={setSelectedProductId}
         onDeselectProduct={() => setSelectedProductId(null)}
+        onOpenStoreMode={vi.fn()}
       />
     );
   }

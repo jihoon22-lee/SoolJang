@@ -220,7 +220,8 @@ describe("인증 게이트", () => {
     ]);
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "로그아웃" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "로그아웃" }));
 
     expect(await screen.findByRole("heading", { name: "술장 로그인" })).toBeInTheDocument();
   });

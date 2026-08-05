@@ -24,6 +24,7 @@ describe("parseHash", () => {
       view: "products",
       productId: "abc-123",
       categoryId: undefined,
+      vendorId: undefined,
     });
   });
 
@@ -32,10 +33,20 @@ describe("parseHash", () => {
       view: "products",
       productId: undefined,
       categoryId: "cat-1",
+      vendorId: undefined,
     });
   });
 
-  it("products 가 아닌 뷰에는 productId/categoryId 를 붙이지 않는다", () => {
+  it("구매처 필터 쿼리를 해석한다", () => {
+    expect(parseHash("#products?vendor=v-1")).toEqual({
+      view: "products",
+      productId: undefined,
+      categoryId: undefined,
+      vendorId: "v-1",
+    });
+  });
+
+  it("products 가 아닌 뷰에는 productId/categoryId/vendorId 를 붙이지 않는다", () => {
     expect(parseHash("#categories/should-be-ignored")).toEqual({ view: "categories" });
   });
 
@@ -44,6 +55,7 @@ describe("parseHash", () => {
       view: "products",
       productId: "xyz",
       categoryId: undefined,
+      vendorId: undefined,
     });
   });
 });
@@ -61,14 +73,30 @@ describe("routeToHash", () => {
     expect(routeToHash({ view: "products", categoryId: "cat-1" })).toBe("#products?category=cat-1");
   });
 
-  it("productId 가 categoryId 보다 우선한다", () => {
-    expect(routeToHash({ view: "products", productId: "p1", categoryId: "c1" })).toBe(
-      "#products/p1",
+  it("구매처 필터를 해시로 만든다", () => {
+    expect(routeToHash({ view: "products", vendorId: "v-1" })).toBe("#products?vendor=v-1");
+  });
+
+  it("productId 가 categoryId·vendorId 보다 우선한다", () => {
+    expect(
+      routeToHash({ view: "products", productId: "p1", categoryId: "c1", vendorId: "v1" }),
+    ).toBe("#products/p1");
+  });
+
+  it("categoryId 가 vendorId 보다 우선한다", () => {
+    expect(routeToHash({ view: "products", categoryId: "c1", vendorId: "v1" })).toBe(
+      "#products?category=c1",
     );
   });
 
   it("parseHash 의 역함수다(라운드트립)", () => {
-    const cases = ["#products", "#stats", "#products/abc-123", "#products?category=cat-1"];
+    const cases = [
+      "#products",
+      "#stats",
+      "#products/abc-123",
+      "#products?category=cat-1",
+      "#products?vendor=v-1",
+    ];
     for (const hash of cases) {
       expect(routeToHash(parseHash(hash))).toBe(hash);
     }

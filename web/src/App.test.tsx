@@ -79,7 +79,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "구매처" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("외부 소스 관리로 전환한다", async () => {
+  it("설정 메뉴를 열어 외부 소스 관리로 전환한다", async () => {
     stubRoutes([
       ...authenticatedRoutes(),
       { match: "/health", body: healthy },
@@ -89,27 +89,29 @@ describe("App", () => {
     ]);
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("link", { name: "외부 소스" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "외부 소스" }));
 
     expect(await screen.findByRole("heading", { name: "외부 소스 관리" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "외부 소스" })).toHaveAttribute("aria-current", "page");
+    // 메뉴 항목을 고르면 패널도 닫힌다.
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("매장 모드로 전환한다", async () => {
+  it("매장 모드 진입 버튼으로 전환한다(항목 6 — 이제 nav 가 아니라 목록 화면 안에 있다)", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("link", { name: "매장 모드" }));
+    await userEvent.click(await screen.findByRole("button", { name: "매장 모드로 전환" }));
 
     expect(await screen.findByRole("heading", { name: "매장 모드" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "매장 모드" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("서비스 상태로 전환하면 마이그레이션 리비전을 보여준다", async () => {
+  it("설정 메뉴에서 서비스 상태로 전환하면 마이그레이션 리비전을 보여준다", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("link", { name: "서비스 상태" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "서비스 상태" }));
 
     expect(await screen.findByText("0002_domain_model")).toBeInTheDocument();
   });
@@ -133,7 +135,8 @@ describe("App", () => {
     ]);
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("link", { name: "서비스 상태" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "서비스 상태" }));
 
     expect(await screen.findByText("일부 구성 요소에 문제가 있습니다.")).toBeInTheDocument();
     expect(screen.getByText("연결 안 됨")).toBeInTheDocument();
@@ -146,6 +149,18 @@ describe("App", () => {
     expect(await screen.findByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
   });
 
+  it("설정 메뉴를 Esc 로 닫을 수 있다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("통계·가져오기 화면으로도 전환된다", async () => {
     stubAll();
     renderWithQuery(<App />);
@@ -153,7 +168,8 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("link", { name: "통계" }));
     expect(await screen.findByRole("heading", { name: "통계" })).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByRole("link", { name: "가져오기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "가져오기" }));
     expect(await screen.findByRole("heading", { name: "엑셀 기록 가져오기" })).toBeInTheDocument();
   });
 

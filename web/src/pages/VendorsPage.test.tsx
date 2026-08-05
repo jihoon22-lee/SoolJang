@@ -1,10 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VendorsPage } from "@/pages/VendorsPage";
 import { db } from "@/sync/db";
 import { renderWithQuery } from "@/testing";
+
+function renderVendorsPage(onSelectVendor = vi.fn()) {
+  renderWithQuery(<VendorsPage onSelectVendor={onSelectVendor} />);
+  return { onSelectVendor };
+}
 
 const NOW = "2026-01-01T00:00:00Z";
 
@@ -29,35 +34,57 @@ afterEach(async () => {
 
 describe("VendorsPage", () => {
   it("구매처가 없으면 안내한다", async () => {
-    renderWithQuery(<VendorsPage />);
+    renderVendorsPage();
 
     expect(await screen.findByText("등록된 구매처가 없습니다.")).toBeInTheDocument();
   });
 
-  it("이름·종류·구매 건수를 이름순으로 보여준다", async () => {
+  it("이름·종류·구매 건수·총 지출을 이름순으로 보여준다", async () => {
     await db.vendor.bulkPut([
       row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }),
       row({ id: "v2", name: "데일리샷", kind: "online", url: null, note: null }),
     ]);
     await db.purchase.bulkPut([
-      row({ id: "pu1", sku_id: "s1", vendor_id: "v1", quantity: 1 }),
-      row({ id: "pu2", sku_id: "s2", vendor_id: "v1", quantity: 1 }),
+      row({
+        id: "pu1",
+        sku_id: "s1",
+        vendor_id: "v1",
+        quantity: 2,
+        unit_paid_price: "10000",
+        unit_list_price: "12000",
+      }),
+      // 실구매가가 없으면 정가로 보충한다.
+      row({ id: "pu2", sku_id: "s2", vendor_id: "v1", quantity: 1, unit_list_price: "5000" }),
     ]);
 
-    renderWithQuery(<VendorsPage />);
+    renderVendorsPage();
 
-    const names = (await screen.findAllByText(/이마트|데일리샷/)).map((el) => el.textContent);
+    const names = (await screen.findAllByRole("button", { name: /이마트|데일리샷/ })).map(
+      (el) => el.textContent,
+    );
     expect(names).toEqual(["데일리샷", "이마트"]);
     expect(screen.getByText("마트")).toBeInTheDocument();
     expect(screen.getByText("온라인")).toBeInTheDocument();
     expect(screen.getByText("구매 2건")).toBeInTheDocument();
     expect(screen.getByText("구매 0건")).toBeInTheDocument();
+    // 10000*2 + 5000*1 = 25000
+    expect(screen.getByText("25,000원")).toBeInTheDocument();
+    expect(screen.getByText("가격 정보 없음")).toBeInTheDocument();
+  });
+
+  it("이름을 누르면 onSelectVendor 를 호출한다", async () => {
+    await db.vendor.put(row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }));
+    const { onSelectVendor } = renderVendorsPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "이마트" }));
+
+    expect(onSelectVendor).toHaveBeenCalledWith("v1");
   });
 
   it("수정을 누르면 현재 값이 채워진 폼이 열린다", async () => {
     await db.vendor.put(row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }));
 
-    renderWithQuery(<VendorsPage />);
+    renderVendorsPage();
     await userEvent.click(await screen.findByRole("button", { name: "수정" }));
 
     expect(screen.getByLabelText("이름")).toHaveValue("이마트");
@@ -67,7 +94,7 @@ describe("VendorsPage", () => {
   it("취소하면 저장하지 않고 폼을 닫는다", async () => {
     await db.vendor.put(row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }));
 
-    renderWithQuery(<VendorsPage />);
+    renderVendorsPage();
     await userEvent.click(await screen.findByRole("button", { name: "수정" }));
     await userEvent.clear(screen.getByLabelText("이름"));
     await userEvent.type(screen.getByLabelText("이름"), "다른 이름");
@@ -81,7 +108,7 @@ describe("VendorsPage", () => {
   it("이름·종류를 수정하면 로컬 미러에 낙관적으로 반영된다", async () => {
     await db.vendor.put(row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }));
 
-    renderWithQuery(<VendorsPage />);
+    renderVendorsPage();
     await userEvent.click(await screen.findByRole("button", { name: "수정" }));
     await userEvent.clear(screen.getByLabelText("이름"));
     await userEvent.type(screen.getByLabelText("이름"), "이마트 트레이더스");

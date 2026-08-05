@@ -566,10 +566,21 @@ export async function getBottlesForProduct(productId: string): Promise<Bottle[]>
 export async function getVendors(): Promise<Vendor[]> {
   const [vendors, purchases] = await Promise.all([liveTable("vendor"), liveTable("purchase")]);
   const counts = new Map<string, number>();
+  const spend = new Map<string, Decimal>();
   for (const purchase of purchases) {
     const vendorId = purchase.vendor_id as string | null;
     if (!vendorId) continue;
     counts.set(vendorId, (counts.get(vendorId) ?? 0) + 1);
+
+    // 실구매가가 있으면 그걸, 없으면 정가로 보충한다 — 둘 다 없으면 이 구매 건은 합계에서
+    // 빠진다("0 원 지출" 과 "가격 정보 없음" 을 구분한다, D35 와 같은 원칙).
+    const quantity = purchase.quantity as number;
+    const unitPaid = toDecimalOrNull(purchase.unit_paid_price);
+    const unitList = toDecimalOrNull(purchase.unit_list_price);
+    const unitPrice = unitPaid ?? unitList;
+    if (unitPrice === null) continue;
+    const current = spend.get(vendorId) ?? new Decimal(0);
+    spend.set(vendorId, current.plus(unitPrice.times(quantity)));
   }
   return vendors.map((row) => ({
     id: row.id,
@@ -578,6 +589,7 @@ export async function getVendors(): Promise<Vendor[]> {
     url: (row.url as string | null) ?? null,
     note: (row.note as string | null) ?? null,
     purchase_count: counts.get(row.id) ?? 0,
+    total_spend: spend.get(row.id)?.toFixed(2) ?? null,
   }));
 }
 

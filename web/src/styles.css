@@ -903,8 +903,7 @@ button:disabled {
   padding: 6px 0;
 }
 
-.category-row .name,
-.vendor-row .name {
+.category-row .name {
   font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
@@ -1035,10 +1034,72 @@ button:disabled {
   color: var(--text-muted);
 }
 
-.app-logout {
+/* 가져오기·외부 소스·설정·서비스 상태·로그아웃처럼 자주 안 쓰는 환경 설정류를 접어 두는
+   메뉴(Task 24 PR4, 항목 3). `.sync-conflict-panel` 과 같은 팝오버 패턴을 재사용한다. */
+.settings-menu {
+  position: relative;
+}
+
+.settings-menu-trigger {
   min-height: var(--control-h-md);
   min-width: var(--control-h-md);
   padding: 0 0.75rem;
+}
+
+.settings-menu-trigger[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.settings-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 10rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
+  text-align: left;
+}
+
+.settings-menu-panel a,
+.settings-menu-panel button {
+  min-height: var(--control-h-sm);
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  text-decoration: none;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.settings-menu-panel a:hover,
+.settings-menu-panel button:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--accent-strong);
+}
+
+.settings-menu-panel a[aria-current="page"] {
+  color: var(--accent-strong);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* `.settings-menu-panel button` 보다 특이도가 높아야 border-top/padding-top 을 덮어쓴다. */
+.settings-menu-panel .settings-menu-logout {
+  color: var(--danger);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  margin-top: 2px;
+  padding-top: 0.6rem;
 }
 
 .app-loading {
@@ -1405,6 +1466,22 @@ button:disabled {
 }
 
 /* --- 매장 모드(Task 22 PR10) -------------------------------------------------- */
+
+/* "내 술" 목록 위에 두는 매장 모드 진입 버튼(Task 24 PR4, 항목 6). PC 에서는 매장 모드
+   자체가 쓰기 어려워(카메라 없음, 표를 스캔하며 훑는 게 더 빠름) 900px 이상에서는 숨긴다. */
+.store-mode-entry {
+  display: block;
+  width: 100%;
+  min-height: var(--control-h-lg);
+  margin: 0 0 var(--space);
+  font-size: var(--text-md);
+}
+
+@media (min-width: 900px) {
+  .store-mode-entry {
+    display: none;
+  }
+}
 
 .store-mode-results {
   list-style: none;

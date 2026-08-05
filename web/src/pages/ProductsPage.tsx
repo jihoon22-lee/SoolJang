@@ -41,6 +41,11 @@ interface ProductsPageProps {
    * 이 화면은 탭을 바꿀 때마다 언마운트/리마운트되므로 이후 사용자가 필터를 바꿔도
    * 다시 강제로 되돌리지 않는다. */
   initialCategoryId?: string | undefined;
+  /** 구매처 화면에서 "이 구매처에서 산 술" 로 드릴다운할 때만 준다. `initialCategoryId` 와
+   * 같은 마운트 시점 시딩 패턴이다. */
+  initialVendorId?: string | undefined;
+  /** 매장 모드로 이동한다. 모바일 폭에서만 보이는 진입 버튼에 연결한다(항목 6). */
+  onOpenStoreMode: () => void;
 }
 
 /** 술 목록 화면. 필터·정렬·더 보기와 등록 폼을 담는다. */
@@ -49,12 +54,16 @@ export function ProductsPage({
   onSelectProduct,
   onDeselectProduct,
   initialCategoryId,
+  initialVendorId,
+  onOpenStoreMode,
 }: ProductsPageProps) {
   const { state } = useSyncStatus();
   const offline = state === "offline";
-  const [filters, setFilters] = useState<ProductFilters>(() =>
-    initialCategoryId ? { ...DEFAULT_FILTERS, category_id: initialCategoryId } : DEFAULT_FILTERS,
-  );
+  const [filters, setFilters] = useState<ProductFilters>(() => {
+    if (initialCategoryId) return { ...DEFAULT_FILTERS, category_id: initialCategoryId };
+    if (initialVendorId) return { ...DEFAULT_FILTERS, vendor_id: initialVendorId };
+    return DEFAULT_FILTERS;
+  });
   const [formOpen, setFormOpen] = useState(false);
   // 라벨 OCR(Task 17)이 채운 값과 원본 사진. 폼이 닫힐 때마다 함께 지운다 — 그러지 않으면
   // 다음에 수동으로 연 폼에 이전 스캔의 흔적이 남는다.
@@ -199,6 +208,12 @@ export function ProductsPage({
             </button>
           </div>
         </div>
+
+        {/* PC 에서는 표를 두 손가락으로 스캔하며 훑기 어렵고 카메라도 잘 안 쓴다 — 매장에서
+            술을 앞에 두고 쓰는 모바일 전용 흐름이라 좁은 화면에서만 보인다(항목 6). */}
+        <button type="button" className="store-mode-entry primary" onClick={onOpenStoreMode}>
+          매장 모드로 전환
+        </button>
 
         {formOpen && (
           <ProductForm
