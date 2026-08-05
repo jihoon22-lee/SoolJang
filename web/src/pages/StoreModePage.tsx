@@ -1,5 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Purchase } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
@@ -40,9 +40,17 @@ export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: stri
   const products = useLiveQuery(() => getProducts({}), []);
   const vendors = useLiveQuery(() => getVendors(), []);
   const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
-  const results = query.trim()
-    ? rankByQuery(products ?? [], query, (product) => product.name).slice(0, MAX_RESULTS)
-    : [];
+  // 예전엔 이 랭킹을 `useMemo` 밖에 둬 검색어와 무관한 재렌더(예: 다른 state 갱신)에도
+  // 매번 전체 제품(수백 종)을 다시 정렬했다 — 키 입력마다 정렬이 필요한 건 맞지만,
+  // 그 밖의 재렌더에서는 다시 계산할 이유가 없다.
+  const trimmedQuery = query.trim();
+  const results = useMemo(
+    () =>
+      trimmedQuery
+        ? rankByQuery(products ?? [], trimmedQuery, (product) => product.name).slice(0, MAX_RESULTS)
+        : [],
+    [products, trimmedQuery],
+  );
 
   function reset(): void {
     setQuery("");

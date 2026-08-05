@@ -137,16 +137,16 @@ export async function getCategoryTree(): Promise<CategoryTree> {
   };
 }
 
-/** 카테고리 id → 자기 자신과 모든 후손 id 집합. "위스키" 필터가 하위를 포함해야 한다. */
-async function descendantIdsOf(categoryId: string): Promise<Set<string>> {
-  const rows = await liveTable("category");
+/** 카테고리 id → 자기 자신과 모든 후손 id 집합. "위스키" 필터가 하위를 포함해야 한다.
+ * 이미 불러온 `CategoryTree` 를 받아 순수 계산만 한다(DB 를 다시 읽지 않는다) —
+ * `filterAndSortProducts()` 가 화면이 이미 구독 중인 트리를 그대로 넘겨 쓴다. */
+function descendantIdsOfTree(categoryId: string, tree: CategoryTree): Set<string> {
   const childrenOf = new Map<string, string[]>();
-  for (const row of rows) {
-    const parentId = row.parent_id as string | null;
-    if (!parentId) continue;
-    const list = childrenOf.get(parentId) ?? [];
-    list.push(row.id);
-    childrenOf.set(parentId, list);
+  for (const item of tree.items) {
+    if (item.parent_id === null) continue;
+    const list = childrenOf.get(item.parent_id) ?? [];
+    list.push(item.id);
+    childrenOf.set(item.parent_id, list);
   }
   const result = new Set<string>([categoryId]);
   const stack = [categoryId];
@@ -178,6 +178,55 @@ interface ProductAssembly {
   vendorIds: Set<string>;
 }
 
+/** `assembleProducts()`(전체)와 `loadProductScope()`(단일 제품) 양쪽이 공유하는 조립
+ * 로직. 한 곳에서만 구매 건 → 병 파생 지표 입력을 만들어야 두 경로가 갈라지지 않는다. */
+function assembleOneProduct(
+  product: SyncRow,
+  productSkus: SyncRow[],
+  purchasesBySku: Map<string, SyncRow[]>,
+  bottlesByPurchase: Map<string, SyncRow[]>,
+): ProductAssembly {
+  const lots: PurchaseLot[] = [];
+  const bottleRecords: MetricsBottleRecord[] = [];
+  const vendorIds = new Set<string>();
+
+  for (const sku of productSkus) {
+    const skuPurchases = purchasesBySku.get(sku.id) ?? [];
+    for (const purchase of skuPurchases) {
+      lots.push(
+        purchaseLot(
+          purchase.quantity as number,
+          sku.volume_ml as number,
+          toDecimalOrNull(purchase.unit_list_price),
+          toDecimalOrNull(purchase.unit_paid_price),
+        ),
+      );
+      const vendorId = purchase.vendor_id as string | null;
+      if (vendorId) vendorIds.add(vendorId);
+      for (const bottle of bottlesByPurchase.get(purchase.id) ?? []) {
+        bottleRecords.push({
+          status: bottle.status as string,
+          openedOn: (bottle.opened_on as string | null) ?? null,
+          finishedOn: (bottle.finished_on as string | null) ?? null,
+        });
+      }
+    }
+  }
+
+  return { row: product, skus: productSkus, lots, bottles: bottleRecords, vendorIds };
+}
+
+function groupBy(rows: SyncRow[], key: string): Map<string, SyncRow[]> {
+  const map = new Map<string, SyncRow[]>();
+  for (const row of rows) {
+    const value = row[key] as string;
+    const list = map.get(value) ?? [];
+    list.push(row);
+    map.set(value, list);
+  }
+  return map;
+}
+
 async function assembleProducts(): Promise<ProductAssembly[]> {
   const [products, skus, purchases, bottles] = await Promise.all([
     liveTable("product"),
@@ -186,59 +235,60 @@ async function assembleProducts(): Promise<ProductAssembly[]> {
     liveTable("bottle"),
   ]);
 
-  const skusByProduct = new Map<string, SyncRow[]>();
-  for (const sku of skus) {
-    const productId = sku.product_id as string;
-    const list = skusByProduct.get(productId) ?? [];
-    list.push(sku);
-    skusByProduct.set(productId, list);
-  }
-  const purchasesBySku = new Map<string, SyncRow[]>();
-  for (const purchase of purchases) {
-    const skuId = purchase.sku_id as string;
-    const list = purchasesBySku.get(skuId) ?? [];
-    list.push(purchase);
-    purchasesBySku.set(skuId, list);
-  }
-  const bottlesByPurchase = new Map<string, SyncRow[]>();
-  for (const bottle of bottles) {
-    const purchaseId = bottle.purchase_id as string;
-    const list = bottlesByPurchase.get(purchaseId) ?? [];
-    list.push(bottle);
-    bottlesByPurchase.set(purchaseId, list);
-  }
+  const skusByProduct = groupBy(skus, "product_id");
+  const purchasesBySku = groupBy(purchases, "sku_id");
+  const bottlesByPurchase = groupBy(bottles, "purchase_id");
 
-  return products.map((product) => {
-    const productSkus = skusByProduct.get(product.id) ?? [];
-    const lots: PurchaseLot[] = [];
-    const bottleRecords: MetricsBottleRecord[] = [];
-    const vendorIds = new Set<string>();
+  return products.map((product) =>
+    assembleOneProduct(
+      product,
+      skusByProduct.get(product.id) ?? [],
+      purchasesBySku,
+      bottlesByPurchase,
+    ),
+  );
+}
 
-    for (const sku of productSkus) {
-      const skuPurchases = purchasesBySku.get(sku.id) ?? [];
-      for (const purchase of skuPurchases) {
-        lots.push(
-          purchaseLot(
-            purchase.quantity as number,
-            sku.volume_ml as number,
-            toDecimalOrNull(purchase.unit_list_price),
-            toDecimalOrNull(purchase.unit_paid_price),
-          ),
-        );
-        const vendorId = purchase.vendor_id as string | null;
-        if (vendorId) vendorIds.add(vendorId);
-        for (const bottle of bottlesByPurchase.get(purchase.id) ?? []) {
-          bottleRecords.push({
-            status: bottle.status as string,
-            openedOn: (bottle.opened_on as string | null) ?? null,
-            finishedOn: (bottle.finished_on as string | null) ?? null,
-          });
-        }
-      }
-    }
+/**
+ * 제품 하나에 관련된 규격·구매 건·병만 인덱스로 좁혀 읽는다(`sku.product_id`→
+ * `purchase.sku_id`→`bottle.purchase_id`, 전부 선언된 Dexie 인덱스다). 컬렉션이
+ * 수백~수천 행이어도 이 조회는 그 제품의 몇 행만 읽는다 — `deleted_at` 은 `null` 이
+ * IndexedDB 에서 유효한 키가 아니라(값이 없으면 인덱스에서 아예 빠진다) 이 필드로는
+ * 인덱스 조회를 할 수 없어, 대신 소유 관계(FK)로 범위를 좁힌 뒤 그 적은 결과에만
+ * `live()` 를 적용한다.
+ */
+async function loadProductScope(productId: string): Promise<{
+  skus: SyncRow[];
+  purchases: SyncRow[];
+  bottles: SyncRow[];
+  purchasesBySku: Map<string, SyncRow[]>;
+  bottlesByPurchase: Map<string, SyncRow[]>;
+}> {
+  const byId = (a: SyncRow, b: SyncRow) => a.id.localeCompare(b.id);
 
-    return { row: product, skus: productSkus, lots, bottles: bottleRecords, vendorIds };
-  });
+  const skus = live(await db.table("sku").where("product_id").equals(productId).toArray()).sort(
+    byId,
+  );
+  const skuIds = skus.map((s) => s.id);
+  const purchases = (
+    skuIds.length > 0
+      ? live(await db.table("purchase").where("sku_id").anyOf(skuIds).toArray())
+      : []
+  ).sort(byId);
+  const purchaseIds = purchases.map((p) => p.id);
+  const bottles = (
+    purchaseIds.length > 0
+      ? live(await db.table("bottle").where("purchase_id").anyOf(purchaseIds).toArray())
+      : []
+  ).sort(byId);
+
+  return {
+    skus,
+    purchases,
+    bottles,
+    purchasesBySku: groupBy(purchases, "sku_id"),
+    bottlesByPurchase: groupBy(bottles, "purchase_id"),
+  };
 }
 
 function toProduct(
@@ -362,31 +412,50 @@ const SORT_ACCESSORS: Record<SortKey, (p: Product) => number | string | null> = 
   purchased_count: (p) => p.metrics.purchased_count,
 };
 
-/** 오프라인 제품 목록. `docs/architecture.md` §4.3 필터 규약을 따른다(전부 AND). */
-export async function getProducts(filters: ProductFilters): Promise<Product[]> {
+export interface ProductCatalog {
+  products: Product[];
+  vendorIdsByProduct: Map<string, Set<string>>;
+}
+
+/** 필터·정렬 없이 전체 카탈로그를 조립한다(4개 테이블 조인 + 지표 계산, 제품 규모에 비례하는
+ * 유일하게 비싼 부분). `getProducts()`/`getProductCatalog()` 양쪽이 이 한 곳만 쓴다 — 예전엔
+ * 화면 하나(내 술 목록)가 "필터 적용"과 "필터 없음(자동완성용)" 두 번을 각각 처음부터
+ * 다시 조립해 계산이 그대로 두 배였다. */
+async function assembleCatalog(): Promise<ProductCatalog> {
   const [assemblies, categoryPaths, producerNames, varietyNames] = await Promise.all([
     assembleProducts(),
     categoryPathMap(),
     producerNameMap(),
     varietyNameMap(),
   ]);
-
-  let products = assemblies.map((assembly) =>
+  const products = assemblies.map((assembly) =>
     toProduct(assembly, categoryPaths, producerNames, varietyNames),
   );
+  const vendorIdsByProduct = new Map(assemblies.map((a) => [a.row.id as string, a.vendorIds]));
+  return { products, vendorIdsByProduct };
+}
+
+/** `getProductCatalog()` 로 이미 조립해 둔 카탈로그에 필터·정렬만 적용한다. 순수 함수라
+ * DB 를 다시 읽지 않는다 — 화면이 이미 구독 중인 `CategoryTree` 를 그대로 받아써서
+ * `category_id` 필터도 추가 조회 없이 처리한다(`docs/architecture.md` §4.3, 전부 AND). */
+export function filterAndSortProducts(
+  catalog: ProductCatalog,
+  tree: CategoryTree,
+  filters: ProductFilters,
+): Product[] {
+  let products = catalog.products;
 
   if (filters.q) {
     products = products.filter((p) => matchesText(p, filters.q as string));
   }
   if (filters.vendor_id) {
     const vendorId = filters.vendor_id;
-    const vendorIdsByProduct = new Map(assemblies.map((a) => [a.row.id as string, a.vendorIds]));
-    products = products.filter((p) => vendorIdsByProduct.get(p.id)?.has(vendorId) ?? false);
+    products = products.filter((p) => catalog.vendorIdsByProduct.get(p.id)?.has(vendorId) ?? false);
   }
   if (filters.category_id) {
     const includeDescendants = filters.include_descendants !== false;
     const scope = includeDescendants
-      ? await descendantIdsOf(filters.category_id)
+      ? descendantIdsOfTree(filters.category_id, tree)
       : new Set([filters.category_id]);
     products = products.filter((p) => p.category_id !== null && scope.has(p.category_id));
   }
@@ -457,56 +526,77 @@ export async function getProducts(filters: ProductFilters): Promise<Product[]> {
   return products;
 }
 
+/** 오프라인 제품 목록. 매번 카탈로그를 새로 조립한다 — 화면이 필터별로 여러 번 부르면
+ * 그만큼 다시 계산된다. 같은 화면에서 필터 있는/없는 조회를 동시에 쓴다면
+ * `getProductCatalog()` + `filterAndSortProducts()` 로 한 번만 조립하는 쪽을 쓴다
+ * (`ProductsPage` 참조). */
+export async function getProducts(filters: ProductFilters): Promise<Product[]> {
+  const [catalog, tree] = await Promise.all([assembleCatalog(), getCategoryTree()]);
+  return filterAndSortProducts(catalog, tree, filters);
+}
+
+/** 필터 없는 전체 카탈로그. `filterAndSortProducts()` 와 짝지어 한 화면에서 필터
+ * 있는/없는 목록을 동시에 써야 할 때(예: 목록 + 이름 자동완성) DB 재조회 없이 재사용한다. */
+export async function getProductCatalog(): Promise<ProductCatalog> {
+  return assembleCatalog();
+}
+
+/**
+ * 제품 하나만 조회한다. 이전엔 `getProducts({})` 로 전체 제품(수백 종)의 지표를 계산한
+ * 뒤 `.find()` 했다 — `loadProductScope()` 로 이 제품 관련 행만 읽어 그 낭비를 없앤다.
+ */
 export async function getProduct(productId: string): Promise<Product | null> {
-  const products = await getProducts({});
-  return products.find((p) => p.id === productId) ?? null;
+  const productRow = await db.table("product").get(productId);
+  if (!productRow || (productRow.deleted_at as string | null) !== null) return null;
+
+  const [scope, categoryPaths, producerNames, varietyNames] = await Promise.all([
+    loadProductScope(productId),
+    categoryPathMap(),
+    producerNameMap(),
+    varietyNameMap(),
+  ]);
+
+  const assembly = assembleOneProduct(
+    productRow,
+    scope.skus,
+    scope.purchasesBySku,
+    scope.bottlesByPurchase,
+  );
+  return toProduct(assembly, categoryPaths, producerNames, varietyNames);
 }
 
 export async function getPurchasesForProduct(productId: string): Promise<Purchase[]> {
-  const [skus, purchases, vendors, bottles] = await Promise.all([
-    liveTable("sku"),
-    liveTable("purchase"),
-    liveTable("vendor"),
-    liveTable("bottle"),
-  ]);
-  const skuIds = new Set(skus.filter((s) => s.product_id === productId).map((s) => s.id));
-  const skuById = new Map(skus.map((s) => [s.id, s]));
+  const [scope, vendors] = await Promise.all([loadProductScope(productId), liveTable("vendor")]);
+  const skuById = new Map(scope.skus.map((s) => [s.id, s]));
   const vendorById = new Map(vendors.map((v) => [v.id, v]));
-  const bottleCountByPurchase = new Map<string, number>();
-  for (const bottle of bottles) {
-    const purchaseId = bottle.purchase_id as string;
-    bottleCountByPurchase.set(purchaseId, (bottleCountByPurchase.get(purchaseId) ?? 0) + 1);
-  }
 
-  return purchases
-    .filter((p) => skuIds.has(p.sku_id as string))
-    .map((p) => {
-      const sku = skuById.get(p.sku_id as string);
-      const vendorId = p.vendor_id as string | null;
-      const vendor = vendorId ? vendorById.get(vendorId) : undefined;
-      const quantity = p.quantity as number;
-      const unitList = toDecimalOrNull(p.unit_list_price);
-      const unitPaid = toDecimalOrNull(p.unit_paid_price);
-      return {
-        id: p.id,
-        sku_id: p.sku_id as string,
-        volume_ml: (sku?.volume_ml as number | undefined) ?? null,
-        vendor_id: vendorId,
-        vendor_name: vendor ? (vendor.name as string) : null,
-        purchased_on: (p.purchased_on as string | null) ?? null,
-        quantity,
-        unit_list_price: (p.unit_list_price as string | null) ?? null,
-        unit_paid_price: (p.unit_paid_price as string | null) ?? null,
-        list_total: unitList ? unitList.times(quantity).toFixed(2) : null,
-        paid_total: unitPaid ? unitPaid.times(quantity).toFixed(2) : null,
-        currency: p.currency as string,
-        fx_rate: (p.fx_rate as string | null) ?? null,
-        foreign_unit_price: (p.foreign_unit_price as string | null) ?? null,
-        discount_note: (p.discount_note as string | null) ?? null,
-        import_note: (p.import_note as string | null) ?? null,
-        bottle_count: bottleCountByPurchase.get(p.id) ?? 0,
-      };
-    });
+  return scope.purchases.map((p) => {
+    const sku = skuById.get(p.sku_id as string);
+    const vendorId = p.vendor_id as string | null;
+    const vendor = vendorId ? vendorById.get(vendorId) : undefined;
+    const quantity = p.quantity as number;
+    const unitList = toDecimalOrNull(p.unit_list_price);
+    const unitPaid = toDecimalOrNull(p.unit_paid_price);
+    return {
+      id: p.id,
+      sku_id: p.sku_id as string,
+      volume_ml: (sku?.volume_ml as number | undefined) ?? null,
+      vendor_id: vendorId,
+      vendor_name: vendor ? (vendor.name as string) : null,
+      purchased_on: (p.purchased_on as string | null) ?? null,
+      quantity,
+      unit_list_price: (p.unit_list_price as string | null) ?? null,
+      unit_paid_price: (p.unit_paid_price as string | null) ?? null,
+      list_total: unitList ? unitList.times(quantity).toFixed(2) : null,
+      paid_total: unitPaid ? unitPaid.times(quantity).toFixed(2) : null,
+      currency: p.currency as string,
+      fx_rate: (p.fx_rate as string | null) ?? null,
+      foreign_unit_price: (p.foreign_unit_price as string | null) ?? null,
+      discount_note: (p.discount_note as string | null) ?? null,
+      import_note: (p.import_note as string | null) ?? null,
+      bottle_count: (scope.bottlesByPurchase.get(p.id) ?? []).length,
+    };
+  });
 }
 
 // --- 병 ---------------------------------------------------------------------
@@ -537,33 +627,22 @@ export async function getBottles(params: {
 /**
  * 한 제품의 병만 모아 반환한다. "병 관리" 가 별도 탭이던 시절엔 전체 병을 평면 목록으로
  * 보여줬는데, 무슨 술인지 알 수 없다는 문제가 있었다 — 제품 상세 안으로 통합하면서
- * 애초에 제품 문맥 안에서만 병을 보여주게 됐다(Task 22). `getPurchasesForProduct` 와
- * 같은 sku → purchase → bottle 조인 패턴을 그대로 쓰되 방향만 반대다.
+ * 애초에 제품 문맥 안에서만 병을 보여주게 됐다(Task 22).
  */
 export async function getBottlesForProduct(productId: string): Promise<Bottle[]> {
-  const [skus, purchases, bottles] = await Promise.all([
-    liveTable("sku"),
-    liveTable("purchase"),
-    liveTable("bottle"),
-  ]);
-  const skuIds = new Set(skus.filter((s) => s.product_id === productId).map((s) => s.id));
-  const purchaseIds = new Set(
-    purchases.filter((p) => skuIds.has(p.sku_id as string)).map((p) => p.id),
-  );
+  const { bottles } = await loadProductScope(productId);
 
-  return bottles
-    .filter((row) => purchaseIds.has(row.purchase_id as string))
-    .map((row) => ({
-      id: row.id,
-      purchase_id: row.purchase_id as string,
-      label_no: row.label_no as number,
-      status: row.status as Bottle["status"],
-      opened_on: (row.opened_on as string | null) ?? null,
-      finished_on: (row.finished_on as string | null) ?? null,
-      remaining_ml: (row.remaining_ml as number | null) ?? null,
-      storage_location: (row.storage_location as string | null) ?? null,
-      note: (row.note as string | null) ?? null,
-    }));
+  return bottles.map((row) => ({
+    id: row.id,
+    purchase_id: row.purchase_id as string,
+    label_no: row.label_no as number,
+    status: row.status as Bottle["status"],
+    opened_on: (row.opened_on as string | null) ?? null,
+    finished_on: (row.finished_on as string | null) ?? null,
+    remaining_ml: (row.remaining_ml as number | null) ?? null,
+    storage_location: (row.storage_location as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+  }));
 }
 
 // --- 구매처 -----------------------------------------------------------------
@@ -619,7 +698,12 @@ interface StatsRow {
   bottles: MetricsBottleRecord[];
 }
 
-async function statsRows(): Promise<{ rows: StatsRow[]; vendorIds: Set<string> }> {
+interface StatsData {
+  rows: StatsRow[];
+  vendorIds: Set<string>;
+}
+
+async function statsRows(): Promise<StatsData> {
   const assemblies = await assembleProducts();
   const liveSkuIds = new Set(assemblies.flatMap((assembly) => assembly.skus.map((sku) => sku.id)));
   const purchases = await liveTable("purchase");
@@ -698,8 +782,11 @@ function topAncestorMap(tree: CategoryTree): Map<string, CategoryNode> {
   return result;
 }
 
-export async function getStatsRankings(limit = DEFAULT_RANKING_LIMIT): Promise<Rankings> {
-  const { rows } = await statsRows();
+export async function getStatsRankings(
+  limit = DEFAULT_RANKING_LIMIT,
+  data?: StatsData,
+): Promise<Rankings> {
+  const { rows } = data ?? (await statsRows());
 
   function top(keyFn: (row: StatsRow) => Decimal | null): { row: StatsRow; value: Decimal }[] {
     return rows
@@ -756,10 +843,13 @@ function valueForMoneyOf(row: StatsRow): Decimal | null {
 }
 
 /** 주종별 집계. 하위 카테고리는 최상위 주종으로 롤업한다. */
-export async function getCategoryRollup(): Promise<CategoryStat[]> {
-  const { rows } = await statsRows();
-  const tree = await getCategoryTree();
-  const topOf = topAncestorMap(tree);
+export async function getCategoryRollup(
+  data?: StatsData,
+  tree?: CategoryTree,
+): Promise<CategoryStat[]> {
+  const { rows } = data ?? (await statsRows());
+  const resolvedTree = tree ?? (await getCategoryTree());
+  const topOf = topAncestorMap(resolvedTree);
 
   const groups = new Map<string | null, StatsRow[]>();
   const names = new Map<string | null, string>();
@@ -810,8 +900,8 @@ export async function getCategoryRollup(): Promise<CategoryStat[]> {
 
 /** 전체 합계. 평균의 분모는 전체 병수·전체 용량이다(가격이 있는 구매 건만이 아니다) —
  * 가격 없는 선물 병도 "컬렉션 전체 평균"에는 한 병으로 들어가야 한다. */
-export async function getStatsSummary(): Promise<StatsSummary> {
-  const { rows, vendorIds } = await statsRows();
+export async function getStatsSummary(data?: StatsData): Promise<StatsSummary> {
+  const { rows, vendorIds } = data ?? (await statsRows());
 
   const purchasedCount = rows.reduce((sum, row) => sum + row.prices.purchasedCount, 0);
   const totalVolumeMl = rows.reduce((sum, row) => sum + row.prices.totalVolumeMl, 0);
@@ -851,5 +941,25 @@ export async function getStatsSummary(): Promise<StatsSummary> {
     sold_count: rows.reduce((sum, row) => sum + row.tally.sold, 0),
     avg_days_to_finish: averageDaysToFinish(rows.flatMap((row) => row.bottles))?.toFixed(2) ?? null,
     avg_value_for_money: mean(rows.map((row) => valueForMoneyOf(row)))?.toFixed(4) ?? null,
+  };
+}
+
+export interface StatsDashboard {
+  rankings: Rankings;
+  categories: CategoryStat[];
+  totals: StatsSummary;
+  tree: CategoryTree;
+}
+
+/** `StatsPage` 하나가 랭킹·주종별 집계·전체 합계·카테고리 트리를 동시에 보여준다.
+ * 예전엔 각각 독립된 `useLiveQuery` 가 있어 화면 하나가 `assembleProducts()` 를 3번,
+ * `getCategoryTree()` 를 2번 다시 계산했다 — 여기서 한 번씩만 계산해 나눠 쓴다. */
+export async function getStatsDashboard(): Promise<StatsDashboard> {
+  const [data, tree] = await Promise.all([statsRows(), getCategoryTree()]);
+  return {
+    rankings: await getStatsRankings(DEFAULT_RANKING_LIMIT, data),
+    categories: await getCategoryRollup(data, tree),
+    totals: await getStatsSummary(data),
+    tree,
   };
 }

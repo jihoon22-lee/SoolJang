@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { productsApi, purchasesApi } from "@/api/client";
 import type { Product, ProductFilters, SortKey } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
@@ -13,10 +13,11 @@ import { setLastVendorName } from "@/lastVendor";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import {
+  filterAndSortProducts,
   getBottlesForProduct,
   getCategoryTree,
   getProduct,
-  getProducts,
+  getProductCatalog,
   getPurchasesForProduct,
   getVendors,
 } from "@/sync/queries";
@@ -84,13 +85,22 @@ export function ProductsPage({
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const vendors = useLiveQuery(() => getVendors(), []);
   const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
+  // 카탈로그(조인 + 지표 계산, 제품 규모에 비례하는 유일하게 비싼 부분)는 한 번만 조회하고,
+  // 필터 있는/없는 두 가지 뷰(목록에 보여줄 것 vs 자동완성·중복 등록 경고가 볼 전체)는
+  // 순수 함수로 그 결과에서 파생시킨다 — 예전엔 이 둘이 각각 독립적으로 조회해 카탈로그
+  // 조립을 두 번 했다.
+  const catalog = useLiveQuery(() => getProductCatalog(), []);
   // 제품 규모가 수백 건이라 서버처럼 커서 페이지네이션을 하지 않는다 — 전체를 필터·정렬한
   // 뒤 화면에는 `visibleCount` 만큼만 보여준다("더 보기"는 이미 메모리에 있는 걸 더 드러낼
   // 뿐, 다시 조회하지 않는다).
-  const allProducts = useLiveQuery(() => getProducts(filters), [filters]);
+  const allProducts = useMemo(
+    () =>
+      catalog && categoryTree ? filterAndSortProducts(catalog, categoryTree, filters) : undefined,
+    [catalog, categoryTree, filters],
+  );
   // 이름 자동완성·중복 등록 경고는 현재 필터와 무관하게 전체 카탈로그를 대상으로 해야 한다
   // (필터가 걸려 있어도 "이미 등록된 술"을 놓치면 안 된다).
-  const allProductsUnfiltered = useLiveQuery(() => getProducts({}), []);
+  const allProductsUnfiltered = catalog?.products;
 
   const items = allProducts?.slice(0, visibleCount) ?? [];
   const hasMore = (allProducts?.length ?? 0) > visibleCount;

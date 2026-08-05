@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR5 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51). PR6 게이트 전부 통과, PR 오픈 대기) |
+| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR6 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52). PR7 게이트 전부 통과, PR 오픈 대기 — 머지되면 Task 24 전체 완료) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR6**(`feat/category-manager-ux`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 438 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR7(오프라인 조회 성능)이 남았다 |
-| 현재 브랜치 | `feat/category-manager-ux` (Task 24 PR6) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR5 완료, PR6 머지 대기, PR7 착수 전 |
+| 다음 착수 Task | **Task 24 PR7**(`perf/offline-queries`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 438 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 마지막 단계다. 머지되면 Task 24(실사용 피드백 기반 개선) 전체가 완료된다 |
+| 현재 브랜치 | `perf/offline-queries` (Task 24 PR7) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR6 완료, PR7 머지 대기(마지막 PR) |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR5/7 완료·머지, PR6/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`(머지됨), `feat/category-manager-ux` 외 1개(PR7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR6/7 완료·머지, PR7/7 게이트 통과(머지 대기, 마지막 PR) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`(머지됨), `perf/offline-queries`(PR 오픈 대기) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52) |
 
 ### 의존 관계
 
@@ -1275,6 +1275,53 @@ build` 정상, 시크릿 스캔 통과. Playwright 로 360/768/1280px 세 폭에
 클릭으로 확인했다(확인한 이동은 되돌려 원래 상태로 복구). 근거는 `plan.md` Task 24 PR6 절,
 D138~D141.
 
+#### PR7 — `perf/offline-queries`: 오프라인 조회 성능 (2026-08-05, B13)
+
+`liveTable()` 이 매 호출마다 전체 테이블을 JS 로 읽고 `deleted_at` 을 JS 에서 거르는 문제(B13)
+를 고치기 전에, "선언된 Dexie 인덱스를 실제로 쓴다" 는 게 정확히 무엇을 뜻하는지부터
+검증했다 — 결과가 원래 가설과 달랐다(아래 D142).
+
+- **`deleted_at` 인덱스로는 애초에 "살아있는 행" 을 조회할 수 없다는 걸 먼저 실측으로
+  확인했다**: `fake-indexeddb` 로 `db.table(t).where("deleted_at").equals(null)` 를 직접
+  호출해 보니 `Invalid key provided` 예외가 났다 — IndexedDB 스펙에서 `null` 은 애초에
+  유효한 키가 아니다(숫자·문자열·Date·ArrayBuffer·Array 만 키가 될 수 있다). 값이 없는
+  레코드는 인덱스에서 아예 빠지므로, `deleted_at` 인덱스로 "값이 null 인 행" 을 range
+  query 로 찾는 건 기술적으로 불가능하다 — B13 작성 당시의 가정이 틀렸다
+- **대신 소유 관계(FK)로 범위를 좁히는 쪽이 진짜로 쓸 수 있는 인덱스였다**: `getProduct`/
+  `getPurchasesForProduct`/`getBottlesForProduct` 세 함수가 전부 "제품 하나" 를 위해
+  `sku`/`purchase`/`bottle` 전체 테이블을 읽고 있었다 — 이 세 테이블은 각각
+  `product_id`/`sku_id`/`purchase_id` 가 선언된 인덱스다. `loadProductScope()` 하나로
+  묶어 `sku.product_id`→`purchase.sku_id`→`bottle.purchase_id` 순으로 인덱스 조회만
+  하도록 바꿨다 — 컬렉션이 몇 배로 커져도 이 조회량은 제품 하나 분량으로 고정된다.
+  `assembleProducts()`(전체 목록)와 이 단일 제품 경로가 조립 로직(`assembleOneProduct`)
+  자체는 공유해 두 경로가 갈라지지 않게 했다
+- **화면 하나가 카탈로그를 여러 번 다시 조립하던 것도 없앴다**: `ProductsPage` 는 필터
+  있는 목록과 없는 목록(자동완성용)을 각각 `getProducts()` 로 따로 불러 조립을 두 번
+  했다 — `getProductCatalog()`(조립 1회) + `filterAndSortProducts()`(순수 함수, 이미
+  구독 중인 `CategoryTree` 를 받아 카테고리 하위 범위도 DB 재조회 없이 계산)로 나눠
+  한 번만 조립하게 했다. `StatsPage` 는 랭킹·주종별 집계·전체 합계·카테고리 트리 넷이
+  각자 `assembleProducts()`(3번)·`getCategoryTree()`(2번)를 다시 계산했다 —
+  `getStatsDashboard()` 하나로 묶었다(기존 `getStatsRankings`/`getCategoryRollup`/
+  `getStatsSummary` 는 선택적 `StatsData` 인자로 계산을 공유하되, 테스트가 기대하는
+  기존 시그니처·동작은 그대로 뒀다)
+- **`StoreModePage` 의 `rankByQuery` 를 `useMemo` 로 감쌌다**: 검색어와 무관한 재렌더에도
+  매번 전체 제품(수백 종)을 다시 정렬하고 있었다
+- **`pullDeltas` 가 페이지마다 커밋하던 것을 하나로 묶었다**: 여러 페이지에 걸친 델타 풀은
+  네트워크 응답을 먼저 다 모은 뒤 DB 반영만 트랜잭션 하나로 끝낸다(`flushOutbox` 가 이미
+  같은 이유로 낱개 `put` 을 트랜잭션 하나로 묶어 둔 것과 대칭). IndexedDB 트랜잭션 안에서
+  `fetch` 처럼 인덱스 밖 비동기 작업을 기다리면 네이티브 트랜잭션이 조기 커밋될 수 있어
+  네트워크 호출은 트랜잭션 밖에서 순차로 끝낸다
+
+검증: `npm run check` 438 passed(회귀 0건), `vite build` 정상, 시크릿 스캔 통과. 백엔드
+변경 없음. **측정은 두 갈래로 했다** — (1) 코드 근거: `sku`/`purchase`/`bottle` 전체 테이블
+읽기 횟수가 제품 상세 조회에서 세 함수 모두 "전체" 에서 "그 제품 몫" 으로, 내 술 목록에서
+카탈로그 조립이 화면당 2회에서 1회로, 통계에서 `assembleProducts()` 가 3회에서 1회로
+줄어드는 것을 코드로 확인했다(grep 으로 호출 지점 추적). (2) 실측: Chrome DevTools MCP 트레이스
+전후 비교는 별도 브라우저 프로필의 로그인 준비가 이번 세션에서 여의치 않아, 대신 Playwright
+로 실데이터(406종·1,079병) 대상 내 술 목록·제품 상세(구매/병 포함)·통계·매장 모드 검색을
+전부 실클릭으로 확인해 회귀가 없음을 검증했다 — 절대 지연시간 비교는 다음 세션 과제로 남긴다.
+근거는 `plan.md` Task 24 PR7 절, D142~D146.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1534,6 +1581,16 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D139 | `CategoryManagerProps` 의 `busy: boolean`/`error: unknown` 을 `renameStatus`/`reparentStatus`/`mergeStatus`/`removeStatus`(각각 `{isPending, isSuccess, variables, error}`)로 바꾼다. `CategoriesPage` 는 실제 `useMutation` 결과 객체를 그대로 전달한다(`UseMutationResult` 가 이 구조를 구조적으로 만족해 글루 코드 불필요) | 기존 블랭킷 `busy`/`error` 는 뮤테이션 6개 중 하나만 진행 중이어도 트리 전체 모든 버튼을 잠그고 오류도 최상단 하나로 뭉쳤다(사용자 항목 5). `mutation.variables?.id === node.id` 로 "이 행이 지금 처리 중인가" 를 판별하려면 각 뮤테이션의 `variables`/`isPending`/`error` 가 필요했다 — 컴포넌트가 react-query 를 몰라도 되는 기존 설계(테스트가 plain `vi.fn()` 으로 구성)는 그대로 유지했다 |
 | D140 | `CategoryBranch` 에 `expanded` 상태(기본 펼침)를 추가해 하위가 있는 행에만 토글 버튼을 보여준다. 이동 성공 시 해당 행에 2초간 강조 클래스를 붙인다(`useEffect`+`setTimeout`, `ref` 로 같은 성공 상태의 중복 트리거를 막음) | 트리가 항상 전부 펼쳐져 있어 계층이 점선 들여쓰기로만 구분됐고, 이동해도 결과가 어디로 갔는지 한눈에 보이지 않았다(사용자 항목 5) |
 | D141 | `categoriesApi.reorder` 를 UI 에 노출하지 않고, `getCategoryTree` 의 이름순 정렬 유지 결정을 `queries.ts` 주석으로 문서화한다 | 주종은 수십 개 규모라 이름순으로도 원하는 항목을 바로 찾을 수 있다 — 위/아래 이동 버튼과 그 상태(뮤테이션·오류·오프라인 처리)까지 트리 UI 에 얹는 복잡도가 얻는 편의보다 크다고 판단했다 |
+
+### Task 24 PR7 결정 (D142~D146)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D142 | `deleted_at` 인덱스로 "살아있는 행" 을 range query 하는 시도를 하지 않는다 — 대신 소유 관계(FK: `sku.product_id`/`purchase.sku_id`/`bottle.purchase_id`)로 범위를 좁히는 쪽으로 B13 을 구현한다 | `fake-indexeddb` 로 `db.table(t).where("deleted_at").equals(null)` 를 직접 실행해 `Invalid key provided` 예외를 실측으로 확인했다 — IndexedDB 스펙에서 `null` 은 유효한 키 타입이 아니다(숫자·문자열·Date·ArrayBuffer·Array 만 가능). B13 작성 당시 "선언된 인덱스를 안 쓴다" 는 진단은 맞았지만 제안된 해법(그 필드로 range query)은 기술적으로 불가능하다는 걸 구현 전에 먼저 검증했다 |
+| D143 | `getProduct`/`getPurchasesForProduct`/`getBottlesForProduct` 를 `loadProductScope()` 하나로 묶어 `sku`/`purchase`/`bottle` 전체 테이블 대신 인덱스로 좁힌 제품 하나 몫만 읽는다. 조립 로직(`assembleOneProduct`)은 전체 목록 경로(`assembleProducts`)와 공유한다 | 예전엔 제품 하나를 보려고 전체 제품(수백 종)의 지표를 계산한 뒤 `.find()` 했다(B13, 제품 상세 18회 읽기 중 9회). 두 경로가 각자 조립 로직을 들고 있으면 언젠가 갈라져 결과가 달라질 위험이 있어 공유 함수로 뽑았다 |
+| D144 | `ProductsPage` 는 `getProductCatalog()`(조립 1회) + `filterAndSortProducts()`(순수 함수)로 나눠 필터 있는/없는 두 뷰를 한 번의 조립에서 파생시킨다. `StatsPage` 는 `getStatsDashboard()` 로 랭킹·주종별 집계·전체 합계·트리를 한 쿼리로 묶는다 — 기존 `getStatsRankings`/`getCategoryRollup`/`getStatsSummary` 는 선택적 `StatsData` 인자로 계산을 공유하되 공개 시그니처는 그대로 둔다(테스트가 각각 독립 호출한다) | 내 술 목록이 필터 있는/없는 조회를 각각 `getProducts()` 로 불러 카탈로그 조립을 두 번 했고(B13), 통계는 네 화면 요소가 각자 `assembleProducts()`(3회)·`getCategoryTree()`(2회)를 다시 계산했다. 기존 함수의 공개 동작을 바꾸지 않는 선에서 공유 계산 경로만 추가하는 쪽이 테스트 회귀 위험이 가장 낮았다 |
+| D145 | `StoreModePage` 의 `rankByQuery(products, query, ...)` 호출을 `useMemo([products, trimmedQuery])` 로 감싼다 | 검색어와 무관한 재렌더에도 매번 전체 제품(수백 종)을 다시 정렬하고 있었다(B13) |
+| D146 | `pullDeltas` 가 여러 페이지의 네트워크 응답을 먼저 다 모은 뒤 DB 쓰기는 트랜잭션 하나로 끝내게 한다. `pendingEntityIds()` 확인도 이 최종 트랜잭션 안에서 한 번만 한다 | 페이지마다 별도 트랜잭션을 커밋하면 `useLiveQuery` 구독자가 페이지 수만큼 다시 계산된다(B13) — `flushOutbox` 가 이미 같은 이유로 낱개 `put` 을 트랜잭션 하나로 묶어 둔 전례를 그대로 따랐다. IndexedDB 트랜잭션 안에서 `fetch` 를 기다리면 네이티브 트랜잭션이 조기 커밋될 수 있어(Dexie 의 알려진 제약) 네트워크 호출 자체는 트랜잭션 밖에서 순차 실행한다. 트레이드오프: 여러 페이지 도중 앱이 중단되면(드문 경우) 다음 재개가 처음 커서부터 다시 페치한다 — 페이지마다 커서를 저장하던 기존 재개 세밀함은 잃지만 재요청은 멱등이라 정확성엔 영향이 없다 |
 
 ## 6. 열린 질문
 

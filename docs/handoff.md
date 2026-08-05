@@ -3,10 +3,11 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-05 (Task 24 PR1~PR5 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47),
+- 최종 갱신: **2026-08-05 (Task 24 PR1~PR6 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47),
   [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49),
-  [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51).
-  PR6 — 주종 관리 UX 개편, 게이트 전부 통과·머지 대기)**
+  [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51),
+  [#52](https://github.com/jihoon22-lee/SoolJang/pull/52). PR7 — 오프라인 조회 성능 개선, 게이트 전부
+  통과·머지 대기. 머지되면 Task 24 전체 완료)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
@@ -14,14 +15,14 @@
   반영 안 돼 있을 뿐 시스템상 멤버는 맞다). **주의**: 이 환경에 `ast-grep` 이 `sg` 라는
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다
-- 현재 브랜치: `feat/category-manager-ux`(Task 24 PR6). Task 1~17·20~23 완료(Task 18 은
+- 현재 브랜치: `perf/offline-queries`(Task 24 PR7, 마지막 PR). Task 1~17·20~23 완료(Task 18 은
   `adapter` 전략만; Task 23 은 태그·릴리스·PC 배포 완료, 모바일 접속만 사용자 조작 대기).
   **`v1.0.0` 태그를 실제로 푸시해 GitHub 릴리스·GHCR 이미지 게시·홈 PC 재배포까지 마쳤다.**
   이어서 Task 24(실사용 피드백 개선) PR1(동기화 큐 영구 정지 + 데이터 무결성, #47)·PR2(프론트
   안정성, #48)·PR3(디자인 시스템, #49)·PR4(탭 정리+구매처 드릴다운+매장모드 모바일 전용,
-  #50)·PR5(통계 화면 차트 개편, #51)를 머지했고, PR6(주종 관리 UX 개편 — 순수 프론트엔드,
-  백엔드 변경 없음)를 코드·테스트·문서까지 완료해 전체 게이트를 통과시켰다 — 상세는
-  `plan.md` §1, Task 24 절
+  #50)·PR5(통계 화면 차트 개편, #51)·PR6(주종 관리 UX 개편, #52)를 머지했고, PR7(오프라인
+  조회 성능 — 순수 프론트엔드, 백엔드 변경 없음)를 코드·테스트·문서까지 완료해 전체 게이트를
+  통과시켰다. 머지되면 Task 24 전체가 완료된다 — 상세는 `plan.md` §1, Task 24 절
 - 버전: **`1.0.0`**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0))
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -196,7 +197,8 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | Task 24 PR3 — 디자인 시스템(2026-08-05, [#49](https://github.com/jihoon22-lee/SoolJang/pull/49) `refactor/design-system`, 머지됨) | `styles.css` 한 파일만 바꾸는 순수 CSS 리팩터(백엔드·JSX 변경 없음). 타입 스케일 6단계·컨트롤 높이 3단계(`--control-h-md` 는 rem 이 아니라 44px 로 고정)·`--font-weight-*`·`--font-mono` 토큰을 도입해 흩어진 폰트 크기 12종·터치 타깃 표기 2종을 통일했다. `.category-bar-row` 그리드 고정폭→`minmax(0,6em)`, `.sort-button` 의 `inline-flex` 가 무효화하던 말줄임(`.category-bar-label`/`.ranking-name`)을 `display:block` 으로 복구, `overflow-wrap:anywhere` 신규 도입(표 셀·카드 제목), `40rem` 미문서화 브레이크포인트 제거(600px 로 흡수), `.sort-button:focus-visible` 아웃라인 복구, `.link-like` 터치 타깃 44px 확보, 죽은 CSS(`--space-xl` 포함) 삭제. `npm run check` 408 passed(회귀 0), `vite build` 정상. **Playwright 로 360/768/1280px 세 폭에서 내 술 목록·통계·주종 관리 화면을 실제로 렌더링해 확인**했다 — 표 안 긴 이름 줄바꿈, 모바일 카드 제품명 링크의 넓어진 터치 영역, 세 폭 모두 고른 내비게이션/버튼 높이를 눈으로 검증. 근거는 `plan.md` Task 24 PR3 절, D123~D129 |
 | Task 24 PR4 — 탭 정리+구매처 드릴다운+매장모드 모바일 전용(2026-08-05, [#50](https://github.com/jihoon22-lee/SoolJang/pull/50) `feat/navigation-restructure`, 머지됨) | 백엔드 변경 없음. 헤더에 "설정" 팝오버 메뉴 신설(가져오기·외부 소스·설정·서비스 상태·로그아웃을 접음, 바깥 클릭·Esc 로 닫힘), 주 nav 는 `내 술`/`주종 관리`/`구매처`/`통계` 4개로 축소. 매장 모드는 nav 에서 빼고 `ProductsPage` 상단 모바일 전용(900px 미만) 진입 버튼으로 이동(`#scan` 라우트는 그대로 유지). 구매처 → 그 구매처에서 산 술 드릴다운을 `router.ts`(`vendorId`)·`ProductsPage`(`initialVendorId`)·`VendorsPage`(이름 클릭)로 연결(카테고리 드릴다운과 같은 아키텍처 재사용), `getVendors()` 에 `total_spend` 추가(실구매가 우선·정가 보충·둘 다 없으면 제외). `npm run check` 413 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(406종·구매처 64곳) 대상 "CU어플" 클릭 → "내 술 (2)" 정확히 필터링됨을 확인**, 설정 메뉴 열기/바깥 클릭 닫기, 1280px 숨김·360px 노출되는 매장 모드 버튼도 눈으로 검증. 근거는 `plan.md` Task 24 PR4 절, D130~D133 |
 | Task 24 PR5 — 통계 화면 차트 개편(2026-08-05, [#51](https://github.com/jihoon22-lee/SoolJang/pull/51) `feat/stats-charts`, 머지됨) | 순수 프론트엔드(백엔드 변경 없음). `components/charts/` 에 사내 SVG 프리미티브(`BarChart`/`DonutChart`/`LineChart`, 외부 라이브러리 미도입) 신설 — 라벨은 SVG `<text>` 대신 HTML 로 렌더링, 모두 `role="img"`+표 대체 텍스트. 범주형 팔레트(`--chart-1`~`6`) 추가. "주종별 집계" 는 측정값 셀렉트(병수·총액·평균 도수·평균 평점·평균 100ml가·할인율)로 즉시 다시 그려지는 `BarChart` 로, 병 상태 분포는 `DonutChart` 로, 월별 시계열(`PivotExplorer`, 온라인 전용)의 CSS 막대 흉내는 `LineChart` 로 교체. `getStatsSummary()`/`getStatsRankings()`(오프라인 계산)에 `gifted_count`/`sold_count`/`avg_days_to_finish`/`avg_value_for_money`/`by_value_for_money` 추가 — `averageDaysToFinish()` 를 `domain/metrics.ts` 공개 함수로 뽑아 컬렉션 전체도 병 단위로 직접 평균한다(제품별 평균의 평균이 아니다). `StatsSummary`/`Rankings` 의 새 필드는 대응하는 REST 엔드포인트가 죽은 코드라 백엔드 스키마는 안 건드림. `npm run check` 431 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(406종·1,079병) 대상 확인** — 도넛이 실제 병 상태 비율을 보여주고, 측정값을 "평균 도수" 로 바꾸면 차트가 즉시 다시 그려지며, 가성비 랭킹 1위가 실제로 저가 막걸리로 나옴을 확인. 근거는 `plan.md` Task 24 PR5 절, D134~D137 |
-| Task 24 PR6 — 주종 관리 UX 개편(2026-08-05, `feat/category-manager-ux`, 게이트 통과·머지 대기) | 순수 프론트엔드(백엔드 변경 없음). `CategoryManager.tsx` 의 이동·병합 `<select onChange={...}>`(즉시 실행) 를 `이동`/`병합` 버튼 + 대상 선택 확인 패널로 교체(기존 `DeleteControl` 의 2단계 확인 패턴 재사용) — 병합은 대상을 고르면 "{이름}(제품 N종)을 {대상} 로 합치고 삭제합니다. 되돌릴 수 없습니다." 를 먼저 보여준다. `CategoryBranch` 에 접기/펼치기(기본 펼침, 하위 있는 행만 토글 노출)와 이동 성공 후 2초 하이라이트를 추가. `CategoryManagerProps` 의 블랭킷 `busy`/`error` 를 `renameStatus`/`reparentStatus`/`mergeStatus`/`removeStatus`(각 `{isPending, isSuccess, variables, error}`) 로 바꿔 `mutation.variables?.id === node.id` 로 행 단위 busy·오류를 판별 — `CategoriesPage` 는 `useMutation` 결과를 그대로 넘긴다(구조적 타이핑, 글루 코드 없음). `categoriesApi.reorder` 는 노출하지 않기로 결정하고 `queries.ts` 주석으로 문서화. `npm run check` 438 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(주종 44개) 대상 확인** — 브랜디·와인·위스키 접기/펼치기, "메즈칼"→"럼" 이동 후 하이라이트, 병합 대상 선택 시 영향(제품 1종) 문구, 취소 동작을 실클릭으로 확인(이동은 되돌려 원상 복구). 근거는 `plan.md` Task 24 PR6 절, D138~D141 |
+| Task 24 PR6 — 주종 관리 UX 개편(2026-08-05, [#52](https://github.com/jihoon22-lee/SoolJang/pull/52) `feat/category-manager-ux`, 머지됨) | 순수 프론트엔드(백엔드 변경 없음). `CategoryManager.tsx` 의 이동·병합 `<select onChange={...}>`(즉시 실행) 를 `이동`/`병합` 버튼 + 대상 선택 확인 패널로 교체(기존 `DeleteControl` 의 2단계 확인 패턴 재사용) — 병합은 대상을 고르면 "{이름}(제품 N종)을 {대상} 로 합치고 삭제합니다. 되돌릴 수 없습니다." 를 먼저 보여준다. `CategoryBranch` 에 접기/펼치기(기본 펼침, 하위 있는 행만 토글 노출)와 이동 성공 후 2초 하이라이트를 추가. `CategoryManagerProps` 의 블랭킷 `busy`/`error` 를 `renameStatus`/`reparentStatus`/`mergeStatus`/`removeStatus`(각 `{isPending, isSuccess, variables, error}`) 로 바꿔 `mutation.variables?.id === node.id` 로 행 단위 busy·오류를 판별 — `CategoriesPage` 는 `useMutation` 결과를 그대로 넘긴다(구조적 타이핑, 글루 코드 없음). `categoriesApi.reorder` 는 노출하지 않기로 결정하고 `queries.ts` 주석으로 문서화. `npm run check` 438 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(주종 44개) 대상 확인** — 브랜디·와인·위스키 접기/펼치기, "메즈칼"→"럼" 이동 후 하이라이트, 병합 대상 선택 시 영향(제품 1종) 문구, 취소 동작을 실클릭으로 확인(이동은 되돌려 원상 복구). 근거는 `plan.md` Task 24 PR6 절, D138~D141 |
+| Task 24 PR7 — 오프라인 조회 성능 개선(2026-08-05, `perf/offline-queries`, 게이트 통과·머지 대기, Task 24 마지막 PR) | 순수 프론트엔드(백엔드 변경 없음). B13 을 구현하기 전 "`deleted_at` 인덱스를 실제로 쓴다" 는 원 가설을 `fake-indexeddb` 로 직접 검증했다 — `.where("deleted_at").equals(null)` 은 `Invalid key provided` 로 실패한다(IndexedDB 스펙에서 `null` 은 유효한 키가 아니다). 대신 소유 관계(FK) 로 범위를 좁히는 쪽으로 방향을 바꿨다: `getProduct`/`getPurchasesForProduct`/`getBottlesForProduct` 를 `loadProductScope()` 하나로 묶어 `sku.product_id`→`purchase.sku_id`→`bottle.purchase_id` 인덱스만 읽게 했다(전체 목록 경로와 조립 로직 `assembleOneProduct` 공유). `ProductsPage` 는 `getProductCatalog()`+`filterAndSortProducts()` 로 나눠 필터 있는/없는 두 뷰를 한 번의 조립에서 파생시키고, `StatsPage` 는 `getStatsDashboard()` 로 랭킹·주종별 집계·전체 합계·트리를 한 쿼리로 묶었다(기존 `getStatsRankings`/`getCategoryRollup`/`getStatsSummary` 공개 시그니처는 그대로 유지). `StoreModePage` 의 `rankByQuery` 를 `useMemo` 로 감쌌고, `pullDeltas` 는 여러 페이지의 네트워크 응답을 다 모은 뒤 DB 반영을 트랜잭션 하나로 끝내게 바꿨다(`flushOutbox` 와 같은 이유 — 페이지마다 커밋하면 `useLiveQuery` 구독자가 그만큼 다시 계산된다). `npm run check` 438 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **측정은 코드 근거(호출 지점 추적으로 확인한 읽기 횟수 감소) + Playwright 실데이터(406종·1,079병) 클릭 검증(내 술 목록·제품 상세·통계·매장 모드 검색, 회귀 0건)으로 했다** — 별도 브라우저 프로필의 DevTools 트레이스 전후 비교는 로그인 준비가 이번 세션에서 여의치 않아 다음 세션 과제로 남겼다. 근거는 `plan.md` Task 24 PR7 절, D142~D146 |
 
 ---
 
@@ -360,6 +362,7 @@ scripts/serve-https.sh
 | **`vi.stubGlobal("URL", {...URL, 메서드})` 로 전체 URL 을 바꿔치기하면 생성자가 사라진다** | `URL.createObjectURL` 을 목킹하려다 `{...URL}` 스프레드로 교체하면, `URL` 이 더 이상 `new URL(...)` 로 생성자 호출이 안 되는 평범한 객체가 된다 — 다른 코드가 조용히 깨진다 | 전체를 바꿔치기하지 않는다. `URL.createObjectURL = vi.fn()` 처럼 필요한 정적 메서드만 직접 얹고, 테스트 끝에 `undefined` 로 되돌린다. `PivotExplorer.test.tsx`(Task 20) CSV 내보내기 테스트에서 실제로 겪음 — 실패 증상이 "표가 안 뜬다"로 나타나 원인 파악에 시간이 걸렸다 |
 | **이 개발 환경 자체가 사용자의 홈 PC(WSL2)다 — "샌드박스라 인터넷이 안 된다"는 도구별 얘기지 이 기기 얘기가 아니다** | `WebFetch`/Playwright 브라우저는 임의 외부 도메인 DNS 조회가 막히지만, `curl`/`ping`/`tailscale` 같은 원시 셸 명령은 실제로 외부 인터넷·tailnet(`main.tail30f401.ts.net`, 이 기기 자신)에 닿는다. `docker ps` 도 `permission denied` 지만 `sg docker -c "..."` 로 우회 가능(§5 위 행 참조) — 실제로 `docker compose` 스택(web/api/db)이 이미 떠 있었다(단, 이전 빌드라 최신 코드가 아닐 수 있다) | 배포·외부 사이트 조사처럼 "이 샌드박스는 못 한다"고 넘겨짚기 전에, Bash 로 직접 `curl`/`tailscale status`/`sg docker -c "docker ps"` 를 먼저 확인한다. `tailscale serve status` 로 현재 폰에 실제로 뭐가 노출돼 있는지도 확인할 것 — 2026-08-03 시점엔 "No serve config"였다(아무것도 안 뜬 상태) |
 | **이 개발 환경에 로컬 Postgres 인스턴스가 두 개 떠 있다** | `#scan`(매장 모드) 실클릭 검증 중 `/external-lookup` 이 500 을 반환. 원인은 코드가 아니라 프론트 dev 서버(5173)가 프록시하는 API(포트 8000/8001, `postgresql://…@127.0.0.1:5432/sooljang`, 실데이터 406종)가 `alembic upgrade`(포트 54329, `sooljang_dev`/`sooljang_test`, `scripts/dev-db.sh` 관리)와 **다른 DB** 라 새 마이그레이션(`0008_external_sources`)이 안 들어가 있었다 | `SOOLJANG_DATABASE_URL` 을 바꿔 가며 작업했다면, 실클릭 검증 전에 **실제로 요청이 가는 서버가 어느 DB 를 보는지**(`ps`/`/proc/<pid>/environ` 로 확인) 를 먼저 맞춘다. 두 DB 모두에 `alembic upgrade head` 를 돌려야 할 수 있다. Task 22 PR9/10 세션에서 실제로 겪음 |
+| **Dexie 로 `deleted_at IS NULL` 을 인덱스 range query 로 못 한다** | `db.table(t).where("deleted_at").equals(null)` 이 `Invalid key provided` 로 즉시 실패한다 | IndexedDB 스펙에서 `null` 은 유효한 키 타입이 아니다(숫자·문자열·Date·ArrayBuffer·Array 만 가능) — 값이 `null` 인 레코드는 그 인덱스에 아예 없는 취급을 받는다. "살아있는 행" 을 빠르게 거르고 싶으면 **소유 관계(FK) 로 범위를 좁히는 쪽**(`sku.product_id`, `purchase.sku_id` 처럼 항상 값이 있는 필드)을 인덱스로 쓰고, `deleted_at` 필터는 그 좁혀진 소수의 결과에만 JS 로 적용한다. `fake-indexeddb` 로 30초면 재현 확인 가능(`web/src/sync/queries.ts::loadProductScope` 가 이 패턴의 실제 예). Task 24 PR7 에서 실제로 겪음 |
 
 ---
 

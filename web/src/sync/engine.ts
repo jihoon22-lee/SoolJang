@@ -174,38 +174,58 @@ class SyncEngine {
     );
   }
 
+  /**
+   * 여러 페이지의 네트워크 응답을 먼저 다 모은 뒤, DB 반영은 트랜잭션 하나로 끝낸다.
+   *
+   * 예전엔 페이지마다 별도 트랜잭션을 커밋했다 — 오래 오프라인이었다가 돌아와 델타가
+   * 여러 페이지에 걸치면 `useLiveQuery` 구독자가 그 페이지 수만큼 다시 계산됐다
+   * (`flushOutbox` 의 낱개 `put` 을 트랜잭션 하나로 묶은 것과 같은 이유). IndexedDB
+   * 트랜잭션 안에서 `fetch` 처럼 인덱스 밖 비동기 작업을 기다리면 네이티브 트랜잭션이
+   * 조기 커밋될 수 있어(Dexie 의 알려진 제약) 네트워크 왕복(`syncApi.pull`)은 트랜잭션
+   * 밖에서 순차로 끝내고, DB 쓰기만 마지막에 한 트랜잭션으로 모은다.
+   */
   private async pullDeltas(): Promise<void> {
-    let cursor = (await db.sync_meta.get("cursor"))?.value ?? null;
+    const startCursor = (await db.sync_meta.get("cursor"))?.value ?? null;
+    let cursor = startCursor;
+    const accumulated = new Map<(typeof SYNC_ENTITIES)[number], SyncRow[]>();
 
     for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
       const response = await syncApi.pull(cursor);
 
-      // pending 조회와 행 적용을 같은 트랜잭션으로 묶는다(outbox 도 테이블 목록에 넣어
-      // 트랜잭션 범위 안에서 읽는다). `syncApi.pull` 네트워크 왕복을 기다리는 동안
-      // 사용자가 만든 낙관적 쓰기는 그 왕복 시작 시점의 스냅샷에 없다 — pending 조회를
-      // pull *이후*, 그리고 행 적용과 같은 트랜잭션 안에서 하지 않으면, 그 사이에 생긴
-      // 낙관적 쓰기가 스테일한 서버 값에 덮인다(TOCTOU).
-      await db.transaction(
-        "rw",
-        [db.outbox, ...SYNC_ENTITIES.map((entity) => db.table(entity))],
-        async () => {
-          const pending = await pendingEntityIds();
-          for (const entity of SYNC_ENTITIES) {
-            const rows = (response.changes[entity] ?? []) as SyncRow[];
-            for (const row of rows) {
-              if (pending.has(row.id)) continue;
-              await db.table(entity).put(row);
-            }
-          }
-        },
-      );
-
-      if (response.next_cursor) {
-        cursor = response.next_cursor;
-        await db.sync_meta.put({ key: "cursor", value: cursor });
+      for (const entity of SYNC_ENTITIES) {
+        const rows = (response.changes[entity] ?? []) as SyncRow[];
+        if (rows.length === 0) continue;
+        const list = accumulated.get(entity) ?? [];
+        list.push(...rows);
+        accumulated.set(entity, list);
       }
-      if (!response.has_more) return;
+
+      if (response.next_cursor) cursor = response.next_cursor;
+      if (!response.has_more) break;
     }
+
+    if (accumulated.size === 0 && cursor === startCursor) return;
+
+    // pending 조회와 행 적용을 같은 트랜잭션으로 묶는다(outbox 도 테이블 목록에 넣어
+    // 트랜잭션 범위 안에서 읽는다) — 모든 페이지의 네트워크 왕복이 끝난 뒤, DB 쓰기
+    // 직전에 확인하므로 그 사이 사용자가 만든 낙관적 쓰기를 스테일한 서버 값으로
+    // 덮어쓰지 않는다(TOCTOU).
+    await db.transaction(
+      "rw",
+      [db.outbox, db.sync_meta, ...SYNC_ENTITIES.map((entity) => db.table(entity))],
+      async () => {
+        const pending = await pendingEntityIds();
+        for (const entity of SYNC_ENTITIES) {
+          for (const row of accumulated.get(entity) ?? []) {
+            if (pending.has(row.id)) continue;
+            await db.table(entity).put(row);
+          }
+        }
+        if (cursor !== null && cursor !== startCursor) {
+          await db.sync_meta.put({ key: "cursor", value: cursor });
+        }
+      },
+    );
   }
 }
 

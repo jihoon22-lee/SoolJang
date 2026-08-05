@@ -27,12 +27,7 @@ import {
   formatValueForMoney,
   formatVolume,
 } from "@/format";
-import {
-  getCategoryRollup,
-  getCategoryTree,
-  getStatsRankings,
-  getStatsSummary,
-} from "@/sync/queries";
+import { getStatsDashboard } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
 type CategorySortKey =
@@ -137,10 +132,14 @@ interface StatsPageProps {
 export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps) {
   const { state } = useSyncStatus();
   const offline = state === "offline";
-  const rankings = useLiveQuery(() => getStatsRankings(), []);
-  const categoriesRaw = useLiveQuery(() => getCategoryRollup(), []);
-  const totals = useLiveQuery(() => getStatsSummary(), []);
-  const categoryTree = useLiveQuery(() => getCategoryTree(), []);
+  // 랭킹·주종별 집계·전체 합계·카테고리 트리를 한 쿼리로 묶는다 — 예전엔 넷이 각자
+  // `useLiveQuery` 를 가져 `assembleProducts()` 를 3번, `getCategoryTree()` 를 2번
+  // 다시 계산했다.
+  const dashboard = useLiveQuery(() => getStatsDashboard(), []);
+  const rankings = dashboard?.rankings;
+  const categoriesRaw = dashboard?.categories;
+  const totals = dashboard?.totals;
+  const categoryTree = dashboard?.tree;
   const [categorySort, setCategorySort] = useState<CategorySortKey>(DEFAULT_CATEGORY_SORT);
   const [categoryOrder, setCategoryOrder] = useState<SortOrder>(DEFAULT_CATEGORY_ORDER);
   const [categoryMeasure, setCategoryMeasure] = useState<CategoryMeasureKey>("bottle_count");
