@@ -1,8 +1,11 @@
 # 세션 인계 — 2026-08-01 09:00 KST
 
 이 문서는 **이 세션이 끝나는 시점의 정확한 상태**와 **다음 세션이 무엇부터 해야 하는지**를
-담는다. 프로젝트 전체 맥락은 [handoff.md](handoff.md), 계획은 [plan.md](plan.md),
-설계는 [architecture.md](architecture.md) 에 있다.
+담는다. 프로젝트 전체 맥락은 [handoff.md](../handoff.md), 계획은 [plan.md](../plan.md),
+설계는 [architecture.md](../architecture.md) 에 있다.
+
+> **날짜 스탬프 아카이브 문서다** — 2026-08-01 세션 종료 시점의 스냅샷이며, 지금은
+> 최신이 아니다. 항상 최신인 정보는 [handoff.md](../handoff.md)·[plan.md](../plan.md) 를 본다.
 
 ---
 
@@ -179,7 +182,7 @@ PR #16~#19 CI   각 9개 잡 전부 pass (문서 전용)
 | **필터 버튼과 상태 전이 버튼이 같은 이름**("개봉"·"소진") | 테스트에서 `within(fieldset)` 으로 범위를 좁힌다. 좁히지 않으면 필터 버튼을 잡아 잘못된 실패가 난다 |
 | 잔량 `null` 을 0ml 로 표시하면 오해를 준다 | `formatRemaining` 한 곳에서 "미개봉 (전량)" 으로 처리. 금액의 `formatMoney` 와 같은 원칙 |
 
-기존 함정은 [handoff.md](handoff.md) §5 에 있다. 특히 이 두 개는 계속 유효하다.
+기존 함정은 [handoff.md](../handoff.md) §5 에 있다. 특히 이 두 개는 계속 유효하다.
 
 - `docker` 명령은 이 셸에서 `sg docker -c "..."` 로 감싼다
 - Compose `api` 컨테이너가 8000 을 점유하므로 로컬 서버는 `SOOLJANG_API_PORT` 로 다른 포트
