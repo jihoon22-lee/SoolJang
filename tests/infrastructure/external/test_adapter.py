@@ -4,6 +4,7 @@
 계약(§7.2)을 각 실패 유형별로 확인한다.
 """
 
+import json
 from typing import Any
 
 import httpx
@@ -133,6 +134,29 @@ async def test_이름이_너무_다르면_후보로_보지_않는다() -> None:
     assert result.degraded is True
     assert result.warning is not None
     assert "비슷한" in result.warning
+
+
+async def test_증류소_이름이_다르면_접두사만_같아도_후보로_보지_않는다() -> None:
+    # "글렌고인" 을 검색했는데 "글렌리벳" 만 있다 — 둘 다 "글렌…" 으로 시작해 전체 문자열
+    # 유사도(0.53)는 기존 임계값(0.4)을 넘지만, 실제로는 다른 증류소다. 실측(데일리샷)에서
+    # 실제로 겪은 오탐이다 — 접두사 게이트가 이런 "다른 술인데 앞부분만 같은" 후보를
+    # 걸러야 한다.
+    search_page = """
+    <div class="product-card">
+      <span class="title">글렌리벳 12년</span>
+      <a href="/product/1">보기</a>
+    </div>
+    """
+    transport = _transport({"/search": (200, search_page)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌고인 12년", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "앞부분" in result.warning
 
 
 async def test_robots_txt가_검색_페이지를_막으면_조회하지_않는다() -> None:
@@ -361,3 +385,146 @@ async def test_상세_페이지가_다른_호스트로_리다이렉트되면_거
     assert result.degraded is True
     assert result.warning is not None
     assert "리다이렉트" in result.warning
+
+
+# --- JSON 모드(Task 24 후속) --------------------------------------------------
+#: 최근 국내 쇼핑몰이 흔히 그렇듯(데일리샷에서 실제로 겪음), 검색 결과 페이지의 HTML 은
+#: 비어 있고 대신 별도 JSON API 가 상품 정보를 전부 들고 있는 사이트를 흉내 낸다. 검색
+#: 응답 자체에 가격·평점이 이미 있어 상세 페이지를 또 조회하지 않는다(`result_fields`).
+
+JSON_ADAPTER_SPEC: dict[str, Any] = {
+    "format": "json",
+    "search": {
+        "url_template": "https://example.com/api/search?q={query}",
+        "item": "results",
+        "fields": {
+            "name": {"path": "name"},
+            "url": {"url_template": "https://example.com/item/{id}"},
+        },
+        "result_fields": {
+            "price": {"path": "price"},
+            "rating": {"path": "review_rate"},
+            "scale": {"const": 5},
+        },
+    },
+}
+
+_JSON_SEARCH_BODY = json.dumps(
+    {
+        "results": [
+            {"id": 1, "name": "글렌피딕 12년", "price": 35000, "review_rate": 4.5},
+            {"id": 2, "name": "발베니 12년", "price": 45000, "review_rate": 4.2},
+        ]
+    }
+)
+
+
+async def test_JSON_모드에서_검색_결과로_바로_필드를_뽑는다() -> None:
+    # 상세 페이지 경로를 transport 에 등록하지 않는다 — 상세를 또 조회하려 들면
+    # KeyError 로 테스트가 실패해 "정말 검색 응답만으로 끝냈는지" 를 함께 확인한다.
+    transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
+
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        query="글렌피딕 12년",
+        transport=transport,
+    )
+
+    assert result.source_url == "https://example.com/item/1"
+    assert result.fields == {"price": 35000, "rating": 4.5, "scale": 5}
+    assert result.degraded is False
+    assert result.warning is None
+    assert result.ok is True
+
+
+async def test_JSON_결과_필드가_없으면_degraded와_경고를_반환한다() -> None:
+    body = json.dumps({"results": [{"id": 1, "name": "글렌피딕 12년", "price": 35000}]})
+    transport = _transport({"/api/search": (200, body)})
+
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        query="글렌피딕 12년",
+        transport=transport,
+    )
+
+    assert result.fields["price"] == 35000
+    assert result.fields["rating"] is None
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "rating" in result.warning
+
+
+async def test_JSON_모드에서_검색_응답이_올바른_JSON이_아니면_degraded를_반환한다() -> None:
+    transport = _transport({"/api/search": (200, "이건 JSON이 아닙니다")})
+
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None
+
+
+async def test_JSON_모드에서_item_경로가_리스트가_아니면_후보_없음으로_처리한다() -> None:
+    body = json.dumps({"results": {"not": "a list"}})
+    transport = _transport({"/api/search": (200, body)})
+
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "후보" in result.warning
+
+
+async def test_JSON_모드에서도_링크가_다른_호스트면_거부한다() -> None:
+    spec = {
+        **JSON_ADAPTER_SPEC,
+        "search": {
+            **JSON_ADAPTER_SPEC["search"],
+            "fields": {
+                "name": {"path": "name"},
+                "url": {"url_template": "https://evil.example/item/{id}"},
+            },
+        },
+    }
+    transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
+
+    result = await fetch_snapshot(
+        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "밖" in result.warning
+
+
+async def test_JSON_url_template에_없는_필드를_참조하면_그_후보만_건너뛴다() -> None:
+    spec = {
+        **JSON_ADAPTER_SPEC,
+        "search": {
+            **JSON_ADAPTER_SPEC["search"],
+            "fields": {
+                "name": {"path": "name"},
+                "url": {"url_template": "https://example.com/item/{missing_field}"},
+            },
+        },
+    }
+    transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
+
+    result = await fetch_snapshot(
+        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.source_url is None
+    assert result.degraded is True
+    assert result.warning is not None
+    assert "후보" in result.warning

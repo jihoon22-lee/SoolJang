@@ -11,9 +11,22 @@
 있다(오타 난 transform 이름, `{}` 만 있는 url_template, 문자열이어야 할 자리에 dict 가
 아닌 값 등) — 이런 입력이 예외를 던지면 그 소스 하나 때문에 같은 요청에 포함된 다른
 소스의 결과까지 500 으로 함께 죽는다(어댑터 계약 위반). 그래서 필드 추출과 이 모듈의
-공개 함수 전체를 방어적으로 감싼다: 여기서 예외가 새 나가는 일은 없어야 한다."""
+공개 함수 전체를 방어적으로 감싼다: 여기서 예외가 새 나가는 일은 없어야 한다.
+
+**JSON 모드(Task 24 후속)**: `adapter_spec.format == "json"` 이면 검색 응답을 HTML 대신
+JSON 으로 파싱한다 — 최근 국내 쇼핑몰은 Next.js 등으로 만들어져 검색 결과 페이지의 HTML
+을 그대로 받으면 상품 정보가 비어 있고, 대신 브라우저가 별도로 호출하는 공개 JSON API 가
+있는 경우가 흔하다(데일리샷에서 실제로 겪음). 이 모드에서는 `search.item` 이 CSS 셀렉터가
+아니라 리스트를 가리키는 점 구분 JSON 경로이고, 필드 스펙은 `selector` 대신 `path` 를 쓴다.
+검색 응답 자체에 상세 정보가 이미 다 있는 사이트를 위해 `search.result_fields` 를 쓸 수도
+있다 — 이게 있으면 상세 페이지를 다시 조회하지 않고 검색 결과 아이템에서 바로 최종 필드를
+뽑는다(불필요한 왕복을 줄인다). 상세 페이지 링크가 `href` 로 바로 주어지지 않고 아이템의
+다른 필드로부터 조립해야 하면(`id`→URL 등) 필드 스펙에 `url_template` 을 쓴다 — 아이템의
+최상위 필드들을 그대로 치환한다(`{"url_template": "https://x.com/item/{id}"}` 가
+`item["id"]` 를 채운다)."""
 
 import difflib
+import json
 import logging
 import math
 import re
@@ -65,6 +78,28 @@ class AdapterResult:
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", "", text).lower()
+
+
+def _similarity(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+#: 브랜드·증류소 이름은 보통 상품명 맨 앞 몇 글자에 담긴다(글렌피딕/부나하벤/아벨라워 등).
+#: 전체 문자열 유사도만 보면 "글렌고인"과 "글렌리벳" 처럼 접두사만 같고 실제로는 다른
+#: 증류소인 이름이 높은 점수를 받는다(둘 다 "글렌…" 이라 문자 겹침이 크다) — 실측으로
+#: 확인했다. 이 접두사 게이트가 그런 오탐을 걸러낸다. 단, "우드포드 리저브" 검색어가
+#: "우드포드 리저브 라이"(다른 제품)의 완전한 접두사인 경우처럼, 검색어 자체가 다른
+#: 상품명의 앞부분과 완전히 겹치는 경우는 이 게이트로 걸러지지 않는다 — 순수 문자열
+#: 비교로는 원천적으로 구분할 수 없는 남은 한계다.
+_PREFIX_LENGTH = 4
+_MIN_PREFIX_SIMILARITY = 0.75
+
+
+def _plausible_candidate(query_norm: str, name_norm: str) -> bool:
+    return (
+        _similarity(query_norm[:_PREFIX_LENGTH], name_norm[:_PREFIX_LENGTH])
+        >= _MIN_PREFIX_SIMILARITY
+    )
 
 
 def _apply_transform(value: Any, transform: str) -> Any:
@@ -123,6 +158,58 @@ def _extract_field(scope: Tag | BeautifulSoup, spec: Any, *, base_url: str) -> A
         return raw
     except Exception:
         logger.warning("필드 추출 중 예외가 나 건너뜁니다: spec=%r", spec, exc_info=True)
+        return None
+
+
+def _get_json_path(data: Any, path: str) -> Any:
+    """점으로 구분한 경로로 중첩된 JSON 값을 찾는다(`"results"`, `"a.0.b"` 등). 숫자
+    구간은 리스트 인덱스로 쓴다. 중간에 못 찾으면(키 없음, 타입 불일치, 인덱스 범위 밖)
+    예외 대신 `None` 을 돌려준다 — `_extract_field` 의 CSS 셀렉터 실패와 같은 계약이다."""
+    current = data
+    for segment in path.split("."):
+        try:
+            if isinstance(current, dict):
+                current = current[segment]
+            elif isinstance(current, list):
+                current = current[int(segment)]
+            else:
+                return None
+        except KeyError, IndexError, ValueError, TypeError:
+            return None
+    return current
+
+
+def _extract_field_json(item: Any, spec: Any) -> Any:
+    """`_extract_field` 의 JSON 버전 — `item` 은 파싱된 JSON 값(보통 dict) 하나다.
+
+    `url_template` 이 있으면 `item` 의 최상위 필드들로 바로 치환한다 — JSON API 는 상세
+    페이지 링크를 `href` 로 주지 않고 `id` 같은 필드로부터 조립해야 하는 경우가 많다.
+    """
+    if not isinstance(spec, dict):
+        return None
+    if "const" in spec:
+        return spec["const"]
+
+    try:
+        if "url_template" in spec:
+            template = spec["url_template"]
+            if not isinstance(template, str) or not isinstance(item, dict):
+                return None
+            return template.format(**item)
+
+        path = spec.get("path")
+        value = _get_json_path(item, path) if isinstance(path, str) else item
+        if value is None:
+            return None
+
+        transforms = spec.get("transform", [])
+        for transform in transforms if isinstance(transforms, list) else []:
+            value = _apply_transform(value, transform)
+            if value is None:
+                return None
+        return value
+    except Exception:
+        logger.warning("JSON 필드 추출 중 예외가 나 건너뜁니다: spec=%r", spec, exc_info=True)
         return None
 
 
@@ -223,29 +310,60 @@ async def _fetch_snapshot_unsafe(
         except httpx.HTTPError as error:
             return AdapterResult(None, {}, None, True, f"검색 페이지 조회 실패: {error}")
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        item_selector = search_spec.get("item")
-        items = soup.select(item_selector) if isinstance(item_selector, str) else []
         fields_spec = search_spec.get("fields")
         if not isinstance(fields_spec, dict):
             fields_spec = {}
-        candidates: list[tuple[str, str]] = []
-        for item in items:
-            name = _extract_field(item, fields_spec.get("name"), base_url=base_url)
-            url = _extract_field(item, fields_spec.get("url"), base_url=base_url)
-            if isinstance(name, str) and isinstance(url, str):
-                candidates.append((name, url))
+
+        is_json = adapter_spec.get("format") == "json"
+        #: (이름, 링크, 원본 JSON 아이템 또는 None) — JSON 모드는 상세를 다시 조회하지
+        #: 않고 이 원본 아이템에서 바로 결과 필드를 뽑을 수도 있어(`result_fields`) 붙여
+        #: 둔다. HTML 모드는 늘 `None` 이다.
+        candidates: list[tuple[str, str, dict[str, Any] | None]] = []
+        if is_json:
+            try:
+                parsed = response.json()
+            except ValueError:
+                return AdapterResult(None, {}, None, True, "검색 응답이 올바른 JSON이 아닙니다")
+            item_path = search_spec.get("item")
+            items_data = _get_json_path(parsed, item_path) if isinstance(item_path, str) else parsed
+            for raw_item in items_data if isinstance(items_data, list) else []:
+                if not isinstance(raw_item, dict):
+                    continue
+                name = _extract_field_json(raw_item, fields_spec.get("name"))
+                url = _extract_field_json(raw_item, fields_spec.get("url"))
+                if isinstance(name, str) and isinstance(url, str):
+                    candidates.append((name, url, raw_item))
+        else:
+            soup = BeautifulSoup(response.text, "html.parser")
+            item_selector = search_spec.get("item")
+            items = soup.select(item_selector) if isinstance(item_selector, str) else []
+            for item in items:
+                name = _extract_field(item, fields_spec.get("name"), base_url=base_url)
+                url = _extract_field(item, fields_spec.get("url"), base_url=base_url)
+                if isinstance(name, str) and isinstance(url, str):
+                    candidates.append((name, url, None))
 
         if not candidates:
             return AdapterResult(None, {}, None, True, "검색 결과에서 후보를 찾지 못했습니다")
 
-        best_name, best_url = max(
-            candidates,
-            key=lambda c: difflib.SequenceMatcher(
-                None, _normalize(c[0]), _normalize(query)
-            ).ratio(),
-        )
-        similarity = difflib.SequenceMatcher(None, _normalize(best_name), _normalize(query)).ratio()
+        query_norm = _normalize(query)
+
+        def full_ratio(candidate: tuple[str, str, dict[str, Any] | None]) -> float:
+            return _similarity(query_norm, _normalize(candidate[0]))
+
+        overall_best_name, _, _ = max(candidates, key=full_ratio)
+        plausible = [c for c in candidates if _plausible_candidate(query_norm, _normalize(c[0]))]
+        if not plausible:
+            return AdapterResult(
+                None,
+                {},
+                None,
+                True,
+                f"이름 앞부분이 충분히 비슷한 후보가 없습니다(가장 가까움: {overall_best_name!r})",
+            )
+
+        best_name, best_url, best_item = max(plausible, key=full_ratio)
+        similarity = full_ratio((best_name, best_url, best_item))
         if similarity < _MIN_SIMILARITY:
             return AdapterResult(
                 None, {}, None, True, f"충분히 비슷한 후보가 없습니다(가장 가까움: {best_name!r})"
@@ -255,6 +373,27 @@ async def _fetch_snapshot_unsafe(
             return AdapterResult(
                 None, {}, None, True, "검색 결과 링크가 등록된 사이트 밖을 가리켜 건너뜁니다"
             )
+
+        result_fields_spec = search_spec.get("result_fields")
+        if (
+            is_json
+            and best_item is not None
+            and isinstance(result_fields_spec, dict)
+            and result_fields_spec
+        ):
+            # 검색 응답 자체에 이미 상세 정보가 있는 사이트다 — 상세 페이지를 또 조회하지
+            # 않는다(불필요한 왕복 + robots.txt 재확인을 피한다).
+            fields: dict[str, Any] = {}
+            missing: list[str] = []
+            for field_name, field_spec in result_fields_spec.items():
+                value = _extract_field_json(best_item, field_spec)
+                fields[field_name] = value
+                if value is None:
+                    missing.append(field_name)
+            excerpt = json.dumps(best_item, ensure_ascii=False)[:500] or None
+            degraded = bool(missing)
+            warning = f"일부 항목을 확인하지 못했습니다: {', '.join(missing)}" if missing else None
+            return AdapterResult(best_url, fields, excerpt, degraded, warning, ok=True)
 
         if not await _allowed(base_url, best_url, client=client):
             return AdapterResult(
