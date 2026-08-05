@@ -112,28 +112,18 @@ export function CategoriesPage() {
     return <output aria-live="polite">주종 계층을 불러오고 있습니다…</output>;
   }
 
-  const busy =
-    create.isPending ||
-    rename.isPending ||
-    reparent.isPending ||
-    merge.isPending ||
-    remove.isPending ||
-    resetSeed.isPending;
-
-  const error =
-    create.error ??
-    rename.error ??
-    reparent.error ??
-    merge.error ??
-    remove.error ??
-    resetSeed.error;
-
   return (
     <CategoryManager
       tree={tree}
-      busy={busy}
-      error={error}
       offline={offline}
+      createBusy={create.isPending}
+      createError={create.error}
+      resetSeedBusy={resetSeed.isPending}
+      resetSeedError={resetSeed.error}
+      renameStatus={rename}
+      reparentStatus={reparent}
+      mergeStatus={merge}
+      removeStatus={remove}
       onCreate={(name, parentId) => create.mutate({ name, parentId })}
       onRename={(id, name) => rename.mutate({ id, name })}
       onReparent={(id, parentId) => reparent.mutate({ id, parentId })}

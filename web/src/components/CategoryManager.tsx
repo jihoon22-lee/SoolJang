@@ -1,12 +1,36 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryNode, CategoryTree, DeleteStrategy } from "@/api/types";
+
+/**
+ * 행 단위 뮤테이션 상태. `useMutation` 결과를 그대로 넘길 수 있도록 필요한 필드만 뽑았다 —
+ * 이 컴포넌트가 react-query 를 몰라도 되게 한다.
+ */
+interface RowActionStatus {
+  isPending: boolean;
+  isSuccess: boolean;
+  variables: { id: string } | undefined;
+  error: unknown;
+}
+
+const IDLE_STATUS: RowActionStatus = {
+  isPending: false,
+  isSuccess: false,
+  variables: undefined,
+  error: null,
+};
 
 interface CategoryManagerProps {
   tree: CategoryTree;
-  busy: boolean;
-  error: unknown;
   /** 이동·병합·삭제·기본값 복원은 순환·깊이 재검사가 필요해 온라인 전용이다. */
   offline: boolean;
+  createBusy: boolean;
+  createError: unknown;
+  resetSeedBusy: boolean;
+  resetSeedError: unknown;
+  renameStatus: RowActionStatus;
+  reparentStatus: RowActionStatus;
+  mergeStatus: RowActionStatus;
+  removeStatus: RowActionStatus;
   onCreate: (name: string, parentId: string | null) => void;
   onRename: (id: string, name: string) => void;
   onReparent: (id: string, newParentId: string | null) => void;
@@ -23,13 +47,21 @@ interface CategoryManagerProps {
  *
  * 이동을 드래그 대신 **부모 선택 드롭다운**으로 구현했다. 드래그는 키보드로 조작할 수 없고
  * 모바일에서 스크롤과 충돌한다. 개인 도구에서 계층을 바꾸는 일은 드물어 정확성이 편의보다
- * 중요하다.
+ * 중요하다. 이동·병합은 되돌릴 수 없어(`docs/plan.md` §5-D110~) 대상 선택과 실행 확인을
+ * 분리했다 — 값을 고르는 순간 바로 실행되던 이전 동작(select `onChange`)은 실수로 되돌릴
+ * 수 없는 변경을 만들기 쉬웠다.
  */
 export function CategoryManager({
   tree,
-  busy,
-  error,
   offline,
+  createBusy,
+  createError,
+  resetSeedBusy,
+  resetSeedError,
+  renameStatus,
+  reparentStatus,
+  mergeStatus,
+  removeStatus,
   onCreate,
   onRename,
   onReparent,
@@ -59,12 +91,6 @@ export function CategoryManager({
         현재 최대 깊이 {tree.max_depth} / 상한 {tree.depth_limit}. 필요한 만큼 세분화할 수 있습니다.
         삭제해도 소속된 술은 지워지지 않습니다.
       </p>
-
-      {error instanceof Error && (
-        <p className="alert" role="alert">
-          {error.message}
-        </p>
-      )}
 
       <form
         className="panel"
@@ -99,13 +125,18 @@ export function CategoryManager({
             ))}
           </select>
         </div>
-        <button type="submit" className="primary" disabled={busy || !newName.trim()}>
+        <button type="submit" className="primary" disabled={createBusy || !newName.trim()}>
           추가
         </button>
+        {createError instanceof Error && (
+          <p className="alert mt-2" role="alert">
+            {createError.message}
+          </p>
+        )}
       </form>
 
       <div className="button-row mt-3 mb-3">
-        <button type="button" onClick={onResetSeed} disabled={busy || offline}>
+        <button type="button" onClick={onResetSeed} disabled={resetSeedBusy || offline}>
           기본 주종 복원
         </button>
         <span className="muted text-sm self-center">
@@ -114,6 +145,11 @@ export function CategoryManager({
             : "직접 만들거나 이름을 바꾼 주종은 그대로 유지됩니다."}
         </span>
       </div>
+      {resetSeedError instanceof Error && (
+        <p className="alert mb-3" role="alert">
+          {resetSeedError.message}
+        </p>
+      )}
 
       {tree.items.length === 0 ? (
         <output className="notice">
@@ -127,8 +163,11 @@ export function CategoryManager({
               node={root}
               childrenOf={childrenOf}
               allNodes={tree.items}
-              busy={busy}
               offline={offline}
+              renameStatus={renameStatus}
+              reparentStatus={reparentStatus}
+              mergeStatus={mergeStatus}
+              removeStatus={removeStatus}
               onRename={onRename}
               onReparent={onReparent}
               onMerge={onMerge}
@@ -145,20 +184,30 @@ interface BranchProps {
   node: CategoryNode;
   childrenOf: Map<string, CategoryNode[]>;
   allNodes: CategoryNode[];
-  busy: boolean;
   offline: boolean;
+  renameStatus: RowActionStatus;
+  reparentStatus: RowActionStatus;
+  mergeStatus: RowActionStatus;
+  removeStatus: RowActionStatus;
   onRename: (id: string, name: string) => void;
   onReparent: (id: string, newParentId: string | null) => void;
   onMerge: (id: string, targetId: string) => void;
   onDelete: (id: string, strategy: DeleteStrategy, targetId?: string) => void;
 }
 
+function statusFor(status: RowActionStatus, id: string): RowActionStatus {
+  return status.variables?.id === id ? status : IDLE_STATUS;
+}
+
 function CategoryBranch({
   node,
   childrenOf,
   allNodes,
-  busy,
   offline,
+  renameStatus,
+  reparentStatus,
+  mergeStatus,
+  removeStatus,
   onRename,
   onReparent,
   onMerge,
@@ -166,7 +215,30 @@ function CategoryBranch({
 }: BranchProps) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(node.name);
+  const [expanded, setExpanded] = useState(true);
   const children = childrenOf.get(node.id) ?? [];
+
+  const ownRename = statusFor(renameStatus, node.id);
+  const ownReparent = statusFor(reparentStatus, node.id);
+  const ownMerge = statusFor(mergeStatus, node.id);
+  const ownRemove = statusFor(removeStatus, node.id);
+  const rowBusy =
+    ownRename.isPending || ownReparent.isPending || ownMerge.isPending || ownRemove.isPending;
+  const rowError = ownRename.error ?? ownReparent.error ?? ownMerge.error ?? ownRemove.error;
+
+  const [highlighted, setHighlighted] = useState(false);
+  const highlightedForRef = useRef(false);
+  useEffect(() => {
+    const justMoved = ownReparent.isSuccess && !ownReparent.isPending;
+    if (justMoved && !highlightedForRef.current) {
+      highlightedForRef.current = true;
+      setHighlighted(true);
+      const timer = setTimeout(() => setHighlighted(false), 2000);
+      return () => clearTimeout(timer);
+    }
+    if (!justMoved) highlightedForRef.current = false;
+    return undefined;
+  }, [ownReparent.isSuccess, ownReparent.isPending]);
 
   // 자기 자신과 후손은 이동·병합 대상이 될 수 없다. 순환이 생긴다.
   const descendantIds = collectDescendantIds(node.id, childrenOf);
@@ -174,7 +246,21 @@ function CategoryBranch({
 
   return (
     <li>
-      <div className="category-row">
+      <div className={`category-row${highlighted ? " category-row--highlight" : ""}`}>
+        {children.length > 0 ? (
+          <button
+            type="button"
+            className="sort-button tree-toggle"
+            aria-expanded={expanded}
+            aria-label={`${node.name} 하위 목록 ${expanded ? "접기" : "펼치기"}`}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="tree-toggle-spacer" aria-hidden="true" />
+        )}
+
         {editing ? (
           <>
             <label className="sr-only" htmlFor={`rename-${node.id}`}>
@@ -188,7 +274,7 @@ function CategoryBranch({
             <button
               type="button"
               className="primary"
-              disabled={busy || !draftName.trim()}
+              disabled={rowBusy || !draftName.trim()}
               onClick={() => {
                 onRename(node.id, draftName.trim());
                 setEditing(false);
@@ -211,51 +297,31 @@ function CategoryBranch({
             <span className="name">{node.name}</span>
             <span className="badge">{node.descendant_product_count}종</span>
             {node.is_seeded && <span className="muted">기본</span>}
-            <button type="button" onClick={() => setEditing(true)} disabled={busy}>
+            <button type="button" onClick={() => setEditing(true)} disabled={rowBusy}>
               이름 변경
             </button>
 
-            <label className="sr-only" htmlFor={`move-${node.id}`}>
-              {node.name} 상위 주종 변경
-            </label>
-            <select
-              id={`move-${node.id}`}
-              value={node.parent_id ?? ""}
-              disabled={busy || offline}
-              onChange={(event) => onReparent(node.id, event.target.value || null)}
-            >
-              <option value="">최상위</option>
-              {moveTargets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.path.join(" › ")}
-                </option>
-              ))}
-            </select>
+            <ReparentControl
+              node={node}
+              targets={moveTargets}
+              busy={rowBusy}
+              offline={offline}
+              onReparent={onReparent}
+            />
 
-            <label className="sr-only" htmlFor={`merge-${node.id}`}>
-              {node.name} 을 다른 주종으로 병합
-            </label>
-            <select
-              id={`merge-${node.id}`}
-              value=""
-              disabled={busy || offline || moveTargets.length === 0}
-              onChange={(event) => {
-                if (event.target.value) onMerge(node.id, event.target.value);
-              }}
-            >
-              <option value="">병합…</option>
-              {moveTargets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.path.join(" › ")}
-                </option>
-              ))}
-            </select>
+            <MergeControl
+              node={node}
+              targets={moveTargets}
+              busy={rowBusy}
+              offline={offline}
+              onMerge={onMerge}
+            />
 
             <DeleteControl
               node={node}
               hasChildren={children.length > 0}
               targets={moveTargets}
-              busy={busy}
+              busy={rowBusy}
               offline={offline}
               onDelete={onDelete}
             />
@@ -263,7 +329,13 @@ function CategoryBranch({
         )}
       </div>
 
-      {children.length > 0 && (
+      {rowError instanceof Error && (
+        <p className="alert row-alert" role="alert">
+          {rowError.message}
+        </p>
+      )}
+
+      {children.length > 0 && expanded && (
         <ul>
           {children.map((child) => (
             <CategoryBranch
@@ -271,8 +343,11 @@ function CategoryBranch({
               node={child}
               childrenOf={childrenOf}
               allNodes={allNodes}
-              busy={busy}
               offline={offline}
+              renameStatus={renameStatus}
+              reparentStatus={reparentStatus}
+              mergeStatus={mergeStatus}
+              removeStatus={removeStatus}
               onRename={onRename}
               onReparent={onReparent}
               onMerge={onMerge}
@@ -282,6 +357,151 @@ function CategoryBranch({
         </ul>
       )}
     </li>
+  );
+}
+
+function ReparentControl({
+  node,
+  targets,
+  busy,
+  offline,
+  onReparent,
+}: {
+  node: CategoryNode;
+  targets: CategoryNode[];
+  busy: boolean;
+  offline: boolean;
+  onReparent: (id: string, newParentId: string | null) => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  const currentParent = node.parent_id ?? "";
+  const [target, setTarget] = useState(currentParent);
+
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        disabled={busy || offline}
+        onClick={() => {
+          setTarget(currentParent);
+          setAsking(true);
+        }}
+      >
+        이동
+      </button>
+    );
+  }
+
+  return (
+    <span className="button-row">
+      <label className="sr-only" htmlFor={`move-target-${node.id}`}>
+        {node.name} 을 옮길 상위 주종
+      </label>
+      <select
+        id={`move-target-${node.id}`}
+        value={target}
+        onChange={(event) => setTarget(event.target.value)}
+      >
+        <option value="">최상위</option>
+        {targets.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.path.join(" › ")}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="primary"
+        disabled={busy || target === currentParent}
+        onClick={() => {
+          onReparent(node.id, target || null);
+          setAsking(false);
+        }}
+      >
+        이동 확인
+      </button>
+      <button type="button" onClick={() => setAsking(false)}>
+        취소
+      </button>
+    </span>
+  );
+}
+
+function MergeControl({
+  node,
+  targets,
+  busy,
+  offline,
+  onMerge,
+}: {
+  node: CategoryNode;
+  targets: CategoryNode[];
+  busy: boolean;
+  offline: boolean;
+  onMerge: (id: string, targetId: string) => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [target, setTarget] = useState("");
+
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        disabled={busy || offline || targets.length === 0}
+        onClick={() => setAsking(true)}
+      >
+        병합
+      </button>
+    );
+  }
+
+  const targetNode = targets.find((item) => item.id === target);
+
+  return (
+    <span className="button-row">
+      <label className="sr-only" htmlFor={`merge-target-${node.id}`}>
+        {node.name} 을 합칠 주종
+      </label>
+      <select
+        id={`merge-target-${node.id}`}
+        value={target}
+        onChange={(event) => setTarget(event.target.value)}
+      >
+        <option value="">합칠 주종 선택…</option>
+        {targets.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.path.join(" › ")}
+          </option>
+        ))}
+      </select>
+      {targetNode && (
+        <span className="muted text-sm">
+          {node.name}(제품 {node.descendant_product_count}종)을 {targetNode.path.join(" › ")} 로
+          합치고 삭제합니다. 되돌릴 수 없습니다.
+        </span>
+      )}
+      <button
+        type="button"
+        className="danger"
+        disabled={busy || !target}
+        onClick={() => {
+          onMerge(node.id, target);
+          setAsking(false);
+          setTarget("");
+        }}
+      >
+        병합 확인
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setAsking(false);
+          setTarget("");
+        }}
+      >
+        취소
+      </button>
+    </span>
   );
 }
 

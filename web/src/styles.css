@@ -916,12 +916,38 @@ button:disabled {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.4s ease;
 }
 
 .category-row .name {
   font-weight: var(--font-weight-semibold);
   color: var(--text);
+}
+
+/* 이동 확인 직후 잠깐 강조해 "어디로 갔는지" 를 알려준다. `.category-row` 의 transition 이
+   꺼질 때(강조 해제) 부드럽게 사라진다. */
+.category-row--highlight {
+  background-color: var(--ok-surface);
+}
+
+.tree-toggle {
+  width: 1.5em;
+  flex-shrink: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+.tree-toggle-spacer {
+  display: inline-block;
+  width: 1.5em;
+  flex-shrink: 0;
+}
+
+.row-alert {
+  width: 100%;
+  margin: 0 0 var(--space-sm);
 }
 
 .vendor-list {
