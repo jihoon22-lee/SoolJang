@@ -598,7 +598,7 @@ class SourceAdapter(Protocol):
 | `search` | 웹 검색 API로 후보를 찾고 LLM으로 구조화 요약. 출처 링크를 함께 저장 | 모든 주종 기본. 사이트별 구현 없이 즉시 동작 |
 | `adapter` | `adapter_spec` JSON/YAML의 셀렉터로 페이지를 파싱 | 정확도가 중요한 사이트(국내 가격 비교 등) |
 
-`adapter_spec` 스키마:
+`adapter_spec` 스키마(HTML 모드, 기본값):
 
 ```yaml
 version: 1
@@ -615,8 +615,32 @@ detail:
     scale:  { const: 5 }
 ```
 
-셀렉터가 깨지면 예외 대신 **부분 결과 + 경고**를 반환하고 소스를 `degraded`로 표시해 사용자에게
-알린다. 사이트 구조 변경은 정상적으로 발생하는 일이므로 실패가 앱 전체를 막아서는 안 된다.
+**JSON 모드**(`format: json`, Task 24 후속): 최근 국내 쇼핑몰은 Next.js 등으로 만들어져
+검색 결과 페이지의 HTML을 그대로 받으면 상품 정보가 비어 있고, 대신 브라우저가 호출하는
+별도 공개 JSON API가 있는 경우가 흔하다(데일리샷에서 실제로 겪음). 이 모드는 `selector`
+대신 점 구분 JSON 경로 `path`를 쓴다. 검색 응답 자체에 상세 정보가 이미 다 있으면
+`result_fields`로 상세 페이지를 다시 조회하지 않고 검색 응답에서 바로 최종 필드를 뽑는다.
+상세 페이지 링크가 `href`로 바로 오지 않고 다른 필드로 조립해야 하면(`id`→URL 등)
+`url_template`을 쓴다 — 아이템의 최상위 필드를 그대로 치환한다:
+
+```yaml
+version: 1
+format: json
+search:
+  url_template: "https://api.example.com/items/search/?q={query}"
+  item: "results"                                    # 리스트를 가리키는 JSON 경로
+  fields:
+    name: { path: "name" }
+    url:  { url_template: "https://example.com/item/{id}" }  # item["id"] 를 채운다
+  result_fields:                                       # 있으면 상세 페이지를 또 조회하지 않는다
+    price:  { path: "price" }
+    rating: { path: "review_rate" }
+    scale:  { const: 5 }
+```
+
+셀렉터(또는 JSON 경로)가 깨지면 예외 대신 **부분 결과 + 경고**를 반환하고 소스를
+`degraded`로 표시해 사용자에게 알린다. 사이트 구조 변경은 정상적으로 발생하는 일이므로
+실패가 앱 전체를 막아서는 안 된다.
 
 ### 7.3 준수 규칙
 

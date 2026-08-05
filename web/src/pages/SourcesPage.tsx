@@ -90,6 +90,11 @@ function sourceToForm(source: ExternalSource): SourceFormState {
  * 편집한다 — 이 화면은 앱 소유자가 사이트 하나를 등록할 때만 쓰는 관리 기능이라, 일반
  * 사용자 입력 폼만큼 매끄러울 필요가 없다.
  *
+ * 아래 예시는 서버가 HTML 을 그대로 내려주는 사이트용(CSS 셀렉터, `format` 생략 시 기본값
+ * `html`)이다. Next.js 등 SPA 사이트는 검색 결과 페이지의 원본 HTML 에 상품 정보가 없는
+ * 경우가 많다 — 이때는 `format: "json"` 모드로 등록한다(§7.2 "JSON 모드" 참조, 데일리샷이
+ * 실제 등록 사례다).
+ *
  * 서버 전용 데이터라(`LlmSetting` 과 같은 이유로 동기화 대상이 아니다) `enqueue()` 오프라인
  * 경로 대신 `externalSourcesApi` 를 직접 호출한다.
  */
