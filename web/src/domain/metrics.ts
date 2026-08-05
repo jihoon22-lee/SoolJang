@@ -273,6 +273,26 @@ function daysBetween(openedOn: string, finishedOn: string): number {
   return Math.round((end - start) / 86_400_000);
 }
 
+/**
+ * 개봉→소진 평균 일수. 개봉일·소진일이 모두 있는 병만의 평균이다.
+ *
+ * 제품 하나(`computeProductMetrics`)뿐 아니라 컬렉션 전체(통계 요약)에도 그대로 쓴다 —
+ * 병 목록을 평평하게 모아 넘기기만 하면 되므로 별도 컬렉션 버전을 만들 필요가 없다. 제품별
+ * 평균을 다시 평균 내면(표본 크기를 무시하게 돼) 병이 적은 제품과 많은 제품이 똑같이
+ * 반영되는 왜곡이 생긴다 — 항상 병 단위로 직접 평균한다.
+ */
+export function averageDaysToFinish(bottles: readonly BottleRecord[]): Decimal | null {
+  const durations = bottles
+    .filter((b): b is BottleRecord & { openedOn: string; finishedOn: string } =>
+      Boolean(b.openedOn && b.finishedOn),
+    )
+    .map((b) => daysBetween(b.openedOn, b.finishedOn));
+  if (durations.length === 0) return null;
+  return quantizeRatio(
+    durations.reduce((sum, d) => sum.plus(d), new Decimal(0)).dividedBy(durations.length),
+  );
+}
+
 export function computeProductMetrics(
   lots: readonly PurchaseLot[],
   bottles: readonly BottleRecord[],
@@ -291,23 +311,11 @@ export function computeProductMetrics(
       ? quantizeMoney(prices.avgPaidPrice.times(bottleTallyInStock(tally)))
       : null;
 
-  const durations = bottles
-    .filter((b): b is BottleRecord & { openedOn: string; finishedOn: string } =>
-      Boolean(b.openedOn && b.finishedOn),
-    )
-    .map((b) => daysBetween(b.openedOn, b.finishedOn));
-  const averageDaysToFinish =
-    durations.length > 0
-      ? quantizeRatio(
-          durations.reduce((sum, d) => sum.plus(d), new Decimal(0)).dividedBy(durations.length),
-        )
-      : null;
-
   return {
     prices,
     bottles: tally,
     inventoryValueAtCost,
-    averageDaysToFinish,
+    averageDaysToFinish: averageDaysToFinish(bottles),
     consistencyWarnings: warnings,
   };
 }

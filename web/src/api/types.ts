@@ -422,6 +422,9 @@ export interface Rankings {
   /** 정가 기준. 레거시 통계와 일치시키기 위한 결정이다. */
   by_price_per_100ml: RankingEntry[];
   by_personal_rating: RankingEntry[];
+  /** 가성비(평점 ÷ 100ml당 가격). `getStatsRankings()`(오프라인 계산)만 채운다 — `by_*`
+   * 나머지 셋과 같은 이유로 `/stats/rankings` 를 실제로 호출하는 화면이 없다. */
+  by_value_for_money: RankingEntry[];
 }
 
 export interface CategoryStat {
@@ -451,6 +454,14 @@ export interface StatsSummary {
   discount_rate: string | null;
   avg_personal_rating: string | null;
   vendor_count: number;
+  /** 증여·판매로 내보낸 병수. `getStatsSummary()`(오프라인 계산)만 채운다 — 지금은
+   * `/stats/summary` 를 실제로 호출하는 화면이 없다(Task 24 PR5 시점). */
+  gifted_count: number;
+  sold_count: number;
+  /** 개봉→소진 평균 일수. 개봉일·소진일이 모두 있는 병만의 평균이다. */
+  avg_days_to_finish: string | null;
+  /** 평점 대비 가격(가성비). 100ml당 가격 1,000원 기준으로 정규화한다 — 높을수록 좋다. */
+  avg_value_for_money: string | null;
 }
 
 // --- 통계 v2: 피벗·시계열·저장뷰 (Task 20) ------------------------------------
