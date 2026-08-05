@@ -18,7 +18,7 @@
 |---|---|
 | 최종 갱신 | 2026-08-05 (**Task 24 전체 완료** — PR1~PR7 모두 머지 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53)) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. 남은 건 둘 다 사용자 쪽 결정/조작 대기다: **Task 23** 모바일 접속(Tailscale 관리자 콘솔 활성화), **Task 19** 판매처 시세 이력(Q2 `search` 전략 미해결로 계속 백로그, §9 참조). 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
+| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. **사용자가 확인·결정할 항목은 §6 열린 질문의 Q7(Tailscale Serve 켜기)·Q8(GHCR pull 권한, 선택)·Q9(Task 19 착수 여부)로 정리해 뒀다.** 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
 | 현재 브랜치 | `main` |
 | 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: **전체 완료** |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
@@ -1602,6 +1602,9 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션, 2026-08-03 재확인)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 개발 환경 자체가 이 tailnet 의 `main` 노드(홈 PC)다. `docker compose`(web/api/db, 2026-07-31 빌드 — Task 22 배치 이전) 가 이미 떠 있으나 `tailscale serve` 는 아직 설정 안 돼 있어 폰에서 아직 접속 불가. 폰에 Tailscale 앱 설치 + 같은 계정 로그인 + `tailscale serve` 실행 + 최신 이미지 재배포가 남았다(Task 23 진행 중) | — |
 | ~~Q5~~ | ~~웹 푸시 알림 채널~~ | **✅ 해결(사용자 결정, 2026-08-03)** — 웹 푸시로 간다. 단 Task 19 는 목표가를 비교할 시세 데이터(Q3 의 스크래핑) 가 있어야 값이 있어, 그 조사·등록을 미루기로 한 결정과 함께 Task 19 실행도 자연히 미뤄진다 | Task 19 |
 | Q6 | 지인 공유 시 권한 모델 상세. 읽기 전용 링크만으로 충분한지, 계정 발급이 필요한지 | 미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88) | Task 20 후속 |
+| Q7 | Tailscale Serve 를 관리자 콘솔에서 켜기 | **사용자 조작 대기** — `tailscale serve --bg --https=443 http://127.0.0.1:8080` 이 "Serve is not enabled on your tailnet" 로 거부됨(2026-08-03). 계정 단위 설정이라 API/CLI 로 우회 불가. [관리자 콘솔](https://login.tailscale.com/f/serve?node=n8eiMiT7ky11CNTRL) 에서 한 번 켜면 된다. **켠 뒤 알려주면 위 명령을 다시 실행해 마무리한다** — 코드 작업 없음 | Task 23 마무리(모바일 접속) |
+| Q8 | GHCR 에서 직접 `docker pull` 할지, 지금처럼 로컬 재빌드로 배포할지 | **미결정, 급하지 않음** — 이 PC 의 `gh` 토큰에 `read:packages` 스코프가 없어 pull 이 막혀 있다(`gh auth refresh -s read:packages` 는 브라우저 기기 인증 필요). 지금은 같은 소스를 로컬에서 재빌드해 배포 중이라 **내용은 동일하고 문제도 없다** — pull 방식으로 바꾸고 싶을 때만 브라우저로 인증하면 된다 | 원하는 시점 아무 때나(선택 사항) |
+| Q9 | Task 19(판매처 시세 이력) 를 지금 시작할지, 계속 미룰지 | **미결정** — 시작하려면 Q3 사이트 목록(데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24)의 실제 HTML 구조를 조사해 `adapter_spec` 을 등록해야 값이 생긴다(레지스트리 UI `#sources` 는 이미 준비됨). `search` 전략(Q2)은 ToS 위험으로 계속 보류 상태다. 시작한다면 사이트 목록을 그대로 갈지도 함께 확인 필요 | 사용자가 원하는 시점 |
 
 ---
 
