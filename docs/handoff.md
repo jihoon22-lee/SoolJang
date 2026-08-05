@@ -3,10 +3,10 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-05 (Task 24 PR1~PR4 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47),
+- 최종 갱신: **2026-08-05 (Task 24 PR1~PR5 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47),
   [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49),
-  [#50](https://github.com/jihoon22-lee/SoolJang/pull/50). PR5 — 통계 화면 차트 개편, 게이트 전부
-  통과·머지 대기)**
+  [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51).
+  PR6 — 주종 관리 UX 개편, 게이트 전부 통과·머지 대기)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
@@ -14,13 +14,14 @@
   반영 안 돼 있을 뿐 시스템상 멤버는 맞다). **주의**: 이 환경에 `ast-grep` 이 `sg` 라는
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다
-- 현재 브랜치: `feat/stats-charts`(Task 24 PR5). Task 1~17·20~23 완료(Task 18 은 `adapter`
-  전략만; Task 23 은 태그·릴리스·PC 배포 완료, 모바일 접속만 사용자 조작 대기).
+- 현재 브랜치: `feat/category-manager-ux`(Task 24 PR6). Task 1~17·20~23 완료(Task 18 은
+  `adapter` 전략만; Task 23 은 태그·릴리스·PC 배포 완료, 모바일 접속만 사용자 조작 대기).
   **`v1.0.0` 태그를 실제로 푸시해 GitHub 릴리스·GHCR 이미지 게시·홈 PC 재배포까지 마쳤다.**
   이어서 Task 24(실사용 피드백 개선) PR1(동기화 큐 영구 정지 + 데이터 무결성, #47)·PR2(프론트
   안정성, #48)·PR3(디자인 시스템, #49)·PR4(탭 정리+구매처 드릴다운+매장모드 모바일 전용,
-  #50)를 머지했고, PR5(통계 화면 차트 개편 — 순수 프론트엔드, 백엔드 변경 없음)를 코드·
-  테스트·문서까지 완료해 전체 게이트를 통과시켰다 — 상세는 `plan.md` §1, Task 24 절
+  #50)·PR5(통계 화면 차트 개편, #51)를 머지했고, PR6(주종 관리 UX 개편 — 순수 프론트엔드,
+  백엔드 변경 없음)를 코드·테스트·문서까지 완료해 전체 게이트를 통과시켰다 — 상세는
+  `plan.md` §1, Task 24 절
 - 버전: **`1.0.0`**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0))
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프
@@ -194,7 +195,8 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | Task 24 PR2 — 프론트 안정성(2026-08-04, [#48](https://github.com/jihoon22-lee/SoolJang/pull/48) `fix/frontend-resilience`, 머지됨) | 화면이 죽거나 실패가 조용히 사라지는 4개 결함(B10 루트 에러 바운더리 부재, B8 충돌 확인 실패 시 무반응, B9 바코드/라벨 인식 응답 지연 중 닫은 다이얼로그 재등장, B11 업로드 크기 검사가 전체 읽기 뒤에 있고 매직 바이트 확인 없음)을 수정했다. `pytest` 689 passed(29 skipped), `npm run check` 408 passed, `vite build` 정상. B9 는 수정 전 코드로 되돌려 다이얼로그가 실제로 재등장함을 먼저 확인한 뒤 고쳤다. 근거는 `plan.md` Task 24 PR2 절, D119~D122 |
 | Task 24 PR3 — 디자인 시스템(2026-08-05, [#49](https://github.com/jihoon22-lee/SoolJang/pull/49) `refactor/design-system`, 머지됨) | `styles.css` 한 파일만 바꾸는 순수 CSS 리팩터(백엔드·JSX 변경 없음). 타입 스케일 6단계·컨트롤 높이 3단계(`--control-h-md` 는 rem 이 아니라 44px 로 고정)·`--font-weight-*`·`--font-mono` 토큰을 도입해 흩어진 폰트 크기 12종·터치 타깃 표기 2종을 통일했다. `.category-bar-row` 그리드 고정폭→`minmax(0,6em)`, `.sort-button` 의 `inline-flex` 가 무효화하던 말줄임(`.category-bar-label`/`.ranking-name`)을 `display:block` 으로 복구, `overflow-wrap:anywhere` 신규 도입(표 셀·카드 제목), `40rem` 미문서화 브레이크포인트 제거(600px 로 흡수), `.sort-button:focus-visible` 아웃라인 복구, `.link-like` 터치 타깃 44px 확보, 죽은 CSS(`--space-xl` 포함) 삭제. `npm run check` 408 passed(회귀 0), `vite build` 정상. **Playwright 로 360/768/1280px 세 폭에서 내 술 목록·통계·주종 관리 화면을 실제로 렌더링해 확인**했다 — 표 안 긴 이름 줄바꿈, 모바일 카드 제품명 링크의 넓어진 터치 영역, 세 폭 모두 고른 내비게이션/버튼 높이를 눈으로 검증. 근거는 `plan.md` Task 24 PR3 절, D123~D129 |
 | Task 24 PR4 — 탭 정리+구매처 드릴다운+매장모드 모바일 전용(2026-08-05, [#50](https://github.com/jihoon22-lee/SoolJang/pull/50) `feat/navigation-restructure`, 머지됨) | 백엔드 변경 없음. 헤더에 "설정" 팝오버 메뉴 신설(가져오기·외부 소스·설정·서비스 상태·로그아웃을 접음, 바깥 클릭·Esc 로 닫힘), 주 nav 는 `내 술`/`주종 관리`/`구매처`/`통계` 4개로 축소. 매장 모드는 nav 에서 빼고 `ProductsPage` 상단 모바일 전용(900px 미만) 진입 버튼으로 이동(`#scan` 라우트는 그대로 유지). 구매처 → 그 구매처에서 산 술 드릴다운을 `router.ts`(`vendorId`)·`ProductsPage`(`initialVendorId`)·`VendorsPage`(이름 클릭)로 연결(카테고리 드릴다운과 같은 아키텍처 재사용), `getVendors()` 에 `total_spend` 추가(실구매가 우선·정가 보충·둘 다 없으면 제외). `npm run check` 413 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(406종·구매처 64곳) 대상 "CU어플" 클릭 → "내 술 (2)" 정확히 필터링됨을 확인**, 설정 메뉴 열기/바깥 클릭 닫기, 1280px 숨김·360px 노출되는 매장 모드 버튼도 눈으로 검증. 근거는 `plan.md` Task 24 PR4 절, D130~D133 |
-| Task 24 PR5 — 통계 화면 차트 개편(2026-08-05, `feat/stats-charts`, 게이트 통과·머지 대기) | 순수 프론트엔드(백엔드 변경 없음). `components/charts/` 에 사내 SVG 프리미티브(`BarChart`/`DonutChart`/`LineChart`, 외부 라이브러리 미도입) 신설 — 라벨은 SVG `<text>` 대신 HTML 로 렌더링, 모두 `role="img"`+표 대체 텍스트. 범주형 팔레트(`--chart-1`~`6`) 추가. "주종별 집계" 는 측정값 셀렉트(병수·총액·평균 도수·평균 평점·평균 100ml가·할인율)로 즉시 다시 그려지는 `BarChart` 로, 병 상태 분포는 `DonutChart` 로, 월별 시계열(`PivotExplorer`, 온라인 전용)의 CSS 막대 흉내는 `LineChart` 로 교체. `getStatsSummary()`/`getStatsRankings()`(오프라인 계산)에 `gifted_count`/`sold_count`/`avg_days_to_finish`/`avg_value_for_money`/`by_value_for_money` 추가 — `averageDaysToFinish()` 를 `domain/metrics.ts` 공개 함수로 뽑아 컬렉션 전체도 병 단위로 직접 평균한다(제품별 평균의 평균이 아니다). `StatsSummary`/`Rankings` 의 새 필드는 대응하는 REST 엔드포인트가 죽은 코드라 백엔드 스키마는 안 건드림. `npm run check` 431 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(406종·1,079병) 대상 확인** — 도넛이 실제 병 상태 비율을 보여주고, 측정값을 "평균 도수" 로 바꾸면 차트가 즉시 다시 그려지며, 가성비 랭킹 1위가 실제로 저가 막걸리로 나옴을 확인. 근거는 `plan.md` Task 24 PR5 절, D134~D137 |
+| Task 24 PR5 — 통계 화면 차트 개편(2026-08-05, [#51](https://github.com/jihoon22-lee/SoolJang/pull/51) `feat/stats-charts`, 머지됨) | 순수 프론트엔드(백엔드 변경 없음). `components/charts/` 에 사내 SVG 프리미티브(`BarChart`/`DonutChart`/`LineChart`, 외부 라이브러리 미도입) 신설 — 라벨은 SVG `<text>` 대신 HTML 로 렌더링, 모두 `role="img"`+표 대체 텍스트. 범주형 팔레트(`--chart-1`~`6`) 추가. "주종별 집계" 는 측정값 셀렉트(병수·총액·평균 도수·평균 평점·평균 100ml가·할인율)로 즉시 다시 그려지는 `BarChart` 로, 병 상태 분포는 `DonutChart` 로, 월별 시계열(`PivotExplorer`, 온라인 전용)의 CSS 막대 흉내는 `LineChart` 로 교체. `getStatsSummary()`/`getStatsRankings()`(오프라인 계산)에 `gifted_count`/`sold_count`/`avg_days_to_finish`/`avg_value_for_money`/`by_value_for_money` 추가 — `averageDaysToFinish()` 를 `domain/metrics.ts` 공개 함수로 뽑아 컬렉션 전체도 병 단위로 직접 평균한다(제품별 평균의 평균이 아니다). `StatsSummary`/`Rankings` 의 새 필드는 대응하는 REST 엔드포인트가 죽은 코드라 백엔드 스키마는 안 건드림. `npm run check` 431 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(406종·1,079병) 대상 확인** — 도넛이 실제 병 상태 비율을 보여주고, 측정값을 "평균 도수" 로 바꾸면 차트가 즉시 다시 그려지며, 가성비 랭킹 1위가 실제로 저가 막걸리로 나옴을 확인. 근거는 `plan.md` Task 24 PR5 절, D134~D137 |
+| Task 24 PR6 — 주종 관리 UX 개편(2026-08-05, `feat/category-manager-ux`, 게이트 통과·머지 대기) | 순수 프론트엔드(백엔드 변경 없음). `CategoryManager.tsx` 의 이동·병합 `<select onChange={...}>`(즉시 실행) 를 `이동`/`병합` 버튼 + 대상 선택 확인 패널로 교체(기존 `DeleteControl` 의 2단계 확인 패턴 재사용) — 병합은 대상을 고르면 "{이름}(제품 N종)을 {대상} 로 합치고 삭제합니다. 되돌릴 수 없습니다." 를 먼저 보여준다. `CategoryBranch` 에 접기/펼치기(기본 펼침, 하위 있는 행만 토글 노출)와 이동 성공 후 2초 하이라이트를 추가. `CategoryManagerProps` 의 블랭킷 `busy`/`error` 를 `renameStatus`/`reparentStatus`/`mergeStatus`/`removeStatus`(각 `{isPending, isSuccess, variables, error}`) 로 바꿔 `mutation.variables?.id === node.id` 로 행 단위 busy·오류를 판별 — `CategoriesPage` 는 `useMutation` 결과를 그대로 넘긴다(구조적 타이핑, 글루 코드 없음). `categoriesApi.reorder` 는 노출하지 않기로 결정하고 `queries.ts` 주석으로 문서화. `npm run check` 438 passed(회귀 0), `vite build` 정상, 시크릿 스캔 통과. **Playwright 로 실데이터(주종 44개) 대상 확인** — 브랜디·와인·위스키 접기/펼치기, "메즈칼"→"럼" 이동 후 하이라이트, 병합 대상 선택 시 영향(제품 1종) 문구, 취소 동작을 실클릭으로 확인(이동은 되돌려 원상 복구). 근거는 `plan.md` Task 24 PR6 절, D138~D141 |
 
 ---
 

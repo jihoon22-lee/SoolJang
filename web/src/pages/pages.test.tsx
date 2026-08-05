@@ -803,9 +803,7 @@ describe("CategoriesPage", () => {
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     expect(
-      within(
-        screen.getByLabelText("위스키 상위 주종 변경").closest(".category-row") as HTMLElement,
-      ).getByText("위스키"),
+      await screen.findByText("위스키", { selector: ".category-row .name" }),
     ).toBeInTheDocument();
   });
 
@@ -816,8 +814,10 @@ describe("CategoriesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는
-    // "상위 주종 변경" 라벨로 존재를 확인한다.
-    expect(await screen.findByLabelText("새 주종 상위 주종 변경")).toBeInTheDocument();
+    // `.category-row .name` 으로 범위를 좁혀 존재를 확인한다.
+    expect(
+      await screen.findByText("새 주종", { selector: ".category-row .name" }),
+    ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ entity: "category", op: "create" });
@@ -845,7 +845,9 @@ describe("CategoriesPage", () => {
     await userEvent.type(input, "양주");
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
-    expect(await screen.findByLabelText("양주 상위 주종 변경")).toBeInTheDocument();
+    expect(
+      await screen.findByText("양주", { selector: ".category-row .name" }),
+    ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ entity: "category", op: "update", entity_id: "whisky" });
@@ -871,7 +873,7 @@ describe("CategoriesPage", () => {
     ]);
 
     renderCategoriesPage();
-    const row = (await screen.findByLabelText("위스키 상위 주종 변경")).closest(
+    const row = (await screen.findByText("위스키", { selector: ".category-row .name" })).closest(
       ".category-row",
     ) as HTMLElement;
     await userEvent.click(within(row).getByRole("button", { name: "삭제" }));

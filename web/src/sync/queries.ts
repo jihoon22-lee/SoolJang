@@ -124,6 +124,10 @@ export async function getCategoryTree(): Promise<CategoryTree> {
         descendant_product_count: descendantCount(row.id),
       };
     })
+    // 이름순 정렬을 의도적으로 고정했다. `categoriesApi.reorder` 는 구현·테스트까지 돼
+    // 있지만 호출처를 두지 않기로 했다(`docs/plan.md` §5 결정 로그) — 주종은 수십 개
+    // 규모라 이름순으로도 원하는 항목을 바로 찾을 수 있고, 수동 순서를 도입하면 트리
+    // UI에 위/아래 이동 버튼과 그 상태를 또 하나 얹어야 해 얻는 편의보다 복잡도가 크다.
     .sort((a, b) => a.path.join("").localeCompare(b.path.join("")));
 
   return {

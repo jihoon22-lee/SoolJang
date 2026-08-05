@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR4 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50). PR5 게이트 전부 통과, PR 오픈 대기) |
+| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR5 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51). PR6 게이트 전부 통과, PR 오픈 대기) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR5**(`feat/stats-charts`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 431 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR6(주종 관리 UX)·PR7(오프라인 조회 성능)이 남았다 |
-| 현재 브랜치 | `feat/stats-charts` (Task 24 PR5) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR4 완료, PR5 머지 대기, PR6~7 착수 전 |
+| 다음 착수 Task | **Task 24 PR6**(`feat/category-manager-ux`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 438 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR7(오프라인 조회 성능)이 남았다 |
+| 현재 브랜치 | `feat/category-manager-ux` (Task 24 PR6) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR5 완료, PR6 머지 대기, PR7 착수 전 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR4/7 완료·머지, PR5/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`(머지됨), `feat/stats-charts` 외 2개(PR6~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR5/7 완료·머지, PR6/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`(머지됨), `feat/category-manager-ux` 외 1개(PR7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51) |
 
 ### 의존 관계
 
@@ -1237,6 +1237,44 @@ build` 정상, 시크릿 스캔 통과. Playwright 로 360/768/1280px 세 폭에
 즉시 다시 그려지며, "가성비" 랭킹 1위가 실제로 저가 막걸리로 나오는 것까지 확인했다. 근거는
 `plan.md` Task 24 PR5 절, D134~D137.
 
+#### PR6 — `feat/category-manager-ux`: 주종 관리 개편 (2026-08-05, 사용자 항목 5)
+
+지금까지는 이동·병합 `<select>` 를 바꾸는 순간 확인 없이 즉시 실행되고 되돌릴 수 없었다 —
+사용자 항목 5(주종 관리 불편)의 핵심 원인이었다.
+
+- **즉시 실행 드롭다운 제거**: `CategoryBranch` 의 이동·병합 `<select onChange={...}>` 를
+  `이동`/`병합` 버튼 + 대상 선택 패널로 바꿨다. 기존 `DeleteControl` 의 `asking` 2단계 패턴을
+  그대로 재사용했다(새 상호작용 패턴을 추가하지 않음). 이동은 대상을 현재 상위 주종과
+  다르게 고르기 전까지 "이동 확인" 버튼이 비활성 상태다. 병합은 대상을 고르는 순간
+  "{이름}(제품 N종)을 {대상} 로 합치고 삭제합니다. 되돌릴 수 없습니다." 문구가 나타난 뒤에야
+  "병합 확인" 이 활성화된다 — 되돌릴 수 없는 조작이라 영향 범위를 먼저 보여준다
+- **접기/펼치기 + 이동 후 하이라이트**: `CategoryBranch` 에 `expanded` 상태(기본 펼침)를 추가해
+  하위가 있는 행에만 토글 버튼(`.sort-button` 재사용 — 기존 `:focus-visible` 복구 규칙을
+  그대로 물려받는다)을 보여준다. 이동이 성공하면 해당 행에 2초간
+  `.category-row--highlight` 클래스를 붙인다(`useEffect` + `setTimeout`, `ref` 로 같은
+  성공 상태에 대해 중복 트리거되지 않게 가드)
+- **행 단위 busy/오류**: `CategoryManagerProps` 의 `busy: boolean`/`error: unknown` 을
+  `renameStatus`/`reparentStatus`/`mergeStatus`/`removeStatus`(각각
+  `{isPending, isSuccess, variables, error}` 구조)로 바꿨다. `CategoriesPage` 는 실제
+  `useMutation` 결과 객체를 그대로 넘긴다 — `UseMutationResult` 가 이 구조를 구조적으로
+  만족해 글루 코드가 필요 없다. `CategoryBranch` 는 `status.variables?.id === node.id` 로
+  "이 행이 지금 처리 중인가/오류가 있는가" 를 판별해, 뮤테이션 하나가 진행 중이어도 다른
+  행은 그대로 조작 가능하다. 오류는 최상단 `.alert` 하나 대신 해당 행 바로 아래
+  `role="alert"` 로 표시하고, `createError`/`resetSeedError` 는 각각 폼·복원 버튼 근처에
+  표시한다(둘은 행이 없는 페이지 단위 작업이라 별도)
+- **정렬 순서는 노출하지 않기로 결정**: `categoriesApi.reorder` 는 구현·테스트까지 돼 있지만
+  호출처를 두지 않았다. `queries.ts::getCategoryTree` 의 정렬 로직에 결정 근거를 주석으로
+  남겼다 — 주종은 수십 개 규모라 이름순으로도 충분하고, 위/아래 이동 버튼과 그 상태까지
+  트리 UI 에 얹는 비용이 얻는 편의보다 크다고 판단했다
+
+검증: `npm run check` 438 passed(회귀 0건), `vite build` 정상. 백엔드 변경 없음. Playwright
+로 실데이터(주종 44개, 최대 깊이 4)를 대상으로 확인했다 — 브랜디·와인·위스키 등 하위가 있는
+행만 토글이 보이고 접으면 하위가 화면에서 사라지는 것, "메즈칼" 을 "럼" 하위로 이동한 뒤
+해당 행이 잠깐 강조되는 것, 병합 대상을 고르면 "메즈칼(제품 1종)을 리큐르 로 합치고
+삭제합니다. 되돌릴 수 없습니다." 문구가 뜨는 것, 취소가 상태를 되돌리는 것을 모두 실제
+클릭으로 확인했다(확인한 이동은 되돌려 원래 상태로 복구). 근거는 `plan.md` Task 24 PR6 절,
+D138~D141.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1487,6 +1525,15 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D135 | scatter 프리미티브는 만들지 않는다 | 이번에 실제로 쓸 화면(막대·비율·시계열)에 필요하지 않다 — 미리 만들어 두는 대신 필요해지면 그때 추가한다. 가상의 미래 재사용을 위한 추상화는 비용만 남긴다 |
 | D136 | "주종별 집계" 절의 기준(주종)은 고정하고 측정값만 셀렉트로 바꿀 수 있게 한다. 커스텀 피벗(온라인 전용, 기준×열×지표 조합 UI 는 이미 있었다)의 순수 재구현(클라이언트 피벗)은 이번 PR 범위에서 뺀다 | 커스텀 피벗은 **구매 건 단위**로 묶어야 해서(`purchase_stats_rows_query`) 제품 단위로 미리 합산한 `statsRows()` 로는 재현할 수 없다 — 재현하려면 Dexie 에서 구매 건 원자 행을 새로 조립해야 하는데, 이는 사실상 파이썬 피벗 로직의 병행 구현이라 이번 PR 범위를 벗어난다. 반면 "주종별 집계" 는 이미 제품 단위로 묶여 있어 측정값 전환만으로도 오프라인에서 실질적인 "조합 가능" 경험을 준다 |
 | D137 | `averageDaysToFinish()` 를 `computeProductMetrics` 내부에서 뽑아 공개 함수로 만들고, 컬렉션 전체 평균(`getStatsSummary()`)도 병 목록을 평평하게 모아 이 함수 하나로 계산한다. 마찬가지로 `avg_value_for_money` 는 제품별 가성비의 단순 평균이다(`avg_rating`/`avg_abv` 와 같은 패턴) | 제품별 평균을 다시 평균 내면 병이 적은 제품과 많은 제품이 똑같이 반영되는 왜곡이 생긴다 — 항상 원자 단위(병)에서 직접 평균해야 한다. `StatsSummary`/`Rankings` 의 새 필드는 `/stats/summary`·`/stats/rankings` 를 실제로 호출하는 화면이 없어(죽은 API 클라이언트 메서드) 백엔드 스키마는 건드리지 않고 TS 타입에만 추가했다 |
+
+### Task 24 PR6 결정 (D138~D141)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D138 | `CategoryBranch` 의 이동·병합 `<select onChange={...}>`(즉시 실행)를 `이동`/`병합` 버튼 + 대상 선택 패널로 바꾼다. 기존 `DeleteControl` 의 `asking` 2단계 패턴을 그대로 재사용한다. 병합은 대상을 고르는 즉시 "{이름}(제품 N종)을 {대상} 로 합치고 삭제합니다. 되돌릴 수 없습니다." 를 보여준 뒤에야 확인 버튼이 활성화된다 | select `onChange` 즉시 실행은 값을 실수로 한 칸 잘못 고르는 것만으로 되돌릴 수 없는 변경(특히 병합은 삭제를 동반)을 만든다. 같은 파일에 이미 검증된 2단계 확인 패턴이 있어 새로 설계하지 않고 재사용했다 |
+| D139 | `CategoryManagerProps` 의 `busy: boolean`/`error: unknown` 을 `renameStatus`/`reparentStatus`/`mergeStatus`/`removeStatus`(각각 `{isPending, isSuccess, variables, error}`)로 바꾼다. `CategoriesPage` 는 실제 `useMutation` 결과 객체를 그대로 전달한다(`UseMutationResult` 가 이 구조를 구조적으로 만족해 글루 코드 불필요) | 기존 블랭킷 `busy`/`error` 는 뮤테이션 6개 중 하나만 진행 중이어도 트리 전체 모든 버튼을 잠그고 오류도 최상단 하나로 뭉쳤다(사용자 항목 5). `mutation.variables?.id === node.id` 로 "이 행이 지금 처리 중인가" 를 판별하려면 각 뮤테이션의 `variables`/`isPending`/`error` 가 필요했다 — 컴포넌트가 react-query 를 몰라도 되는 기존 설계(테스트가 plain `vi.fn()` 으로 구성)는 그대로 유지했다 |
+| D140 | `CategoryBranch` 에 `expanded` 상태(기본 펼침)를 추가해 하위가 있는 행에만 토글 버튼을 보여준다. 이동 성공 시 해당 행에 2초간 강조 클래스를 붙인다(`useEffect`+`setTimeout`, `ref` 로 같은 성공 상태의 중복 트리거를 막음) | 트리가 항상 전부 펼쳐져 있어 계층이 점선 들여쓰기로만 구분됐고, 이동해도 결과가 어디로 갔는지 한눈에 보이지 않았다(사용자 항목 5) |
+| D141 | `categoriesApi.reorder` 를 UI 에 노출하지 않고, `getCategoryTree` 의 이름순 정렬 유지 결정을 `queries.ts` 주석으로 문서화한다 | 주종은 수십 개 규모라 이름순으로도 원하는 항목을 바로 찾을 수 있다 — 위/아래 이동 버튼과 그 상태(뮤테이션·오류·오프라인 처리)까지 트리 UI 에 얹는 복잡도가 얻는 편의보다 크다고 판단했다 |
 
 ## 6. 열린 질문
 
