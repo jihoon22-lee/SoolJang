@@ -36,6 +36,7 @@
   --font-body:
     "Pretendard", -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo",
     "Segoe UI", "Noto Sans KR", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --radius-sm: 6px;
   --radius: 10px;
@@ -44,7 +45,31 @@
   --space-sm: 8px;
   --space: 12px;
   --space-lg: 20px;
-  --space-xl: 32px;
+
+  /*
+   * 타입 스케일. 같은 역할(예: "카드 안 소제목")은 항상 같은 토큰을 쓴다 — 예전에는
+   * 이 역할 하나에만 0.95/1.05/1.1rem 세 값이 섞여 있었다.
+   */
+  --text-xs: 0.75rem; /* 배지, 표 헤더, 자잘한 보조 텍스트 */
+  --text-sm: 0.85rem; /* 폼 라벨, 안내문, 요약 dl/dd */
+  --text-base: 1rem; /* 본문 기본값 */
+  --text-md: 1.05rem; /* 카드·패널 안 소제목 */
+  --text-lg: 1.25rem; /* 강조 수치(핵심 지표 값) */
+  --text-xl: 1.5rem; /* 앱 타이틀 */
+  --text-2xl: 1.75rem; /* 로그인 화면처럼 화면에서 가장 큰 제목 */
+
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+
+  /*
+   * 컨트롤 높이. `--control-h-md` 는 터치 타깃 최소 규격(44px)이라 의도적으로 rem 이
+   * 아니라 px 다 — rem 이면 사용자가 브라우저 기본 글자 크기를 줄일 때 실제 접근성
+   * 최소 크기 아래로 함께 줄어든다. sm 은 마우스 전용 밀집 UI(예: 데스크톱 표 헤더)의
+   * 의도적 예외에만 쓴다.
+   */
+  --control-h-sm: 2rem;
+  --control-h-md: 44px;
+  --control-h-lg: 3rem;
 
   /* 신호 요소(주 버튼·활성 탭·재고 배지)에만 쓰는 은은한 브라스 광택. */
   --glow-accent: 0 0 0 1px rgb(201 154 74 / 35%), 0 2px 14px rgb(201 154 74 / 22%);
@@ -76,7 +101,7 @@ h2,
 h3,
 h4 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.01em;
   color: var(--text);
 }
@@ -109,7 +134,7 @@ h4 {
   border-radius: 0 0 var(--radius-sm) 0;
   background: var(--accent);
   color: var(--accent-contrast);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .skip-link:focus {
@@ -152,13 +177,7 @@ h4 {
 }
 
 .text-sm {
-  font-size: 0.85rem;
-}
-
-.fieldset-plain {
-  border: 0;
-  padding: 0;
-  margin: 0;
+  font-size: var(--text-sm);
 }
 
 .fieldset-bordered {
@@ -169,10 +188,6 @@ h4 {
 
 .pre-wrap {
   white-space: pre-wrap;
-}
-
-.self-center {
-  align-self: center;
 }
 
 .inline-block {
@@ -186,7 +201,7 @@ h4 {
 /* 패널·폼에 곁들이는, 본문보다 한 단계만 작은 제목(예: "주종 추가"). */
 .form-heading {
   margin-top: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 /* 제목 + 동작 버튼이 한 줄에 나란히 있다가 좁아지면 접히는, 구간 제목에서 반복되는 배치. */
@@ -255,7 +270,7 @@ h4 {
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: var(--text-xl);
   color: var(--accent-strong);
 }
 
@@ -271,7 +286,7 @@ h4 {
   color: var(--text-muted);
   text-decoration: none;
   /* 터치 타깃 최소 44px. 모바일에서 누르기 어려우면 기록 자체를 안 하게 된다. */
-  min-height: 44px;
+  min-height: var(--control-h-md);
   display: inline-flex;
   align-items: center;
   transition:
@@ -287,7 +302,7 @@ h4 {
 .app-nav a[aria-current="page"] {
   background: var(--accent);
   color: var(--accent-contrast);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   box-shadow: var(--glow-accent);
 }
 
@@ -328,7 +343,7 @@ h4 {
 
 .panel h2 {
   margin-top: 0;
-  font-size: 1.05rem;
+  font-size: var(--text-md);
 }
 
 @media (max-width: 600px) {
@@ -347,7 +362,7 @@ h4 {
 }
 
 .field label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -357,7 +372,7 @@ h4 {
   width: 100%;
   min-width: 0;
   padding: 10px;
-  min-height: 44px;
+  min-height: var(--control-h-md);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-raised);
@@ -382,7 +397,7 @@ h4 {
 
 .field-error {
   color: var(--danger);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .checkbox-field label {
@@ -390,7 +405,7 @@ h4 {
   align-items: center;
   gap: 8px;
   color: var(--text);
-  font-size: 1rem;
+  font-size: var(--text-sm);
 }
 
 .checkbox-field input[type="checkbox"] {
@@ -403,8 +418,8 @@ h4 {
 }
 
 .code-textarea {
-  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   white-space: pre;
   overflow-x: auto;
 }
@@ -455,7 +470,7 @@ h4 {
 }
 
 button {
-  min-height: 44px;
+  min-height: var(--control-h-md);
   padding: 10px 16px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -477,7 +492,7 @@ button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   box-shadow: var(--glow-accent);
 }
 
@@ -491,8 +506,10 @@ button.danger {
   border-color: var(--danger);
 }
 
+/* 모바일 카드에서 제품 상세로 들어가는 주 진입점 등으로 쓰인다 — 문장 안에 섞인
+   보조 링크가 아니라 실질적인 탐색 컨트롤이라 다른 버튼과 같은 터치 타깃을 확보한다. */
 button.link-like {
-  min-height: auto;
+  min-height: var(--control-h-md);
   padding: 2px 4px;
   border: none;
   background: none;
@@ -535,10 +552,15 @@ button:disabled {
   vertical-align: middle;
 }
 
+/* 긴 제품명이 셀 폭을 넘어 표 전체를 밀어내는 대신 셀 안에서 줄바꿈되게 한다. */
+.product-table td {
+  overflow-wrap: anywhere;
+}
+
 .product-table th {
   background: var(--surface-raised);
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   white-space: nowrap;
@@ -565,10 +587,10 @@ button:disabled {
   align-items: center;
   font: inherit;
   color: inherit;
-  /* 전역 button 규칙(min-height:44px)은 터치 타깃 확보용이다 — 이 표는 900px 이상에서만
+  /* 전역 button 규칙(--control-h-md)은 터치 타깃 확보용이다 — 이 표는 900px 이상에서만
      보이는 데스크톱 전용 뷰라 그 규칙을 여기서는 뺀다. 그대로 두면 헤더 행이 다시
      두꺼워져 밀도를 낮추려는 목적과 어긋난다. */
-  min-height: auto;
+  min-height: var(--control-h-sm);
   padding: 0;
 }
 
@@ -576,8 +598,16 @@ button:disabled {
   color: var(--accent-strong);
 }
 
+/* `all: unset` 이 전역 `:focus-visible` 규칙(윗부분)의 outline 도 함께 지운다 — 이 규칙이
+   소스 순서상 더 뒤에 있어야 이긴다. 이게 없으면 정렬 헤더·랭킹 항목·주종 라벨을
+   키보드로 옮겨 다녀도 포커스 표시가 전혀 안 보였다. */
+.sort-button:focus-visible {
+  outline: 3px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
 .sort-indicator {
-  font-size: 0.75em;
+  font-size: var(--text-xs);
 }
 
 .product-cards {
@@ -611,7 +641,8 @@ button:disabled {
 
 .product-card h3 {
   margin: 0 0 4px;
-  font-size: 1.05rem;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
 }
 
 .product-card dl,
@@ -620,7 +651,7 @@ button:disabled {
   grid-template-columns: auto 1fr;
   gap: 2px 8px;
   margin: 8px 0 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .product-card dt,
@@ -639,7 +670,7 @@ button:disabled {
 .product-card-dl {
   display: grid;
   gap: 4px;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .product-card-dl dd {
@@ -656,7 +687,7 @@ button:disabled {
   border-radius: 999px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
 }
 
 .badge.stock-none {
@@ -683,13 +714,13 @@ button:disabled {
 }
 
 .metric dt {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .metric dd {
   margin: 4px 0 0;
-  font-size: 1.15rem;
+  font-size: var(--text-lg);
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
 }
@@ -712,10 +743,14 @@ button:disabled {
   vertical-align: top;
 }
 
+.stats-table td {
+  overflow-wrap: anywhere;
+}
+
 .stats-table th {
   background: var(--surface-raised);
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   position: sticky;
@@ -747,7 +782,8 @@ button:disabled {
 
 .stats-card h4 {
   margin: 0 0 4px;
-  font-size: 1.05rem;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
 }
 
 .category-bars {
@@ -760,13 +796,20 @@ button:disabled {
 
 .category-bar-row {
   display: grid;
-  grid-template-columns: 6em 1fr auto;
+  /* `minmax(0, 6em)` — 순수 `6em` 이면 그리드 아이템의 기본 최소 크기(내용의 고유
+     최소 크기)가 여전히 이 칸을 밀어낼 수 있다. "싱글 몰트 위스키" 처럼 긴 이름이
+     행 전체 너비를 넓히던 원인이었다. */
+  grid-template-columns: minmax(0, 6em) 1fr auto;
   align-items: center;
   gap: 8px;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .category-bar-label {
+  /* `.sort-button` 과 함께 쓰이면 그 `inline-flex` 가 이 규칙의 말줄임을 무효화한다
+     (flex 컨테이너의 넘치는 텍스트는 익명 flex 아이템으로 감싸져 `text-overflow` 가
+     적용되지 않는다) — `display: block` 을 소스 순서상 더 뒤에 둬 되돌린다. */
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -821,6 +864,8 @@ button:disabled {
 }
 
 .ranking-name {
+  /* `.category-bar-label` 과 같은 이유로 `.sort-button` 의 `inline-flex` 를 되돌린다. */
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -829,7 +874,7 @@ button:disabled {
 
 .ranking-value {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--accent-strong);
 }
 
@@ -860,7 +905,7 @@ button:disabled {
 
 .category-row .name,
 .vendor-row .name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
 }
 
@@ -893,7 +938,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -944,7 +989,7 @@ button:disabled {
 
 .auth-card h1 {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: var(--text-2xl);
   text-align: center;
   color: var(--accent-strong);
 }
@@ -953,20 +998,20 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .auth-card button[type="submit"] {
-  /* 터치 타깃 최소 44px 규칙을 지킨다. */
-  min-height: 2.75rem;
+  /* 터치 타깃 최소 규칙을 지킨다. */
+  min-height: var(--control-h-md);
   margin-top: 0.35rem;
 }
 
 .auth-hint {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .auth-error {
@@ -975,7 +1020,7 @@ button:disabled {
   border-radius: var(--radius-sm);
   background: var(--danger-surface);
   color: var(--danger);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .app-account {
@@ -983,7 +1028,7 @@ button:disabled {
   align-items: center;
   gap: 0.6rem;
   margin-left: auto;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .app-account-name {
@@ -991,8 +1036,8 @@ button:disabled {
 }
 
 .app-logout {
-  min-height: 2.75rem;
-  min-width: 2.75rem;
+  min-height: var(--control-h-md);
+  min-width: var(--control-h-md);
   padding: 0 0.75rem;
 }
 
@@ -1009,10 +1054,10 @@ button:disabled {
 }
 
 .sync-status-badge {
-  min-height: 2.75rem;
+  min-height: var(--control-h-md);
   padding: 0 0.75rem;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   background: var(--surface-raised);
 }
 
@@ -1056,7 +1101,7 @@ button:disabled {
 
 .sync-conflict-panel-header h3 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 .sync-conflict-panel ul {
@@ -1083,7 +1128,7 @@ button:disabled {
 
 .sync-conflict-panel h4 {
   margin: 0 0 0.3rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .sync-conflict-panel section + section {
@@ -1094,7 +1139,6 @@ button:disabled {
 
 /* --- 병 관리 ------------------------------------------------------------- */
 
-.bottle-filters,
 .bottle-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1105,16 +1149,9 @@ button:disabled {
   border-radius: var(--radius);
 }
 
-.bottle-filters button,
 .bottle-actions button {
-  min-height: 2.75rem;
+  min-height: var(--control-h-md);
   padding: 0 0.9rem;
-}
-
-.bottle-filters button[aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-  font-weight: 600;
 }
 
 .bottle-list {
@@ -1133,7 +1170,7 @@ button:disabled {
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  min-height: 2.75rem;
+  min-height: var(--control-h-md);
   padding: 0.6rem 0.9rem;
   text-align: left;
   background: var(--surface);
@@ -1151,7 +1188,7 @@ button:disabled {
   padding: 0.1rem 0.6rem;
   border-radius: 999px;
   border: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .bottle-badge-unopened {
@@ -1173,7 +1210,7 @@ button:disabled {
 .bottle-list-remaining {
   margin-left: auto;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .bottle-panel {
@@ -1196,7 +1233,7 @@ button:disabled {
   align-items: center;
   gap: 0.5rem;
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--text-md);
 }
 
 .bottle-remaining {
@@ -1211,7 +1248,7 @@ button:disabled {
   grid-template-columns: auto 1fr;
   gap: 0.25rem 0.75rem;
   margin: 0.75rem 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .bottle-dates dt,
@@ -1230,7 +1267,7 @@ button:disabled {
   border-radius: var(--radius-sm);
   background: var(--danger-surface);
   color: var(--danger);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .tasting-form {
@@ -1244,24 +1281,24 @@ button:disabled {
 
 .tasting-form h4 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 .tasting-form label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .tasting-form button[type="submit"] {
-  min-height: 2.75rem;
+  min-height: var(--control-h-md);
 }
 
 .tasting-timeline h4 {
   margin: 1rem 0 0.5rem;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 .tasting-timeline ul {
@@ -1283,7 +1320,7 @@ button:disabled {
 }
 
 .tasting-date {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin-right: 0.6rem;
   font-family: var(--font-display);
 }
@@ -1292,13 +1329,13 @@ button:disabled {
 .tasting-poured {
   margin-right: 0.6rem;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .tasting-note,
 .tasting-meta {
   margin: 0.25rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .tasting-meta {
@@ -1311,7 +1348,10 @@ button:disabled {
   color: var(--danger);
 }
 
-@media (min-width: 40rem) {
+/* 문서화된 브레이크포인트는 600px/900px 두 개뿐이다 — 예전엔 여기만 640px(40rem)를 따로
+   써서 "화면 크기에 따라 줄바꿈이 제멋대로" 라는 인상의 직접 원인이었다. 이 폼의 두 입력
+   (날짜·평점)은 짧아 `.field-row` 와 같은 600px 기준으로도 나란히 놓기에 충분하다. */
+@media (min-width: 600px) {
   .tasting-form {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1353,7 +1393,7 @@ button:disabled {
   grid-template-columns: auto 1fr;
   gap: 2px 0.75rem;
   margin: 0.5rem 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .external-info-fields dt {
@@ -1383,7 +1423,7 @@ button:disabled {
   align-items: flex-start;
   gap: 2px;
   width: 100%;
-  min-height: 2.75rem;
+  min-height: var(--control-h-md);
   padding: 0.6rem 0.9rem;
   text-align: left;
 }
