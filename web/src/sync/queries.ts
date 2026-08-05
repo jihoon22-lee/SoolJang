@@ -27,6 +27,7 @@ import type {
   Vendor,
 } from "@/api/types";
 import {
+  averageDaysToFinish,
   type BottleTally,
   bottleTallyInStock,
   computePriceMetrics,
@@ -611,6 +612,7 @@ interface StatsRow {
   personalRating: string | null;
   prices: PriceMetrics;
   tally: BottleTally;
+  bottles: MetricsBottleRecord[];
 }
 
 async function statsRows(): Promise<{ rows: StatsRow[]; vendorIds: Set<string> }> {
@@ -633,6 +635,7 @@ async function statsRows(): Promise<{ rows: StatsRow[]; vendorIds: Set<string> }
     personalRating: (assembly.row.personal_rating as string | null) ?? null,
     prices: computePriceMetrics(assembly.lots),
     tally: tallyBottles(assembly.bottles),
+    bottles: assembly.bottles,
   }));
 
   return { rows, vendorIds };
@@ -735,7 +738,17 @@ export async function getStatsRankings(limit = DEFAULT_RANKING_LIMIT): Promise<R
       top((row) => (row.personalRating !== null ? new Decimal(row.personalRating) : null)),
       1,
     ),
+    by_value_for_money: toEntries(
+      top((row) => valueForMoneyOf(row)),
+      2,
+    ),
   };
+}
+
+/** 평점 대비 가격(가성비). 랭킹·전체 합계 양쪽에서 같은 규칙을 쓰도록 뽑아 둔다. */
+function valueForMoneyOf(row: StatsRow): Decimal | null {
+  const rating = row.personalRating !== null ? new Decimal(row.personalRating) : null;
+  return valueForMoney(rating, row.prices.pricePer100ml);
 }
 
 /** 주종별 집계. 하위 카테고리는 최상위 주종으로 롤업한다. */
@@ -830,5 +843,9 @@ export async function getStatsSummary(): Promise<StatsSummary> {
         rows.map((row) => (row.personalRating !== null ? new Decimal(row.personalRating) : null)),
       )?.toFixed(4) ?? null,
     vendor_count: vendorIds.size,
+    gifted_count: rows.reduce((sum, row) => sum + row.tally.gifted, 0),
+    sold_count: rows.reduce((sum, row) => sum + row.tally.sold, 0),
+    avg_days_to_finish: averageDaysToFinish(rows.flatMap((row) => row.bottles))?.toFixed(2) ?? null,
+    avg_value_for_money: mean(rows.map((row) => valueForMoneyOf(row)))?.toFixed(4) ?? null,
   };
 }

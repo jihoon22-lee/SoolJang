@@ -280,6 +280,10 @@ describe("통계", () => {
       // 100ml당 가격은 정가 기준: p1 = 100000*100/500 = 20000, p2 = 50000*100/1000 = 5000.
       expect(rankings.by_price_per_100ml.map((e) => e.value)).toEqual(["20000.00", "5000.00"]);
       expect(rankings.by_personal_rating.map((e) => e.value)).toEqual(["5.0", "3.0"]);
+      // 가성비 = 평점*1000/100ml당가격: p1 = 5*1000/20000 = 0.25, p2 = 3*1000/5000 = 0.6.
+      // 평점은 p1 이 더 높지만 가격당으로 보면 p2 가 더 낫다 — 등수가 뒤집힌다.
+      expect(rankings.by_value_for_money.map((e) => e.product_id)).toEqual(["p2", "p1"]);
+      expect(rankings.by_value_for_money.map((e) => e.value)).toEqual(["0.60", "0.25"]);
     });
   });
 
@@ -324,6 +328,35 @@ describe("통계", () => {
       expect(summary.avg_list_price).toBe("75000.00");
       expect(summary.avg_personal_rating).toBe("4.0000");
       expect(summary.vendor_count).toBe(2);
+      // 이 픽스처엔 증여·판매·소진 병이 없다 — 0건/null 로 정확히 비어 있어야 한다.
+      expect(summary.gifted_count).toBe(0);
+      expect(summary.sold_count).toBe(0);
+      expect(summary.avg_days_to_finish).toBeNull();
+      // (0.25 + 0.6) / 2 = 0.425
+      expect(summary.avg_value_for_money).toBe("0.4250");
+    });
+
+    it("증여·판매 병수와 개봉→소진 평균 일수를 집계한다", async () => {
+      await seedStatsFixture();
+      // p1 의 병 하나를 소진 처리하고(9일 걸림), p2 의 병 하나를 증여로 내보낸다.
+      await db.bottle.bulkPut([
+        row({
+          id: "b3",
+          purchase_id: "pu1",
+          label_no: 2,
+          status: "finished",
+          opened_on: "2026-01-01",
+          finished_on: "2026-01-10",
+          remaining_ml: 0,
+        }),
+        row({ id: "b4", purchase_id: "pu2", label_no: 2, status: "gifted", remaining_ml: null }),
+      ]);
+
+      const summary = await getStatsSummary();
+
+      expect(summary.gifted_count).toBe(1);
+      expect(summary.sold_count).toBe(0);
+      expect(summary.avg_days_to_finish).toBe("9.00");
     });
   });
 });

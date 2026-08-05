@@ -4,9 +4,11 @@ import {
   formatBottleStatus,
   formatCategoryPath,
   formatDate,
+  formatDays,
   formatMoney,
   formatPercent,
   formatRating,
+  formatValueForMoney,
   formatVendorKind,
   formatVolume,
   MAX_RATING,
@@ -94,6 +96,28 @@ describe("formatDate", () => {
     // 레거시에 구매일 컬럼이 없어 임포트한 기록은 날짜를 모른다.
     expect(formatDate(null)).toBe("날짜 미기록");
     expect(formatDate("2026-03-01")).toBe("2026-03-01");
+  });
+});
+
+describe("formatDays", () => {
+  it("반올림해 일 단위로 보여준다", () => {
+    expect(formatDays("9.40")).toBe("9일");
+    expect(formatDays("9.60")).toBe("10일");
+  });
+
+  it("없으면 대시로 표시한다", () => {
+    expect(formatDays(null)).toBe("—");
+  });
+});
+
+describe("formatValueForMoney", () => {
+  it("소수 둘째 자리까지 보여준다", () => {
+    expect(formatValueForMoney("0.4250")).toBe("0.43");
+    expect(formatValueForMoney("1")).toBe("1");
+  });
+
+  it("없으면 대시로 표시한다", () => {
+    expect(formatValueForMoney(null)).toBe("—");
   });
 });
 

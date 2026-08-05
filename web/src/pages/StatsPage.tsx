@@ -14,8 +14,19 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 
 import type { CategoryStat, RankingEntry } from "@/api/types";
+import { BarChart, type BarChartDatum } from "@/components/charts/BarChart";
+import { DonutChart } from "@/components/charts/DonutChart";
 import { PivotExplorer } from "@/components/PivotExplorer";
-import { formatAbv, formatMoney, formatPercent, formatRating, formatVolume } from "@/format";
+import {
+  formatAbv,
+  formatBottleStatus,
+  formatDays,
+  formatMoney,
+  formatPercent,
+  formatRating,
+  formatValueForMoney,
+  formatVolume,
+} from "@/format";
 import {
   getCategoryRollup,
   getCategoryTree,
@@ -64,6 +75,60 @@ function sortCategories(
   });
 }
 
+/**
+ * "주종별 집계" 차트가 보여줄 측정값. 기준(주종)은 이 절 자체가 이미 그 기준으로 묶은
+ * 데이터라 고정이지만, 측정값은 화면에서 바꿀 수 있게 한다(사용자 항목 4 — "쉽게 추가하고
+ * 수정하고 변경해서 볼 수 있었으면").
+ */
+type CategoryMeasureKey = Exclude<CategorySortKey, "name">;
+
+interface CategoryMeasureDef {
+  key: CategoryMeasureKey;
+  label: string;
+  valueOf: (stat: CategoryStat) => number | null;
+  formatValue: (value: number) => string;
+}
+
+const CATEGORY_MEASURES: CategoryMeasureDef[] = [
+  {
+    key: "bottle_count",
+    label: "병수",
+    valueOf: (stat) => stat.bottle_count,
+    formatValue: (value) => `${value.toLocaleString("ko-KR")}병`,
+  },
+  {
+    key: "total_spend",
+    label: "총액",
+    valueOf: (stat) => (stat.total_spend !== null ? Number(stat.total_spend) : null),
+    formatValue: (value) => formatMoney(String(value)),
+  },
+  {
+    key: "avg_abv",
+    label: "평균 도수",
+    valueOf: (stat) => (stat.avg_abv !== null ? Number(stat.avg_abv) : null),
+    formatValue: (value) => formatAbv(String(value)),
+  },
+  {
+    key: "avg_rating",
+    label: "평균 평점",
+    valueOf: (stat) => (stat.avg_rating !== null ? Number(stat.avg_rating) : null),
+    formatValue: (value) => formatRating(String(value)),
+  },
+  {
+    key: "avg_price_per_100ml",
+    label: "평균 100ml가",
+    valueOf: (stat) =>
+      stat.avg_price_per_100ml !== null ? Number(stat.avg_price_per_100ml) : null,
+    formatValue: (value) => formatMoney(String(value)),
+  },
+  {
+    key: "discount_rate",
+    label: "할인율",
+    valueOf: (stat) => (stat.discount_rate !== null ? Number(stat.discount_rate) : null),
+    formatValue: (value) => formatPercent(String(value)),
+  },
+];
+
 interface StatsPageProps {
   onSelectProduct: (productId: string) => void;
   onSelectCategory: (categoryId: string) => void;
@@ -78,6 +143,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const [categorySort, setCategorySort] = useState<CategorySortKey>(DEFAULT_CATEGORY_SORT);
   const [categoryOrder, setCategoryOrder] = useState<SortOrder>(DEFAULT_CATEGORY_ORDER);
+  const [categoryMeasure, setCategoryMeasure] = useState<CategoryMeasureKey>("bottle_count");
 
   if (rankings === undefined || categoriesRaw === undefined || totals === undefined) {
     return <output aria-live="polite">통계를 불러오고 있습니다…</output>;
@@ -93,7 +159,19 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
   }
 
   const categories = sortCategories(categoriesRaw, categorySort, categoryOrder);
-  const maxBottleCount = Math.max(1, ...categories.map((stat) => stat.bottle_count));
+  const measure = CATEGORY_MEASURES.find((m) => m.key === categoryMeasure) ?? CATEGORY_MEASURES[0];
+  const chartData: BarChartDatum[] = categories.flatMap((stat) => {
+    const value = measure ? measure.valueOf(stat) : null;
+    // 값이 없는 주종은 막대를 0으로 그리지 않고 아예 뺀다 — "0" 과 "정보 없음" 은 다르다.
+    if (value === null) return [];
+    return [
+      {
+        label: stat.name,
+        value,
+        onSelect: stat.category_id ? () => onSelectCategory(stat.category_id as string) : undefined,
+      },
+    ];
+  });
 
   return (
     <div className="stats-page">
@@ -111,6 +189,10 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
             label="미개봉 / 개봉"
             value={`${totals.unopened_count.toLocaleString("ko-KR")} / ${totals.opened_count.toLocaleString("ko-KR")}병`}
           />
+          <Metric
+            label="증여 / 판매"
+            value={`${totals.gifted_count.toLocaleString("ko-KR")} / ${totals.sold_count.toLocaleString("ko-KR")}병`}
+          />
           <Metric label="총 용량" value={formatVolume(totals.total_volume_ml)} />
           <Metric label="정가 총액" value={formatMoney(totals.list_total)} />
           <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
@@ -119,8 +201,23 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
           <Metric label="평균 100ml당 가격" value={formatMoney(totals.avg_price_per_100ml)} />
           <Metric label="평균 할인율" value={formatPercent(totals.discount_rate)} />
           <Metric label="평균 내 평점" value={formatRating(totals.avg_personal_rating)} />
+          <Metric label="평균 개봉→소진 일수" value={formatDays(totals.avg_days_to_finish)} />
+          <Metric label="평균 가성비" value={formatValueForMoney(totals.avg_value_for_money)} />
           <Metric label="고유 구매처" value={`${totals.vendor_count.toLocaleString("ko-KR")}곳`} />
         </dl>
+
+        <h4>병 상태 분포</h4>
+        <DonutChart
+          title="병 상태 분포"
+          data={[
+            { label: formatBottleStatus("unopened"), value: totals.unopened_count },
+            { label: formatBottleStatus("open"), value: totals.opened_count },
+            { label: formatBottleStatus("finished"), value: totals.consumed_count },
+            { label: formatBottleStatus("gifted"), value: totals.gifted_count },
+            { label: formatBottleStatus("sold"), value: totals.sold_count },
+          ]}
+          formatValue={(value) => `${value.toLocaleString("ko-KR")}병`}
+        />
       </section>
 
       <section aria-labelledby="stats-category-heading">
@@ -130,33 +227,30 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
           <p className="muted">등록된 술이 없습니다.</p>
         ) : (
           <>
-            {/* 표와 같은 병수 데이터를 같은 정렬 순서로 보여준다. 주종을 누르면 그 주종
-                필터가 걸린 "내 술" 탭으로 이동한다("미분류" 는 실제 카테고리가 아니라
-                건너뛸 곳이 없어 비활성이다). */}
-            <ul className="category-bars">
-              {categories.map((stat) => (
-                <li className="category-bar-row" key={stat.category_id ?? "uncategorized"}>
-                  {stat.category_id ? (
-                    <button
-                      type="button"
-                      className="sort-button category-bar-label"
-                      onClick={() => onSelectCategory(stat.category_id as string)}
-                    >
-                      {stat.name}
-                    </button>
-                  ) : (
-                    <span className="category-bar-label">{stat.name}</span>
-                  )}
-                  <span className="category-bar-track">
-                    <span
-                      className="category-bar-fill"
-                      style={{ width: `${(stat.bottle_count / maxBottleCount) * 100}%` }}
-                    />
-                  </span>
-                  <span className="numeric">{stat.bottle_count.toLocaleString("ko-KR")}병</span>
-                </li>
-              ))}
-            </ul>
+            {/* 기준(주종)은 이 절에서는 고정이지만 측정값은 바꿀 수 있다 — 바꾸면 차트가
+                바로 다시 그려진다. 주종을 누르면 그 주종 필터가 걸린 "내 술" 탭으로
+                이동한다("미분류" 는 실제 카테고리가 아니라 건너뛸 곳이 없어 비활성이다). */}
+            <div className="chart-controls">
+              <label htmlFor="category-measure">
+                측정값
+                <select
+                  id="category-measure"
+                  value={categoryMeasure}
+                  onChange={(event) => setCategoryMeasure(event.target.value as CategoryMeasureKey)}
+                >
+                  {CATEGORY_MEASURES.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <BarChart
+              title={`주종별 ${measure?.label ?? ""}`}
+              data={chartData}
+              formatValue={measure?.formatValue}
+            />
 
             <CategoryTable
               categories={categories}
@@ -197,6 +291,13 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
             title="개인 평점"
             entries={rankings.by_personal_rating}
             formatValue={formatRating}
+            onSelectProduct={onSelectProduct}
+          />
+          <RankingList
+            title="가성비"
+            hint="평점 ÷ 100ml당 가격"
+            entries={rankings.by_value_for_money}
+            formatValue={formatValueForMoney}
             onSelectProduct={onSelectProduct}
           />
         </div>
@@ -254,6 +355,9 @@ function CategoryTable({
     <>
       <div className="table-scroll">
         <table className="stats-table">
+          <caption className="sr-only">
+            주종별 통계 표. 위 차트와 같은 데이터를 표로 봅니다.
+          </caption>
           <thead>
             <tr>
               {CATEGORY_COLUMNS.map((column) => (

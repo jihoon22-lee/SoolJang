@@ -71,6 +71,20 @@
   --control-h-md: 44px;
   --control-h-lg: 3rem;
 
+  /*
+   * 범주형 차트 팔레트(Task 24 PR5). 포인트 색(`--accent`)은 하나뿐이라 여러 계열을
+   * 동시에 그릴 수 없었다 — Cellar Dark 톤 안에서 서로 구분되는 6색을 골랐다. 값은
+   * `components/charts/palette.ts::CHART_PALETTE` 와 반드시 같아야 한다(SVG `fill` 은
+   * CSS 커스텀 프로퍼티를 직접 읽지 못해 그쪽엔 리터럴로 다시 적는다) — 색을 바꿀 땐
+   * 두 곳을 함께 고친다.
+   */
+  --chart-1: #ddb161; /* 골드 (accent-strong) */
+  --chart-2: #7fbf95; /* 세이지 (ok) */
+  --chart-3: #e8837a; /* 코랄 (danger) */
+  --chart-4: #7aa7e8; /* 블루 */
+  --chart-5: #b98ae0; /* 퍼플 */
+  --chart-6: #5fb8b0; /* 틸 */
+
   /* 신호 요소(주 버튼·활성 탭·재고 배지)에만 쓰는 은은한 브라스 광택. */
   --glow-accent: 0 0 0 1px rgb(201 154 74 / 35%), 0 2px 14px rgb(201 154 74 / 22%);
   --shadow-panel: 0 1px 2px rgb(0 0 0 / 30%);
@@ -577,7 +591,6 @@ button:disabled {
 .product-table td.numeric,
 .product-table th.numeric {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .sort-button {
@@ -681,6 +694,12 @@ button:disabled {
   color: var(--text-muted);
 }
 
+/* 자릿수가 맞춰져야 하는 값(가격·병수 등) 공통 유틸. 표 밖(예: 차트)에서도 쓸 수 있게
+   일반화했다 — 표 안 셀은 `.product-table td.numeric` 등에서 정렬만 추가로 얹는다. */
+.numeric {
+  font-variant-numeric: tabular-nums;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -761,7 +780,6 @@ button:disabled {
 .stats-table td.numeric,
 .stats-table th.numeric {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .stats-cards {
@@ -786,7 +804,9 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.category-bars {
+/* `components/charts/BarChart.tsx` 가 쓴다. 이전엔 "주종별 집계" 하나에만 쓰는
+   `.category-bar-*` 였는데, 재사용 가능한 차트 프리미티브로 뽑아내며 이름도 일반화했다. */
+.bar-chart-rows {
   display: grid;
   gap: 8px;
   margin: 0 0 var(--space);
@@ -794,18 +814,18 @@ button:disabled {
   list-style: none;
 }
 
-.category-bar-row {
+.bar-chart-row {
   display: grid;
-  /* `minmax(0, 6em)` — 순수 `6em` 이면 그리드 아이템의 기본 최소 크기(내용의 고유
-     최소 크기)가 여전히 이 칸을 밀어낼 수 있다. "싱글 몰트 위스키" 처럼 긴 이름이
-     행 전체 너비를 넓히던 원인이었다. */
-  grid-template-columns: minmax(0, 6em) 1fr auto;
+  /* `minmax(0, …)` — 순수 길이값이면 그리드 아이템의 기본 최소 크기(내용의 고유 최소
+     크기)가 여전히 이 칸을 밀어낼 수 있다. "싱글 몰트 위스키" 처럼 긴 이름이 행 전체
+     너비를 넓히던 원인이었다. 구매처 이름처럼 더 긴 라벨도 다루므로 10em 으로 넓혔다. */
+  grid-template-columns: minmax(0, 10em) 1fr auto;
   align-items: center;
   gap: 8px;
   font-size: var(--text-sm);
 }
 
-.category-bar-label {
+.bar-chart-label {
   /* `.sort-button` 과 함께 쓰이면 그 `inline-flex` 가 이 규칙의 말줄임을 무효화한다
      (flex 컨테이너의 넘치는 텍스트는 익명 flex 아이템으로 감싸져 `text-overflow` 가
      적용되지 않는다) — `display: block` 을 소스 순서상 더 뒤에 둬 되돌린다. */
@@ -815,18 +835,14 @@ button:disabled {
   white-space: nowrap;
 }
 
-.category-bar-track {
+.bar-chart-track {
+  display: block;
+  width: 100%;
+  height: 10px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
-  height: 10px;
   overflow: hidden;
-}
-
-.category-bar-fill {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-strong) 100%);
 }
 
 .ranking-grid {
@@ -864,7 +880,7 @@ button:disabled {
 }
 
 .ranking-name {
-  /* `.category-bar-label` 과 같은 이유로 `.sort-button` 의 `inline-flex` 를 되돌린다. */
+  /* `.bar-chart-label` 과 같은 이유로 `.sort-button` 의 `inline-flex` 를 되돌린다. */
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -1527,4 +1543,93 @@ button:disabled {
   background: #000;
   border-radius: var(--radius-sm);
   object-fit: cover;
+}
+
+/* --- 차트 프리미티브(Task 24 PR5, `components/charts/`) ------------------------ */
+
+.donut-chart {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.donut-chart-svg {
+  width: 8rem;
+  height: 8rem;
+  flex: none;
+}
+
+.donut-chart-legend {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.donut-chart-legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.donut-chart-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.donut-chart-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-chart-svg {
+  display: block;
+  width: 100%;
+  height: 10rem;
+}
+
+.line-chart-area {
+  opacity: 15%;
+}
+
+.line-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.line-chart-labels span {
+  flex: 1;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 통계 요약의 지표 선택 콤보(측정값을 바꾸면 즉시 차트가 바뀐다). */
+.chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space);
+  margin-bottom: var(--space);
+}
+
+.chart-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }

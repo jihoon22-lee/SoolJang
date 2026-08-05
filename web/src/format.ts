@@ -56,6 +56,20 @@ export function formatDate(date: string | null | undefined): string {
   return date;
 }
 
+/** 개봉→소진 평균 일수. */
+export function formatDays(days: string | null | undefined): string {
+  if (days === null || days === undefined || days === "") return "—";
+  const value = Number(days);
+  return Number.isNaN(value) ? "—" : `${Math.round(value).toLocaleString("ko-KR")}일`;
+}
+
+/** 가성비(평점 ÷ 100ml당 가격, 1,000원 기준으로 정규화). 단위가 없어 그대로 숫자만 보여준다. */
+export function formatValueForMoney(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  const num = Number(value);
+  return Number.isNaN(num) ? "—" : num.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+}
+
 export function formatCategoryPath(path: string[]): string {
   return path.length === 0 ? "미분류" : path.join(" › ");
 }

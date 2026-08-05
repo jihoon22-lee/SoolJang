@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR3 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49). PR4 게이트 전부 통과, PR 오픈 대기) |
+| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR4 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50). PR5 게이트 전부 통과, PR 오픈 대기) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR4**(`feat/navigation-restructure`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 413 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR5(통계 차트)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
-| 현재 브랜치 | `feat/navigation-restructure` (Task 24 PR4) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR3 완료, PR4 머지 대기, PR5~7 착수 전 |
+| 다음 착수 Task | **Task 24 PR5**(`feat/stats-charts`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 431 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR6(주종 관리 UX)·PR7(오프라인 조회 성능)이 남았다 |
+| 현재 브랜치 | `feat/stats-charts` (Task 24 PR5) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR4 완료, PR5 머지 대기, PR6~7 착수 전 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR3/7 완료·머지, PR4/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`(머지됨), `feat/navigation-restructure` 외 3개(PR5~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR4/7 완료·머지, PR5/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`(머지됨), `feat/stats-charts` 외 2개(PR6~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50) |
 
 ### 의존 관계
 
@@ -1196,6 +1196,47 @@ build` 정상, 시크릿 스캔 통과. Playwright 로 360/768/1280px 세 폭에
 숨김·360px 노출되는 매장 모드 진입 버튼도 눈으로 검증했다. 근거는 `plan.md` Task 24 PR4
 절, D130~D133.
 
+#### PR5 — `feat/stats-charts`: 통계 화면 차트 개편 (2026-08-05, 사용자 항목 4)
+
+"엑셀 통계표를 그대로 html로 옮긴 느낌" 이라는 지적(항목 4)의 원인은 정확했다 — 유일한
+"차트" 가 CSS `<div>` 막대 하나였고 나머지는 전부 표였다. 사용자 결정대로 **진짜 차트 +
+사용자가 직접 조합**하는 방향으로 바꿨다.
+
+- **사내 SVG 차트 프리미티브**(`components/charts/`, 외부 라이브러리 미도입 — 이미 번들이
+  508KB 로 Vite 경고선을 넘었고 오프라인 PWA 라 용량이 곧 체감된다): `BarChart`(수평 막대,
+  라벨은 HTML 로 렌더링해 SVG 텍스트의 줄바꿈 예측 불가 문제를 피함) · `DonutChart`(비율,
+  `stroke-dasharray` 트릭으로 둘레를 정확히 100으로 잡아 대시 길이 = 백분율) ·
+  `LineChart`(시계열, 점이 13개를 넘으면 라벨을 한 칸씩 걸러 보여줌). 셋 다 `role="img"` +
+  `aria-label` + 화면에 없는 `<table>` 대체 텍스트를 갖췄다. scatter 는 짓지 않았다 — 이번에
+  실제로 쓸 화면(막대·비율·시계열)에 필요하지 않아 미리 만들어 두는 대신 필요해지면 그때
+  추가한다
+- **범주형 팔레트 신설**(PR3 의 토큰 작업 위에 올림): `--chart-1`~`--chart-6` 6색을
+  `styles.css` 와 `charts/palette.ts` 양쪽에(SVG `fill` 은 CSS 커스텀 프로퍼티를 못 읽어
+  리터럴로 다시 적어야 한다) 같은 값으로 뒀다
+- **"주종별 집계" 를 조합 가능하게**: 기준(주종)은 이 절 자체가 이미 그 기준으로 묶은
+  데이터라 고정이지만, 측정값(병수·총액·평균 도수·평균 평점·평균 100ml가·할인율)을 셀렉트로
+  바꾸면 `BarChart` 가 즉시 다시 그려진다 — 값이 없는 주종은 "0" 이 아니라 아예 막대에서
+  뺀다. 병 상태(미개봉/개봉/소진/증여/판매)는 `DonutChart` 로, 커스텀 피벗(온라인 전용, 이미
+  기준×열×지표 조합 UI 가 있었다)의 월별 시계열은 기존 CSS 막대 흉내(`aria-hidden` +
+  별도 표)를 `LineChart` 로 교체했다
+- **안 보여주던 지표 노출**: `getStatsSummary()`(오프라인 계산)에 `gifted_count`/
+  `sold_count`/`avg_days_to_finish`/`avg_value_for_money` 를 추가해 "전체 합계" 에 노출했다.
+  `avg_days_to_finish` 는 `domain/metrics.ts::computeProductMetrics` 내부에 있던 로직을
+  `averageDaysToFinish()` 로 뽑아 컬렉션 전체(병 목록을 평평하게 모음)에도 그대로 썼다 —
+  제품별 평균을 다시 평균 내면 병이 적은 제품과 많은 제품이 똑같이 반영되는 왜곡이 생겨서,
+  항상 병 단위로 직접 평균한다. `getStatsRankings()` 에 `by_value_for_money` 랭킹도
+  추가했다(`top(keyFn)` 클로저에 한 줄) — 평점은 낮아도 가격 대비로는 막걸리가 고가 위스키를
+  이기는 걸 실데이터로 확인했다
+- **`StatsSummary`/`Rankings` 의 새 필드는 오프라인 계산 전용이다**: `/stats/summary`·
+  `/stats/rankings` 를 실제로 호출하는 화면이 없다(둘 다 죽은 API 클라이언트 메서드) — 백엔드
+  스키마는 건드리지 않고 TS 타입에만 필드를 추가했다. `PR5` 는 순수 프론트엔드 변경이다
+
+검증: `npm run check` 431 passed(회귀 0건), `vite build` 정상, 시크릿 스캔 통과. 백엔드
+변경 없음. Playwright 로 실데이터(406종·1,079병)를 대상으로 렌더링해 확인했다 — 도넛 차트가
+실제 병 상태 비율을 정확히 보여주고, 측정값 셀렉트를 "평균 도수" 로 바꾸면 막대 차트가
+즉시 다시 그려지며, "가성비" 랭킹 1위가 실제로 저가 막걸리로 나오는 것까지 확인했다. 근거는
+`plan.md` Task 24 PR5 절, D134~D137.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1437,6 +1478,15 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D131 | "매장 모드" 를 주 nav 에서 빼고 `ProductsPage` 상단에 모바일 전용(900px 미만) 진입 버튼(`.store-mode-entry`)을 추가한다. `#scan` 라우트·`StoreModePage`·기존 테스트는 그대로 둔다 | 사용자 항목 6 — PC 는 카메라가 없고 표를 스캔하며 훑는 게 매장 모드보다 빠르다. 라우트 자체를 없애지 않고 진입점만 옮기면 URL 직접 접근·북마크는 계속 동작한다 |
 | D132 | `Vendor` 에 `total_spend`(실구매가 우선, 없으면 정가로 보충, 둘 다 없으면 그 구매 건은 합계에서 제외)를 추가해 `VendorsPage` 목록에 노출한다. 구매 건 존재 자체를 반영하는 `purchase_count` 와 달리, "가격 정보가 없는 구매" 를 0 원으로 합산하면 실제보다 적게 보인다 | 사용자 항목 2 가 요청한 "총 지출 같은 요약" — `getVendors()` 가 이미 구매 건수를 집계하고 있어 같은 순회에서 함께 계산하는 게 자연스럽다. NULL 을 0 으로 두지 않는 원칙은 D35 와 동일하다 |
 | D133 | `VendorsPage` 의 구매처 이름을 `<span className="name">` 대신 `<button className="link-like">` 로 바꿔 `onSelectVendor` 콜백을 연결하고, `Route`/`router.ts` 에 `vendorId`(`?vendor=<id>`)를 `categoryId` 와 대칭으로 추가한다. `ProductsPage` 는 `initialCategoryId` 와 같은 "마운트 시점에만 시딩" 패턴으로 `initialVendorId` 를 받는다 | `vendor_id` 필터 자체는 `queries.ts`/`ProductFilterPanel.tsx` 에 이미 端到端 구현돼 있었다 — 빠진 건 구매처 화면에서 그 필터로 넘어가는 연결 하나였다. 기존 카테고리 드릴다운과 완전히 같은 아키텍처를 재사용해 새 개념을 추가하지 않았다 |
+
+### Task 24 PR5 결정 (D134~D137)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D134 | `components/charts/` 에 사내 SVG 프리미티브(`BarChart`/`DonutChart`/`LineChart`)를 새로 만든다(외부 차트 라이브러리 미도입). `BarChart` 의 라벨은 SVG `<text>` 가 아니라 일반 HTML 로 렌더링한다 | 번들이 이미 508KB 로 Vite 경고선을 넘었고 오프라인 PWA 라 용량이 곧 체감된다 — 필요한 차트가 단순해 직접 그리는 비용이 낮다. SVG `<text>` 는 폰트 지표를 몰라 긴 한글 라벨의 줄바꿈·말줄임을 예측할 수 없다(PR3 에서 이미 겪은 문제) |
+| D135 | scatter 프리미티브는 만들지 않는다 | 이번에 실제로 쓸 화면(막대·비율·시계열)에 필요하지 않다 — 미리 만들어 두는 대신 필요해지면 그때 추가한다. 가상의 미래 재사용을 위한 추상화는 비용만 남긴다 |
+| D136 | "주종별 집계" 절의 기준(주종)은 고정하고 측정값만 셀렉트로 바꿀 수 있게 한다. 커스텀 피벗(온라인 전용, 기준×열×지표 조합 UI 는 이미 있었다)의 순수 재구현(클라이언트 피벗)은 이번 PR 범위에서 뺀다 | 커스텀 피벗은 **구매 건 단위**로 묶어야 해서(`purchase_stats_rows_query`) 제품 단위로 미리 합산한 `statsRows()` 로는 재현할 수 없다 — 재현하려면 Dexie 에서 구매 건 원자 행을 새로 조립해야 하는데, 이는 사실상 파이썬 피벗 로직의 병행 구현이라 이번 PR 범위를 벗어난다. 반면 "주종별 집계" 는 이미 제품 단위로 묶여 있어 측정값 전환만으로도 오프라인에서 실질적인 "조합 가능" 경험을 준다 |
+| D137 | `averageDaysToFinish()` 를 `computeProductMetrics` 내부에서 뽑아 공개 함수로 만들고, 컬렉션 전체 평균(`getStatsSummary()`)도 병 목록을 평평하게 모아 이 함수 하나로 계산한다. 마찬가지로 `avg_value_for_money` 는 제품별 가성비의 단순 평균이다(`avg_rating`/`avg_abv` 와 같은 패턴) | 제품별 평균을 다시 평균 내면 병이 적은 제품과 많은 제품이 똑같이 반영되는 왜곡이 생긴다 — 항상 원자 단위(병)에서 직접 평균해야 한다. `StatsSummary`/`Rankings` 의 새 필드는 `/stats/summary`·`/stats/rankings` 를 실제로 호출하는 화면이 없어(죽은 API 클라이언트 메서드) 백엔드 스키마는 건드리지 않고 TS 타입에만 추가했다 |
 
 ## 6. 열린 질문
 
