@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (**Task 24 전체 완료** — PR1~PR7 모두 머지 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53)) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. **사용자가 확인·결정할 항목은 §6 열린 질문의 Q7(Tailscale Serve 켜기)·Q8(GHCR pull 권한, 선택)·Q9(Task 19 착수 여부)로 정리해 뒀다.** 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
+| 최종 갱신 | 2026-08-05 (**Task 24 전체 완료** — PR1~PR7 모두 머지 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53). 이어서 Q7·Q8 해결, Q9(데일리샷 등록 + adapter JSON 모드 + 매칭 정확도 개선, [#56](https://github.com/jihoon22-lee/SoolJang/pull/56)) 진행) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
+| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수). 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
 | 현재 브랜치 | `main` |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: **전체 완료** |
+| 진행 중 잔여 항목 | 없음 — Task 23·24 모두 완료. 남은 건 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -1624,9 +1624,9 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션, 2026-08-03 재확인)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 개발 환경 자체가 이 tailnet 의 `main` 노드(홈 PC)다. `docker compose`(web/api/db, 2026-07-31 빌드 — Task 22 배치 이전) 가 이미 떠 있으나 `tailscale serve` 는 아직 설정 안 돼 있어 폰에서 아직 접속 불가. 폰에 Tailscale 앱 설치 + 같은 계정 로그인 + `tailscale serve` 실행 + 최신 이미지 재배포가 남았다(Task 23 진행 중) | — |
 | ~~Q5~~ | ~~웹 푸시 알림 채널~~ | **✅ 해결(사용자 결정, 2026-08-03)** — 웹 푸시로 간다. 단 Task 19 는 목표가를 비교할 시세 데이터(Q3 의 스크래핑) 가 있어야 값이 있어, 그 조사·등록을 미루기로 한 결정과 함께 Task 19 실행도 자연히 미뤄진다 | Task 19 |
 | Q6 | 지인 공유 시 권한 모델 상세. 읽기 전용 링크만으로 충분한지, 계정 발급이 필요한지 | 미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88) | Task 20 후속 |
-| Q7 | Tailscale Serve 를 관리자 콘솔에서 켜기 | **사용자 조작 대기** — `tailscale serve --bg --https=443 http://127.0.0.1:8080` 이 "Serve is not enabled on your tailnet" 로 거부됨(2026-08-03). 계정 단위 설정이라 API/CLI 로 우회 불가. [관리자 콘솔](https://login.tailscale.com/f/serve?node=n8eiMiT7ky11CNTRL) 에서 한 번 켜면 된다. **켠 뒤 알려주면 위 명령을 다시 실행해 마무리한다** — 코드 작업 없음 | Task 23 마무리(모바일 접속) |
-| Q8 | GHCR 에서 직접 `docker pull` 할지, 지금처럼 로컬 재빌드로 배포할지 | **미결정, 급하지 않음** — 이 PC 의 `gh` 토큰에 `read:packages` 스코프가 없어 pull 이 막혀 있다(`gh auth refresh -s read:packages` 는 브라우저 기기 인증 필요). 지금은 같은 소스를 로컬에서 재빌드해 배포 중이라 **내용은 동일하고 문제도 없다** — pull 방식으로 바꾸고 싶을 때만 브라우저로 인증하면 된다 | 원하는 시점 아무 때나(선택 사항) |
-| Q9 | Task 19(판매처 시세 이력) 를 지금 시작할지, 계속 미룰지 | **부분 진행(2026-08-05)** — 데일리샷을 실제 등록했다(Q3 참조). 나머지 6곳(이마트·트레이더스·코스트코·CU·GS25·emart24)은 아직이고, Task 19 본 사양(시세 이력 차트·목표가 알림)은 여전히 미착수다. `search` 전략(Q2)은 ToS 위험으로 계속 보류 상태다 | 사용자가 원하는 시점 |
+| ~~Q7~~ | ~~Tailscale Serve 를 관리자 콘솔에서 켜기~~ | **✅ 해결(사용자 완료, 2026-08-05)** — `tailscale serve status` 로 `https://main.tail30f401.ts.net` → `http://127.0.0.1:8080` 프록시가 정상 등록·실행 중임을 확인했다. 모바일 접속 코드 작업은 없다(Task 23 남은 항목은 이제 폰에서 실제로 접속해 보는 것뿐) | — |
+| ~~Q8~~ | ~~GHCR 에서 직접 `docker pull` 할지, 지금처럼 로컬 재빌드로 배포할지~~ | **✅ 준비 완료(사용자 완료, 2026-08-05)** — `gh auth status` 로 토큰에 `read:packages` 스코프가 생겼음을 확인했다. **어느 방식을 쓸지는 여전히 사용자 선택**(둘 다 동등한 이미지, 급하지 않음) — pull 로 바꾸려면 다음 배포 때 `docker pull ghcr.io/.../sooljang-*:1.0.0` 을 시도하면 된다 | 다음 배포 시점(선택 사항) |
+| Q9 | Task 19(판매처 시세 이력) 를 지금 시작할지, 계속 미룰지 | **부분 진행(2026-08-05, [PR #56](https://github.com/jihoon22-lee/SoolJang/pull/56))** — 데일리샷을 실제 등록했다(Q3 참조). 등록 과정에서 `adapter_spec` 에 JSON 모드를 새로 추가하고(SPA+API 사이트 대응) 이름 유사도 매칭의 실제 오탐(증류소 접두사 혼동)도 발견해 고쳤다 — 상세는 §5 D147~D148. 나머지 6곳(이마트·트레이더스·코스트코·CU·GS25·emart24)은 아직이고, Task 19 본 사양(시세 이력 차트·목표가 알림)은 여전히 미착수다. `search` 전략(Q2)은 ToS 위험으로 계속 보류 상태다 | 사용자가 원하는 시점 |
 
 ---
 
