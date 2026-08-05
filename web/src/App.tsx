@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, authApi, setUnauthorizedHandler } from "@/api/client";
 import type { User } from "@/api/types";
@@ -17,14 +17,19 @@ import { parseHash, type Route, routeToHash, type View } from "@/router";
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 
+/** 자주 쓰는 화면만 주 탭에 남긴다(항목 3·6). "매장 모드" 는 nav 에서 빠졌지만 `#scan`
+ * 라우트·화면은 그대로 있다 — `ProductsPage` 의 모바일 전용 진입 버튼으로만 들어간다. */
 const VIEWS: { id: View; label: string }[] = [
   { id: "products", label: "내 술" },
-  { id: "scan", label: "매장 모드" },
   { id: "categories", label: "주종 관리" },
   { id: "vendors", label: "구매처" },
-  { id: "sources", label: "외부 소스" },
   { id: "stats", label: "통계" },
+];
+
+/** 자주 쓰지 않는 환경 설정류. 헤더의 설정 메뉴 안에 접어 둔다(항목 3). */
+const SETTINGS_VIEWS: { id: View; label: string }[] = [
   { id: "import", label: "가져오기" },
+  { id: "sources", label: "외부 소스" },
   { id: "settings", label: "설정" },
   { id: "status", label: "서비스 상태" },
 ];
@@ -42,7 +47,29 @@ const VIEWS: { id: View; label: string }[] = [
  */
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+
+  // 메뉴 바깥을 클릭하거나 Esc 를 누르면 닫는다 — 드물게 여는 `SyncStatusBadge` 패널과 달리
+  // 이건 자주 여닫는 상시 내비게이션이라 닫는 방법이 트리거 버튼 재클릭뿐이면 불편하다.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    function onPointerDown(event: PointerEvent): void {
+      if (!settingsMenuRef.current?.contains(event.target as Node)) {
+        setSettingsOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") setSettingsOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [settingsOpen]);
 
   useEffect(() => {
     function onPopState(): void {
@@ -101,6 +128,7 @@ export function App() {
   }
 
   const user: User | undefined = session.data ?? undefined;
+  const isSettingsView = SETTINGS_VIEWS.some((item) => item.id === route.view);
 
   return (
     <SyncStatusProvider>
@@ -129,20 +157,53 @@ export function App() {
           <div className="app-account">
             <SyncStatusBadge />
             {user ? <span className="app-account-name">{user.display_name}</span> : null}
-            <button
-              type="button"
-              className="app-logout"
-              onClick={() => {
-                void authApi.logout().finally(() => {
-                  queryClient.setQueryData(["auth", "me"], null);
-                  queryClient.removeQueries({
-                    predicate: (query) => query.queryKey[0] !== "auth",
-                  });
-                });
-              }}
-            >
-              로그아웃
-            </button>
+            <div className="settings-menu" ref={settingsMenuRef}>
+              <button
+                type="button"
+                className="settings-menu-trigger"
+                aria-expanded={settingsOpen}
+                aria-haspopup="true"
+                aria-current={isSettingsView ? "page" : undefined}
+                onClick={() => setSettingsOpen((open) => !open)}
+              >
+                설정
+              </button>
+              {settingsOpen && (
+                <div className="settings-menu-panel" role="menu" aria-label="설정 메뉴">
+                  {SETTINGS_VIEWS.map((item) => (
+                    <a
+                      key={item.id}
+                      role="menuitem"
+                      href={`#${item.id}`}
+                      aria-current={route.view === item.id ? "page" : undefined}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigate({ view: item.id });
+                        setSettingsOpen(false);
+                      }}
+                    >
+                      {item.label}
+                    </a>
+                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="settings-menu-logout"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      void authApi.logout().finally(() => {
+                        queryClient.setQueryData(["auth", "me"], null);
+                        queryClient.removeQueries({
+                          predicate: (query) => query.queryKey[0] !== "auth",
+                        });
+                      });
+                    }}
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -153,13 +214,17 @@ export function App() {
               onSelectProduct={(id) => navigate({ view: "products", productId: id })}
               onDeselectProduct={() => navigate({ view: "products" })}
               initialCategoryId={route.categoryId}
+              initialVendorId={route.vendorId}
+              onOpenStoreMode={() => navigate({ view: "scan" })}
             />
           )}
           {route.view === "scan" && (
             <StoreModePage onOpenDetail={(id) => navigate({ view: "products", productId: id })} />
           )}
           {route.view === "categories" && <CategoriesPage />}
-          {route.view === "vendors" && <VendorsPage />}
+          {route.view === "vendors" && (
+            <VendorsPage onSelectVendor={(id) => navigate({ view: "products", vendorId: id })} />
+          )}
           {route.view === "sources" && <SourcesPage />}
           {route.view === "stats" && (
             <StatsPage

@@ -43,6 +43,8 @@ export interface Route {
   productId?: string | undefined;
   /** `view === "products"` 일 때만 의미가 있다 — 목록에 걸린 주종 필터. */
   categoryId?: string | undefined;
+  /** `view === "products"` 일 때만 의미가 있다 — 구매처에서 드릴다운할 때 걸리는 구매처 필터. */
+  vendorId?: string | undefined;
 }
 
 function isView(value: string): value is View {
@@ -62,8 +64,10 @@ export function parseHash(hash: string): Route {
   }
 
   const productId = segments[1];
-  const categoryId = new URLSearchParams(queryPart ?? "").get("category") ?? undefined;
-  return { view, productId, categoryId };
+  const params = new URLSearchParams(queryPart ?? "");
+  const categoryId = params.get("category") ?? undefined;
+  const vendorId = params.get("vendor") ?? undefined;
+  return { view, productId, categoryId, vendorId };
 }
 
 /** 라우트를 `#` 로 시작하는 해시 문자열로 되돌린다. `parseHash` 의 역함수다. */
@@ -73,6 +77,9 @@ export function routeToHash(route: Route): string {
   }
   if (route.view === "products" && route.categoryId) {
     return `#products?category=${route.categoryId}`;
+  }
+  if (route.view === "products" && route.vendorId) {
+    return `#products?vendor=${route.vendorId}`;
   }
   return `#${route.view}`;
 }

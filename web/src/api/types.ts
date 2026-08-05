@@ -187,6 +187,8 @@ export interface Vendor {
   url: string | null;
   note: string | null;
   purchase_count: number;
+  /** 이 구매처에서 산 구매 건들의 총 지출(실구매가 우선, 없으면 정가로 보충). */
+  total_spend: Money;
 }
 
 export interface Purchase {

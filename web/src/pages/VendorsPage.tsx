@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { type FormEvent, useState } from "react";
 
 import type { Vendor, VendorKind } from "@/api/types";
-import { formatVendorKind } from "@/format";
+import { formatMoney, formatVendorKind } from "@/format";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { getVendors } from "@/sync/queries";
@@ -30,7 +30,7 @@ const VENDOR_KINDS: VendorKind[] = [
  * 이름·종류 수정은 `CategoriesPage::rename` 과 같은 패턴(오프라인 낙관적 갱신)이다 — 필드만
  * 바꾸는 단순 갱신이라 온라인 전용으로 둘 이유가 없다.
  */
-export function VendorsPage() {
+export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: string) => void }) {
   const vendors = useLiveQuery(() => getVendors(), []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -124,11 +124,18 @@ export function VendorsPage() {
               </li>
             ) : (
               <li className="vendor-row" key={vendor.id}>
-                <span className="name">{vendor.name}</span>
+                <button
+                  type="button"
+                  className="link-like"
+                  onClick={() => onSelectVendor(vendor.id)}
+                >
+                  {vendor.name}
+                </button>
                 <span className="muted">{formatVendorKind(vendor.kind)}</span>
                 <span className="muted">
                   구매 {vendor.purchase_count.toLocaleString("ko-KR")}건
                 </span>
+                <span className="muted">{formatMoney(vendor.total_spend)}</span>
                 <button type="button" onClick={() => startEdit(vendor)}>
                   수정
                 </button>

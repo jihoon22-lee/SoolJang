@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (Task 24 PR1·PR2 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48). PR3 게이트 전부 통과, PR 오픈 대기) |
+| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR3 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49). PR4 게이트 전부 통과, PR 오픈 대기) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR3**(`refactor/design-system`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 408 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR4(탭 정리+구매처 드릴다운)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
-| 현재 브랜치 | `refactor/design-system` (Task 24 PR3) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1·PR2 완료, PR3 머지 대기, PR4~7 착수 전 |
+| 다음 착수 Task | **Task 24 PR4**(`feat/navigation-restructure`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 413 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 다음 단계. 이어서 PR5(통계 차트)부터 PR7(오프라인 조회 성능)까지 순서대로 진행 |
+| 현재 브랜치 | `feat/navigation-restructure` (Task 24 PR4) |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR3 완료, PR4 머지 대기, PR5~7 착수 전 |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1·PR2/7 완료·머지, PR3/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`(머지됨), `refactor/design-system` 외 4개(PR4~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR3/7 완료·머지, PR4/7 게이트 통과(머지 대기) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`(머지됨), `feat/navigation-restructure` 외 3개(PR5~7 예정) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49) |
 
 ### 의존 관계
 
@@ -1170,6 +1170,32 @@ build` 정상, 시크릿 스캔 통과. Playwright 로 360/768/1280px 세 폭에
 밀어냈다), 모바일 카드 뷰의 제품명 링크가 눈에 띄게 넓어진 터치 영역으로 보이고, 내비게이션
 줄바꿈·버튼 높이가 세 폭 모두에서 고르게 나타남을 확인했다.
 
+#### PR4 — `feat/navigation-restructure`: 탭 정리 + 구매처 드릴다운 + 매장 모드 모바일 전용 (2026-08-05, 사용자 항목 2·3·6)
+
+- **설정 메뉴로 분리(항목 3)**: `가져오기`/`외부 소스`/`설정`/`서비스 상태` + 로그아웃을
+  헤더 우측 "설정" 버튼 하나로 접었다(`App.tsx` 의 `SETTINGS_VIEWS`). `SyncStatusBadge` 의
+  팝오버 패턴을 재사용하되, 자주 여닫는 상시 내비게이션이라 바깥 클릭·Esc 로도 닫히게
+  했다(기존 동기화 패널엔 없던 것 — 드물게 여는 패널과 달리 이건 자주 쓰여 닫는 방법이
+  트리거 재클릭뿐이면 불편하다). 라우트 유효성 자체는 `router.ts` 가 별도로 갖고 있어
+  `#settings`/`#status` 같은 해시는 메뉴에서 빠져도 그대로 살아 있다(북마크 안 깨짐).
+  남는 주 탭: `내 술`/`주종 관리`/`구매처`/`통계`
+- **매장 모드 모바일 전용(항목 6)**: nav 에서 제거하고 `ProductsPage` "내 술" 목록 위에
+  큰 진입 버튼(`.store-mode-entry`)을 추가했다 — 900px 이상에서는 CSS 로 숨긴다(PC 는
+  카메라도 없고 표를 스캔하며 훑는 게 더 빠르다). `#scan` 라우트·화면·테스트는 그대로 유지
+- **구매처 → 그 구매처에서 산 술(항목 2)**: `vendor_id` 필터는 이미 端到端 지원돼 있었다
+  (`queries.ts`/`ProductFilterPanel.tsx`) — 없던 건 연결뿐이었다. `Route` 에 `vendorId` 추가,
+  `#products?vendor=<id>` 파싱/직렬화(`router.ts`), `ProductsPage` 에 `initialVendorId`
+  prop(`initialCategoryId` 와 같은 "마운트 시점에만 시딩" 패턴), `VendorsPage` 행 이름을
+  `.link-like` 버튼으로 바꿔 클릭 가능하게 했다. 구매처 이름/종류/건수 외에 **총 지출**도
+  이때 함께 노출했다(`getVendors()` 에 `total_spend` 추가 — 실구매가 우선, 없으면 정가로
+  보충, 둘 다 없으면 그 구매 건은 합계에서 제외해 "0원"과 "가격 정보 없음"을 구분한다)
+
+검증: `npm run check` 413 passed(회귀 0건), `vite build` 정상, 시크릿 스캔 통과. 백엔드
+변경 없음. Playwright 로 실데이터(406종 · 구매처 64곳)를 대상으로 구매처 "CU어플" 클릭 →
+"내 술 (2)" 로 정확히 필터링됨을 실제로 확인했고, 설정 메뉴 열기/바깥 클릭 닫기/1280px
+숨김·360px 노출되는 매장 모드 진입 버튼도 눈으로 검증했다. 근거는 `plan.md` Task 24 PR4
+절, D130~D133.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1402,6 +1428,15 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D127 | `button.link-like` 의 `min-height: auto` 를 `var(--control-h-md)` 로 바꾼다 | 모바일 카드에서 제품 상세로 들어가는 주 진입점으로 쓰이는데, 기존 `padding: 2px 4px` 뿐인 상태에서는 실제 탭 영역이 20px 안팎이었다 |
 | D128 | `.tasting-form` 전용 `40rem`(640px) 브레이크포인트를 제거하고 기존 600px 로 흡수한다 | 문서화된 브레이크포인트는 600px/900px 뿐인데 이 한 곳만 몰래 세 번째 값을 썼다 — "화면 크기에 따라 줄바꿈이 제멋대로" 인상의 직접 원인이었다. 이 폼의 두 입력(날짜·평점)은 짧아 같은 "필드 두 개 나란히" 패턴을 쓰는 `.field-row` 와 같은 기준(600px)으로도 충분하다 |
 | D129 | `.product-table td`/`.stats-table td`/`.product-card h3`/`.stats-card h4` 에 `overflow-wrap: anywhere` 를 추가한다. JSX 어디서도 안 쓰는 `.bottle-filters`(관련 `[aria-pressed]` 규칙 포함)·`.fieldset-plain`·`.self-center`, 참조되지 않던 `--space-xl` 토큰을 삭제한다 | `word-break`/`overflow-wrap` 이 파일 전체에 0건이라 긴 이름이 표를 밀어내거나 카드 레이아웃을 깨뜨릴 수 있었다. 죽은 CSS 는 억지로 쓸 자리를 만들어 정당화하는 대신 정직하게 삭제했다 — `--space-xl` 처럼 실제 쓰임이 없는 토큰을 남겨두면 나중에 "이거 왜 있지" 하는 조사 비용만 남는다 |
+
+### Task 24 PR4 결정 (D130~D133)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D130 | `가져오기`/`외부 소스`/`설정`/`서비스 상태`/로그아웃을 헤더의 "설정" 토글 버튼 하나로 접는다(`App.tsx` 의 `SETTINGS_VIEWS`). `SyncStatusBadge` 팝오버와 같은 시각 패턴을 재사용하되, 이 메뉴는 바깥 클릭(`pointerdown`)과 Esc 로도 닫히게 별도 로직을 추가한다 | 사용자가 항목 3 에서 요청한 정리다. 기존 동기화 문제 패널은 드물게 여는 화면이라 트리거 재클릭으로만 닫혀도 괜찮았지만, 설정 메뉴는 훨씬 자주 여닫을 상시 내비게이션이라 같은 수준으로는 불충분하다고 판단했다 |
+| D131 | "매장 모드" 를 주 nav 에서 빼고 `ProductsPage` 상단에 모바일 전용(900px 미만) 진입 버튼(`.store-mode-entry`)을 추가한다. `#scan` 라우트·`StoreModePage`·기존 테스트는 그대로 둔다 | 사용자 항목 6 — PC 는 카메라가 없고 표를 스캔하며 훑는 게 매장 모드보다 빠르다. 라우트 자체를 없애지 않고 진입점만 옮기면 URL 직접 접근·북마크는 계속 동작한다 |
+| D132 | `Vendor` 에 `total_spend`(실구매가 우선, 없으면 정가로 보충, 둘 다 없으면 그 구매 건은 합계에서 제외)를 추가해 `VendorsPage` 목록에 노출한다. 구매 건 존재 자체를 반영하는 `purchase_count` 와 달리, "가격 정보가 없는 구매" 를 0 원으로 합산하면 실제보다 적게 보인다 | 사용자 항목 2 가 요청한 "총 지출 같은 요약" — `getVendors()` 가 이미 구매 건수를 집계하고 있어 같은 순회에서 함께 계산하는 게 자연스럽다. NULL 을 0 으로 두지 않는 원칙은 D35 와 동일하다 |
+| D133 | `VendorsPage` 의 구매처 이름을 `<span className="name">` 대신 `<button className="link-like">` 로 바꿔 `onSelectVendor` 콜백을 연결하고, `Route`/`router.ts` 에 `vendorId`(`?vendor=<id>`)를 `categoryId` 와 대칭으로 추가한다. `ProductsPage` 는 `initialCategoryId` 와 같은 "마운트 시점에만 시딩" 패턴으로 `initialVendorId` 를 받는다 | `vendor_id` 필터 자체는 `queries.ts`/`ProductFilterPanel.tsx` 에 이미 端到端 구현돼 있었다 — 빠진 건 구매처 화면에서 그 필터로 넘어가는 연결 하나였다. 기존 카테고리 드릴다운과 완전히 같은 아키텍처를 재사용해 새 개념을 추가하지 않았다 |
 
 ## 6. 열린 질문
 
