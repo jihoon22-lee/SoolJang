@@ -3,11 +3,11 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-05 (Task 24 PR1~PR6 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47),
+- 최종 갱신: **2026-08-05 (Task 24 전체 완료 — PR1~PR7 모두 머지 —
+  [#47](https://github.com/jihoon22-lee/SoolJang/pull/47),
   [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49),
   [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51),
-  [#52](https://github.com/jihoon22-lee/SoolJang/pull/52). PR7 — 오프라인 조회 성능 개선, 게이트 전부
-  통과·머지 대기. 머지되면 Task 24 전체 완료)**
+  [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53))**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
@@ -15,14 +15,15 @@
   반영 안 돼 있을 뿐 시스템상 멤버는 맞다). **주의**: 이 환경에 `ast-grep` 이 `sg` 라는
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다
-- 현재 브랜치: `perf/offline-queries`(Task 24 PR7, 마지막 PR). Task 1~17·20~23 완료(Task 18 은
-  `adapter` 전략만; Task 23 은 태그·릴리스·PC 배포 완료, 모바일 접속만 사용자 조작 대기).
+- 현재 브랜치: `main`. Task 1~17·20~24·(Task 23) 완료(Task 18 은 `adapter` 전략만; Task 23 은
+  태그·릴리스·PC 배포 완료, 모바일 접속만 사용자 조작 대기).
   **`v1.0.0` 태그를 실제로 푸시해 GitHub 릴리스·GHCR 이미지 게시·홈 PC 재배포까지 마쳤다.**
-  이어서 Task 24(실사용 피드백 개선) PR1(동기화 큐 영구 정지 + 데이터 무결성, #47)·PR2(프론트
+  Task 24(실사용 피드백 개선) 7개 PR — PR1(동기화 큐 영구 정지 + 데이터 무결성, #47)·PR2(프론트
   안정성, #48)·PR3(디자인 시스템, #49)·PR4(탭 정리+구매처 드릴다운+매장모드 모바일 전용,
-  #50)·PR5(통계 화면 차트 개편, #51)·PR6(주종 관리 UX 개편, #52)를 머지했고, PR7(오프라인
-  조회 성능 — 순수 프론트엔드, 백엔드 변경 없음)를 코드·테스트·문서까지 완료해 전체 게이트를
-  통과시켰다. 머지되면 Task 24 전체가 완료된다 — 상세는 `plan.md` §1, Task 24 절
+  #50)·PR5(통계 화면 차트 개편, #51)·PR6(주종 관리 UX 개편, #52)·PR7(오프라인 조회 성능,
+  #53) — 를 전부 머지해 **Task 24 가 완료됐다**. 계획된 Task 중 새로 착수할 게 없다 — 남은
+  건 Task 23 모바일 접속(사용자의 Tailscale 콘솔 조작 대기)과 Task 19 시세 이력(Q2 미해결로
+  백로그) 뿐이다 — 상세는 `plan.md` §1
 - 버전: **`1.0.0`**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0))
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/session-handoff-*.md` (날짜 스탬프

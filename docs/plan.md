@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (Task 24 PR1~PR6 머지 완료 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52). PR7 게이트 전부 통과, PR 오픈 대기 — 머지되면 Task 24 전체 완료) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22**(Track 1~4, 10 PR + 사후 하드닝 PR 2개). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
-| 다음 착수 Task | **Task 24 PR7**(`perf/offline-queries`) 코드·테스트·문서 갱신 완료, 전체 게이트(`npm run check` 438 passed, 시크릿 스캔) 통과 — PR 오픈·CI·머지가 마지막 단계다. 머지되면 Task 24(실사용 피드백 기반 개선) 전체가 완료된다 |
-| 현재 브랜치 | `perf/offline-queries` (Task 24 PR7) |
-| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: PR1~PR6 완료, PR7 머지 대기(마지막 PR) |
+| 최종 갱신 | 2026-08-05 (**Task 24 전체 완료** — PR1~PR7 모두 머지 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53)) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략만 부분 완료. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 자체는 시세 데이터(스크래핑) 가 있어야 값이 있어 여전히 대기. **Task 23(첫 릴리스·배포)은 태그·릴리스·PC 배포까지 완료**, 모바일 접속(Tailscale Serve)만 사용자의 관리자 콘솔 활성화 대기 |
+| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. 남은 건 둘 다 사용자 쪽 결정/조작 대기다: **Task 23** 모바일 접속(Tailscale 관리자 콘솔 활성화), **Task 19** 판매처 시세 이력(Q2 `search` 전략 미해결로 계속 백로그, §9 참조). 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
+| 현재 브랜치 | `main` |
+| 진행 중 잔여 항목 | Task 23: 모바일 접속만 남음 — 사용자의 Tailscale 관리자 콘솔 조작 대기(2026-08-03). Task 24: **전체 완료** |
 | 최신 버전 | **`v1.0.0` 릴리스 완료**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0), GHCR `sooljang-api`/`sooljang-web:1.0.0`), 홈 PC 에 배포 완료(로컬 재빌드본) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -236,7 +236,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
-| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | 🟡 PR1~PR6/7 완료·머지, PR7/7 게이트 통과(머지 대기, 마지막 PR) | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`(머지됨), `perf/offline-queries`(PR 오픈 대기) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52) |
+| 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
 
 ### 의존 관계
 
@@ -1067,7 +1067,7 @@ Task 21 에서 도출된 개선안을 우선순위대로 실행한다. 항목별
     운영 배포를 굳이 흔들 이유가 없어 하지 않았다** — 필요해지면 그때 수행한다. Task 23
     "테스트" 항목은 이 정도로 충분히 충족됐다고 본다
 
-### 🟡 Task 24 — 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영
+### ✅ Task 24 — 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영
 
 `v1.0.0` 배포 후 사용자가 실사용하며 보고한 6가지 불편(모바일 접속, 구매처 드릴다운, 설정
 탭 정리, 통계 빈약, 주종 관리 불편, UI 일관성)과 함께 코드베이스 전면 감사를 요청받았다.
