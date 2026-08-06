@@ -19,6 +19,10 @@ const IDLE_STATUS: RowActionStatus = {
   error: null,
 };
 
+function byProductCountThenName(a: CategoryNode, b: CategoryNode): number {
+  return b.descendant_product_count - a.descendant_product_count || a.name.localeCompare(b.name);
+}
+
 interface CategoryManagerProps {
   tree: CategoryTree;
   /** 이동·병합·삭제·기본값 복원은 순환·깊이 재검사가 필요해 온라인 전용이다. */
@@ -71,8 +75,15 @@ export function CategoryManager({
 }: CategoryManagerProps) {
   const [newName, setNewName] = useState("");
   const [newParentId, setNewParentId] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
-  const roots = useMemo(() => tree.items.filter((item) => item.parent_id === null), [tree.items]);
+  // 술이 많은 주종이 위로 오도록 내림차순 정렬한다(동률은 이름순, 사용자 요청) — 여기서만
+  // 적용한다. `getCategoryTree()` 자체의 이름순 정렬은 그대로 둔다(다른 화면의 `<select>`
+  // 드롭다운은 타이핑 탐색에 이름순이 더 유리하다, `docs/plan.md` §5-D141).
+  const roots = useMemo(
+    () => tree.items.filter((item) => item.parent_id === null).sort(byProductCountThenName),
+    [tree.items],
+  );
   const childrenOf = useMemo(() => {
     const map = new Map<string, CategoryNode[]>();
     for (const item of tree.items) {
@@ -81,59 +92,74 @@ export function CategoryManager({
       list.push(item);
       map.set(item.parent_id, list);
     }
+    for (const list of map.values()) list.sort(byProductCountThenName);
     return map;
   }, [tree.items]);
 
   return (
     <section aria-labelledby="category-heading">
-      <h2 id="category-heading">주종 관리</h2>
+      <div className="section-header">
+        <h2 id="category-heading">주종 관리</h2>
+        <button
+          type="button"
+          className="primary"
+          aria-expanded={addOpen}
+          aria-controls="category-create-form"
+          onClick={() => setAddOpen((value) => !value)}
+        >
+          {addOpen ? "닫기" : "+ 주종 추가"}
+        </button>
+      </div>
       <p className="muted mt-0">
         현재 최대 깊이 {tree.max_depth} / 상한 {tree.depth_limit}. 필요한 만큼 세분화할 수 있습니다.
         삭제해도 소속된 술은 지워지지 않습니다.
       </p>
 
-      <form
-        className="panel"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!newName.trim()) return;
-          onCreate(newName.trim(), newParentId || null);
-          setNewName("");
-        }}
-      >
-        <h3 className="form-heading">주종 추가</h3>
-        <div className="field">
-          <label htmlFor="new-category-name">이름</label>
-          <input
-            id="new-category-name"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="new-category-parent">상위 주종</label>
-          <select
-            id="new-category-parent"
-            value={newParentId}
-            onChange={(event) => setNewParentId(event.target.value)}
-          >
-            <option value="">최상위로 추가</option>
-            {tree.items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.path.join(" › ")}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button type="submit" className="primary" disabled={createBusy || !newName.trim()}>
-          추가
-        </button>
-        {createError instanceof Error && (
-          <p className="alert mt-2" role="alert">
-            {createError.message}
-          </p>
-        )}
-      </form>
+      {addOpen && (
+        <form
+          id="category-create-form"
+          className="panel"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!newName.trim()) return;
+            onCreate(newName.trim(), newParentId || null);
+            setNewName("");
+          }}
+        >
+          <h3 className="form-heading">주종 추가</h3>
+          <div className="field">
+            <label htmlFor="new-category-name">이름</label>
+            <input
+              id="new-category-name"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-category-parent">상위 주종</label>
+            <select
+              id="new-category-parent"
+              value={newParentId}
+              onChange={(event) => setNewParentId(event.target.value)}
+            >
+              <option value="">최상위로 추가</option>
+              {tree.items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.path.join(" › ")}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="submit" className="primary" disabled={createBusy || !newName.trim()}>
+            추가
+          </button>
+          {createError instanceof Error && (
+            <p className="alert mt-2" role="alert">
+              {createError.message}
+            </p>
+          )}
+        </form>
+      )}
 
       <div className="button-row mt-3 mb-3">
         <button type="button" onClick={onResetSeed} disabled={resetSeedBusy || offline}>
@@ -271,60 +297,64 @@ function CategoryBranch({
               value={draftName}
               onChange={(event) => setDraftName(event.target.value)}
             />
-            <button
-              type="button"
-              className="primary"
-              disabled={rowBusy || !draftName.trim()}
-              onClick={() => {
-                onRename(node.id, draftName.trim());
-                setEditing(false);
-              }}
-            >
-              저장
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDraftName(node.name);
-                setEditing(false);
-              }}
-            >
-              취소
-            </button>
+            <span className="button-row category-row-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={rowBusy || !draftName.trim()}
+                onClick={() => {
+                  onRename(node.id, draftName.trim());
+                  setEditing(false);
+                }}
+              >
+                저장
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftName(node.name);
+                  setEditing(false);
+                }}
+              >
+                취소
+              </button>
+            </span>
           </>
         ) : (
           <>
             <span className="name">{node.name}</span>
             <span className="badge">{node.descendant_product_count}종</span>
             {node.is_seeded && <span className="muted">기본</span>}
-            <button type="button" onClick={() => setEditing(true)} disabled={rowBusy}>
-              이름 변경
-            </button>
+            <span className="button-row category-row-actions">
+              <button type="button" onClick={() => setEditing(true)} disabled={rowBusy}>
+                이름 변경
+              </button>
 
-            <ReparentControl
-              node={node}
-              targets={moveTargets}
-              busy={rowBusy}
-              offline={offline}
-              onReparent={onReparent}
-            />
+              <ReparentControl
+                node={node}
+                targets={moveTargets}
+                busy={rowBusy}
+                offline={offline}
+                onReparent={onReparent}
+              />
 
-            <MergeControl
-              node={node}
-              targets={moveTargets}
-              busy={rowBusy}
-              offline={offline}
-              onMerge={onMerge}
-            />
+              <MergeControl
+                node={node}
+                targets={moveTargets}
+                busy={rowBusy}
+                offline={offline}
+                onMerge={onMerge}
+              />
 
-            <DeleteControl
-              node={node}
-              hasChildren={children.length > 0}
-              targets={moveTargets}
-              busy={rowBusy}
-              offline={offline}
-              onDelete={onDelete}
-            />
+              <DeleteControl
+                node={node}
+                hasChildren={children.length > 0}
+                targets={moveTargets}
+                busy={rowBusy}
+                offline={offline}
+                onDelete={onDelete}
+              />
+            </span>
           </>
         )}
       </div>
