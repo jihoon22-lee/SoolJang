@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (**Task 24 전체 완료** — PR1~PR7 모두 머지 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53). 이어서 Q7·Q8 해결, Q9(데일리샷 등록 + adapter JSON 모드 + 매칭 정확도 개선, [#56](https://github.com/jihoon22-lee/SoolJang/pull/56)) 진행) |
+| 최종 갱신 | 2026-08-06 (**Task 25 4개 PR 로컬 검증 전부 완료** — v1.1.0 실사용 2차 피드백 5항목. PR1([#62](https://github.com/jihoon22-lee/SoolJang/pull/62))·PR2([#63](https://github.com/jihoon22-lee/SoolJang/pull/63))·PR3([#64](https://github.com/jihoon22-lee/SoolJang/pull/64))·PR4(`fix/stats-pivot-buttons`) 모두 로컬 검증·실브라우저 확인까지 마쳤으나, GitHub Actions 대규모 장애로 CI/머지는 전부 대기 중) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수). 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
-| 현재 브랜치 | `main` |
-| 진행 중 잔여 항목 | 없음 — Task 23·24 모두 완료. 남은 건 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 다음 착수 Task | **Task 25 PR1~PR4 전부 GitHub Actions 장애로 머지 대기**(§4 참조) — 장애가 풀리면 CI 확인 후 순서대로 머지, `plan.md`/`handoff.md` 를 하나로 정리한다. 그 외 Task 는 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `fix/stats-pivot-buttons`(PR1~PR3 는 각각 별도 브랜치에서 머지 대기 중 — §4 Task 25 참조) |
+| 진행 중 잔여 항목 | **Task 25 PR1~PR4 전부 GitHub Actions 장애로 CI/머지 대기**(코드는 이미 완성, 로컬 검증·실브라우저 확인 전부 통과). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
 | 최신 버전 | **`v1.1.0` 릴리스 완료**(2026-08-06, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.0), GHCR `sooljang-api`/`sooljang-web:1.1.0`) — Task 24(통계 차트·탭 재구성·주종 관리 개편·오프라인 성능·외부 소스 JSON 어댑터) 반영. **처음으로 GHCR 에서 직접 `docker pull` 해 배포함**(Q8 스코프 확보 덕분 — `docker login ghcr.io` 재인증 필요했음, 로컬 재빌드 아님). `GET /api/v1/health` 로 `version:"1.1.0"` 확인, `db` 컨테이너는 재시작 없이 유지(데이터 무손상) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -237,6 +237,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
 | 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
+| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | 🟡 PR1~PR4 로컬 검증 전부 완료, GitHub Actions 장애로 CI/머지 대기 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63), [#64](https://github.com/jihoon22-lee/SoolJang/pull/64) |
 
 ### 의존 관계
 
@@ -1339,6 +1340,39 @@ D138~D141.
 
 ---
 
+### 🟡 Task 25 — v1.1.0 실사용 2차 피드백 (레이아웃·모바일·주종/구매처/통계 UX)
+
+`v1.1.0` 배포 후 사용자가 실제로 써 보며 화면별로 5가지 UI/UX 문제를 보고했다(스크린샷 첨부).
+전부 프론트엔드 범위이며 백엔드·스키마 변경은 없다. 4개 PR로 나눠 진행한다(항목 1·2 →
+`fix/products-layout-filters`[PR #62], 항목 3 → `feat/category-manager-polish`[PR #63],
+항목 4 → `feat/vendor-search`[PR #64], 항목 5 → `fix/stats-pivot-buttons`).
+
+**PR1~PR3 는 로컬 검증까지 끝내고 각각 PR을 올렸으나**, 2026-08-06 15:22 UTC부터 시작된
+**GitHub Actions 자체의 대규모 장애**(공식 상태 "Partial/Major System Outage")에 막혀
+CI/머지 대기 중이다. 사용자 승인을 받아 장애 해소를 기다리는 동안 나머지 PR을 순서대로
+(`main` 기준 각각 별도 브랜치에서) 먼저 진행했다.
+
+#### PR4 — `fix/stats-pivot-buttons`: 통계 커스텀 피벗 버튼 높이 (2026-08-06, 항목 5)
+
+**실측으로 원인 확인.** `PivotExplorer.tsx` 의 `<form className="field-row">` 가 필드
+5개 + `<div className="button-row">`(실행/CSV 내보내기)를 형제로 담는다. `.field-row` 는
+`grid-template-columns:1fr 1fr`(2열) grid 이고 기본 `align-items:stretch` 다 — 필드 5개는
+홀수라 마지막 필드("주종 필터")가 그리드 3번째 행 1열에 혼자 놓이고, button-row 가 같은
+행 2열에 놓이면서 그 필드의 라벨+select 높이까지 늘어나 버튼 두 개가 세로로 길게
+늘어났다.
+
+**수정**: `.field-row > .button-row { grid-column: 1 / -1; }` 한 줄 추가 — 버튼 줄이 항상
+전체 폭 단독 행을 차지해 다른 필드와 셀을 공유하지 않으므로 stretch 의 영향을 받지
+않는다. 다른 `.field-row` 사용처(`ProductDetail`/`ProductForm`/`SourcesPage`/
+`ProductFilterPanel`)는 전부 필드 쌍만 감싸고 `.button-row` 를 형제로 안 두므로 이 규칙의
+영향을 받지 않는다(grep 으로 확인).
+
+검증: `npm --prefix web run check`(lint+typecheck+test 438 passed+build) 통과. **실브라우저
+(로그인 세션, 실데이터)로 커스텀 피벗 "실행" 클릭 → "실행"/"CSV 내보내기" 버튼 모두 정상
+높이로 렌더링됨을 스크린샷으로 확인**. 근거는 `plan.md` §5 Task 25 PR4 결정, D149.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1613,6 +1647,12 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 |---|---|---|
 | D147 | `adapter_spec` 에 `format: json` 모드를 추가한다 — `selector` 대신 `path`(점 구분 JSON 경로)로 필드를 뽑고, `result_fields` 가 있으면 검색 응답에서 바로 최종 필드를 뽑아 상세 페이지를 다시 조회하지 않으며, `url_template` 은 아이템의 최상위 필드로 직접 치환한다(`item["id"]` 등). 기존 CSS 셀렉터 방식은 `format` 기본값을 `html` 로 둬 그대로 유지한다 | 데일리샷을 등록하려다 실측으로 확인했다 — Next.js SPA 라 검색 결과 페이지의 원본 HTML(순수 `httpx.get`, JS 미실행)에 상품 정보가 전혀 없다. 대신 브라우저 네트워크 로그에서 인증 없이 접근 가능한 공개 JSON API(`api.dailyshot.co/items/search/`, robots.txt 허용 확인됨)를 찾았다. 최근 국내 쇼핑몰은 SPA + JSON API 구조가 흔해(이마트·트레이더스 등 나머지 Q3 후보도 같은 문제일 가능성이 있다) 데일리샷 하나만을 위한 임시방편이 아니라 `adapter` 전략 자체에 재사용 가능한 능력으로 추가했다 |
 | D148 | 후보 선택에 "이름 앞 4글자 유사도 ≥ 0.75" 게이트를 추가한다(`_plausible_candidate`) — 기존 전체 문자열 유사도(`_MIN_SIMILARITY=0.4`) 통과 여부와 별개로, 이 게이트를 먼저 통과한 후보 중에서만 최댓값을 고른다 | 데일리샷 실제 조회로 확인했다 — "글렌고인"↔"더 글렌리벳", "글렌알라키"↔"더 글렌그란트"처럼 접두사("글렌…")만 같고 실제로는 다른 증류소인 이름이 전체 유사도 0.53/0.44 로 기존 임계값(0.4)을 통과해 **틀린 가격·평점을 그대로 보여줬다**. 위스키는 "글렌X" 류 접두사를 공유하는 서로 다른 브랜드가 많아 실사용에서 실제로 터진 문제다. 임계값을 올리는 단순한 수정은 안 된다 — 오탐("우드포드 리저브"↔"우드포드 리저브 라이", 유사도 0.875)이 정탐("부나하벤 12y"↔"부나하벤 12년", 유사도 0.857)보다 점수가 **더 높아** 전체 유사도 하나로는 애초에 분리가 안 된다(실측). 접두사 게이트 적용 후 실제 6건 재검증: 오탐 3건 중 2건 해결(글렌고인·글렌알라키 → "이름 앞부분이 비슷한 후보 없음"으로 정직하게 실패), 정탐 3건은 전부 유지. "우드포드 리저브"→"우드포드 리저브 라이"는 검색어 자체가 다른 상품명의 완전한 접두사라 여전히 못 걸러낸다 — 순수 문자열 비교로는 원천적 한계로 남겨 두고 문서화했다(`adapter.py` 주석) |
+
+### Task 25 PR4 결정 (D149)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D149 | `.field-row > .button-row { grid-column: 1 / -1; }` 한 줄만 추가한다(`.button-row` 자체나 `.field-row` 기본 동작은 안 바꾼다) | `PivotExplorer` 의 필드가 5개(홀수)라 2열 grid 에서 마지막 필드가 button-row 와 같은 행을 나눠 쓰게 되고, 기본 `align-items:stretch` 때문에 그 필드의 라벨+select 높이까지 버튼이 늘어났다. 다른 `.field-row` 사용처는 전부 필드 쌍만 감싸 button-row 를 형제로 두지 않으므로(grep 확인) 이 규칙이 그쪽엔 영향을 주지 않는다 — 가장 좁은 범위로 원인만 제거했다 |
 
 ## 6. 열린 질문
 
