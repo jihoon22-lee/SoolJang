@@ -148,7 +148,9 @@ export interface ProductFilters {
   price_per_100ml_min?: string | undefined;
   price_per_100ml_max?: string | undefined;
   /** `YYYY-MM-DD`. 이 범위 안에 구매 건이 하나라도 있으면 매치한다(`vendor_id` 필터와 같은
-   * "하나라도 있으면" 의미론). */
+   * "하나라도 있으면" 의미론). 오프라인 경로(`sync/queries.ts::filterAndSortProducts`)에만
+   * 구현돼 있다 — 이 타입을 공유하는 `productsApi.list`(백엔드 `/products`)는 이 필드를
+   * 모른 채 조용히 무시하므로, 온라인 쪽에서 걸러질 거라 기대하지 않는다. */
   purchased_on_min?: string | undefined;
   purchased_on_max?: string | undefined;
   sort?: SortKey | undefined;
