@@ -103,8 +103,10 @@ export function CategoryManager({
         <button
           type="button"
           className="primary"
+          // `aria-controls` 는 안 쓴다 — 폼이 `addOpen` 일 때만 마운트되므로, 접힌 상태에서는
+          // 가리키는 id 자체가 DOM 에 없어 무효한 참조가 된다(항상 렌더링하고 CSS로만
+          // 숨기는 `ProductFilterPanel` 과 다른 지점). `aria-expanded` 단독으로도 충분하다.
           aria-expanded={addOpen}
-          aria-controls="category-create-form"
           onClick={() => setAddOpen((value) => !value)}
         >
           {addOpen ? "닫기" : "+ 주종 추가"}
