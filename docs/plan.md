@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-05 (**Task 24 전체 완료** — PR1~PR7 모두 머지 — [#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53). 이어서 Q7·Q8 해결, Q9(데일리샷 등록 + adapter JSON 모드 + 매칭 정확도 개선, [#56](https://github.com/jihoon22-lee/SoolJang/pull/56)) 진행) |
+| 최종 갱신 | 2026-08-07 (**Task 25 진행 중** — v1.1.0 실사용 2차 피드백 5항목, PR1(`fix/products-layout-filters`) 완료·머지 대기, PR2~PR4 진행) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | 없음 — 계획된 Task 중 새로 착수할 것이 없다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수). 사용자가 다음 작업을 지정하면 그때 새 Task 로 시작한다 |
-| 현재 브랜치 | `main` |
-| 진행 중 잔여 항목 | 없음 — Task 23·24 모두 완료. 남은 건 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 다음 착수 Task | **Task 25 진행 중**(§4 참조) — PR1 완료, 남은 PR2(주종 관리 개편)·PR3(구매처 검색)·PR4(통계 피벗 버튼 높이)를 이어서 진행한다. 그 외 Task 는 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `fix/products-layout-filters` |
+| 진행 중 잔여 항목 | **Task 25 PR2~PR4** 진행 중(§4 참조). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
 | 최신 버전 | **`v1.1.0` 릴리스 완료**(2026-08-06, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.0), GHCR `sooljang-api`/`sooljang-web:1.1.0`) — Task 24(통계 차트·탭 재구성·주종 관리 개편·오프라인 성능·외부 소스 JSON 어댑터) 반영. **처음으로 GHCR 에서 직접 `docker pull` 해 배포함**(Q8 스코프 확보 덕분 — `docker login ghcr.io` 재인증 필요했음, 로컬 재빌드 아님). `GET /api/v1/health` 로 `version:"1.1.0"` 확인, `db` 컨테이너는 재시작 없이 유지(데이터 무손상) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -237,6 +237,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
 | 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
+| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | 🟡 PR1 완료, PR2~PR4 진행 중 | `fix/products-layout-filters`(머지 대기), `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | (진행 중) |
 
 ### 의존 관계
 
@@ -1339,6 +1340,50 @@ D138~D141.
 
 ---
 
+### 🟡 Task 25 — v1.1.0 실사용 2차 피드백 (레이아웃·모바일·주종/구매처/통계 UX)
+
+`v1.1.0` 배포 후 사용자가 실제로 써 보며 화면별로 5가지 UI/UX 문제를 보고했다(스크린샷 첨부).
+전부 프론트엔드 범위이며 백엔드·스키마 변경은 없다. 로그인된 브라우저(실데이터 406종)를 직접
+열어 실측(computed style·bounding rect·스크린샷)으로 근본 원인을 코드 레벨로 확인한 뒤
+고쳤다 — 세션 로컬 plan 파일에 항목별 근거와 4개 PR 분할을 먼저 정리했다.
+
+#### PR1 — `fix/products-layout-filters`: 내 술 레이아웃·필터 (2026-08-07, 항목 1·2)
+
+- **버튼 높이 불일치(항목 1)**: `LabelOcrPanel` 트리거 버튼이 `<div className="field
+  inline-block">` 로 감싸여 있었다 — `.field` 의 `margin-bottom` 이 `.button-row`(flex,
+  기본 `align-items:stretch`)의 줄 높이를 outer size(마진 포함) 기준으로 늘려, 마진 없는
+  형제 버튼("바코드로 스캔"·"새 술 등록")이 그만큼 늘어났다(실측: 47.6px vs 59.6px).
+  래퍼를 클래스 없는 `<div>` 로 바꿔 해결(47.6px→48px 로 통일). 쓰이지 않게 된 `.inline-block`
+  유틸도 함께 지웠다
+- **표 열 문자 단위 줄바꿈(항목 1, 가장 심각)**: `.product-table th` 규칙(헤더 전용
+  `white-space:nowrap` 등)이 `thead` 로 스코프되지 않아 tbody 의 행 헤더(`<th scope="row">`,
+  제품명 셀)에도 걸려 있었다 — 이름 열이 줄바꿈을 거부하고 필요한 만큼 폭을 다 가져가
+  나머지 열(도수·재고·평점 등)이 극단적으로 좁아져 글자 단위로 쪼개졌다. `.product-table
+  thead th` 로 좁히고 `tbody th` 에 `.product-table td` 와 같은 `overflow-wrap:anywhere`
+  를 줘서 해결 — 1000px 뷰포트 스크린샷으로 전후 확인
+- **레이아웃 폭(항목 1)**: `.app-main` max-width 를 1600px→1760px, 사이드바 폭을
+  280px→260px 로 조정해 표에 더 넓은 공간을 준다
+- **구매일 필터 + 누락 정렬 옵션(항목 1)**: `ProductFilters` 에 `purchased_on_min/max`
+  추가. `queries.ts` 의 `ProductAssembly` 에 `purchaseDates` 를 모아(구매 하나라도 범위
+  안이면 매치, `vendor_id` 필터와 같은 의미론) `ProductCatalog.purchaseDatesByProduct` 로
+  노출. 서버 `/products` 목록 엔드포인트는 건드리지 않았다(이미 호출처 0개인 휴면 상태,
+  B2). `SortKey` 에는 있지만 화면에 없던 `updated_at`/`avg_paid_price`/`paid_total`/
+  `purchased_count` 4개를 정렬 드롭다운에 추가(로직은 이미 구현돼 있었다)
+- **모바일 필터 기본 접힘(항목 2)**: 순수 CSS `<details>` 로 먼저 시도했으나, 최신
+  Chrome 이 닫힌 `<details>` 의 자식에 `content-visibility:hidden` 을 적용한다는 걸
+  실측으로 발견했다(단순 `display:none` 이 아니다) — `display` 만 덮어써서는 900px
+  이상에서 강제로 펼쳐 보이게 할 수 없었다(폼 높이는 정상 계산되는데 실제로는 그려지지
+  않음). 그래서 `ProductsPage` 가 쥔 `useState<boolean>`(기본 `false`) + 버튼
+  (`aria-expanded`/`aria-controls`) 조합으로 바꾸고, `@media(min-width:900px)` 에서
+  토글 상태와 무관하게 `.filter-panel-body` 를 항상 보이게 하고 토글 버튼은 숨긴다.
+  "/" 검색 단축키가 접힌 상태에서도 동작하도록(패널을 펼친 뒤 포커스 예약) 가드 추가
+
+검증: `npm --prefix web run check`(lint+typecheck+test 440 passed+build) 통과, 시크릿
+스캔 통과. 실브라우저(로그인 세션)로 390/768/1280/1908px 스크린샷 전후 비교, 구매일 필터
+동작(406→1건으로 좁혀짐 확인), "/" 단축키가 접힌 패널을 펼치고 포커스를 옮기는지 확인.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1613,6 +1658,14 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 |---|---|---|
 | D147 | `adapter_spec` 에 `format: json` 모드를 추가한다 — `selector` 대신 `path`(점 구분 JSON 경로)로 필드를 뽑고, `result_fields` 가 있으면 검색 응답에서 바로 최종 필드를 뽑아 상세 페이지를 다시 조회하지 않으며, `url_template` 은 아이템의 최상위 필드로 직접 치환한다(`item["id"]` 등). 기존 CSS 셀렉터 방식은 `format` 기본값을 `html` 로 둬 그대로 유지한다 | 데일리샷을 등록하려다 실측으로 확인했다 — Next.js SPA 라 검색 결과 페이지의 원본 HTML(순수 `httpx.get`, JS 미실행)에 상품 정보가 전혀 없다. 대신 브라우저 네트워크 로그에서 인증 없이 접근 가능한 공개 JSON API(`api.dailyshot.co/items/search/`, robots.txt 허용 확인됨)를 찾았다. 최근 국내 쇼핑몰은 SPA + JSON API 구조가 흔해(이마트·트레이더스 등 나머지 Q3 후보도 같은 문제일 가능성이 있다) 데일리샷 하나만을 위한 임시방편이 아니라 `adapter` 전략 자체에 재사용 가능한 능력으로 추가했다 |
 | D148 | 후보 선택에 "이름 앞 4글자 유사도 ≥ 0.75" 게이트를 추가한다(`_plausible_candidate`) — 기존 전체 문자열 유사도(`_MIN_SIMILARITY=0.4`) 통과 여부와 별개로, 이 게이트를 먼저 통과한 후보 중에서만 최댓값을 고른다 | 데일리샷 실제 조회로 확인했다 — "글렌고인"↔"더 글렌리벳", "글렌알라키"↔"더 글렌그란트"처럼 접두사("글렌…")만 같고 실제로는 다른 증류소인 이름이 전체 유사도 0.53/0.44 로 기존 임계값(0.4)을 통과해 **틀린 가격·평점을 그대로 보여줬다**. 위스키는 "글렌X" 류 접두사를 공유하는 서로 다른 브랜드가 많아 실사용에서 실제로 터진 문제다. 임계값을 올리는 단순한 수정은 안 된다 — 오탐("우드포드 리저브"↔"우드포드 리저브 라이", 유사도 0.875)이 정탐("부나하벤 12y"↔"부나하벤 12년", 유사도 0.857)보다 점수가 **더 높아** 전체 유사도 하나로는 애초에 분리가 안 된다(실측). 접두사 게이트 적용 후 실제 6건 재검증: 오탐 3건 중 2건 해결(글렌고인·글렌알라키 → "이름 앞부분이 비슷한 후보 없음"으로 정직하게 실패), 정탐 3건은 전부 유지. "우드포드 리저브"→"우드포드 리저브 라이"는 검색어 자체가 다른 상품명의 완전한 접두사라 여전히 못 걸러낸다 — 순수 문자열 비교로는 원천적 한계로 남겨 두고 문서화했다(`adapter.py` 주석) |
+
+### Task 25 PR1 결정 (D149~D151)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D149 | `.product-table th` 의 헤더 전용 스타일(`white-space:nowrap` 등)을 `.product-table thead th` 로 좁히고, tbody 행 헤더(제품명 셀)엔 `.product-table td` 와 같은 `overflow-wrap:anywhere` 를 준다 | 스코프 없는 `th` 선택자가 tbody 의 `<th scope="row">` 에도 걸려 이름 열이 줄바꿈을 거부하고 필요한 만큼 폭을 다 가져가 버렸다 — 그 결과 나머지 열(도수·재고·평점)이 극단적으로 좁아져 글자 단위로 줄바꿈됐다. 1000px 뷰포트 실측 스크린샷으로 재현·수정 확인 |
+| D150 | 모바일 기본 접힘 필터 패널을 순수 CSS `<details>`(닫힘 기본 + 900px 이상 강제 펼침 오버라이드)로 구현하려던 시도를 포기하고, `ProductsPage` 가 쥔 `useState<boolean>` + 버튼(`aria-expanded`) 조합으로 바꾼다 | 실측으로 확인했다 — 최신 Chrome 은 닫힌 `<details>` 의 비-summary 자식에 `content-visibility:hidden` 을 적용한다(단순 `display:none` 이 아니다). `display` 속성만 덮어쓰는 오버라이드로는 이 은닉을 되돌릴 수 없어(`getComputedStyle` 은 `display:block` 을 보고하지만 실제로는 그려지지 않음), 900px 이상에서 강제로 펼쳐 보이려던 원래 설계가 실브라우저에서 작동하지 않았다. 일반 상태 기반 토글은 이 문제와 무관하다 |
+| D151 | "/" 검색 단축키(`ProductsPage`)가 필터 패널이 닫혀 있으면 먼저 펼치기 상태를 갱신하고, `useEffect` 로 펼침이 반영된 뒤에야 포커스를 옮긴다(`pendingFilterFocusRef` 로 예약) | 상태 갱신은 비동기라 같은 이벤트 핸들러 안에서 곧바로 포커스를 옮기면 아직 `display:none` 인 입력을 포커스하게 된다 — 단축키가 접힌 상태에서 무력화되면 안 된다는 요구사항(항목 2) 때문에 필요했다 |
 
 ## 6. 열린 질문
 

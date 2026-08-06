@@ -66,6 +66,20 @@ export function ProductsPage({
     return DEFAULT_FILTERS;
   });
   const [formOpen, setFormOpen] = useState(false);
+  // 모바일 폭에서 기본 접힘인 필터 패널의 펼침 상태(항목 2). `ProductFilterPanel` 이 아니라
+  // 여기서 쥐는 이유는 "/" 단축키가 접힌 상태에서도 검색창으로 포커스를 옮길 수 있어야 하기
+  // 때문이다(아래 keydown 핸들러 참고).
+  const [filterExpanded, setFilterExpanded] = useState(false);
+  // "/" 를 눌렀을 때 패널이 이미 접혀 있었다면, 펼침이 반영돼 입력이 실제로 렌더링된
+  // 뒤에야 포커스를 옮길 수 있다(state 갱신은 비동기라 같은 이벤트 안에서 바로 옮기면
+  // 아직 `display:none` 인 요소를 포커스하게 된다) — 이 ref 로 "펼쳐지면 포커스" 를 예약한다.
+  const pendingFilterFocusRef = useRef(false);
+  useEffect(() => {
+    if (filterExpanded && pendingFilterFocusRef.current) {
+      pendingFilterFocusRef.current = false;
+      document.getElementById("filter-q")?.focus();
+    }
+  }, [filterExpanded]);
   // 라벨 OCR(Task 17)이 채운 값과 원본 사진. 폼이 닫힐 때마다 함께 지운다 — 그러지 않으면
   // 다음에 수동으로 연 폼에 이전 스캔의 흔적이 남는다.
   const [formPrefill, setFormPrefill] = useState<Partial<ProductFormValues> | null>(null);
@@ -131,7 +145,14 @@ export function ProductsPage({
       const isTyping = target !== null && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
       if (event.key === "/" && !isTyping) {
         event.preventDefault();
-        document.getElementById("filter-q")?.focus();
+        // 모바일 폭에서는 필터 패널이 기본 접힘(항목 2)이라 그 안의 검색창은 펼치기 전엔
+        // 화면에 없다 — 단축키가 접힌 상태에서 무력화되지 않게 먼저 강제로 펼친다.
+        if (filterExpanded) {
+          document.getElementById("filter-q")?.focus();
+        } else {
+          pendingFilterFocusRef.current = true;
+          setFilterExpanded(true);
+        }
       } else if (event.key === "Escape" && formOpen) {
         closeForm();
       }
@@ -179,6 +200,8 @@ export function ProductsPage({
         vendors={vendors ?? []}
         onChange={setFilters}
         onReset={() => setFilters(DEFAULT_FILTERS)}
+        expanded={filterExpanded}
+        onExpandedChange={setFilterExpanded}
       />
 
       <section aria-labelledby="products-heading">
