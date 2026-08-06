@@ -78,8 +78,10 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
   }
 
   // 로딩 중(`vendors === undefined`)에도 훅 호출 순서가 매번 같아야 하므로, 아래 조건부
-  // 반환보다 앞에서 빈 배열로라도 계산해 둔다.
-  const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
+  // 반환보다 앞에서 빈 배열로라도 계산해 둔다. `vendors ?? []` 를 `useMemo` 안이 아니라
+  // 바로 여기서 매핑하면 매 렌더마다 새 배열이 생겨 의존성이 항상 바뀌어 메모가 무효화된다
+  // — `vendors` 자체를 의존성으로 둬야 실제로 재사용된다.
+  const vendorNames = useMemo(() => (vendors ?? []).map((vendor) => vendor.name), [vendors]);
   const suggestions = useMemo(
     () => rankByQuery(vendorNames, vendorQuery, (name) => name).slice(0, MAX_SUGGESTIONS),
     [vendorNames, vendorQuery],
