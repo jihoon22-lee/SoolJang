@@ -147,6 +147,10 @@ export interface ProductFilters {
   variety?: string | undefined;
   price_per_100ml_min?: string | undefined;
   price_per_100ml_max?: string | undefined;
+  /** `YYYY-MM-DD`. 이 범위 안에 구매 건이 하나라도 있으면 매치한다(`vendor_id` 필터와 같은
+   * "하나라도 있으면" 의미론). */
+  purchased_on_min?: string | undefined;
+  purchased_on_max?: string | undefined;
   sort?: SortKey | undefined;
   order?: SortOrder | undefined;
   limit?: number | undefined;
