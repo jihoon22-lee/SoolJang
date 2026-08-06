@@ -1,12 +1,17 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 
 import type { Vendor, VendorKind } from "@/api/types";
+import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { formatMoney, formatVendorKind } from "@/format";
+import { matchesQuery, rankByQuery } from "@/search";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { getVendors } from "@/sync/queries";
+
+//: `ProductDetail.tsx` 의 구매처 이름 자동완성과 같은 개수 제한이다.
+const MAX_SUGGESTIONS = 8;
 
 const VENDOR_KINDS: VendorKind[] = [
   "mart",
@@ -29,12 +34,18 @@ const VENDOR_KINDS: VendorKind[] = [
  *
  * 이름·종류 수정은 `CategoriesPage::rename` 과 같은 패턴(오프라인 낙관적 갱신)이다 — 필드만
  * 바꾸는 단순 갱신이라 온라인 전용으로 둘 이유가 없다.
+ *
+ * 구매처가 많아지면(실데이터 64곳) 목록 스크롤이 길어져 검색창을 뒀다(사용자 요청, 항목 4).
+ * `ProductDetail.tsx` 의 구매처 이름 자동완성과 같은 조합(`AutocompleteInput` +
+ * `search.ts::rankByQuery`)을 재사용해 타이핑 중 순위 매긴 후보를 보여주고, 동시에
+ * `matchesQuery`(초성 검색 포함)로 아래 목록 자체도 실시간으로 좁힌다.
  */
 export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: string) => void }) {
   const vendors = useLiveQuery(() => getVendors(), []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<VendorKind>("other");
+  const [vendorQuery, setVendorQuery] = useState("");
 
   const update = useMutation({
     mutationFn: async (input: { id: string; name: string; kind: VendorKind }) => {
@@ -66,21 +77,47 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
     update.mutate({ id: editingId, name: name.trim(), kind });
   }
 
+  // 로딩 중(`vendors === undefined`)에도 훅 호출 순서가 매번 같아야 하므로, 아래 조건부
+  // 반환보다 앞에서 빈 배열로라도 계산해 둔다.
+  const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
+  const suggestions = useMemo(
+    () => rankByQuery(vendorNames, vendorQuery, (name) => name).slice(0, MAX_SUGGESTIONS),
+    [vendorNames, vendorQuery],
+  );
+
   if (vendors === undefined) {
     return <output aria-live="polite">구매처를 불러오고 있습니다…</output>;
   }
 
   const sorted = [...vendors].sort((a, b) => a.name.localeCompare(b.name));
+  const visible = vendorQuery.trim()
+    ? sorted.filter((vendor) => matchesQuery(vendor.name, vendorQuery))
+    : sorted;
 
   return (
     <section aria-labelledby="vendors-heading" className="panel">
       <h2 id="vendors-heading">구매처 관리</h2>
 
+      {sorted.length > 0 && (
+        <div className="field">
+          <label htmlFor="vendor-search">검색</label>
+          <AutocompleteInput
+            id="vendor-search"
+            value={vendorQuery}
+            placeholder="구매처 이름으로 검색"
+            onChange={setVendorQuery}
+            suggestions={suggestions}
+          />
+        </div>
+      )}
+
       {sorted.length === 0 ? (
         <output className="notice">등록된 구매처가 없습니다.</output>
+      ) : visible.length === 0 ? (
+        <output className="notice">검색 결과가 없습니다.</output>
       ) : (
         <ul className="vendor-list">
-          {sorted.map((vendor) =>
+          {visible.map((vendor) =>
             editingId === vendor.id ? (
               <li className="vendor-row" key={vendor.id}>
                 <form onSubmit={handleSubmit} className="vendor-edit-form">

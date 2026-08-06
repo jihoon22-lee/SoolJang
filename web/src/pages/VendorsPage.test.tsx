@@ -72,6 +72,40 @@ describe("VendorsPage", () => {
     expect(screen.getByText("가격 정보 없음")).toBeInTheDocument();
   });
 
+  it("검색창에 타이핑하면 일치하는 구매처만 남는다", async () => {
+    await db.vendor.bulkPut([
+      row({ id: "v1", name: "이마트 트레이더스", kind: "mart", url: null, note: null }),
+      row({ id: "v2", name: "데일리샷", kind: "online", url: null, note: null }),
+    ]);
+
+    renderVendorsPage();
+    await screen.findByRole("button", { name: "이마트 트레이더스" });
+
+    await userEvent.type(screen.getByLabelText("검색"), "이마트");
+
+    expect(screen.getByRole("button", { name: "이마트 트레이더스" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "데일리샷" })).not.toBeInTheDocument();
+  });
+
+  it("검색 결과가 없으면 안내하고, 검색창은 지운다", async () => {
+    await db.vendor.put(row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }));
+
+    renderVendorsPage();
+    await screen.findByRole("button", { name: "이마트" });
+
+    await userEvent.type(screen.getByLabelText("검색"), "존재하지않는구매처");
+
+    expect(screen.getByText("검색 결과가 없습니다.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "이마트" })).not.toBeInTheDocument();
+  });
+
+  it("구매처가 없으면 검색창을 보여주지 않는다", async () => {
+    renderVendorsPage();
+
+    await screen.findByText("등록된 구매처가 없습니다.");
+    expect(screen.queryByLabelText("검색")).not.toBeInTheDocument();
+  });
+
   it("이름을 누르면 onSelectVendor 를 호출한다", async () => {
     await db.vendor.put(row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }));
     const { onSelectVendor } = renderVendorsPage();
