@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -248,6 +248,21 @@ describe("ProductsPage", () => {
     });
   });
 
+  it("필터 패널은 기본 접힘이고 버튼으로 펼치고 접을 수 있다", async () => {
+    renderProductsPage();
+    const toggle = await screen.findByRole("button", { name: "펼치기" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "접기" }));
+    expect(screen.getByRole("button", { name: "펼치기" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
   it("재고 필터를 적용한다", async () => {
     await seedProductWithPurchase("p1", "재고 있음", { inStock: true });
     await seedProductWithPurchase("p2", "재고 없음", { inStock: false });
@@ -303,8 +318,22 @@ describe("ProductsPage", () => {
       row({ id: "s2", product_id: "p2", volume_ml: 700 }),
     ]);
     await db.purchase.bulkPut([
-      row({ id: "pu1", sku_id: "s1", vendor_id: "vendorA", quantity: 1, unit_list_price: "70000" }),
-      row({ id: "pu2", sku_id: "s2", vendor_id: "vendorB", quantity: 1, unit_list_price: "7000" }),
+      row({
+        id: "pu1",
+        sku_id: "s1",
+        vendor_id: "vendorA",
+        quantity: 1,
+        unit_list_price: "70000",
+        purchased_on: "2015-05-01",
+      }),
+      row({
+        id: "pu2",
+        sku_id: "s2",
+        vendor_id: "vendorB",
+        quantity: 1,
+        unit_list_price: "7000",
+        purchased_on: "2020-05-01",
+      }),
     ]);
     await db.variety.bulkPut([row({ id: "v1", name: "싱글몰트" })]);
     await db.product_variety.put(
@@ -356,6 +385,15 @@ describe("ProductsPage", () => {
     await waitFor(() => {
       expect(screen.getAllByRole("button", { name: "스코틀랜드 술" }).length).toBeGreaterThan(0);
       expect(screen.queryByRole("button", { name: "프랑스 술" })).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+    // <details> 는 리액트가 제어하지 않는 DOM 상태라 필터 초기화로 닫히지 않는다 —
+    // 다시 열 필요가 없다. `type="date"` 입력은 userEvent.type 이 불안정해 change 로 채운다.
+    fireEvent.change(screen.getByLabelText("구매일"), { target: { value: "2018-01-01" } });
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "프랑스 술" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "스코틀랜드 술" })).not.toBeInTheDocument();
     });
   });
 
@@ -718,6 +756,9 @@ describe("ProductsPage", () => {
       await userEvent.keyboard("/");
 
       expect(screen.getByLabelText("이름 검색")).toHaveFocus();
+      // 모바일 폭에서 기본 접힘인 필터 패널이 단축키로 무력화되면 안 된다(항목 2) —
+      // 접힌 채로 시작했더라도 펼침 상태로 전환돼 있어야 한다.
+      expect(screen.getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
     });
 
     it("이미 입력 중이면 / 를 그냥 문자로 받는다", async () => {
@@ -810,7 +851,8 @@ describe("CategoriesPage", () => {
   it("주종을 추가하면 outbox 에 쌓이고 즉시 화면에 보인다", async () => {
     renderCategoriesPage();
 
-    await userEvent.type(await screen.findByLabelText("이름"), "새 주종");
+    await userEvent.click(await screen.findByRole("button", { name: "+ 주종 추가" }));
+    await userEvent.type(screen.getByLabelText("이름"), "새 주종");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는

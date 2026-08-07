@@ -159,6 +159,33 @@ describe("getProducts", () => {
     expect(filtered.map((p) => p.id)).toEqual(["p1"]);
   });
 
+  it("purchased_on_min/max 범위 안에 구매가 하나라도 있으면 남긴다", async () => {
+    await db.product.bulkPut([
+      row({ id: "p1", name: "최근에 산 술" }),
+      row({ id: "p2", name: "오래 전에 산 술" }),
+    ]);
+    await db.sku.bulkPut([
+      row({ id: "s1", product_id: "p1", volume_ml: 500 }),
+      row({ id: "s2", product_id: "p2", volume_ml: 500 }),
+    ]);
+    await db.purchase.bulkPut([
+      row({ id: "pu1", sku_id: "s1", purchased_on: "2024-06-01", quantity: 1 }),
+      row({ id: "pu2", sku_id: "s2", purchased_on: "2020-01-01", quantity: 1 }),
+    ]);
+
+    expect((await getProducts({ purchased_on_min: "2024-01-01" })).map((p) => p.id)).toEqual([
+      "p1",
+    ]);
+    expect((await getProducts({ purchased_on_max: "2020-12-31" })).map((p) => p.id)).toEqual([
+      "p2",
+    ]);
+    expect(
+      (await getProducts({ purchased_on_min: "2024-01-01", purchased_on_max: "2024-12-31" })).map(
+        (p) => p.id,
+      ),
+    ).toEqual(["p1"]);
+  });
+
   it("in_stock=false 는 재고가 없는 제품만 남긴다", async () => {
     await db.product.bulkPut([
       row({ id: "p1", name: "재고 있음" }),
