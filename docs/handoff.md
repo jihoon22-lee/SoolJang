@@ -3,12 +3,9 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-07 (Task 25 전체 완료 + `v1.1.1` 릴리스·배포 완료 — `v1.1.0` 배포
-  후 사용자 2차 UI/UX 피드백 5항목 전부 반영. PR1~PR4([#62](https://github.com/jihoon22-lee/SoolJang/pull/62)~[#65](https://github.com/jihoon22-lee/SoolJang/pull/65)) 전부 머지, 부수적으로 발견한
-  `PivotExplorer.tsx` NUL 바이트 결함도 별도 PR로 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66)). 버전을 1.1.1 로 올려([#67](https://github.com/jihoon22-lee/SoolJang/pull/67))
-  릴리스·재배포까지 마쳤다. 이어서 백엔드/프론트엔드/인프라·문서 3갈래 전체 코드베이스
-  점검 수행 — 크리티컬·보안 이슈 없음, `vendorNames` 미메모이제이션 2건 수정 + 이 문서·`plan.md`
-  최신화로 마무리 — 상세는 `plan.md` §4 Task 25, §9 릴리스 후 백로그)**
+- 최종 갱신: **2026-08-07 (Task 26 완료 — v1.1.1 배포 후 사용자 3차 UI/UX 피드백(내 술
+  레이아웃 재조정 + 주종 관리 액션 정리) 반영. PR [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) 머지. 버전을 1.1.2 로 올려
+  ([#70](https://github.com/jihoon22-lee/SoolJang/pull/70)) 릴리스·재배포 진행 중 — 상세는 `plan.md` §4 Task 26)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
@@ -17,17 +14,18 @@
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다(`scripts/backup.sh`
   도 한동안 이 함정에 걸려 있었다 — 2026-08-06 수정, [#59](https://github.com/jihoon22-lee/SoolJang/pull/59))
-- 현재 브랜치: `main`(작업 트리 깨끗함, 열린 PR·미머지 브랜치 없음). Task
-  1~17·20~25 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스
+- 현재 브랜치: `main`(Task 26 머지 후 v1.1.2 릴리스·재배포 진행 중). Task
+  1~17·20~26 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스
   7곳 중 1곳(데일리샷) 실등록).
   **`v1.0.0` 이후 Task 24(실사용 피드백 개선) 7개 PR 을 전부 머지하고([#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53)),
   데일리샷 등록 과정에서 발견한 어댑터 개선([#56](https://github.com/jihoon22-lee/SoolJang/pull/56))까지
   담아 `v1.1.0` 을 정식 릴리스했다. 이어서 Task 25(2차 UI/UX 피드백) 4개 PR([#62](https://github.com/jihoon22-lee/SoolJang/pull/62)~[#65](https://github.com/jihoon22-lee/SoolJang/pull/65))과
-  NUL 바이트 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66))까지 담아 `v1.1.1` 을 릴리스·재배포했다.**
+  NUL 바이트 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66))까지 담아 `v1.1.1` 을 릴리스·재배포했다. 다시 Task 26
+  (3차 UI/UX 피드백) [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) 를 담아 `v1.1.2` 릴리스를 진행 중이다.**
   계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부
   사용자가 원하는 시점에 결정할 선택 사항(GHCR pull 전환 여부는 이미 확정, 외부 소스
   나머지 6곳 등록, Task 19 본 착수)뿐이다 — 상세는 `plan.md` §1
-- 버전: **`1.1.1`**([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.1))
+- 버전: **`1.1.2` 릴리스 진행 중** — 이전 최신 버전 [`1.1.1`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.1)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
@@ -212,6 +210,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | Task 25 PR4 — 통계 커스텀 피벗 버튼 높이(2026-08-06, [#65](https://github.com/jihoon22-lee/SoolJang/pull/65) `fix/stats-pivot-buttons`, 머지됨, Task 25 마지막 PR) | 순수 프론트엔드(백엔드 변경 없음). `PivotExplorer.tsx` 의 `<form className="field-row">` 가 필드 5개(홀수) + `<div className="button-row">`(실행/CSV 내보내기)를 2열 grid 에 담아, 기본 `align-items:stretch` 때문에 마지막 필드("주종 필터")와 같은 행을 나눠 쓰는 button-row 가 그 필드의 라벨+select 높이까지 늘어나 "실행"/"CSV 내보내기" 버튼이 세로로 길게 늘어났다. `.field-row > .button-row { grid-column: 1 / -1; }` 한 줄로 고쳤다 — 버튼 줄이 항상 전체 폭 단독 행을 차지해 다른 `.field-row` 사용처(필드 쌍만 감싸는 곳들)는 영향받지 않는다(grep 확인). `npm --prefix web run check` 438 passed, `vite build` 정상. **실브라우저(로그인 세션, 실데이터)로 커스텀 피벗 "실행" 클릭 → "실행"/"CSV 내보내기" 버튼 모두 정상 높이로 렌더링됨을 스크린샷으로 확인**. 이로써 Task 25(v1.1.0 실사용 2차 피드백) 5개 항목이 전부 반영됐다. 근거는 `plan.md` §5 Task 25 PR4 결정, D156 |
 | **`v1.1.1` 정식 릴리스·배포(2026-08-07, [#67](https://github.com/jihoon22-lee/SoolJang/pull/67) 버전 범프 + 실제 태그 푸시)** | Task 25 4개 PR(#62~#65)과 `PivotExplorer.tsx` NUL 바이트 수정(#66)을 담아 PATCH 버전을 올렸다(Task 24→v1.1.0 의 MINOR 승격 전례와 달리, 이번 5항목은 버그 수정·UX 폴리시라 PATCH 로 판단). `uv version 1.1.1`/`npm version 1.1.1 --no-git-tag-version`/`src/sooljang/__init__.py::__version__` 를 맞추고 PR #67 로 머지, `SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh` 로 백업(179KB, 테이블 21개 검증) 후 `SOOLJANG_ALLOW_TAG_PUSH=1 git push origin v1.1.1` 로 태그 푸시 → 릴리스 워크플로가 돌아 GHCR 게시 + [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.1) 생성까지 끝났다. `docker compose pull && docker compose up -d`(`.env` 의 `SOOLJANG_VERSION=1.1.1`)로 재배포, `db` 는 재시작 없이 유지(데이터 무손상), `GET /api/v1/health` 로 `version:"1.1.1"`·`database_connected:true`·컨테이너 3개 모두 `healthy` 확인. 배포 전에 SoolJang 과 무관한 tailscale 서빙(PointBook `:8002`, opencode `:8443`)은 그대로 두고, 4일 넘게 떠 있던 도커화 이전의 낡은 `sooljang-api` 프로세스(포트 8001)만 종료했다 |
 | 전체 코드베이스 점검(2026-08-07, v1.1.1 배포 직후) | 백엔드/프론트엔드/인프라·문서 3갈래로 독립 서브에이전트를 병렬로 돌려 전수 점검했다. **크리티컬·보안 이슈 없음** — SQL 인젝션·시크릿 처리·인증·SSRF·파일 업로드 경로 전부 안전하게 구현돼 있음을 재확인했다. 실제로 고칠 만한 건 두 가지였다: (1) `ProductsPage.tsx`/`StoreModePage.tsx` 의 `vendorNames` 가 `useMemo` 없이 매 렌더마다 새 배열을 만들어 자식 컴포넌트의 `useMemo` 를 무력화하고 있었다(`VendorsPage.tsx` 는 Task 25 PR3 리뷰 때 이미 고쳐져 있었는데 같은 패턴이 두 곳 더 남아 있었다) — 즉시 수정. (2) `plan.md`/`handoff.md` 가 `v1.1.1` 머지 완료 상태를 반영하지 못하고 "PR4 머지 진행 중"·`v1.1.0` 최신 버전으로 멈춰 있었다 — 이 문서와 `plan.md` 를 전부 최신화하고, 병합 과정에서 데이터 없이 비어 있던 D155 결정 로그 행도 채웠다. 그 밖의 경미한 발견(접근성 포커스 관리, 온라인/오프라인 타입 정합성, 테스트 커버리지 갭 등)은 `plan.md` §9 릴리스 후 백로그에 기록만 하고 코드는 건드리지 않았다 — 판단이 더 필요하거나 사용자 확인이 먼저 필요한 항목들이다 |
+| Task 26 — 내 술 레이아웃 재조정 + 주종 관리 액션 정리(2026-08-07, [#69](https://github.com/jihoon22-lee/SoolJang/pull/69)) | 순수 프론트엔드(백엔드 변경 없음). 사용자가 v1.1.1 스크린샷과 함께 두 가지를 재지적했다. (1) 내 술 표: `.product-table td.numeric` 에 제품명 열을 위한 `overflow-wrap:anywhere` 가 그대로 걸려 있어 도수·재고·평단가·100ml당·내 평점이 "14.5"/"%" 처럼 글자 단위로 쪼개졌다 — `white-space:nowrap` 으로 고쳤다. `.app-main` max-width 를 고정 1760px→`min(2200px,96vw)`, 사이드바 260→240px, `.table-scroll` 높이 상한 65vh/720px→78vh/900px, 버튼 줄과 표 사이 `margin-top` 추가(전에는 0이라 붙어 보였다). (2) 주종 관리: 이름변경/이동/병합/삭제 4개 버튼이 44개 행 전부에 항상 나열되던 걸, 전역 `activeId` 하나로 바꿔 이름을 눌러야 그 행 하나만 펼쳐지게 했다(조건부 렌더링이라 `ReparentControl`/`MergeControl`/`DeleteControl`/이름 편집의 내부 상태도 행이 접힐 때 자동 초기화된다). `npm --prefix web run check` 446 passed(회귀 0), `vite build` 정상. **실브라우저(Chrome DevTools MCP, 로그인 세션, 실데이터 406종·주종 44개)로 1280px·2611px(≈1920px 논리 해상도)·390px(모바일) 전후 스크린샷 비교, 이름 클릭으로 액션 펼침/다른 행 선택 시 자동 접힘/취소 시 데이터 불변을 직접 클릭해 확인**. 근거는 `plan.md` §5 Task 26 결정, D157~D159 |
 
 ---
 
