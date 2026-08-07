@@ -76,7 +76,7 @@ export function LabelOcrPanel({ categories, onPrefill }: LabelOcrPanelProps) {
   }
 
   return (
-    <div className="field inline-block">
+    <div>
       <input
         ref={inputRef}
         type="file"

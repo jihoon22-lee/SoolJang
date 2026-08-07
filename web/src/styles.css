@@ -204,10 +204,6 @@ h4 {
   white-space: pre-wrap;
 }
 
-.inline-block {
-  display: inline-block;
-}
-
 .hidden {
   display: none;
 }
@@ -247,6 +243,7 @@ h4 {
   border-radius: var(--radius);
   max-height: min(65vh, 720px);
   overflow-y: auto;
+  overflow-x: auto;
 }
 
 /* 모바일 카드 뷰가 따로 없는 표(구매 이력·가져오기 미리보기 등)는 좁은 화면에서도
@@ -323,7 +320,9 @@ h4 {
 .app-main {
   flex: 1;
   padding: var(--space);
-  max-width: 1600px;
+  /* 1600px 은 넓은 화면에서 표(내 술 목록 등)를 불필요하게 좁혀 좌우 여백만 키웠다
+     (사용자 실측 제보 — 1908px 뷰포트에서 좌우 유휴 공간 308px). */
+  max-width: 1760px;
   width: 100%;
   margin: 0 auto;
 }
@@ -342,7 +341,8 @@ h4 {
 
 @media (min-width: 900px) {
   .layout-with-sidebar {
-    grid-template-columns: 280px 1fr;
+    /* 260px 로 필터 패널을 살짝 좁혀 "내 술" 표에 더 넓은 폭을 준다(사용자 요청). */
+    grid-template-columns: 260px 1fr;
     align-items: start;
   }
 }
@@ -364,6 +364,32 @@ h4 {
   .panel {
     padding: var(--space);
     border-radius: var(--radius);
+  }
+}
+
+/* "검색과 필터" 패널(항목 2). 모바일에서는 기본 접힘이라 화면 대부분을 필터가 차지하지
+   않는다 — `filter-panel-toggle` 버튼(`aria-expanded`)이 `.filter-panel-body--collapsed`
+   클래스를 토글한다. 순수 CSS `<details>` 로도 같은 효과를 시도했지만, 최신 Chrome은
+   닫힌 상태의 자식에 `content-visibility: hidden` 을 적용해(단순 `display:none` 이 아니다)
+   `display` 만 덮어써서는 900px 이상에서 강제로 펼쳐 보이게 할 수 없었다(실측으로 확인) —
+   그래서 일반 상태 기반 토글로 바꿨다. */
+.filter-panel-toggle {
+  min-height: var(--control-h-md);
+}
+
+.filter-panel-body--collapsed {
+  display: none;
+}
+
+/* 900px 이상에서는 토글 상태와 무관하게 항상 펼쳐 보이고, 토글 버튼 자체도 숨긴다
+   (데스크톱에선 "내 술" 표를 보려고 필터를 접을 이유가 없다). */
+@media (min-width: 900px) {
+  .filter-panel-toggle {
+    display: none;
+  }
+
+  .filter-panel-body--collapsed {
+    display: block;
   }
 }
 
@@ -574,12 +600,18 @@ button:disabled {
   vertical-align: middle;
 }
 
-/* 긴 제품명이 셀 폭을 넘어 표 전체를 밀어내는 대신 셀 안에서 줄바꿈되게 한다. */
-.product-table td {
+/* 긴 제품명이 셀 폭을 넘어 표 전체를 밀어내는 대신 셀 안에서 줄바꿈되게 한다. 행 헤더
+   (`<th scope="row">`, 이름 열)도 데이터 셀과 같은 취급이어야 한다 — 아래 `thead th` 전용
+   규칙(줄바꿈 금지)이 예전엔 `th` 전체에 걸려 이름 열이 줄바꿈을 거부하고 필요한 만큼
+   폭을 다 가져가 버렸다. 그 결과 나머지 열(도수·재고·평점 등)이 극단적으로 좁아져
+   글자 단위로 쪼개지는 문제가 있었다. */
+.product-table td,
+.product-table tbody th {
   overflow-wrap: anywhere;
 }
 
-.product-table th {
+/* 열 헤더 전용 스타일. `tbody`의 행 헤더(이름 열)는 여기 포함하지 않는다 — 위 주석 참고. */
+.product-table thead th {
   background: var(--surface-raised);
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -956,6 +988,24 @@ button:disabled {
 .row-alert {
   width: 100%;
   margin: 0 0 var(--space-sm);
+}
+
+/* `.button-row` 는 `align-items` 를 지정하지 않아(기본값 stretch) 이동/병합 확인 단계에서
+   `<select>` 가 형제로 끼어들면 그 자연 높이만큼 버튼들이 함께 늘어날 수 있다 — `.category-row`
+   자체는 `align-items: center` 라 이 문제가 없었는데, 행 액션을 별도 `<span>` 으로 묶으며
+   그 보호를 잃었다. 폭과 무관하게 중앙 정렬로 되돌린다. */
+.category-row-actions {
+  align-items: center;
+}
+
+/* 이름변경·이동·병합·삭제가 한 행에 나열돼 44px 터치 타깃 그대로면 과하게 커 보인다
+   (사용자 지적). 900px 이상(마우스 전용, `.sort-button` 과 같은 예외 근거)에서만 좁힌다 —
+   모바일 터치 타깃은 그대로 유지한다. */
+@media (min-width: 900px) {
+  .category-row-actions button {
+    min-height: var(--control-h-sm);
+    padding: 4px 10px;
+  }
 }
 
 .vendor-list {

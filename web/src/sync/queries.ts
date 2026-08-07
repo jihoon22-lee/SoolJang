@@ -176,6 +176,8 @@ interface ProductAssembly {
   bottles: MetricsBottleRecord[];
   /** 이 제품의 어느 규격이든 구매한 적 있는 구매처 id 들. `filters.vendor_id` 필터용이다. */
   vendorIds: Set<string>;
+  /** 이 제품의 구매 건들의 `purchased_on`(null 제외). `filters.purchased_on_min/max` 필터용이다. */
+  purchaseDates: string[];
 }
 
 /** `assembleProducts()`(전체)와 `loadProductScope()`(단일 제품) 양쪽이 공유하는 조립
@@ -189,6 +191,7 @@ function assembleOneProduct(
   const lots: PurchaseLot[] = [];
   const bottleRecords: MetricsBottleRecord[] = [];
   const vendorIds = new Set<string>();
+  const purchaseDates: string[] = [];
 
   for (const sku of productSkus) {
     const skuPurchases = purchasesBySku.get(sku.id) ?? [];
@@ -203,6 +206,8 @@ function assembleOneProduct(
       );
       const vendorId = purchase.vendor_id as string | null;
       if (vendorId) vendorIds.add(vendorId);
+      const purchasedOn = purchase.purchased_on as string | null;
+      if (purchasedOn) purchaseDates.push(purchasedOn);
       for (const bottle of bottlesByPurchase.get(purchase.id) ?? []) {
         bottleRecords.push({
           status: bottle.status as string,
@@ -213,7 +218,14 @@ function assembleOneProduct(
     }
   }
 
-  return { row: product, skus: productSkus, lots, bottles: bottleRecords, vendorIds };
+  return {
+    row: product,
+    skus: productSkus,
+    lots,
+    bottles: bottleRecords,
+    vendorIds,
+    purchaseDates,
+  };
 }
 
 function groupBy(rows: SyncRow[], key: string): Map<string, SyncRow[]> {
@@ -415,6 +427,7 @@ const SORT_ACCESSORS: Record<SortKey, (p: Product) => number | string | null> = 
 export interface ProductCatalog {
   products: Product[];
   vendorIdsByProduct: Map<string, Set<string>>;
+  purchaseDatesByProduct: Map<string, string[]>;
 }
 
 /** 필터·정렬 없이 전체 카탈로그를 조립한다(4개 테이블 조인 + 지표 계산, 제품 규모에 비례하는
@@ -432,7 +445,10 @@ async function assembleCatalog(): Promise<ProductCatalog> {
     toProduct(assembly, categoryPaths, producerNames, varietyNames),
   );
   const vendorIdsByProduct = new Map(assemblies.map((a) => [a.row.id as string, a.vendorIds]));
-  return { products, vendorIdsByProduct };
+  const purchaseDatesByProduct = new Map(
+    assemblies.map((a) => [a.row.id as string, a.purchaseDates]),
+  );
+  return { products, vendorIdsByProduct, purchaseDatesByProduct };
 }
 
 /** `getProductCatalog()` 로 이미 조립해 둔 카탈로그에 필터·정렬만 적용한다. 순수 함수라
@@ -507,6 +523,18 @@ export function filterAndSortProducts(
     const max = Number(filters.price_per_100ml_max);
     products = products.filter(
       (p) => p.metrics.price_per_100ml !== null && Number(p.metrics.price_per_100ml) <= max,
+    );
+  }
+  if (filters.purchased_on_min !== undefined || filters.purchased_on_max !== undefined) {
+    // ISO `YYYY-MM-DD` 문자열은 사전식 비교가 곧 날짜순 비교다(`SORT_ACCESSORS.created_at`
+    // 과 같은 근거). 이 범위 안의 구매가 하나라도 있으면 매치한다(vendor_id 필터와 같은
+    // "하나라도 있으면" 의미론).
+    const min = filters.purchased_on_min;
+    const max = filters.purchased_on_max;
+    products = products.filter((p) =>
+      (catalog.purchaseDatesByProduct.get(p.id) ?? []).some(
+        (date) => (min === undefined || date >= min) && (max === undefined || date <= max),
+      ),
     );
   }
 

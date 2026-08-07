@@ -93,6 +93,50 @@ describe("CategoryManager", () => {
     expect(within(rowOf("레드와인")).getByText("레드와인")).toBeInTheDocument();
   });
 
+  it("술이 많은 상위 주종이 위로 오도록 내림차순 정렬한다", () => {
+    const items = [
+      node({ id: "beer", name: "맥주", descendant_product_count: 5 }),
+      node({ id: "whisky", name: "위스키", descendant_product_count: 40 }),
+      node({ id: "wine", name: "와인", descendant_product_count: 20 }),
+    ];
+
+    const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
+
+    const names = [...container.querySelectorAll(".category-row .name")].map(
+      (el) => el.textContent,
+    );
+    expect(names).toEqual(["위스키", "와인", "맥주"]);
+  });
+
+  it("하위 주종도 같은 규칙(제품 수 내림차순)으로 정렬한다", () => {
+    const items = [
+      node({ id: "wine", name: "와인" }),
+      node({
+        id: "sparkling",
+        name: "스파클링",
+        parent_id: "wine",
+        depth: 2,
+        path: ["와인", "스파클링"],
+        descendant_product_count: 2,
+      }),
+      node({
+        id: "red",
+        name: "레드",
+        parent_id: "wine",
+        depth: 2,
+        path: ["와인", "레드"],
+        descendant_product_count: 15,
+      }),
+    ];
+
+    const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
+
+    const names = [...container.querySelectorAll(".category-row .name")].map(
+      (el) => el.textContent,
+    );
+    expect(names).toEqual(["와인", "레드", "스파클링"]);
+  });
+
   it("하위가 있는 항목만 접기/펼치기 토글을 보여준다", () => {
     const items = [
       node({ id: "wine", name: "와인" }),
@@ -140,11 +184,27 @@ describe("CategoryManager", () => {
     expect(screen.getByText("레드와인", { selector: ".category-row .name" })).toBeInTheDocument();
   });
 
+  it("주종 추가 폼은 기본 접힘이고 버튼으로 펼치고 접을 수 있다", async () => {
+    render(<CategoryManager tree={tree([])} {...handlers()} />);
+
+    expect(screen.queryByLabelText("이름")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "+ 주종 추가" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(toggle);
+    expect(screen.getByLabelText("이름")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "닫기" })).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.queryByLabelText("이름")).not.toBeInTheDocument();
+  });
+
   it("이름과 상위를 지정해 추가한다", async () => {
     const spies = handlers();
     const items = [node({ id: "wine", name: "와인" })];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
+    await userEvent.click(screen.getByRole("button", { name: "+ 주종 추가" }));
     await userEvent.type(screen.getByLabelText("이름"), "로제와인");
     await userEvent.selectOptions(screen.getByLabelText("상위 주종"), "wine");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
@@ -156,6 +216,7 @@ describe("CategoryManager", () => {
     const spies = handlers();
     render(<CategoryManager tree={tree([])} {...spies} />);
 
+    await userEvent.click(screen.getByRole("button", { name: "+ 주종 추가" }));
     await userEvent.type(screen.getByLabelText("이름"), "새 최상위");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
@@ -408,6 +469,7 @@ describe("CategoryManager", () => {
     expect(within(row).getByRole("button", { name: "병합" })).toBeDisabled();
     expect(within(row).getByRole("button", { name: "삭제" })).toBeDisabled();
     // 추가·이름 변경은 outbox 를 타므로 오프라인에서도 계속 쓸 수 있어야 한다.
+    await userEvent.click(screen.getByRole("button", { name: "+ 주종 추가" }));
     await userEvent.type(screen.getByLabelText("이름"), "새 주종");
     expect(screen.getByRole("button", { name: "추가" })).not.toBeDisabled();
     expect(within(row).getByRole("button", { name: "이름 변경" })).not.toBeDisabled();
@@ -435,7 +497,7 @@ describe("CategoryManager", () => {
     expect(within(beerRow).queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("주종 추가 실패를 폼 근처에 알린다", () => {
+  it("주종 추가 실패를 폼 근처에 알린다", async () => {
     render(
       <CategoryManager
         tree={tree([])}
@@ -443,6 +505,8 @@ describe("CategoryManager", () => {
         createError={new Error("이름이 이미 있습니다")}
       />,
     );
+
+    await userEvent.click(screen.getByRole("button", { name: "+ 주종 추가" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("이름이 이미 있습니다");
   });
