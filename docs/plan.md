@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-07 (**Task 25 진행 중** — v1.1.0 실사용 2차 피드백 5항목. PR1([#62](https://github.com/jihoon22-lee/SoolJang/pull/62))·PR66(NUL 바이트 수정) 머지됨, PR2([#63](https://github.com/jihoon22-lee/SoolJang/pull/63)) 머지 진행 중, PR3·PR4 이어서 진행) |
+| 최종 갱신 | 2026-08-07 (**Task 25 진행 중** — v1.1.0 실사용 2차 피드백 5항목. PR1([#62](https://github.com/jihoon22-lee/SoolJang/pull/62))·PR2([#63](https://github.com/jihoon22-lee/SoolJang/pull/63))·PR66(NUL 바이트 수정) 머지됨, PR3([#64](https://github.com/jihoon22-lee/SoolJang/pull/64)) 머지 진행 중, PR4 이어서 진행) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | **Task 25 진행 중**(§4 참조) — PR1 머지됨, PR2 머지 진행 중, 남은 PR3(구매처 검색)·PR4(통계 피벗 버튼 높이)를 이어서 머지한다. 그 외 Task 는 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
-| 현재 브랜치 | `feat/category-manager-polish`(Task 25 PR2, 머지 진행 중) |
-| 진행 중 잔여 항목 | **Task 25 PR3·PR4** 머지 대기(§4 참조). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 다음 착수 Task | **Task 25 진행 중**(§4 참조) — PR1·PR2 머지됨, PR3 머지 진행 중, 남은 PR4(통계 피벗 버튼 높이)를 이어서 머지한다. 그 외 Task 는 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `feat/vendor-search`(Task 25 PR3, 머지 진행 중) |
+| 진행 중 잔여 항목 | **Task 25 PR4** 머지 대기(§4 참조). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
 | 최신 버전 | **`v1.1.0` 릴리스 완료**(2026-08-06, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.0), GHCR `sooljang-api`/`sooljang-web:1.1.0`) — Task 24(통계 차트·탭 재구성·주종 관리 개편·오프라인 성능·외부 소스 JSON 어댑터) 반영. **처음으로 GHCR 에서 직접 `docker pull` 해 배포함**(Q8 스코프 확보 덕분 — `docker login ghcr.io` 재인증 필요했음, 로컬 재빌드 아님). `GET /api/v1/health` 로 `version:"1.1.0"` 확인, `db` 컨테이너는 재시작 없이 유지(데이터 무손상) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -237,7 +237,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
 | 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
-| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | 🟡 PR1 머지됨, PR2 머지 진행 중, PR3·PR4 대기 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63) |
+| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | 🟡 PR1·PR2 머지됨, PR3 머지 진행 중, PR4 대기 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63), [#64](https://github.com/jihoon22-lee/SoolJang/pull/64) |
 
 ### 의존 관계
 
@@ -1406,6 +1406,25 @@ D138~D141.
 "+ 주종 추가" 토글 열기/닫기, 버튼 크기가 눈에 띄게 작아짐을 확인. 근거는 `plan.md` §5
 Task 25 PR2 결정, D152~D154.
 
+#### PR3 — `feat/vendor-search`: 구매처 검색 + 자동완성 (2026-08-06, 항목 4)
+
+`VendorsPage.tsx` 는 필터 없이 전체 목록(실데이터 64곳)을 이름순으로 나열해 스크롤이
+길었다(사용자 지적). 이미 있는 `AutocompleteInput`(`components/AutocompleteInput.tsx`) +
+`search.ts::rankByQuery`를 그대로 재사용했다 — `ProductDetail.tsx` 가 구매 건 추가 시
+구매처 이름 입력에 쓰는 것과 같은 조합. `vendorQuery` state 하나로 두 가지를 동시에 한다:
+1. `AutocompleteInput` 으로 타이핑 중 순위 매긴 후보(최대 8개)를 드롭다운으로 보여준다
+   ("자동완성" 요청 충족)
+2. 동시에 `matchesQuery`(`search.ts`, 초성 검색 포함)로 아래 목록 자체를 실시간 필터링해
+   스크롤 문제를 직접 해결한다
+
+구매처가 하나도 없을 때는 검색창 자체를 숨기고("등록된 구매처가 없습니다"), 검색 결과가
+0건이면 별도 안내("검색 결과가 없습니다")를 보여준다.
+
+검증: `npm --prefix web run check`(lint+typecheck+test 441 passed(신규 3건)+build) 통과.
+**실브라우저(로그인 세션, 실데이터 64곳)로 확인** — "코스트코" 입력 시 목록이 4개로
+정확히 좁혀지고 자동완성 드롭다운도 같은 4개를 보여줌을 스크린샷으로 확인. 근거는 `plan.md`
+§5 Task 25 PR3 결정, D155.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1699,6 +1718,11 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D152 | "주종 추가" 폼을 `addOpen`(`useState`, 기본 `false`) 조건부 렌더링으로 바꾼다(CSS 은닉이 아니라 언마운트) | `ProductsPage` 의 "새 술 등록" 토글과 같은 패턴을 재사용해 새 개념을 들여오지 않았다. 조건부 렌더링이라 기존 `CategoryManager.test.tsx`/`pages.test.tsx` 중 폼 필드를 직접 다루던 테스트들은 토글을 먼저 클릭하도록 갱신이 필요했다(실제 사용자 흐름과도 일치) |
 | D153 | 행 액션 버튼(이름변경·이동·병합·삭제)을 `<span className="button-row category-row-actions">` 로 묶고, `.category-row-actions button` 에 `@media(min-width:900px)` 로만 `--control-h-sm`+축소 패딩을 준다 | `.category-row button` 처럼 넓게 잡으면 CSS 명시도가 `.sort-button`(트리 접기/펼치기 토글)보다 높아져 그 버튼의 압축 스타일까지 덮어써 버린다 — 전용 클래스로 범위를 좁혀 피했다. 모바일 폭은 44px 터치 타깃을 그대로 유지해 접근성 회귀를 만들지 않는다 |
 | D154 | `getCategoryTree()` 자체의 이름순 정렬(다른 화면의 `<select>` 드롭다운도 공유)은 그대로 두고, `CategoryManager` 의 `roots`/`childrenOf` 두 `useMemo` 에서만 `descendant_product_count` 내림차순(동률은 이름순) 정렬을 적용한다 | 사용자 요청이 "주종 관리 탭" 표시에 한정돼 있었고, 드롭다운은 이름순이 타이핑 탐색에 더 유리해 그대로 둔다. 실데이터(주종 44개)로 모든 계층 레벨에서 내림차순이 정확함을 확인했다 |
+### Task 25 PR3 결정 (D155)
+
+| # | 결정 | 근거 |
+|---|---|---|
+
 ## 6. 열린 질문
 
 | # | 질문 | 상태 | 필요 시점 |
