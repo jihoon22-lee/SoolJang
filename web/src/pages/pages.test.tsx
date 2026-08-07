@@ -851,7 +851,8 @@ describe("CategoriesPage", () => {
   it("주종을 추가하면 outbox 에 쌓이고 즉시 화면에 보인다", async () => {
     renderCategoriesPage();
 
-    await userEvent.type(await screen.findByLabelText("이름"), "새 주종");
+    await userEvent.click(await screen.findByRole("button", { name: "+ 주종 추가" }));
+    await userEvent.type(screen.getByLabelText("이름"), "새 주종");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는

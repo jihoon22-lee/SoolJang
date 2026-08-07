@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-07 (**Task 25 진행 중** — v1.1.0 실사용 2차 피드백 5항목, PR1(`fix/products-layout-filters`) 완료·머지 대기, PR2~PR4 진행) |
+| 최종 갱신 | 2026-08-07 (**Task 25 진행 중** — v1.1.0 실사용 2차 피드백 5항목. PR1([#62](https://github.com/jihoon22-lee/SoolJang/pull/62))·PR66(NUL 바이트 수정) 머지됨, PR2([#63](https://github.com/jihoon22-lee/SoolJang/pull/63)) 머지 진행 중, PR3·PR4 이어서 진행) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | **Task 25 진행 중**(§4 참조) — PR1 완료, 남은 PR2(주종 관리 개편)·PR3(구매처 검색)·PR4(통계 피벗 버튼 높이)를 이어서 진행한다. 그 외 Task 는 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
-| 현재 브랜치 | `fix/products-layout-filters` |
-| 진행 중 잔여 항목 | **Task 25 PR2~PR4** 진행 중(§4 참조). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 다음 착수 Task | **Task 25 진행 중**(§4 참조) — PR1 머지됨, PR2 머지 진행 중, 남은 PR3(구매처 검색)·PR4(통계 피벗 버튼 높이)를 이어서 머지한다. 그 외 Task 는 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `feat/category-manager-polish`(Task 25 PR2, 머지 진행 중) |
+| 진행 중 잔여 항목 | **Task 25 PR3·PR4** 머지 대기(§4 참조). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
 | 최신 버전 | **`v1.1.0` 릴리스 완료**(2026-08-06, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.0), GHCR `sooljang-api`/`sooljang-web:1.1.0`) — Task 24(통계 차트·탭 재구성·주종 관리 개편·오프라인 성능·외부 소스 JSON 어댑터) 반영. **처음으로 GHCR 에서 직접 `docker pull` 해 배포함**(Q8 스코프 확보 덕분 — `docker login ghcr.io` 재인증 필요했음, 로컬 재빌드 아님). `GET /api/v1/health` 로 `version:"1.1.0"` 확인, `db` 컨테이너는 재시작 없이 유지(데이터 무손상) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -237,7 +237,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
 | 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
 | 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
-| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | 🟡 PR1 완료, PR2~PR4 진행 중 | `fix/products-layout-filters`(머지 대기), `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | (진행 중) |
+| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | 🟡 PR1 머지됨, PR2 머지 진행 중, PR3·PR4 대기 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63) |
 
 ### 의존 관계
 
@@ -1382,6 +1382,30 @@ D138~D141.
 스캔 통과. 실브라우저(로그인 세션)로 390/768/1280/1908px 스크린샷 전후 비교, 구매일 필터
 동작(406→1건으로 좁혀짐 확인), "/" 단축키가 접힌 패널을 펼치고 포커스를 옮기는지 확인.
 
+#### PR2 — `feat/category-manager-polish`: 주종 관리 개편 (2026-08-06, 항목 3)
+
+`CategoryManager.tsx`:
+- **"주종 추가" 폼을 버튼 토글로 바꿨다.** 항상 펼쳐져 있던 `<form>` 을 `addOpen`
+  (`useState`, 기본 `false`)으로 조건부 렌더링한다 — `ProductsPage` 의 "새 술 등록" 토글과
+  같은 패턴(조건부 렌더링, CSS 은닉 아님). 헤더에 `+ 주종 추가`/`닫기` 버튼(`aria-expanded`)을
+  둔다
+- **행 액션 버튼을 900px 이상에서만 좁혔다.** 이름변경·이동·병합·삭제 4개가 한 행에
+  나열돼 44px 터치 타깃 그대로면 과하게 커 보였다(사용자 지적) — 이 버튼들을
+  `.button-row.category-row-actions` 로 묶고, `@media(min-width:900px)` 에서만
+  `--control-h-sm`+축소 패딩을 적용한다(`.sort-button` 이 이미 쓰는 "데스크톱 전용 밀집
+  UI" 예외와 같은 근거). 모바일 폭에서는 44px 터치 타깃을 그대로 유지해 접근성 회귀를
+  만들지 않는다
+- **트리 표시를 제품 수 내림차순으로 정렬했다.** `getCategoryTree()` 자체의 전역 정렬
+  (이름순, 다른 화면의 `<select>` 드롭다운도 이걸 쓴다)은 건드리지 않고, `CategoryManager`
+  의 `roots`/`childrenOf` `useMemo` 두 곳에서만 `descendant_product_count` 내림차순(동률은
+  이름순)을 적용한다 — 모든 계층 레벨에 재귀적으로 적용돼 하위 주종도 같은 규칙을 따른다
+
+검증: `npm --prefix web run check`(lint+typecheck+test 441 passed+build) 통과. **실브라우저
+(로그인 세션, 실데이터 406종·주종 44개)로 확인** — 맥주(114종)·와인(110종)·위스키(75종) 등
+모든 계층 레벨에서 제품 수 내림차순이 정확히 적용됨을 스크린샷+접근성 스냅샷으로 확인,
+"+ 주종 추가" 토글 열기/닫기, 버튼 크기가 눈에 띄게 작아짐을 확인. 근거는 `plan.md` §5
+Task 25 PR2 결정, D152~D154.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1667,6 +1691,14 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D150 | 모바일 기본 접힘 필터 패널을 순수 CSS `<details>`(닫힘 기본 + 900px 이상 강제 펼침 오버라이드)로 구현하려던 시도를 포기하고, `ProductsPage` 가 쥔 `useState<boolean>` + 버튼(`aria-expanded`) 조합으로 바꾼다 | 실측으로 확인했다 — 최신 Chrome 은 닫힌 `<details>` 의 비-summary 자식에 `content-visibility:hidden` 을 적용한다(단순 `display:none` 이 아니다). `display` 속성만 덮어쓰는 오버라이드로는 이 은닉을 되돌릴 수 없어(`getComputedStyle` 은 `display:block` 을 보고하지만 실제로는 그려지지 않음), 900px 이상에서 강제로 펼쳐 보이려던 원래 설계가 실브라우저에서 작동하지 않았다. 일반 상태 기반 토글은 이 문제와 무관하다 |
 | D151 | "/" 검색 단축키(`ProductsPage`)가 필터 패널이 닫혀 있으면 먼저 펼치기 상태를 갱신하고, `useEffect` 로 펼침이 반영된 뒤에야 포커스를 옮긴다(`pendingFilterFocusRef` 로 예약) | 상태 갱신은 비동기라 같은 이벤트 핸들러 안에서 곧바로 포커스를 옮기면 아직 `display:none` 인 입력을 포커스하게 된다 — 단축키가 접힌 상태에서 무력화되면 안 된다는 요구사항(항목 2) 때문에 필요했다 |
 
+
+### Task 25 PR2 결정 (D152~D154)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D152 | "주종 추가" 폼을 `addOpen`(`useState`, 기본 `false`) 조건부 렌더링으로 바꾼다(CSS 은닉이 아니라 언마운트) | `ProductsPage` 의 "새 술 등록" 토글과 같은 패턴을 재사용해 새 개념을 들여오지 않았다. 조건부 렌더링이라 기존 `CategoryManager.test.tsx`/`pages.test.tsx` 중 폼 필드를 직접 다루던 테스트들은 토글을 먼저 클릭하도록 갱신이 필요했다(실제 사용자 흐름과도 일치) |
+| D153 | 행 액션 버튼(이름변경·이동·병합·삭제)을 `<span className="button-row category-row-actions">` 로 묶고, `.category-row-actions button` 에 `@media(min-width:900px)` 로만 `--control-h-sm`+축소 패딩을 준다 | `.category-row button` 처럼 넓게 잡으면 CSS 명시도가 `.sort-button`(트리 접기/펼치기 토글)보다 높아져 그 버튼의 압축 스타일까지 덮어써 버린다 — 전용 클래스로 범위를 좁혀 피했다. 모바일 폭은 44px 터치 타깃을 그대로 유지해 접근성 회귀를 만들지 않는다 |
+| D154 | `getCategoryTree()` 자체의 이름순 정렬(다른 화면의 `<select>` 드롭다운도 공유)은 그대로 두고, `CategoryManager` 의 `roots`/`childrenOf` 두 `useMemo` 에서만 `descendant_product_count` 내림차순(동률은 이름순) 정렬을 적용한다 | 사용자 요청이 "주종 관리 탭" 표시에 한정돼 있었고, 드롭다운은 이름순이 타이핑 탐색에 더 유리해 그대로 둔다. 실데이터(주종 44개)로 모든 계층 레벨에서 내림차순이 정확함을 확인했다 |
 ## 6. 열린 질문
 
 | # | 질문 | 상태 | 필요 시점 |
