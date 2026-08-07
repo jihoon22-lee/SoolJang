@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-07 (**Task 25 전체 완료** — v1.1.0 실사용 2차 피드백 5항목 전부 반영, PR1~PR4([#62](https://github.com/jihoon22-lee/SoolJang/pull/62)~[#64](https://github.com/jihoon22-lee/SoolJang/pull/64)+`fix/stats-pivot-buttons`) 전부 머지 진행. 부수적으로 발견한 `PivotExplorer.tsx` NUL 바이트 결함도 함께 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66))) |
+| 최종 갱신 | 2026-08-07 (**Task 25 전체 완료 + v1.1.1 배포 완료** — v1.1.0 실사용 2차 피드백 5항목 전부 반영, PR1~PR4([#62](https://github.com/jihoon22-lee/SoolJang/pull/62)~[#65](https://github.com/jihoon22-lee/SoolJang/pull/65)) 전부 머지. 부수적으로 발견한 `PivotExplorer.tsx` NUL 바이트 결함도 별도 PR로 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66)). 버전을 1.1.1 로 올려([#67](https://github.com/jihoon22-lee/SoolJang/pull/67)) 릴리스·배포까지 끝냈다. 이어서 전체 코드베이스 점검(백엔드·프론트엔드·인프라/문서 3갈래) 수행 — 크리티컬·보안 이슈 없음, `vendorNames` 미메모이제이션(`ProductsPage`/`StoreModePage`) 수정 및 본 문서 최신화로 마무리) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR + Task 25 4개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | 없음 — Task 25 까지 계획된 작업이 전부 끝났다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
-| 현재 브랜치 | `fix/stats-pivot-buttons`(Task 25 PR4, 마지막 PR, 머지 진행 중) |
-| 진행 중 잔여 항목 | 없음 — Task 25 PR4 머지가 끝나면 이번 라운드 작업이 전부 완료된다. 남은 건 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.1.0` 릴리스 완료**(2026-08-06, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.0), GHCR `sooljang-api`/`sooljang-web:1.1.0`) — Task 24(통계 차트·탭 재구성·주종 관리 개편·오프라인 성능·외부 소스 JSON 어댑터) 반영. **처음으로 GHCR 에서 직접 `docker pull` 해 배포함**(Q8 스코프 확보 덕분 — `docker login ghcr.io` 재인증 필요했음, 로컬 재빌드 아님). `GET /api/v1/health` 로 `version:"1.1.0"` 확인, `db` 컨테이너는 재시작 없이 유지(데이터 무손상) |
+| 다음 착수 Task | 없음 — Task 25 까지 계획된 작업이 전부 끝났고 v1.1.1 배포도 완료됐다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `main`(작업 트리 깨끗함, 열린 PR·미머지 브랜치 없음) |
+| 진행 중 잔여 항목 | 없음. 남은 건 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.1.1` 릴리스 완료**(2026-08-07, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.1), GHCR `sooljang-api`/`sooljang-web:1.1.1`) — Task 25(레이아웃·모바일·주종/구매처/통계 UX 2차 피드백) + `PivotExplorer.tsx` NUL 바이트 수정 반영. `docker compose pull && up -d` 로 배포, `db` 컨테이너는 재시작 없이 유지(데이터 무손상). `GET /api/v1/health` 로 `version:"1.1.1"`·`database_connected:true` 확인 |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -235,9 +235,9 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 20 | 통계 v2 — 커스텀 피벗과 취향 분석 | ✅ | `feature/stats-v2` | [#25](https://github.com/jihoon22-lee/SoolJang/pull/25) |
 | 21 | 자체 통합 테스트와 다각도 분석 | ✅ 모바일 실기기만 배포 후로 이연 | `feature/self-review` | [#36](https://github.com/jihoon22-lee/SoolJang/pull/36) |
 | 22 | 분석 결과 기반 개선 실행 | ✅ Track 1~4(10/11 PR) + 사후 하드닝 2건. PR11 은 조건 미충족으로 별도 계획 | `feature/improvements-*`, `fix/external-sources-hardening`, `fix/sync-data-integrity` | [#26~#35](https://github.com/jihoon22-lee/SoolJang/pulls?q=is%3Apr+base%3Amain+is%3Amerged) (위 표 참조), [#41](https://github.com/jihoon22-lee/SoolJang/pull/41), [#42](https://github.com/jihoon22-lee/SoolJang/pull/42) |
-| 23 | 첫 정식 릴리스와 배포 | 🟡 태그·릴리스·PC 배포 완료. 모바일 접속(Tailscale Serve)만 사용자 활성화 대기 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
+| 23 | 첫 정식 릴리스와 배포 | ✅ 태그·릴리스·PC 배포·모바일 접속(Tailscale Serve) 전부 완료 | `chore/release-v1.0.0` | [#43](https://github.com/jihoon22-lee/SoolJang/pull/43), [v1.0.0 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.0.0) |
 | 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
-| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | ✅ PR1~PR4 전부 완료·머지 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63), [#64](https://github.com/jihoon22-lee/SoolJang/pull/64), [#65](https://github.com/jihoon22-lee/SoolJang/pull/65) |
+| 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | ✅ PR1~PR4 전부 완료·머지, v1.1.1 로 릴리스·배포 완료 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63), [#64](https://github.com/jihoon22-lee/SoolJang/pull/64), [#65](https://github.com/jihoon22-lee/SoolJang/pull/65) |
 
 ### 의존 관계
 
@@ -1340,7 +1340,7 @@ D138~D141.
 
 ---
 
-### 🟡 Task 25 — v1.1.0 실사용 2차 피드백 (레이아웃·모바일·주종/구매처/통계 UX)
+### ✅ Task 25 — v1.1.0 실사용 2차 피드백 (레이아웃·모바일·주종/구매처/통계 UX)
 
 `v1.1.0` 배포 후 사용자가 실제로 써 보며 화면별로 5가지 UI/UX 문제를 보고했다(스크린샷 첨부).
 전부 프론트엔드 범위이며 백엔드·스키마 변경은 없다. 로그인된 브라우저(실데이터 406종)를 직접
@@ -1444,6 +1444,18 @@ Task 25 PR2 결정, D152~D154.
 (로그인 세션, 실데이터)로 커스텀 피벗 "실행" 클릭 → "실행"/"CSV 내보내기" 버튼 모두 정상
 높이로 렌더링됨을 스크린샷으로 확인**. 근거는 `plan.md` §5 Task 25 PR4 결정, D156.
 
+#### 부수 수정 + 릴리스 (2026-08-07)
+
+리뷰 과정에서 `PivotExplorer.tsx` 에 있던 리터럴 NUL 바이트 결함(Task 24 PR5 부터 있던
+기존 버그, Task 25 와는 무관)을 발견해 별도 PR([#66](https://github.com/jihoon22-lee/SoolJang/pull/66))로
+수정했다. 이어서 버전을 1.1.1 로 올려([#67](https://github.com/jihoon22-lee/SoolJang/pull/67)) 태그·GitHub
+릴리스·`docker compose pull && up -d` 재배포까지 마쳤다(`db` 는 재시작 없이 유지) — 절차는
+`v1.1.0` 때와 동일. 배포 후 3갈래(백엔드/프론트엔드/인프라·문서) 병렬 코드베이스 전수 점검을
+수행했다 — 크리티컬·보안 이슈는 없었고, `ProductsPage.tsx`/`StoreModePage.tsx` 의 `vendorNames`
+미메모이제이션(`VendorsPage.tsx` 는 이미 고쳐져 있었으나 같은 패턴이 두 곳 더 남아 있었다)을
+마저 고치고 이 문서(§1·Task 23/25 상태 불일치, 누락됐던 D155)를 최신화했다. 나머지 발견 사항
+(경미한 접근성·타입 정합성·문서 갭)은 §9 릴리스 후 백로그에 기록했다.
+
 ---
 
 ## 9. 릴리스 후 백로그
@@ -1460,6 +1472,11 @@ Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항�
 | 읽기 전용 공유 링크 | Q6(지인 공유 권한 모델)이 미해결이라 Task 20 에서 이미 이연했다(D88) | Task 20 후속 |
 | `search` 전략(구글 검색 결과 스크래핑, Task 18 원 사양) | ToS·신뢰성 위험이 커 PR9 범위에서 뺐다(D91). 사용자가 "adapter 만 먼저" 를 선택 | 별도 PR + 별도 위험 검토 필요 |
 | 라벨 OCR 의 생산자·숙성연수 프리필 | `ProductForm` 에 대응 입력칸이 없어 메모 필드로 우회 중이다(Task 17 에서부터, `handoff.md` §2 참조). 제품 생성 API 에 `producer_id` 프리필 경로(이름→id 자동 매칭, `resolveVendorId` 와 같은 패턴)를 붙이는 게 개선 후보 | |
+| `SyncIssuesPanel`(`sync/SyncStatusBadge.tsx:143-216`) 이 `role="dialog"` 인데 포커스 이동·트랩·Escape 닫기·바깥 클릭 닫기가 없다 | `App.tsx` 설정 메뉴 팝오버(같은 패턴이라고 CSS 주석에 적혀 있음, `styles.css:1138`)는 이미 구현돼 있는데 이쪽만 빠졌다. 2026-08-07 전수 점검에서 발견 | 키보드/스크린리더 사용자는 "닫기" 버튼까지 탭해야만 닫을 수 있다 |
+| `purchased_on_min`/`purchased_on_max` 구매일 필터(Task 25 PR1, D149~151 인근)가 온라인 상태에선 조용히 무시된다 | 오프라인 Dexie 경로(`queries.ts`)에만 구현했고 서버 `GET /products` 는 이 파라미터를 모른다(의도된 설계 — B2 휴면 엔드포인트). 그런데 온라인일 때 UI 가 필터를 적용한 것처럼 보이면서 실제로는 무시되는 것에 대한 안내가 없다 | 온라인/오프라인 구분 안내 문구 추가, 또는 필터 자체를 오프라인 전용 배지로 표시 |
+| `Rankings.by_value_for_money`/`StatsSummary.{gifted_count,sold_count,avg_days_to_finish,avg_value_for_money}`(`web/src/api/types.ts`) 타입이 실제 REST 응답(`schemas/stats.py`)엔 없는 필드를 약속한다 | 현재는 무해함 — `statsApi.rankings`/`statsApi.summary` 를 호출하는 컴포넌트가 없다(`PivotExplorer`/`TimeseriesChart` 만 실사용). 하지만 타입 시스템이 막아주지 않아 향후 호출부가 생기면 런타임에 `undefined` 를 읽게 된다 | 온라인 전용 타입과 오프라인 전용 타입을 분리하거나 주석을 `@deprecated`/`offline-only` 로 명확히 강화 |
+| `release.yml` 이 릴리스 태그와 `pyproject.toml` 버전만 비교하고 `web/package.json`/`src/sooljang/__init__.py` 는 검증하지 않는다 | 현재는 세 곳 다 1.1.1 로 일치하지만, CI 가 드리프트를 못 잡는다 | 릴리스 워크플로에 3자 버전 일치 검증 스텝 추가 |
+| `ExternalInfoCard.tsx`/`HealthPanel.tsx` 전용 테스트 파일이 없다 | 다른 컴포넌트 대비 상대적으로 독립 실행 위험이 있는 화면(외부 소스 조회, 헬스 체크 표시) | 여유 있을 때 단위 테스트 추가 |
 
 ---
 
@@ -1741,6 +1758,7 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 
 | # | 결정 | 근거 |
 |---|---|---|
+| D155 | `VendorsPage.tsx` 에 별도 자동완성 컴포넌트를 새로 만들지 않고 기존 `AutocompleteInput`+`search.ts::rankByQuery` 를 재사용한다. `vendorQuery` state 하나로 (1) `AutocompleteInput` 드롭다운 순위 매기기와 (2) `matchesQuery`(초성 검색 포함) 기반 목록 실시간 필터링을 동시에 처리한다 | `ProductDetail.tsx` 가 구매 건 추가 시 구매처 이름 입력에 쓰는 것과 같은 조합이라 새 개념을 들여오지 않았다. 자동완성만으로는 "스크롤이 길다"는 지적(항목 4)을 못 없애 — 목록 자체를 줄이는 필터링을 같은 입력에 함께 건 것 |
 
 ### Task 25 PR4 결정 (D156)
 
