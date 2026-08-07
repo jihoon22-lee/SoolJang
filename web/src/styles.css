@@ -509,6 +509,14 @@ h4 {
   }
 }
 
+/* `.field-row` 를 폼 컨테이너 자체로 쓰면서 마지막 자식으로 `.button-row` 를 두는 경우
+   (`PivotExplorer`) — 기본 `align-items: stretch` 때문에 버튼 줄이 같은 그리드 행을 쓰는
+   필드(레이블+select)의 높이까지 늘어나 버튼이 세로로 길어졌다. 항상 전체 폭 단독 행을
+   차지하게 해 그 필드와 셀을 공유하지 않게 한다. */
+.field-row > .button-row {
+  grid-column: 1 / -1;
+}
+
 button {
   min-height: var(--control-h-md);
   padding: 10px 16px;

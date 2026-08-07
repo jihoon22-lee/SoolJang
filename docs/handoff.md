@@ -3,9 +3,9 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-07 (Task 25 진행 중 — `v1.1.0` 배포 후 사용자 2차 UI/UX 피드백 5항목
-  대응. PR1(`fix/products-layout-filters`: 버튼 높이·표 줄바꿈·레이아웃 폭·구매일 필터·모바일
-  필터 접힘) 완료·머지 대기, PR2~PR4 진행 중 — 상세는 `plan.md` §4 Task 25)**
+- 최종 갱신: **2026-08-07 (Task 25 전체 완료 — `v1.1.0` 배포 후 사용자 2차 UI/UX 피드백
+  5항목 전부 반영. PR1~PR4([#62](https://github.com/jihoon22-lee/SoolJang/pull/62)~[#65](https://github.com/jihoon22-lee/SoolJang/pull/65)) 전부 머지 진행, 부수적으로 발견한
+  `PivotExplorer.tsx` NUL 바이트 결함도 함께 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66)) — 상세는 `plan.md` §4 Task 25)**
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
@@ -14,8 +14,9 @@
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다(`scripts/backup.sh`
   도 한동안 이 함정에 걸려 있었다 — 2026-08-06 수정, [#59](https://github.com/jihoon22-lee/SoolJang/pull/59))
-- 현재 브랜치: `fix/products-layout-filters`(Task 25 PR1). Task 1~17·20~24·23 전부
-  완료(Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록).
+- 현재 브랜치: `fix/stats-pivot-buttons`(Task 25 PR4, 마지막 PR, 머지 진행 중). Task
+  1~17·20~24·23·25 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스
+  7곳 중 1곳(데일리샷) 실등록).
   **`v1.0.0` 이후 Task 24(실사용 피드백 개선) 7개 PR 을 전부 머지하고([#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53)),
   데일리샷 등록 과정에서 발견한 어댑터 개선([#56](https://github.com/jihoon22-lee/SoolJang/pull/56))까지
   담아 `v1.1.0` 을 정식 릴리스했다.** 계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부
@@ -203,6 +204,7 @@ scripts/backup.sh --restore <파일>  # 확인을 묻는다. 기존 데이터를
 | `PivotExplorer.tsx` 리터럴 NUL 바이트 제거(2026-08-06, `fix/pivot-explorer-nul-bytes`) | Task 25 v1.1.0 2차 피드백 PR들을 독립 코드 리뷰하다가 발견 — `cellByKey` 조합 키를 만드는 템플릿 리터럴 3곳(148·294·305행)이 구분자로 **진짜 NUL 바이트**(`\x00`)를 쓰고 있어(이스케이프 `\x00` 이 아니다) git 이 파일 전체를 바이너리로 인식했다. 그 결과 `git diff`·`git grep`·평범한 `grep` 이 이 파일 내용을 전혀 보여주지 못했다(`file` 명령으로 "data" 확인) — Task 24 PR5(통계 차트 개편)부터 이미 있던 결함이라 Task 25 자체와는 무관하지만, 방금 진행한 리뷰 자체를 가로막고 있어 바로 고쳤다. `\x00` 이스케이프로 바꾸면 런타임 동작은 완전히 같다(같은 NUL 문자가 생성됨) — `npm run check` 438 passed(회귀 0)로 확인. 이 파일을 다시 열 일이 있으면 `git diff`/`grep` 이 이제 정상 작동한다 |
 | Task 25 PR2 — 주종 관리 개편(2026-08-06, `feat/category-manager-polish`, 로컬 검증 완료·PR1 머지 후 올릴 예정) | 순수 프론트엔드(백엔드 변경 없음). PR1 이 GitHub Actions 장애로 머지 대기 중인 동안 `main` 기준 별도 브랜치에서 먼저 진행했다. "주종 추가" 폼을 `addOpen` 조건부 렌더링 토글로 바꾸고(CSS 은닉이 아니라 언마운트 — `ProductsPage` "새 술 등록"과 같은 패턴), 행 액션 버튼(이름변경·이동·병합·삭제)을 `.category-row-actions` 로 묶어 900px 이상에서만 `--control-h-sm` 로 축소하고(모바일 44px 터치 타깃은 유지), 트리 표시를 `descendant_product_count` 내림차순(동률은 이름순, 모든 계층 레벨에 재귀 적용)으로 정렬했다 — `getCategoryTree()` 자체의 전역 이름순 정렬(다른 화면 `<select>` 드롭다운이 공유)은 그대로 뒀다. `npm --prefix web run check` 441 passed, `vite build` 정상. **실브라우저(실데이터 406종·주종 44개)로 확인** — 맥주(114)·와인(110)·위스키(75) 등 모든 계층에서 내림차순 정렬이 정확함을 접근성 스냅샷으로 확인, "+ 주종 추가" 토글, 버튼 크기 축소를 스크린샷으로 확인. 근거는 `plan.md` Task 25 PR2 절, D152~D154 |
 | Task 25 PR3 — 구매처 검색+자동완성(2026-08-06, `feat/vendor-search`, 머지 진행 중) | 순수 프론트엔드(백엔드 변경 없음). `VendorsPage` 에 기존 `AutocompleteInput`+`search.ts::rankByQuery`/`matchesQuery` 재사용(`ProductDetail.tsx` 의 구매처 이름 자동완성과 같은 조합)으로 검색창을 추가했다 — 하나의 `vendorQuery` state로 자동완성 드롭다운과 목록 실시간 필터링을 동시에 한다. `npm --prefix web run check` 441 passed(신규 3건), `vite build` 정상. **실브라우저(실데이터 64곳)로 확인** — "코스트코" 입력 시 목록이 4개로 정확히 좁혀지고 자동완성 드롭다운도 같은 4개를 보여줌을 스크린샷으로 확인. 독립 코드 리뷰에서 `vendorNames` 를 `useMemo` 로 한 번 더 감싸 실제로 메모이제이션되게 고쳤다. 근거는 `plan.md` §5 Task 25 PR3 결정, D149(PR3 고유 브랜치라 다른 PR들과 번호가 겹쳤던 것은 이번 병합에서 D155로 정리) |
+| Task 25 PR4 — 통계 커스텀 피벗 버튼 높이(2026-08-06, `fix/stats-pivot-buttons`, 머지 진행 중, Task 25 마지막 PR) | 순수 프론트엔드(백엔드 변경 없음). `PivotExplorer.tsx` 의 `<form className="field-row">` 가 필드 5개(홀수) + `<div className="button-row">`(실행/CSV 내보내기)를 2열 grid 에 담아, 기본 `align-items:stretch` 때문에 마지막 필드("주종 필터")와 같은 행을 나눠 쓰는 button-row 가 그 필드의 라벨+select 높이까지 늘어나 "실행"/"CSV 내보내기" 버튼이 세로로 길게 늘어났다. `.field-row > .button-row { grid-column: 1 / -1; }` 한 줄로 고쳤다 — 버튼 줄이 항상 전체 폭 단독 행을 차지해 다른 `.field-row` 사용처(필드 쌍만 감싸는 곳들)는 영향받지 않는다(grep 확인). `npm --prefix web run check` 438 passed, `vite build` 정상. **실브라우저(로그인 세션, 실데이터)로 커스텀 피벗 "실행" 클릭 → "실행"/"CSV 내보내기" 버튼 모두 정상 높이로 렌더링됨을 스크린샷으로 확인**. 이로써 Task 25(v1.1.0 실사용 2차 피드백) 5개 항목이 전부 반영됐다. 근거는 `plan.md` §5 Task 25 PR4 결정, D156 |
 
 ---
 
