@@ -98,7 +98,7 @@ export function ProductsPage({
 
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const vendors = useLiveQuery(() => getVendors(), []);
-  const vendorNames = (vendors ?? []).map((vendor) => vendor.name);
+  const vendorNames = useMemo(() => (vendors ?? []).map((vendor) => vendor.name), [vendors]);
   // 카탈로그(조인 + 지표 계산, 제품 규모에 비례하는 유일하게 비싼 부분)는 한 번만 조회하고,
   // 필터 있는/없는 두 가지 뷰(목록에 보여줄 것 vs 자동완성·중복 등록 경고가 볼 전체)는
   // 순수 함수로 그 결과에서 파생시킨다 — 예전엔 이 둘이 각각 독립적으로 조회해 카탈로그
