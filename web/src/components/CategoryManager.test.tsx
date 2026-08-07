@@ -30,12 +30,23 @@ const IDLE = { isPending: false, isSuccess: false, variables: undefined, error: 
 /**
  * 주종 이름은 트리와 각 select 의 option 에 여러 번 나타난다(예: 최상위 주종은 자기 이름이
  * 그대로 다른 행의 이동 대상 option 텍스트로도 쓰인다). 행을 찾을 때는 그 행 자신의
- * `.name` 스팬으로 범위를 좁힌다.
+ * 이름 버튼(`.category-name-button`)으로 범위를 좁힌다.
  */
 function rowOf(name: string): HTMLElement {
   return screen
-    .getByText(name, { selector: ".category-row .name" })
+    .getByText(name, { selector: ".category-row .category-name-button" })
     .closest(".category-row") as HTMLElement;
+}
+
+/**
+ * 행의 이름을 눌러 관리 액션(이름 변경/이동/병합/삭제)을 펼친다. 전역에 한 번에 한 행만
+ * 펼쳐지므로(사용자 요청 — 모든 행에 버튼이 항상 나열되던 걸 정리했다), 액션 버튼을 다루는
+ * 테스트는 먼저 이 헬퍼로 대상 행을 펼친 뒤 진행한다.
+ */
+async function selectRow(name: string): Promise<HTMLElement> {
+  const toggle = screen.getByRole("button", { name: `${name} 관리 펼치기` });
+  await userEvent.click(toggle);
+  return toggle.closest(".category-row") as HTMLElement;
 }
 
 const handlers = () => ({
@@ -102,7 +113,7 @@ describe("CategoryManager", () => {
 
     const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const names = [...container.querySelectorAll(".category-row .name")].map(
+    const names = [...container.querySelectorAll(".category-row .category-name-button")].map(
       (el) => el.textContent,
     );
     expect(names).toEqual(["위스키", "와인", "맥주"]);
@@ -131,7 +142,7 @@ describe("CategoryManager", () => {
 
     const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const names = [...container.querySelectorAll(".category-row .name")].map(
+    const names = [...container.querySelectorAll(".category-row .category-name-button")].map(
       (el) => el.textContent,
     );
     expect(names).toEqual(["와인", "레드", "스파클링"]);
@@ -176,12 +187,14 @@ describe("CategoryManager", () => {
     await userEvent.click(toggle);
 
     expect(
-      screen.queryByText("레드와인", { selector: ".category-row .name" }),
+      screen.queryByText("레드와인", { selector: ".category-row .category-name-button" }),
     ).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "와인 하위 목록 펼치기" }));
 
-    expect(screen.getByText("레드와인", { selector: ".category-row .name" })).toBeInTheDocument();
+    expect(
+      screen.getByText("레드와인", { selector: ".category-row .category-name-button" }),
+    ).toBeInTheDocument();
   });
 
   it("주종 추가 폼은 기본 접힘이고 버튼으로 펼치고 접을 수 있다", async () => {
@@ -228,6 +241,7 @@ describe("CategoryManager", () => {
     const items = [node({ id: "sake", name: "사케" })];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
+    await selectRow("사케");
     await userEvent.click(screen.getByRole("button", { name: "이름 변경" }));
     const input = screen.getByLabelText("사케 새 이름");
     await userEvent.clear(input);
@@ -252,7 +266,7 @@ describe("CategoryManager", () => {
     ];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
-    const row = rowOf("스위트와인");
+    const row = await selectRow("스위트와인");
     await userEvent.click(within(row).getByRole("button", { name: "이동" }));
     expect(spies.onReparent).not.toHaveBeenCalled();
 
@@ -279,7 +293,7 @@ describe("CategoryManager", () => {
     ];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
-    const row = rowOf("스위트와인");
+    const row = await selectRow("스위트와인");
     await userEvent.click(within(row).getByRole("button", { name: "이동" }));
 
     expect(within(row).getByRole("button", { name: "이동 확인" })).toBeDisabled();
@@ -300,7 +314,7 @@ describe("CategoryManager", () => {
 
     render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const row = rowOf("와인");
+    const row = await selectRow("와인");
     await userEvent.click(within(row).getByRole("button", { name: "이동" }));
     const select = within(row).getByLabelText("와인 을 옮길 상위 주종");
     const options = within(select)
@@ -318,7 +332,7 @@ describe("CategoryManager", () => {
     ];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
-    const row = rowOf("중복");
+    const row = await selectRow("중복");
     await userEvent.click(within(row).getByRole("button", { name: "병합" }));
     expect(spies.onMerge).not.toHaveBeenCalled();
     expect(within(row).getByRole("button", { name: "병합 확인" })).toBeDisabled();
@@ -334,11 +348,12 @@ describe("CategoryManager", () => {
     expect(spies.onMerge).toHaveBeenCalledWith("dup", "keep");
   });
 
-  it("병합할 다른 주종이 없으면 병합 버튼을 비활성화한다", () => {
+  it("병합할 다른 주종이 없으면 병합 버튼을 비활성화한다", async () => {
     const items = [node({ id: "only", name: "유일" })];
     render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    expect(within(rowOf("유일")).getByRole("button", { name: "병합" })).toBeDisabled();
+    const row = await selectRow("유일");
+    expect(within(row).getByRole("button", { name: "병합" })).toBeDisabled();
   });
 
   it("비어 있는 주종은 확인 후 바로 삭제한다", async () => {
@@ -346,6 +361,7 @@ describe("CategoryManager", () => {
     const items = [node({ id: "empty", name: "빈 주종" })];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
+    await selectRow("빈 주종");
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));
     await userEvent.click(screen.getByRole("button", { name: "정말 삭제" }));
 
@@ -360,7 +376,7 @@ describe("CategoryManager", () => {
     ];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
-    const parentRow = rowOf("부모");
+    const parentRow = await selectRow("부모");
     await userEvent.click(within(parentRow).getByRole("button", { name: "삭제" }));
     await userEvent.click(
       within(parentRow).getByRole("button", { name: "하위를 상위로 올리고 삭제" }),
@@ -382,7 +398,7 @@ describe("CategoryManager", () => {
     ];
     render(<CategoryManager tree={tree(items)} {...spies} />);
 
-    const row = rowOf("제품 있음");
+    const row = await selectRow("제품 있음");
     await userEvent.click(within(row).getByRole("button", { name: "삭제" }));
 
     const moveButton = within(row).getByRole("button", { name: "옮기고 삭제" });
@@ -424,7 +440,7 @@ describe("CategoryManager", () => {
     expect(screen.getByText("기본")).toBeInTheDocument();
   });
 
-  it("처리 중인 행만 잠그고 다른 행은 그대로 둔다", () => {
+  it("처리 중인 행만 잠그고 다른 행은 그대로 둔다", async () => {
     const items = [node({ id: "a", name: "와인" }), node({ id: "b", name: "맥주" })];
 
     render(
@@ -435,11 +451,16 @@ describe("CategoryManager", () => {
       />,
     );
 
-    expect(within(rowOf("와인")).getByRole("button", { name: "이름 변경" })).toBeDisabled();
-    expect(within(rowOf("맥주")).getByRole("button", { name: "이름 변경" })).not.toBeDisabled();
+    const wineRow = await selectRow("와인");
+    expect(within(wineRow).getByRole("button", { name: "이름 변경" })).toBeDisabled();
+
+    // 한 번에 한 행만 펼쳐지므로("맥주"를 펼치면 "와인"은 자동으로 접힌다), 두 상태를
+    // 동시에가 아니라 순서대로 확인한다.
+    const beerRow = await selectRow("맥주");
+    expect(within(beerRow).getByRole("button", { name: "이름 변경" })).not.toBeDisabled();
   });
 
-  it("처리 중인 행은 이동·병합·삭제도 함께 잠긴다", () => {
+  it("처리 중인 행은 이동·병합·삭제도 함께 잠긴다", async () => {
     const items = [node({ id: "a", name: "와인" }), node({ id: "b", name: "맥주" })];
 
     render(
@@ -450,7 +471,7 @@ describe("CategoryManager", () => {
       />,
     );
 
-    const row = rowOf("와인");
+    const row = await selectRow("와인");
     expect(within(row).getByRole("button", { name: "이동" })).toBeDisabled();
     expect(within(row).getByRole("button", { name: "병합" })).toBeDisabled();
     expect(within(row).getByRole("button", { name: "삭제" })).toBeDisabled();
@@ -464,7 +485,7 @@ describe("CategoryManager", () => {
 
     expect(screen.getByRole("button", { name: "기본 주종 복원" })).toBeDisabled();
     expect(screen.getByText(/오프라인에서는 사용할 수 없습니다/)).toBeInTheDocument();
-    const row = rowOf("와인");
+    const row = await selectRow("와인");
     expect(within(row).getByRole("button", { name: "이동" })).toBeDisabled();
     expect(within(row).getByRole("button", { name: "병합" })).toBeDisabled();
     expect(within(row).getByRole("button", { name: "삭제" })).toBeDisabled();

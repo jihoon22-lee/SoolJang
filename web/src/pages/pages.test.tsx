@@ -844,7 +844,7 @@ describe("CategoriesPage", () => {
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     expect(
-      await screen.findByText("위스키", { selector: ".category-row .name" }),
+      await screen.findByText("위스키", { selector: ".category-row .category-name-button" }),
     ).toBeInTheDocument();
   });
 
@@ -856,9 +856,9 @@ describe("CategoriesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는
-    // `.category-row .name` 으로 범위를 좁혀 존재를 확인한다.
+    // `.category-row .category-name-button` 으로 범위를 좁혀 존재를 확인한다.
     expect(
-      await screen.findByText("새 주종", { selector: ".category-row .name" }),
+      await screen.findByText("새 주종", { selector: ".category-row .category-name-button" }),
     ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);
@@ -881,14 +881,15 @@ describe("CategoriesPage", () => {
     await db.category.put(categoryRow({ id: "whisky", name: "위스키", is_seeded: true }));
 
     renderCategoriesPage();
-    await userEvent.click(await screen.findByRole("button", { name: "이름 변경" }));
+    await userEvent.click(await screen.findByRole("button", { name: "위스키 관리 펼치기" }));
+    await userEvent.click(screen.getByRole("button", { name: "이름 변경" }));
     const input = screen.getByLabelText("위스키 새 이름");
     await userEvent.clear(input);
     await userEvent.type(input, "양주");
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
     expect(
-      await screen.findByText("양주", { selector: ".category-row .name" }),
+      await screen.findByText("양주", { selector: ".category-row .category-name-button" }),
     ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);
@@ -915,9 +916,10 @@ describe("CategoriesPage", () => {
     ]);
 
     renderCategoriesPage();
-    const row = (await screen.findByText("위스키", { selector: ".category-row .name" })).closest(
+    const row = (await screen.findByRole("button", { name: "위스키 관리 펼치기" })).closest(
       ".category-row",
     ) as HTMLElement;
+    await userEvent.click(within(row).getByRole("button", { name: "위스키 관리 펼치기" }));
     await userEvent.click(within(row).getByRole("button", { name: "삭제" }));
     await userEvent.selectOptions(within(row).getByLabelText("위스키 의 술을 옮길 주종"), "target");
     await userEvent.click(within(row).getByRole("button", { name: "옮기고 삭제" }));

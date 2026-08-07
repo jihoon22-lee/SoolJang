@@ -96,6 +96,12 @@ export function CategoryManager({
     return map;
   }, [tree.items]);
 
+  // 이름변경·이동·병합·삭제를 모든 행에 항상 늘어놓으면(44개 주종) 트리가 지저분해 보였다
+  // (사용자 지적). 이름을 눌러 펼치는 행 하나에만 액션을 보여준다 — 전역으로 하나만 쥐므로
+  // 다른 행을 펼치면 이전 행은 자동으로 접힌다("한 곳에만" 요청 충족).
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const toggleActive = (id: string) => setActiveId((current) => (current === id ? null : id));
+
   return (
     <section aria-labelledby="category-heading">
       <div className="section-header">
@@ -192,6 +198,8 @@ export function CategoryManager({
               childrenOf={childrenOf}
               allNodes={tree.items}
               offline={offline}
+              activeId={activeId}
+              onToggleActive={toggleActive}
               renameStatus={renameStatus}
               reparentStatus={reparentStatus}
               mergeStatus={mergeStatus}
@@ -213,6 +221,9 @@ interface BranchProps {
   childrenOf: Map<string, CategoryNode[]>;
   allNodes: CategoryNode[];
   offline: boolean;
+  /** 지금 액션(이름 변경/이동/병합/삭제)이 펼쳐진 행의 id. 트리 전체에서 최대 하나뿐이다. */
+  activeId: string | null;
+  onToggleActive: (id: string) => void;
   renameStatus: RowActionStatus;
   reparentStatus: RowActionStatus;
   mergeStatus: RowActionStatus;
@@ -232,6 +243,8 @@ function CategoryBranch({
   childrenOf,
   allNodes,
   offline,
+  activeId,
+  onToggleActive,
   renameStatus,
   reparentStatus,
   mergeStatus,
@@ -245,6 +258,13 @@ function CategoryBranch({
   const [draftName, setDraftName] = useState(node.name);
   const [expanded, setExpanded] = useState(true);
   const children = childrenOf.get(node.id) ?? [];
+  const isActive = node.id === activeId;
+
+  // 다른 행이 펼쳐져 이 행이 접히면, 이 행에 남아 있던 이름 편집 입력도 함께 접는다 —
+  // 그러지 않으면 편집 입력과 새로 펼쳐진 행의 액션이 동시에 보이는 상태가 될 수 있다.
+  useEffect(() => {
+    if (!isActive) setEditing(false);
+  }, [isActive]);
 
   const ownRename = statusFor(renameStatus, node.id);
   const ownReparent = statusFor(reparentStatus, node.id);
@@ -274,7 +294,9 @@ function CategoryBranch({
 
   return (
     <li>
-      <div className={`category-row${highlighted ? " category-row--highlight" : ""}`}>
+      <div
+        className={`category-row${highlighted ? " category-row--highlight" : ""}${isActive ? " category-row--active" : ""}`}
+      >
         {children.length > 0 ? (
           <button
             type="button"
@@ -324,39 +346,49 @@ function CategoryBranch({
           </>
         ) : (
           <>
-            <span className="name">{node.name}</span>
+            <button
+              type="button"
+              className="category-name-button"
+              aria-expanded={isActive}
+              aria-label={`${node.name} 관리 ${isActive ? "접기" : "펼치기"}`}
+              onClick={() => onToggleActive(node.id)}
+            >
+              {node.name}
+            </button>
             <span className="badge">{node.descendant_product_count}종</span>
             {node.is_seeded && <span className="muted">기본</span>}
-            <span className="button-row category-row-actions">
-              <button type="button" onClick={() => setEditing(true)} disabled={rowBusy}>
-                이름 변경
-              </button>
+            {isActive && (
+              <span className="button-row category-row-actions">
+                <button type="button" onClick={() => setEditing(true)} disabled={rowBusy}>
+                  이름 변경
+                </button>
 
-              <ReparentControl
-                node={node}
-                targets={moveTargets}
-                busy={rowBusy}
-                offline={offline}
-                onReparent={onReparent}
-              />
+                <ReparentControl
+                  node={node}
+                  targets={moveTargets}
+                  busy={rowBusy}
+                  offline={offline}
+                  onReparent={onReparent}
+                />
 
-              <MergeControl
-                node={node}
-                targets={moveTargets}
-                busy={rowBusy}
-                offline={offline}
-                onMerge={onMerge}
-              />
+                <MergeControl
+                  node={node}
+                  targets={moveTargets}
+                  busy={rowBusy}
+                  offline={offline}
+                  onMerge={onMerge}
+                />
 
-              <DeleteControl
-                node={node}
-                hasChildren={children.length > 0}
-                targets={moveTargets}
-                busy={rowBusy}
-                offline={offline}
-                onDelete={onDelete}
-              />
-            </span>
+                <DeleteControl
+                  node={node}
+                  hasChildren={children.length > 0}
+                  targets={moveTargets}
+                  busy={rowBusy}
+                  offline={offline}
+                  onDelete={onDelete}
+                />
+              </span>
+            )}
           </>
         )}
       </div>
@@ -376,6 +408,8 @@ function CategoryBranch({
               childrenOf={childrenOf}
               allNodes={allNodes}
               offline={offline}
+              activeId={activeId}
+              onToggleActive={onToggleActive}
               renameStatus={renameStatus}
               reparentStatus={reparentStatus}
               mergeStatus={mergeStatus}
