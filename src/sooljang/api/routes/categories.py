@@ -37,6 +37,7 @@ from sooljang.application.categories import (
     reorder_categories,
     reparent_category,
     rollup_product_counts,
+    save_current_tree_as_seed,
     seed_default_categories,
 )
 from sooljang.infrastructure.database.models import Category
@@ -213,9 +214,21 @@ async def merge(
 async def reset_seed(session: SessionDep, user_id: UserDep) -> CategoryTreeOut:
     """기본 계층을 복원한다.
 
-    upsert 이므로 사용자가 만든 항목과 이름을 바꾼 항목은 그대로 유지된다.
+    upsert 이므로 사용자가 만든 항목과 이름을 바꾼 항목은 그대로 유지된다. 사용자가
+    `:save-as-default` 로 저장해 둔 구조가 있으면 그걸, 없으면 앱 기본값을 기준으로
+    복원한다.
     """
     await seed_default_categories(session, user_id=user_id)
+    return await _tree_response(session, user_id)
+
+
+@router.post(":save-as-default", response_model=CategoryTreeOut, summary="현재 구조를 기본으로 저장")
+async def save_as_default(session: SessionDep, user_id: UserDep) -> CategoryTreeOut:
+    """지금 화면의 주종 구조를, 앞으로 `:reset-seed` 가 되돌릴 기준으로 저장한다.
+
+    현재 계층 자체는 바뀌지 않는다 — 저장된 기준만 갱신된다.
+    """
+    await save_current_tree_as_seed(session, user_id=user_id)
     return await _tree_response(session, user_id)
 
 

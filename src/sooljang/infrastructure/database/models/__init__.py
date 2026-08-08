@@ -8,6 +8,7 @@ Alembic 이 `Base.metadata` 를 통해 스키마를 인식하므로, 새 모델�
 from sooljang.infrastructure.database.models.auth import Session, User
 from sooljang.infrastructure.database.models.auth_enums import UserRole
 from sooljang.infrastructure.database.models.category import Category, Producer, Variety
+from sooljang.infrastructure.database.models.category_seed import CategorySeed
 from sooljang.infrastructure.database.models.external_source import (
     ExternalLookupCache,
     ExternalSource,
@@ -54,6 +55,7 @@ __all__ = [
     "Bottle",
     "BottleStatus",
     "Category",
+    "CategorySeed",
     "ConflictLog",
     "ExternalLookupCache",
     "ExternalSource",
