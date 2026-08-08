@@ -20,8 +20,6 @@
 이 값이 클라이언트에 미러링돼 봐야 쓸 곳이 없다(`LlmSetting`/`SavedView` 와 같은 이유).
 """
 
-from typing import Any
-
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 

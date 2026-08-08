@@ -286,9 +286,7 @@ async def save_current_tree_as_seed(session: AsyncSession, *, user_id: uuid.UUID
     """
     tree = await load_tree(session, user_id)
     paths = sorted({node.path for node in tree}, key=lambda path: (len(path), path))
-    return await save_category_seed(
-        session, user_id=user_id, paths=[list(path) for path in paths]
-    )
+    return await save_category_seed(session, user_id=user_id, paths=[list(path) for path in paths])
 
 
 async def _resolve_seed_paths(

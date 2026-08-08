@@ -222,7 +222,9 @@ async def reset_seed(session: SessionDep, user_id: UserDep) -> CategoryTreeOut:
     return await _tree_response(session, user_id)
 
 
-@router.post(":save-as-default", response_model=CategoryTreeOut, summary="현재 구조를 기본으로 저장")
+@router.post(
+    ":save-as-default", response_model=CategoryTreeOut, summary="현재 구조를 기본으로 저장"
+)
 async def save_as_default(session: SessionDep, user_id: UserDep) -> CategoryTreeOut:
     """지금 화면의 주종 구조를, 앞으로 `:reset-seed` 가 되돌릴 기준으로 저장한다.
 
