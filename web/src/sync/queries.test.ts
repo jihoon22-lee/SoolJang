@@ -208,6 +208,22 @@ describe("getProducts", () => {
     expect(inStock.map((p) => p.id)).toEqual(["p1"]);
   });
 
+  it("같은 품종에 연결이 중복으로 남아 있어도 한 번만 센다", async () => {
+    // 예전 백엔드 결함(hard delete 뒤 새 id 로 재생성)이 삭제를 로컬 미러에 전파하지
+    // 못해, 이미 걸린 기기에는 같은 variety_id 를 가리키는 옛 연결이 그대로 남아 있을
+    // 수 있다 — 재동기화 없이도 화면에서 바로 정상으로 보이려면 여기서 걸러야 한다.
+    await db.product.put(row({ id: "p1", name: "중복 연결 테스트" }));
+    await db.variety.put(row({ id: "v-레드", name: "레드" }));
+    await db.product_variety.bulkPut([
+      row({ id: "link-old", product_id: "p1", variety_id: "v-레드", sort_order: 0 }),
+      row({ id: "link-new", product_id: "p1", variety_id: "v-레드", sort_order: 0 }),
+    ]);
+
+    const [product] = await getProducts({});
+
+    expect(product?.varieties).toEqual(["레드"]);
+  });
+
   it("sort=created_at 은 실제 등록 시각순으로 정렬하고, 방향 토글도 반영된다", async () => {
     // 예전엔 이 접근자가 항상 null 을 돌려줘 등록일 정렬이 조용히 id(UUIDv7, 생성
     // 시각순) 순으로 폴백했다 — "등록일" 을 골라도 실제로는 아무 효과가 없었고,

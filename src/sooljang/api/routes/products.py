@@ -69,7 +69,7 @@ def _to_out(
         age_years=product.age_years,
         personal_rating=product.personal_rating,
         note=product.note,
-        varieties=[link.variety.name for link in product.varieties],
+        varieties=[link.variety.name for link in product.varieties if link.deleted_at is None],
         skus=[SkuOut.model_validate(sku) for sku in product.skus if sku.deleted_at is None],
         metrics=ProductMetricsOut(**metrics),
         created_at=product.created_at,
@@ -342,24 +342,43 @@ async def _check_barcode_available(
 async def _replace_varieties(
     session: SessionDep, user_id: uuid.UUID, product: Product, names: list[str]
 ) -> None:
-    """품종 연결을 새 목록으로 교체한다."""
+    """품종 연결을 새 목록에 맞춘다.
+
+    지우고 새로 만드는 대신 기존 연결을 최대한 재사용한다. `ProductVariety` 도 다른
+    엔티티처럼 소프트 삭제 대상이고 동기화 풀은 삭제 전파를 `deleted_at` 에 의존하는데
+    (`docs/architecture.md` §5.3), 매번 실제로 지우고(hard delete) 새 id 로 다시 만들면
+    지워졌다는 사실 자체가 서버에 안 남아 클라이언트에 전파될 수 없다 — 로컬 미러에는
+    옛 연결이 그대로 남은 채 새 연결만 계속 추가돼, 저장할 때마다(값을 안 바꿔도) 품종이
+    화면에서 중복 증식하는 결함으로 실사용 중 발견됐다.
+    """
+    import datetime
+
     existing = await session.scalars(
         select(ProductVariety).where(ProductVariety.product_id == product.id)
     )
-    for link in existing:
-        await session.delete(link)
-    await session.flush()
+    existing_by_variety = {link.variety_id: link for link in existing}
 
     variety_ids = await resolve_variety_ids(session, user_id=user_id, names=names)
+    keep = set(variety_ids)
+
+    for variety_id, link in existing_by_variety.items():
+        if variety_id not in keep and link.deleted_at is None:
+            link.deleted_at = datetime.datetime.now(datetime.UTC)
+
     for order, variety_id in enumerate(variety_ids):
-        session.add(
-            ProductVariety(
-                user_id=user_id,
-                product_id=product.id,
-                variety_id=variety_id,
-                sort_order=order,
+        link = existing_by_variety.get(variety_id)
+        if link is not None:
+            link.deleted_at = None
+            link.sort_order = order
+        else:
+            session.add(
+                ProductVariety(
+                    user_id=user_id,
+                    product_id=product.id,
+                    variety_id=variety_id,
+                    sort_order=order,
+                )
             )
-        )
     await session.flush()
     # 관계 컬렉션이 이미 로드되어 있으면 낡은 값이 남는다. 만료시켜 다음 조회가 다시 읽게 한다.
     session.expire(product, ["varieties"])

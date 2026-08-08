@@ -142,6 +142,20 @@ def test_update_product_replaces_varieties(api_client: TestClient, prefix: str) 
     assert body["varieties"] == ["IPA", "Pale Ale"]
 
 
+def test_removed_variety_disappears_from_detail_immediately(
+    api_client: TestClient, prefix: str
+) -> None:
+    """뺀 품종은 다음 조회에서 바로 안 보여야 한다(내부적으로 소프트 삭제되므로)."""
+    created = _seed_product(api_client, prefix, name="품종 제거", varieties=["레드", "스위트"])
+
+    response = api_client.patch(
+        f"{prefix}/products/{created['id']}", json={"variety_names": ["레드"]}
+    )
+
+    assert response.json()["varieties"] == ["레드"]
+    assert api_client.get(f"{prefix}/products/{created['id']}").json()["varieties"] == ["레드"]
+
+
 def test_soft_deleted_product_disappears_from_list(api_client: TestClient, prefix: str) -> None:
     created = _seed_product(api_client, prefix, name="삭제될 술")
 

@@ -383,10 +383,19 @@ async function varietyNameMap(): Promise<Map<string, string[]>> {
   ]);
   const varietyName = new Map(varieties.map((row) => [row.id, row.name as string]));
   const result = new Map<string, string[]>();
+  // product_id 당 variety_id 하나는 한 번만 센다. 예전 백엔드 결함(hard delete 뒤 재생성)이
+  // 삭제를 로컬 미러에 전파하지 못해 남긴 중복 연결이 이미 기기에 있을 수 있다 — 여기서
+  // 걸러야 그 기기들이 다시 동기화하지 않아도 바로 정상으로 보인다.
+  const seenByProduct = new Map<string, Set<string>>();
   for (const link of links.sort((a, b) => (a.sort_order as number) - (b.sort_order as number))) {
-    const name = varietyName.get(link.variety_id as string);
+    const varietyId = link.variety_id as string;
+    const name = varietyName.get(varietyId);
     if (!name) continue;
     const productId = link.product_id as string;
+    const seen = seenByProduct.get(productId) ?? new Set<string>();
+    if (seen.has(varietyId)) continue;
+    seen.add(varietyId);
+    seenByProduct.set(productId, seen);
     const list = result.get(productId) ?? [];
     list.push(name);
     result.set(productId, list);
