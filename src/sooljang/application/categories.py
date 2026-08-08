@@ -21,7 +21,7 @@ from typing import Any
 from sqlalchemy import Select, Text, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.infrastructure.database.models import Category, Product
+from sooljang.infrastructure.database.models import Category, CategorySeed, Product
 from sooljang.infrastructure.legacy.categories import (
     MAX_CATEGORY_DEPTH,
     default_seed_paths,
@@ -252,11 +252,61 @@ async def reparent_category(
     return category
 
 
+async def get_category_seed(session: AsyncSession, *, user_id: uuid.UUID) -> CategorySeed | None:
+    """사용자가 저장해 둔 기본 주종 구조. 없으면 `None`(하드코딩된 기본값을 쓴다)."""
+    return await session.scalar(
+        select(CategorySeed)
+        .where(CategorySeed.user_id == user_id, CategorySeed.deleted_at.is_(None))
+        .order_by(CategorySeed.created_at.desc())
+        .limit(1)
+    )
+
+
+async def save_category_seed(
+    session: AsyncSession, *, user_id: uuid.UUID, paths: list[list[str]]
+) -> CategorySeed:
+    """기본 주종 구조를 저장한다. 기존 저장이 있으면 갱신하고, 없으면 새로 만든다."""
+    existing = await get_category_seed(session, user_id=user_id)
+    if existing is not None:
+        existing.paths = paths
+        await session.flush()
+        return existing
+
+    created = CategorySeed(user_id=user_id, paths=paths)
+    session.add(created)
+    await session.flush()
+    return created
+
+
+async def save_current_tree_as_seed(session: AsyncSession, *, user_id: uuid.UUID) -> CategorySeed:
+    """지금 화면의 주종 구조를, 앞으로 "기본 주종 복원"이 되돌릴 기준으로 저장한다.
+
+    부모가 자식보다 먼저 오도록 깊이 오름차순으로 정렬해 둔다 — `seed_default_categories`
+    가 이 순서 그대로 upsert 하므로, 자식을 만들 때 부모가 이미 있어야 한다.
+    """
+    tree = await load_tree(session, user_id)
+    paths = sorted({node.path for node in tree}, key=lambda path: (len(path), path))
+    return await save_category_seed(session, user_id=user_id, paths=[list(path) for path in paths])
+
+
+async def _resolve_seed_paths(
+    session: AsyncSession, *, user_id: uuid.UUID
+) -> list[tuple[str, ...]]:
+    """이 사용자에게 적용할 시드 경로. 저장된 구조가 있으면 그것을, 없으면 하드코딩된
+    전역 기본값을 쓴다."""
+    saved = await get_category_seed(session, user_id=user_id)
+    if saved is not None:
+        return [tuple(path) for path in saved.paths]
+    return default_seed_paths()
+
+
 async def seed_default_categories(session: AsyncSession, *, user_id: uuid.UUID) -> list[Category]:
     """기본 계층을 upsert 한다.
 
     이미 있는 경로는 건드리지 않는다. 사용자가 이름을 바꾸거나 삭제한 항목을 시드가
-    되살리면 사용자의 편집을 무시하는 셈이 된다(§5-D27).
+    되살리면 사용자의 편집을 무시하는 셈이 된다(§5-D27). "기본"이 무엇인지는
+    `_resolve_seed_paths` 가 정한다 — 사용자가 `save_current_tree_as_seed` 로 자기
+    구조를 저장해 뒀으면 하드코딩된 전역 기본값 대신 그 구조로 복원한다(Task 28).
     """
     created: list[Category] = []
     by_path: dict[tuple[str, ...], uuid.UUID] = {}
@@ -265,7 +315,8 @@ async def seed_default_categories(session: AsyncSession, *, user_id: uuid.UUID) 
     for node in existing:
         by_path[node.path] = node.id
 
-    for order, path in enumerate(default_seed_paths()):
+    seed_paths = await _resolve_seed_paths(session, user_id=user_id)
+    for order, path in enumerate(seed_paths):
         if path in by_path:
             continue
         parent_id = by_path.get(path[:-1]) if len(path) > 1 else None

@@ -228,6 +228,8 @@ export const categoriesApi = {
 
   resetSeed: () => request<CategoryTree>("/categories:reset-seed", { method: "POST" }),
 
+  saveAsDefault: () => request<CategoryTree>("/categories:save-as-default", { method: "POST" }),
+
   remove: (id: string, strategy: DeleteStrategy = "reject", targetId?: string) =>
     request<CategoryTree>(`/categories/${id}`, {
       method: "DELETE",

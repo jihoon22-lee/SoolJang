@@ -161,6 +161,62 @@ def test_reset_seed_preserves_user_renames(api_client: TestClient, prefix: str) 
     assert "니혼슈" in names
 
 
+def test_save_as_default_then_reset_seed_restores_custom_structure(
+    api_client: TestClient, prefix: str
+) -> None:
+    """저장해 둔 구조가 있으면 하드코딩된 앱 기본값 대신 그 구조로 복원해야 한다."""
+    custom_root = _create(api_client, prefix, "커스텀주")
+    _create(api_client, prefix, "커스텀주 하위", custom_root["id"])
+
+    saved = api_client.post(f"{prefix}/categories:save-as-default").json()
+    # 저장 자체는 현재 계층을 바꾸지 않는다.
+    assert {item["name"] for item in saved["items"]} == {"커스텀주", "커스텀주 하위"}
+
+    delete_response = api_client.delete(
+        f"{prefix}/categories/{custom_root['id']}", params={"strategy": "promote_children"}
+    )
+    assert delete_response.status_code == 200
+    names_after_delete = {item["name"] for item in delete_response.json()["items"]}
+    assert "커스텀주" not in names_after_delete
+
+    restored = api_client.post(f"{prefix}/categories:reset-seed").json()
+    names = {item["name"] for item in restored["items"]}
+    assert "커스텀주" in names
+    assert "커스텀주 하위" in names
+    # 하드코딩된 앱 기본값(예: "맥주")은 저장된 구조에 없으므로 되살아나지 않는다.
+    assert "맥주" not in names
+
+
+def test_save_as_default_with_empty_tree_makes_reset_seed_noop(
+    api_client: TestClient, prefix: str
+) -> None:
+    """빈 트리를 저장했다면, 그것도 사용자의 의도다 — 앱 기본값으로 몰래 되돌아가면 안 된다."""
+    api_client.post(f"{prefix}/categories:save-as-default")
+
+    restored = api_client.post(f"{prefix}/categories:reset-seed").json()
+
+    assert restored["items"] == []
+
+
+def test_save_as_default_is_idempotent_and_updates_in_place(
+    api_client: TestClient, prefix: str
+) -> None:
+    """다시 저장하면 이전 저장을 대체한다(중복 행이 쌓이지 않는다)."""
+    first_root = _create(api_client, prefix, "첫 구조")
+    api_client.post(f"{prefix}/categories:save-as-default")
+
+    api_client.delete(f"{prefix}/categories/{first_root['id']}")
+    second_root = _create(api_client, prefix, "두 번째 구조")
+    api_client.post(f"{prefix}/categories:save-as-default")
+
+    api_client.delete(f"{prefix}/categories/{second_root['id']}")
+    restored = api_client.post(f"{prefix}/categories:reset-seed").json()
+
+    names = {item["name"] for item in restored["items"]}
+    assert "두 번째 구조" in names
+    assert "첫 구조" not in names
+
+
 def test_delete_empty_category(api_client: TestClient, prefix: str) -> None:
     category = _create(api_client, prefix, "삭제 대상")
 

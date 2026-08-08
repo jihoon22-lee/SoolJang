@@ -56,6 +56,9 @@ const handlers = () => ({
   createError: null,
   resetSeedBusy: false,
   resetSeedError: null,
+  saveAsDefaultBusy: false,
+  saveAsDefaultError: null,
+  saveAsDefaultSuccess: false,
   renameStatus: IDLE,
   reparentStatus: IDLE,
   mergeStatus: IDLE,
@@ -66,6 +69,7 @@ const handlers = () => ({
   onMerge: vi.fn(),
   onDelete: vi.fn(),
   onResetSeed: vi.fn(),
+  onSaveAsDefault: vi.fn(),
   onSelectCategory: vi.fn(),
 });
 
@@ -555,5 +559,39 @@ describe("CategoryManager", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent("복원할 수 없습니다");
+  });
+
+  it("현재 구조를 기본으로 저장하는 버튼이 있고, 누르면 핸들러를 호출한다", async () => {
+    const spies = handlers();
+    render(<CategoryManager tree={tree([])} {...spies} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "현재 구조를 기본으로 저장" }));
+
+    expect(spies.onSaveAsDefault).toHaveBeenCalled();
+  });
+
+  it("저장 성공 안내를 보여준다", () => {
+    const items = [node({ id: "c", name: "위스키" })];
+    render(<CategoryManager tree={tree(items)} {...handlers()} saveAsDefaultSuccess />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("기본값으로 저장했습니다");
+  });
+
+  it("저장 실패를 알린다", () => {
+    render(
+      <CategoryManager
+        tree={tree([])}
+        {...handlers()}
+        saveAsDefaultError={new Error("저장할 수 없습니다")}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("저장할 수 없습니다");
+  });
+
+  it("오프라인에서는 기본으로 저장하기도 막는다", () => {
+    render(<CategoryManager tree={tree([])} {...handlers()} offline />);
+
+    expect(screen.getByRole("button", { name: "현재 구조를 기본으로 저장" })).toBeDisabled();
   });
 });
