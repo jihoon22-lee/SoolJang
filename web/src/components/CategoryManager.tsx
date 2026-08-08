@@ -41,6 +41,8 @@ interface CategoryManagerProps {
   onMerge: (id: string, targetId: string) => void;
   onDelete: (id: string, strategy: DeleteStrategy, targetId?: string) => void;
   onResetSeed: () => void;
+  /** 이름을 누르면 그 주종으로 필터링된 "내 술" 목록으로 이동한다(구매처·통계 탭과 같은 패턴). */
+  onSelectCategory: (id: string) => void;
 }
 
 /**
@@ -72,6 +74,7 @@ export function CategoryManager({
   onMerge,
   onDelete,
   onResetSeed,
+  onSelectCategory,
 }: CategoryManagerProps) {
   const [newName, setNewName] = useState("");
   const [newParentId, setNewParentId] = useState("");
@@ -208,6 +211,7 @@ export function CategoryManager({
               onReparent={onReparent}
               onMerge={onMerge}
               onDelete={onDelete}
+              onSelectCategory={onSelectCategory}
             />
           ))}
         </ul>
@@ -232,6 +236,7 @@ interface BranchProps {
   onReparent: (id: string, newParentId: string | null) => void;
   onMerge: (id: string, targetId: string) => void;
   onDelete: (id: string, strategy: DeleteStrategy, targetId?: string) => void;
+  onSelectCategory: (id: string) => void;
 }
 
 function statusFor(status: RowActionStatus, id: string): RowActionStatus {
@@ -253,6 +258,7 @@ function CategoryBranch({
   onReparent,
   onMerge,
   onDelete,
+  onSelectCategory,
 }: BranchProps) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(node.name);
@@ -346,14 +352,17 @@ function CategoryBranch({
           </>
         ) : (
           <>
+            <button type="button" className="link-like" onClick={() => onSelectCategory(node.id)}>
+              {node.name}
+            </button>
             <button
               type="button"
-              className="category-name-button"
+              className="category-manage-toggle"
               aria-expanded={isActive}
               aria-label={`${node.name} 관리 ${isActive ? "접기" : "펼치기"}`}
               onClick={() => onToggleActive(node.id)}
             >
-              {node.name}
+              관리
             </button>
             <span className="badge">{node.descendant_product_count}종</span>
             {node.is_seeded && <span className="muted">기본</span>}
@@ -418,6 +427,7 @@ function CategoryBranch({
               onReparent={onReparent}
               onMerge={onMerge}
               onDelete={onDelete}
+              onSelectCategory={onSelectCategory}
             />
           ))}
         </ul>

@@ -21,7 +21,11 @@ function slugify(name: string): string {
 }
 
 /** 주종 관리 화면. */
-export function CategoriesPage() {
+export function CategoriesPage({
+  onSelectCategory,
+}: {
+  onSelectCategory: (categoryId: string) => void;
+}) {
   const queryClient = useQueryClient();
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
@@ -130,6 +134,7 @@ export function CategoriesPage() {
       onMerge={(id, targetId) => merge.mutate({ id, targetId })}
       onDelete={(id, strategy, targetId) => remove.mutate({ id, strategy, targetId })}
       onResetSeed={() => resetSeed.mutate()}
+      onSelectCategory={onSelectCategory}
     />
   );
 }

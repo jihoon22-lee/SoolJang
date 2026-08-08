@@ -822,7 +822,7 @@ describe("CategoriesPage", () => {
   function renderCategoriesPage() {
     return renderWithQuery(
       <SyncStatusProvider>
-        <CategoriesPage />
+        <CategoriesPage onSelectCategory={vi.fn()} />
       </SyncStatusProvider>,
     );
   }
@@ -844,7 +844,7 @@ describe("CategoriesPage", () => {
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     expect(
-      await screen.findByText("위스키", { selector: ".category-row .category-name-button" }),
+      await screen.findByText("위스키", { selector: ".category-row .link-like" }),
     ).toBeInTheDocument();
   });
 
@@ -856,9 +856,9 @@ describe("CategoriesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는
-    // `.category-row .category-name-button` 으로 범위를 좁혀 존재를 확인한다.
+    // `.category-row .link-like` 으로 범위를 좁혀 존재를 확인한다.
     expect(
-      await screen.findByText("새 주종", { selector: ".category-row .category-name-button" }),
+      await screen.findByText("새 주종", { selector: ".category-row .link-like" }),
     ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);
@@ -889,7 +889,7 @@ describe("CategoriesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
     expect(
-      await screen.findByText("양주", { selector: ".category-row .category-name-button" }),
+      await screen.findByText("양주", { selector: ".category-row .link-like" }),
     ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);

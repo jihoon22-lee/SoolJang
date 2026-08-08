@@ -30,18 +30,19 @@ const IDLE = { isPending: false, isSuccess: false, variables: undefined, error: 
 /**
  * 주종 이름은 트리와 각 select 의 option 에 여러 번 나타난다(예: 최상위 주종은 자기 이름이
  * 그대로 다른 행의 이동 대상 option 텍스트로도 쓰인다). 행을 찾을 때는 그 행 자신의
- * 이름 버튼(`.category-name-button`)으로 범위를 좁힌다.
+ * 이름 링크(`.link-like`)로 범위를 좁힌다.
  */
 function rowOf(name: string): HTMLElement {
   return screen
-    .getByText(name, { selector: ".category-row .category-name-button" })
+    .getByText(name, { selector: ".category-row .link-like" })
     .closest(".category-row") as HTMLElement;
 }
 
 /**
- * 행의 이름을 눌러 관리 액션(이름 변경/이동/병합/삭제)을 펼친다. 전역에 한 번에 한 행만
- * 펼쳐지므로(사용자 요청 — 모든 행에 버튼이 항상 나열되던 걸 정리했다), 액션 버튼을 다루는
- * 테스트는 먼저 이 헬퍼로 대상 행을 펼친 뒤 진행한다.
+ * 행의 "관리" 버튼을 눌러 관리 액션(이름 변경/이동/병합/삭제)을 펼친다(이름 자체는 그
+ * 주종의 술 목록으로 이동하는 별도 링크다). 전역에 한 번에 한 행만 펼쳐지므로(사용자
+ * 요청 — 모든 행에 버튼이 항상 나열되던 걸 정리했다), 액션 버튼을 다루는 테스트는 먼저
+ * 이 헬퍼로 대상 행을 펼친 뒤 진행한다.
  */
 async function selectRow(name: string): Promise<HTMLElement> {
   const toggle = screen.getByRole("button", { name: `${name} 관리 펼치기` });
@@ -65,6 +66,7 @@ const handlers = () => ({
   onMerge: vi.fn(),
   onDelete: vi.fn(),
   onResetSeed: vi.fn(),
+  onSelectCategory: vi.fn(),
 });
 
 describe("CategoryManager", () => {
@@ -113,7 +115,7 @@ describe("CategoryManager", () => {
 
     const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const names = [...container.querySelectorAll(".category-row .category-name-button")].map(
+    const names = [...container.querySelectorAll(".category-row .link-like")].map(
       (el) => el.textContent,
     );
     expect(names).toEqual(["위스키", "와인", "맥주"]);
@@ -142,10 +144,21 @@ describe("CategoryManager", () => {
 
     const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const names = [...container.querySelectorAll(".category-row .category-name-button")].map(
+    const names = [...container.querySelectorAll(".category-row .link-like")].map(
       (el) => el.textContent,
     );
     expect(names).toEqual(["와인", "레드", "스파클링"]);
+  });
+
+  it("이름을 누르면 그 주종의 술 목록으로 이동하고, 관리 패널은 펼쳐지지 않는다", async () => {
+    const spies = handlers();
+    const items = [node({ id: "whisky", name: "위스키" })];
+    render(<CategoryManager tree={tree(items)} {...spies} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "위스키" }));
+
+    expect(spies.onSelectCategory).toHaveBeenCalledWith("whisky");
+    expect(screen.queryByRole("button", { name: "이름 변경" })).not.toBeInTheDocument();
   });
 
   it("하위가 있는 항목만 접기/펼치기 토글을 보여준다", () => {
@@ -187,13 +200,13 @@ describe("CategoryManager", () => {
     await userEvent.click(toggle);
 
     expect(
-      screen.queryByText("레드와인", { selector: ".category-row .category-name-button" }),
+      screen.queryByText("레드와인", { selector: ".category-row .link-like" }),
     ).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "와인 하위 목록 펼치기" }));
 
     expect(
-      screen.getByText("레드와인", { selector: ".category-row .category-name-button" }),
+      screen.getByText("레드와인", { selector: ".category-row .link-like" }),
     ).toBeInTheDocument();
   });
 
