@@ -31,6 +31,9 @@ interface CategoryManagerProps {
   createError: unknown;
   resetSeedBusy: boolean;
   resetSeedError: unknown;
+  saveAsDefaultBusy: boolean;
+  saveAsDefaultError: unknown;
+  saveAsDefaultSuccess: boolean;
   renameStatus: RowActionStatus;
   reparentStatus: RowActionStatus;
   mergeStatus: RowActionStatus;
@@ -41,6 +44,8 @@ interface CategoryManagerProps {
   onMerge: (id: string, targetId: string) => void;
   onDelete: (id: string, strategy: DeleteStrategy, targetId?: string) => void;
   onResetSeed: () => void;
+  /** 지금 화면의 구조를, 이후 `onResetSeed` 가 되돌릴 기준으로 저장한다(Task 28). */
+  onSaveAsDefault: () => void;
   /** 이름을 누르면 그 주종으로 필터링된 "내 술" 목록으로 이동한다(구매처·통계 탭과 같은 패턴). */
   onSelectCategory: (id: string) => void;
 }
@@ -64,6 +69,9 @@ export function CategoryManager({
   createError,
   resetSeedBusy,
   resetSeedError,
+  saveAsDefaultBusy,
+  saveAsDefaultError,
+  saveAsDefaultSuccess,
   renameStatus,
   reparentStatus,
   mergeStatus,
@@ -74,6 +82,7 @@ export function CategoryManager({
   onMerge,
   onDelete,
   onResetSeed,
+  onSaveAsDefault,
   onSelectCategory,
 }: CategoryManagerProps) {
   const [newName, setNewName] = useState("");
@@ -176,6 +185,9 @@ export function CategoryManager({
         <button type="button" onClick={onResetSeed} disabled={resetSeedBusy || offline}>
           기본 주종 복원
         </button>
+        <button type="button" onClick={onSaveAsDefault} disabled={saveAsDefaultBusy || offline}>
+          현재 구조를 기본으로 저장
+        </button>
         <span className="muted text-sm self-center">
           {offline
             ? "오프라인에서는 사용할 수 없습니다."
@@ -186,6 +198,16 @@ export function CategoryManager({
         <p className="alert mb-3" role="alert">
           {resetSeedError.message}
         </p>
+      )}
+      {saveAsDefaultError instanceof Error && (
+        <p className="alert mb-3" role="alert">
+          {saveAsDefaultError.message}
+        </p>
+      )}
+      {saveAsDefaultSuccess && (
+        <output className="muted text-sm mb-3">
+          지금 구조를 기본값으로 저장했습니다. 앞으로 "기본 주종 복원"은 이 구조로 되돌립니다.
+        </output>
       )}
 
       {tree.items.length === 0 ? (

@@ -112,6 +112,10 @@ export function CategoriesPage({
     onSuccess: invalidateOnline,
   });
 
+  const saveAsDefault = useMutation({
+    mutationFn: () => categoriesApi.saveAsDefault(),
+  });
+
   if (!tree) {
     return <output aria-live="polite">주종 계층을 불러오고 있습니다…</output>;
   }
@@ -134,6 +138,10 @@ export function CategoriesPage({
       onMerge={(id, targetId) => merge.mutate({ id, targetId })}
       onDelete={(id, strategy, targetId) => remove.mutate({ id, strategy, targetId })}
       onResetSeed={() => resetSeed.mutate()}
+      saveAsDefaultBusy={saveAsDefault.isPending}
+      saveAsDefaultError={saveAsDefault.error}
+      saveAsDefaultSuccess={saveAsDefault.isSuccess}
+      onSaveAsDefault={() => saveAsDefault.mutate()}
       onSelectCategory={onSelectCategory}
     />
   );

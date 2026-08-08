@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-08 (**Task 27 완료** — v1.1.2 배포 직후 발견된 회귀(주종 이름 클릭 시 술 목록 이동이 안 됨) 수정, PR [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) 머지. 버전을 1.1.3 로 올려([#72](https://github.com/jihoon22-lee/SoolJang/pull/72)) 릴리스·재배포 진행 중. 사용자가 추가로 요청한 "현재 주종 구조를 기본값으로 저장" 기능은 Task 28 로 별도 설계·진행 예정) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26, Task 27**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR + Task 25 4개 PR + Task 26 1개 PR + Task 27 1개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | **Task 28**(현재 주종 구조를 기본값으로 저장 — 사용자 요청, 새 백엔드 테이블·엔드포인트 필요, 아직 설계 중). 그 외엔 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
-| 현재 브랜치 | `main`(Task 27 머지 후 v1.1.3 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.1.3 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`), 이어서 Task 28 설계·구현. 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.1.3` 릴리스 진행 중**(2026-08-08) — Task 27(주종 이름 클릭 시 술 목록 이동 복원) 반영. 이전 최신 버전은 `v1.1.2`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.2)) |
+| 최종 갱신 | 2026-08-08 (**Task 28 완료** — 사용자 요청으로 "현재 주종 구조를 기본값으로 저장" 기능 추가(신규 `CategorySeed` 테이블), PR [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) 머지. 버전을 1.1.4 로 올려([#74](https://github.com/jihoon22-lee/SoolJang/pull/74)) 릴리스·재배포 진행 중) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26, Task 27, Task 28**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR + Task 25 4개 PR + Task 26 1개 PR + Task 27 1개 PR + Task 28 1개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
+| 다음 착수 Task | 없음 — Task 28 까지 계획된 작업이 전부 끝났다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `main`(Task 28 머지 후 v1.1.4 릴리스·재배포 진행 중) |
+| 진행 중 잔여 항목 | v1.1.4 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.1.4` 릴리스 진행 중**(2026-08-08) — Task 28(주종 구조를 기본값으로 저장) 반영. 이전 최신 버전은 `v1.1.3`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.3)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -240,6 +240,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | ✅ PR1~PR4 전부 완료·머지, v1.1.1 로 릴리스·배포 완료 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63), [#64](https://github.com/jihoon22-lee/SoolJang/pull/64), [#65](https://github.com/jihoon22-lee/SoolJang/pull/65) |
 | 26 | v1.1.1 실사용 3차 피드백(내 술 레이아웃 재조정 + 주종 관리 액션 정리) | ✅ 완료·머지 | `chore/task26-layout-category-actions` | [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) |
 | 27 | 주종 관리: 이름 클릭 시 술 목록 이동 복원(Task 26 회귀 수정) | ✅ 완료·머지 | `fix/category-name-navigates-again` | [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) |
+| 28 | 주종 관리: 현재 구조를 기본값으로 저장 | ✅ 완료·머지 | `feat/category-seed-save-as-default` | [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) |
 
 ### 의존 관계
 
@@ -1524,6 +1525,44 @@ categoryId})` 연결) — 클릭하면 그 주종으로 필터링된 "내 술" �
 
 ---
 
+### ✅ Task 28 — 주종 관리: 현재 구조를 기본값으로 저장
+
+Task 27 작업 중 사용자가 새 요청을 얹었다 — "현재 주종 구조를 기본 구조로 저장하는 것도
+있으면 좋겠어." 지금까지 "기본 주종 복원"(`categories:reset-seed`)은 항상 하드코딩된
+전역 기본값(`infrastructure/legacy/categories.py::DEFAULT_CATEGORY_PATHS`, 레거시
+롤업에서 도출한 고정 표)으로만 되돌렸다 — 사용자가 스스로 정리한 구조를 앞으로의 "기본"
+으로 삼을 방법이 없었다.
+
+**백엔드(새 테이블 필요).** `SavedView`(Task 20, 사용자 정의 피벗을 JSON 으로 저장)와
+`LlmSetting`(Task 17, 사용자당 활성 행 최대 1개)을 그대로 재사용 가능한 선례로 삼았다.
+새 모델 `CategorySeed`(`models/category_seed.py`, 마이그레이션 `757982c7b323`)가
+`paths: JSONB`(예: `[["와인"],["와인","레드와인"], ...]`) 하나만 사용자당 최대 1행
+저장한다. `application/categories.py` 에 `get_category_seed`/`save_category_seed`
+(있으면 갱신, 없으면 생성 — `LlmSetting` 과 같은 upsert 패턴)와
+`save_current_tree_as_seed`(지금 트리를 깊이 오름차순으로 정렬해 저장 — 부모가 자식보다
+먼저 있어야 시드 적용이 성립한다)를 추가했다. `seed_default_categories` 는 새로 추가한
+`_resolve_seed_paths` 를 거쳐 저장된 구조가 있으면 그것을, 없으면 기존 하드코딩된
+기본값을 쓴다(D161) — **빈 트리를 저장했다면 그것도 사용자의 의도로 존중**해, 복원 시
+몰래 앱 기본값으로 되돌아가지 않는다. 새 엔드포인트
+`POST /categories:save-as-default` 는 `:reset-seed` 와 같은 `CategoryTreeOut` 응답을
+재사용한다(현재 계층 자체는 안 바꾸고, 저장된 "기준"만 갱신한다).
+
+**프론트엔드.** `categoriesApi.saveAsDefault()`, `CategoriesPage` 에 별도 뮤테이션(성공해도
+제품 쿼리를 무효화할 필요가 없다 — 현재 트리가 안 바뀌므로), `CategoryManager` 의 "기본
+주종 복원" 버튼 옆에 "현재 구조를 기본으로 저장" 버튼을 추가하고 성공 시 안내 문구
+(`<output>`, 접근성 역할 자동 매핑)를 보여준다.
+
+검증: `npm --prefix web run check`(lint+typecheck+test 451 passed(신규 4건)+build),
+`make test`(pytest 699 passed(신규 3건)+29 skipped) 통과. `make migration-check` 로
+up→down→up 왕복 확인. **API 레벨로 전체 사이클 직접 확인** — 로컬에서 격리된 개발
+DB(`sooljang_dev`, 프로덕션과 무관)로 `uv run sooljang-api` 를 띄우고 curl 로 (1) 커스텀
+주종 생성 (2) 저장 (3) 삭제 (4) 복원 → 저장해 둔 구조("커스텀주")가 정확히 되살아나고
+앱 기본값("맥주" 등)은 안 섞여 들어옴을 확인. **실브라우저(Chrome DevTools MCP)로도
+버튼 클릭 → "지금 구조를 기본값으로 저장했습니다" 안내가 뜨는지 확인**. 근거는 `plan.md`
+§5 Task 28 결정, D161.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1845,6 +1884,12 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | # | 결정 | 근거 |
 |---|---|---|
 | D160 | 카테고리 이름 클릭(관리 패널 토글)과 "그 주종의 술 목록으로 이동"을 다시 분리한다 — 이름은 `.link-like` 로 이동 전용, 옆의 새 "관리" 버튼(`.category-manage-toggle`)이 Task 26 의 관리 패널 토글을 이어받는다 | Task 26 에서 이름을 관리 토글로 바꾸며 `VendorsPage`/`StatsPage` 와 이미 확립된 "이름 클릭 → 술 목록 이동" 관례가 깨졌다(사용자 재제보). 한 컨트롤에 두 가지 뜻을 억지로 얹는 대신, `VendorsPage` 가 이미 쓰는 "이름=이동 링크 + 별도 버튼=관리" 패턴을 그대로 재사용해 앱 전체 상호작용을 일관되게 유지했다 |
+
+### Task 28 결정 (D161)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D161 | 저장된 구조가 "빈 트리"여도 정직하게 존중한다 — `_resolve_seed_paths` 는 `CategorySeed` 행이 **존재하는지**(빈 배열이라도)로 "저장됨"을 판정하지, 배열이 비었다고 하드코딩된 기본값으로 몰래 폴백하지 않는다 | 사용자가 정말로 "카테고리 없음"을 기본으로 저장했을 수 있다 — 그 경우 "기본 주종 복원"이 조용히 앱 기본값(맥주·와인 등)을 되살리면 사용자 의도를 무시하는 셈이다. `None`(저장 안 함)과 `[]`(빈 구조 저장함)을 구분해야만 정확하다 — 테스트(`test_save_as_default_with_empty_tree_makes_reset_seed_noop`)로 고정했다 |
 
 ## 6. 열린 질문
 
