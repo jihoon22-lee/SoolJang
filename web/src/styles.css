@@ -977,30 +977,27 @@ button:disabled {
   transition: background-color 0.4s ease;
 }
 
-/* 이름을 눌러 이 행의 관리 액션(이름 변경/이동/병합/삭제)을 펼치고 접는다 — 이전에는
-   4개 버튼이 모든 행에 항상 나열돼 트리가 지저분해 보였다(사용자 지적). `all: unset` 으로
-   버튼 기본 스타일을 지우고 이전 `<span className="name">` 과 같은 굵기·색으로 되돌린다. */
-.category-name-button {
+/* "관리" 를 눌러 이 행의 관리 액션(이름 변경/이동/병합/삭제)을 펼치고 접는다 — 이전에는
+   4개 버튼이 모든 행에 항상 나열돼 트리가 지저분해 보였다(사용자 지적). 이름 자체는
+   `.link-like` 로 그 주종의 술 목록으로 이동하는 데 쓰므로(구매처·통계 탭과 같은 패턴,
+   사용자 재제보로 복원), 관리 토글은 이름보다 한 단계 낮은 보조 컨트롤로 보이게 한다. */
+.category-manage-toggle {
   all: unset;
   cursor: pointer;
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
   border-radius: var(--radius-sm);
+  padding: 2px 6px;
 }
 
-.category-name-button:hover {
+.category-manage-toggle:hover,
+.category-manage-toggle[aria-expanded="true"] {
   color: var(--accent-strong);
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
-.category-name-button:focus-visible {
+.category-manage-toggle:focus-visible {
   outline: 3px solid var(--accent-strong);
   outline-offset: 2px;
-}
-
-.category-name-button[aria-expanded="true"] {
-  color: var(--accent-strong);
 }
 
 /* 이동 확인 직후 잠깐 강조해 "어디로 갔는지" 를 알려준다. `.category-row` 의 transition 이

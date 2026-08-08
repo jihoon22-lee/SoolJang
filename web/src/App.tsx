@@ -221,7 +221,11 @@ export function App() {
           {route.view === "scan" && (
             <StoreModePage onOpenDetail={(id) => navigate({ view: "products", productId: id })} />
           )}
-          {route.view === "categories" && <CategoriesPage />}
+          {route.view === "categories" && (
+            <CategoriesPage
+              onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+            />
+          )}
           {route.view === "vendors" && (
             <VendorsPage onSelectVendor={(id) => navigate({ view: "products", vendorId: id })} />
           )}

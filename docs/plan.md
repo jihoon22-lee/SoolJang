@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-07 (**Task 26 완료** — v1.1.1 실사용 3차 피드백(내 술 레이아웃 재조정 + 주종 관리 액션 정리) 반영, PR [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) 머지. 버전을 1.1.2 로 올려([#70](https://github.com/jihoon22-lee/SoolJang/pull/70)) 릴리스·재배포까지 진행 중) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR + Task 25 4개 PR + Task 26 1개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | 없음 — Task 26 까지 계획된 작업이 전부 끝났다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
-| 현재 브랜치 | `main`(Task 26 머지 후 v1.1.2 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.1.2 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.1.2` 릴리스 진행 중**(2026-08-07) — Task 26(내 술 레이아웃 재조정 + 주종 관리 액션 정리) 반영. 이전 최신 버전은 `v1.1.1`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.1)) |
+| 최종 갱신 | 2026-08-08 (**Task 27 완료** — v1.1.2 배포 직후 발견된 회귀(주종 이름 클릭 시 술 목록 이동이 안 됨) 수정, PR [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) 머지. 버전을 1.1.3 로 올려([#72](https://github.com/jihoon22-lee/SoolJang/pull/72)) 릴리스·재배포 진행 중. 사용자가 추가로 요청한 "현재 주종 구조를 기본값으로 저장" 기능은 Task 28 로 별도 설계·진행 예정) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26, Task 27**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR + Task 25 4개 PR + Task 26 1개 PR + Task 27 1개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
+| 다음 착수 Task | **Task 28**(현재 주종 구조를 기본값으로 저장 — 사용자 요청, 새 백엔드 테이블·엔드포인트 필요, 아직 설계 중). 그 외엔 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
+| 현재 브랜치 | `main`(Task 27 머지 후 v1.1.3 릴리스·재배포 진행 중) |
+| 진행 중 잔여 항목 | v1.1.3 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`), 이어서 Task 28 설계·구현. 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.1.3` 릴리스 진행 중**(2026-08-08) — Task 27(주종 이름 클릭 시 술 목록 이동 복원) 반영. 이전 최신 버전은 `v1.1.2`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.2)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -239,6 +239,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 24 | 실사용 피드백 기반 개선 + 코드베이스 감사 결과 반영 | ✅ PR1~PR7 전부 완료·머지 | `fix/sync-queue-recovery`·`fix/frontend-resilience`·`refactor/design-system`·`feat/navigation-restructure`·`feat/stats-charts`·`feat/category-manager-ux`·`perf/offline-queries`(전부 머지됨) | [#47](https://github.com/jihoon22-lee/SoolJang/pull/47), [#48](https://github.com/jihoon22-lee/SoolJang/pull/48), [#49](https://github.com/jihoon22-lee/SoolJang/pull/49), [#50](https://github.com/jihoon22-lee/SoolJang/pull/50), [#51](https://github.com/jihoon22-lee/SoolJang/pull/51), [#52](https://github.com/jihoon22-lee/SoolJang/pull/52), [#53](https://github.com/jihoon22-lee/SoolJang/pull/53) |
 | 25 | v1.1.0 실사용 2차 피드백(레이아웃·모바일·주종/구매처/통계 UX) | ✅ PR1~PR4 전부 완료·머지, v1.1.1 로 릴리스·배포 완료 | `fix/products-layout-filters`, `feat/category-manager-polish`, `feat/vendor-search`, `fix/stats-pivot-buttons` | [#62](https://github.com/jihoon22-lee/SoolJang/pull/62), [#63](https://github.com/jihoon22-lee/SoolJang/pull/63), [#64](https://github.com/jihoon22-lee/SoolJang/pull/64), [#65](https://github.com/jihoon22-lee/SoolJang/pull/65) |
 | 26 | v1.1.1 실사용 3차 피드백(내 술 레이아웃 재조정 + 주종 관리 액션 정리) | ✅ 완료·머지 | `chore/task26-layout-category-actions` | [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) |
+| 27 | 주종 관리: 이름 클릭 시 술 목록 이동 복원(Task 26 회귀 수정) | ✅ 완료·머지 | `fix/category-name-navigates-again` | [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) |
 
 ### 의존 관계
 
@@ -1494,6 +1495,35 @@ Task 26 결정, D157~D159.
 
 ---
 
+### ✅ Task 27 — 주종 관리: 이름 클릭 시 술 목록 이동 복원
+
+Task 26 배포(v1.1.2) 직후 사용자가 회귀를 지적했다 — "기존에는 주종을 누르면 해당 주종의
+술 목록이 보이도록 이동했었는데, 이제 그게 안 되네." 코드로 확인해 보면 `CategoryManager`
+자체엔 이 드릴다운이 원래 없었다 — "이름을 누르면 그 항목의 술 목록으로 이동"은 지금까지
+**통계 탭**(`StatsPage` 주종별 집계, `onSelectCategory`)과 **구매처 탭**(`VendorsPage`,
+`onSelectVendor`)에만 있던, 앱 전체에 걸쳐 이미 확립된 관례다. Task 26 에서 카테고리
+이름 자체를 관리 패널 토글로 바꿔 버려서, 이제 `.link-like` 스타일(금색 밑줄)로 링크처럼
+보이는 이름을 눌러도 이동하지 않게 된 것 — 사용자는 자연스럽게 다른 탭과 같은 동작을
+기대하고 있었다.
+
+**해결**: 이름 클릭과 "행 관리 액션 펼치기"를 분리해 `VendorsPage` 가 이미 쓰는 정확히
+같은 패턴을 따른다(D160). 이름 → `.link-like` 버튼(신규 `onSelectCategory` prop, `App.tsx`
+에서 `VendorsPage`/`StatsPage` 바로 아래와 같은 배선으로 `navigate({view:"products",
+categoryId})` 연결) — 클릭하면 그 주종으로 필터링된 "내 술" 목록으로 이동한다. 이름 옆에
+새로 둔 "관리" 버튼(`.category-manage-toggle`, Task 26 의 `.category-name-button` 을
+이름만 바꾸고 이름보다 한 단계 낮은 보조 컨트롤로 보이도록 `--text-muted`/`--text-sm` 로
+톤을 낮췄다)이 이제 관리 패널 토글을 맡는다 — 이름변경/이동/병합/삭제 자체의 동작(전역
+`activeId`, 한 번에 한 행만 펼침)은 그대로다. 행마다 컨트롤이 1개(이름) → 2개(이름+관리)로
+늘지만, Task 26 이전(행마다 4개 버튼 상시 노출)보다는 여전히 훨씬 깔끔하다.
+
+검증: `npm --prefix web run check`(lint+typecheck+test 447 passed(신규 1건, 회귀 0)+build)
+통과. **실브라우저(Chrome DevTools MCP, 로그인 세션, 실데이터)로 확인** — "위스키" 이름
+클릭 → "내 술" 탭으로 이동하고 URL 이 `#products?category=<id>` 로 바뀌며 목록이 그
+주종(75종)으로 정확히 필터링됨을 확인, "관리" 버튼은 여전히 액션 패널을 펼치고 접는지
+확인. 근거는 `plan.md` §5 Task 27 결정, D160.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1809,6 +1839,12 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D157 | `.app-main` max-width 를 고정 `1760px` 에서 `min(2200px, 96vw)` 로, `.layout-with-sidebar` 사이드바를 `260px` 에서 `240px` 로 한 번 더 좁힌다 | Task 25 PR1 의 조정(1600→1760px, 280→260px)이 초광폭 화면(1920px 논리 해상도 이상)에서는 여전히 부족하다는 재제보 — 고정 px 상한은 화면이 넓어져도 표 영역이 함께 넓어지지 않는다. `vw` 기반으로 바꿔 화면 폭에 비례하게 하되 극단적으로 넓은 모니터에서 줄 길이가 과해지지 않도록 2200px 을 상한으로 뒀다 |
 | D158 | `.product-table td.numeric` 에 `white-space: nowrap` 을 추가한다(다른 열의 `overflow-wrap: anywhere` 는 그대로 둔다) | 실측으로 확인했다 — Task 25 PR1 에서 제품명 열의 줄바꿈을 허용하려고 `.product-table td` 전체에 준 `overflow-wrap: anywhere` 가 도수·재고·평단가·100ml당·내 평점처럼 자릿수가 정해진 짧은 값에도 걸려, auto 표 레이아웃이 이 열들의 최소 너비를 거의 0까지 줄여 "14.5%" 가 글자 단위로 쪼개졌다. 이 열들은 이미 `numeric` 클래스로 구분돼 있어 선택자만 추가하면 됐다 |
 | D159 | `CategoryManager` 의 행별 액션(이름 변경/이동/병합/삭제)을 전역 `activeId` 상태 하나로 통합한다 — 이름을 눌러 그 행 하나만 펼치고, 다른 행 이름을 누르면 이전 행은 자동으로 접힌다(조건부 렌더링, CSS 은닉 아님) | 44개 주종 행 전부에 4개 버튼이 항상 나열돼 트리가 지저분해 보인다는 지적("그건 한 곳에만 있어도 될 것 같고"). 조건부 렌더링을 택해 `ReparentControl`/`MergeControl`/`DeleteControl`/이름 편집의 내부 `asking`/`editing` 상태가 행이 접힐 때 함께 언마운트돼 자동으로 초기화되게 했다 — CSS 로만 숨겼다면 이런 상태가 남아, 다시 펼쳤을 때 이전 확인 단계가 그대로 보이는 문제가 생겼을 것이다 |
+
+### Task 27 결정 (D160)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D160 | 카테고리 이름 클릭(관리 패널 토글)과 "그 주종의 술 목록으로 이동"을 다시 분리한다 — 이름은 `.link-like` 로 이동 전용, 옆의 새 "관리" 버튼(`.category-manage-toggle`)이 Task 26 의 관리 패널 토글을 이어받는다 | Task 26 에서 이름을 관리 토글로 바꾸며 `VendorsPage`/`StatsPage` 와 이미 확립된 "이름 클릭 → 술 목록 이동" 관례가 깨졌다(사용자 재제보). 한 컨트롤에 두 가지 뜻을 억지로 얹는 대신, `VendorsPage` 가 이미 쓰는 "이름=이동 링크 + 별도 버튼=관리" 패턴을 그대로 재사용해 앱 전체 상호작용을 일관되게 유지했다 |
 
 ## 6. 열린 질문
 
