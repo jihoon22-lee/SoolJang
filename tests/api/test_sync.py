@@ -303,6 +303,78 @@ def test_soft_delete_propagates_in_pull(api_client: TestClient, prefix: str) -> 
     assert row["deleted_at"] is not None
 
 
+def test_variety_no_op_save_does_not_duplicate_the_link_in_pull(
+    api_client: TestClient, prefix: str
+) -> None:
+    """`variety_names` 를 바꾸지 않고 저장해도 풀에 새 `product_variety` 행이 생기면 안
+    된다. 예전에는 저장할 때마다 연결을 hard delete 뒤 새 id 로 다시 만들어서, 삭제가
+    `deleted_at` 없이 사라져 클라이언트 로컬 미러에 옛 연결이 계속 남았다 — 실사용 중
+    "품종·스타일" 값이 저장할 때마다 증식하는 결함으로 발견됐다."""
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "증식 재현", "variety_names": ["레드", "스위트"]}
+    ).json()
+
+    before = _pull(api_client, prefix)
+    link_ids = {
+        row["id"]
+        for row in before["changes"]["product_variety"]
+        if row["product_id"] == product["id"]
+    }
+    assert len(link_ids) == 2
+
+    for _ in range(2):
+        response = api_client.patch(
+            f"{prefix}/products/{product['id']}", json={"variety_names": ["레드", "스위트"]}
+        )
+        assert response.json()["varieties"] == ["레드", "스위트"]
+
+    after = _pull(api_client, prefix, since=before["next_cursor"])
+    changed = [
+        row for row in after["changes"]["product_variety"] if row["product_id"] == product["id"]
+    ]
+    assert changed == []
+
+
+def test_variety_removed_then_readded_restores_the_same_link(
+    api_client: TestClient, prefix: str
+) -> None:
+    """품종을 뺐다가 같은 이름으로 다시 넣으면 새 연결이 아니라 소프트 삭제됐던 기존
+    연결을 복원해야 한다 — 그래야 삭제가 `deleted_at` 로 남아 동기화가 전파된다."""
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "복원 재현", "variety_names": ["레드", "스위트"]}
+    ).json()
+
+    before = _pull(api_client, prefix)
+    variety_name = {row["id"]: row["name"] for row in before["changes"]["variety"]}
+    sweet_link_id = next(
+        row["id"]
+        for row in before["changes"]["product_variety"]
+        if row["product_id"] == product["id"] and variety_name[row["variety_id"]] == "스위트"
+    )
+
+    remove = api_client.patch(
+        f"{prefix}/products/{product['id']}", json={"variety_names": ["레드"]}
+    )
+    assert remove.json()["varieties"] == ["레드"]
+
+    after_remove = _pull(api_client, prefix, since=before["next_cursor"])
+    removed_row = next(
+        row for row in after_remove["changes"]["product_variety"] if row["id"] == sweet_link_id
+    )
+    assert removed_row["deleted_at"] is not None
+
+    readd = api_client.patch(
+        f"{prefix}/products/{product['id']}", json={"variety_names": ["레드", "스위트"]}
+    )
+    assert readd.json()["varieties"] == ["레드", "스위트"]
+
+    after_readd = _pull(api_client, prefix, since=after_remove["next_cursor"])
+    restored_row = next(
+        row for row in after_readd["changes"]["product_variety"] if row["id"] == sweet_link_id
+    )
+    assert restored_row["deleted_at"] is None
+
+
 def test_bottle_action_and_tasting_action(api_client: TestClient, prefix: str) -> None:
     product = api_client.post(
         f"{prefix}/products", json={"name": "액션 테스트 술", "skus": [{"volume_ml": 500}]}
