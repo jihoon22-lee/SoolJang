@@ -65,3 +65,9 @@ class PasswordChangeRequest(BaseModel):
 
     current_password: str = Field(min_length=1)
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+
+
+class ProfileUpdateRequest(BaseModel):
+    """표시 이름 변경. 이메일·비밀번호는 여기서 다루지 않는다."""
+
+    display_name: str = Field(min_length=1, max_length=120)

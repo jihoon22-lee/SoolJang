@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { authenticatedRoutes, renderWithQuery, stubRoutes } from "@/testing";
+import { authenticatedRoutes, renderWithQuery, stubRoutes, TEST_USER } from "@/testing";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -136,6 +136,94 @@ describe("SettingsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "키 삭제" }));
 
     expect(await screen.findByText("설정되지 않음")).toBeInTheDocument();
+  });
+
+  describe("프로필", () => {
+    function stubLlmSettings() {
+      return {
+        match: "/llm-settings",
+        method: "GET",
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+        },
+      };
+    }
+
+    /** 표시 이름은 `/auth/me` 조회가 끝난 뒤 별도 effect 로 채워진다 — 필드가 나타난
+     * 직후가 아니라, 실제로 채워진 뒤에 상호작용해야 레이스가 안 생긴다. */
+    async function findPrefilledInput() {
+      const input = await screen.findByLabelText("표시 이름");
+      await waitFor(() => expect(input).toHaveValue(TEST_USER.display_name));
+      return input;
+    }
+
+    it("현재 표시 이름을 미리 채워 보여준다", async () => {
+      stubRoutes([...authenticatedRoutes(), stubLlmSettings()]);
+
+      renderWithQuery(<SettingsPage />);
+
+      await findPrefilledInput();
+    });
+
+    it("저장하면 안내를 보여준다", async () => {
+      const { calls } = stubRoutes([
+        ...authenticatedRoutes(),
+        stubLlmSettings(),
+        { match: "/auth/me", method: "PATCH", body: { ...TEST_USER, display_name: "새 이름" } },
+      ]);
+
+      renderWithQuery(<SettingsPage />);
+      const input = await findPrefilledInput();
+      await userEvent.clear(input);
+      await userEvent.type(input, "새 이름");
+      await userEvent.click(screen.getByRole("button", { name: "이름 저장" }));
+
+      expect(await screen.findByText("이름을 바꿨습니다.")).toBeInTheDocument();
+
+      const patch = calls.find((call) => call.method === "PATCH" && call.url.includes("/auth/me"));
+      expect(patch?.body).toMatchObject({ display_name: "새 이름" });
+    });
+
+    it("저장 실패는 오류 메시지를 보여준다", async () => {
+      stubRoutes([
+        ...authenticatedRoutes(),
+        stubLlmSettings(),
+        {
+          match: "/auth/me",
+          method: "PATCH",
+          status: 422,
+          body: {
+            type: "https://sooljang.local/errors/validation",
+            title: "요청 값이 올바르지 않습니다",
+            status: 422,
+            detail: "표시 이름을 입력하세요",
+            errors: [],
+          },
+        },
+      ]);
+
+      renderWithQuery(<SettingsPage />);
+      const input = await findPrefilledInput();
+      await userEvent.clear(input);
+      await userEvent.type(input, "x");
+      await userEvent.click(screen.getByRole("button", { name: "이름 저장" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("표시 이름을 입력하세요");
+    });
+
+    it("빈 값이면 저장 버튼이 비활성화된다", async () => {
+      stubRoutes([...authenticatedRoutes(), stubLlmSettings()]);
+
+      renderWithQuery(<SettingsPage />);
+      const input = await findPrefilledInput();
+      await userEvent.clear(input);
+
+      expect(screen.getByRole("button", { name: "이름 저장" })).toBeDisabled();
+    });
   });
 
   describe("비밀번호 변경", () => {

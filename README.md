@@ -34,6 +34,7 @@ PC와 안드로이드에서 같은 데이터를 보며, 오프라인에서도 �
 | 문서 | 용도 |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | 시스템 아키텍처, 데이터 모델, API·동기화 규약, 배포 토폴로지, 기술 선택 근거 |
+| [docs/operations.md](docs/operations.md) | **운영 가이드** — `.env` 변수 레퍼런스, 로컬 개발 환경, 프로덕션 재배포 절차, 백업, 트러블슈팅 |
 | [docs/plan.md](docs/plan.md) | 작업 계획과 진행 현황. **작업을 재개할 때 여기부터 읽는다** |
 | [docs/legacy-schema.md](docs/legacy-schema.md) | 기존 엑셀 시트 실측 분석과 임포트 매핑 규칙 |
 | [AGENTS.md](AGENTS.md) | 개발 관례, 커밋·브랜치 규칙, 품질 게이트 |
@@ -49,12 +50,19 @@ PC와 안드로이드에서 같은 데이터를 보며, 오프라인에서도 �
 
 ```bash
 make install      # 의존성 설치 + git 훅 활성화
-make db-up        # PostgreSQL 기동 (Docker, 운영과 같은 postgres:17-alpine)
+make db-up        # PostgreSQL 기동 (Docker, 이 저장소 전용 새 환경일 때만 — 아래 경고 참조)
 make migrate
 make api          # 다른 터미널에서 make web
 make check        # CI 와 동일한 전체 검증
 make help         # 전체 명령 목록
 ```
+
+**이미 이 저장소를 `docker compose up -d` 로 운영 배포해 둔 기기에서는 `make db-up` 을
+쓰지 않는다** — `docker-compose.yml` 의 `db` 서비스가 그 운영 배포와 같은 컨테이너·같은
+실사용자 데이터라서, 개발용으로 별도로 뜨는 게 아니라 운영 DB에 그대로 연결된다. 이
+경우엔 [docs/operations.md](docs/operations.md) §2 의 격리된 개발용 DB(`scripts/dev-db.sh`)
+를 쓴다. 그 외 항목(`.env` 변수 의미, 프로덕션 재배포 절차, 백업, 트러블슈팅)도 전부
+그 문서에 있다.
 
 Docker 를 쓸 수 없는 환경에서는 `make db-local-setup` → `make db-local-start` 로 폴백한다.
 micromamba 로 홈 디렉토리에 PostgreSQL 17 을 설치해 root 없이 실행한다.
