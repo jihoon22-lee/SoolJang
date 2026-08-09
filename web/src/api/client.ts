@@ -358,6 +358,9 @@ export const authApi = {
 
   changePassword: (input: { current_password: string; new_password: string }) =>
     request<void>("/auth/password", { method: "POST", body: input }),
+
+  updateProfile: (input: { display_name: string }) =>
+    request<User>("/auth/me", { method: "PATCH", body: input }),
 };
 
 // --- 병과 시음 ----------------------------------------------------------------

@@ -128,6 +128,34 @@ class TestMe:
         assert anon_client.get(f"{prefix}/auth/me").status_code == 401
 
 
+class TestProfileUpdate:
+    def test_표시_이름을_바꾼다(self, api_client: TestClient, prefix: str) -> None:
+        response = api_client.patch(f"{prefix}/auth/me", json={"display_name": "새 이름"})
+        assert response.status_code == 200, response.text
+        assert response.json()["display_name"] == "새 이름"
+
+        # 다시 조회해도 반영돼 있어야 한다(세션·쿠키는 그대로 유지).
+        assert api_client.get(f"{prefix}/auth/me").json()["display_name"] == "새 이름"
+
+    def test_앞뒤_공백을_지운다(self, api_client: TestClient, prefix: str) -> None:
+        response = api_client.patch(f"{prefix}/auth/me", json={"display_name": "  공백  "})
+        assert response.json()["display_name"] == "공백"
+
+    def test_공백만_있으면_거부한다(self, api_client: TestClient, prefix: str) -> None:
+        response = api_client.patch(f"{prefix}/auth/me", json={"display_name": "   "})
+        assert response.status_code == 422
+
+    def test_빈_문자열은_스키마_단계에서_거부된다(
+        self, api_client: TestClient, prefix: str
+    ) -> None:
+        response = api_client.patch(f"{prefix}/auth/me", json={"display_name": ""})
+        assert response.status_code == 422
+
+    def test_로그인하지_않으면_401(self, anon_client: TestClient, prefix: str) -> None:
+        response = anon_client.patch(f"{prefix}/auth/me", json={"display_name": "누구"})
+        assert response.status_code == 401
+
+
 class TestLogout:
     def test_로그아웃하면_세션이_무효화된다(self, api_client: TestClient, prefix: str) -> None:
         assert api_client.post(f"{prefix}/auth/logout").status_code == 204

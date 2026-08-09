@@ -16,6 +16,7 @@ from sooljang.api.schemas.auth import (
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
+    ProfileUpdateRequest,
     SetupRequest,
     SetupStatus,
     UserOut,
@@ -220,6 +221,28 @@ async def me(active_session: Annotated[Session, current_session], session: Sessi
     user = await session.get(User, active_session.user_id)
     if user is None:
         raise UnauthorizedError("사용자를 찾을 수 없습니다")
+    return UserOut.model_validate(user)
+
+
+@router.patch("/me", response_model=UserOut, summary="표시 이름 수정")
+async def update_profile(
+    payload: ProfileUpdateRequest,
+    active_session: Annotated[Session, current_session],
+    session: SessionDep,
+) -> UserOut:
+    """로그인한 사용자의 표시 이름을 바꾼다.
+
+    이메일 변경은 재인증·중복 검사가 얽혀 범위 밖이고, 비밀번호는 `/password` 가 따로
+    있다 — 이 엔드포인트는 화면 헤더 등에 노출되는 이름만 다룬다.
+    """
+    user = await session.get(User, active_session.user_id)
+    if user is None:
+        raise UnauthorizedError("사용자를 찾을 수 없습니다")
+    display_name = payload.display_name.strip()
+    if not display_name:
+        raise ValidationFailedError("표시 이름을 입력하세요")
+    user.display_name = display_name
+    await session.flush()
     return UserOut.model_validate(user)
 
 

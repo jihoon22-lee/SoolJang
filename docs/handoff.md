@@ -3,11 +3,20 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-08 (Task 28 완료 — 사용자 요청으로 "현재 주종 구조를 기본값으로
-  저장" 기능 추가(신규 `CategorySeed` 테이블, `seed_default_categories` 가 저장된 구조를
-  우선하도록 수정). PR [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) 머지. 버전을 1.1.4 로 올려
-  ([#74](https://github.com/jihoon22-lee/SoolJang/pull/74)) 릴리스·재배포 진행 중 — 상세는 `plan.md` §4 Task 28)**
-- 저장소: `https://github.com/jihoon22-lee/SoolJang` (private, 소유자 `jihoon22-lee`)
+- 최종 갱신: **2026-08-09 (술 상세 저장 시 "품종·스타일" 이 증식하던 결함 수정 — 원인은
+  `_replace_varieties` 가 품종 연결을 매번 hard delete 뒤 새 id 로 재생성해, `deleted_at`
+  기반 동기화 삭제 전파가 안 되던 것. 기존 연결 재사용(소프트 삭제·복원)으로 수정,
+  [PR #76](https://github.com/jihoon22-lee/SoolJang/pull/76). 버전을 1.1.5 로 올려
+  ([#77](https://github.com/jihoon22-lee/SoolJang/pull/77)) 릴리스·재배포 완료. 같은 세션에서
+  저장소를 **public 전환**(사용자가 이미 완료해 둔 상태 확인)하고, `main` 브랜치를 아무도
+  우회 못 하는 ruleset(PR 필수, 승인 개수 요건 없이 쓰기 권한으로 통제)으로 보호했다.
+  GitHub Advanced Security 중 Secret scanning(+push protection), CodeQL default setup 도
+  켰다. §1/§1-1 의 로컬 개발 안내가 `v1.0.0` 이전 시절 기준으로 남아 있어(운영이 상시
+  떠 있지 않던 때 작성됨) 지금은 위험하다는 걸 발견해 함께 고쳤다 — 상세는 아래 §1-1과
+  §5 새 함정 행 참조)**
+- 저장소: `https://github.com/jihoon22-lee/SoolJang` (**public**, 소유자 `jihoon22-lee`. 협업자는
+  본인뿐이라 남이 `main`에 push/머지할 방법은 원래도 없었지만, 2026-08-09 부터는 ruleset 으로
+  명시적으로 강제한다 — 본인도 PR 없이 직접 push 불가)
 - 로컬 경로: `/mnt/e/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
   확인). Docker 소켓 접근은 `sg docker -c "..."` 로 가능(현재 셸 세션엔 `docker` 그룹이
@@ -15,21 +24,22 @@
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다(`scripts/backup.sh`
   도 한동안 이 함정에 걸려 있었다 — 2026-08-06 수정, [#59](https://github.com/jihoon22-lee/SoolJang/pull/59))
-- 현재 브랜치: `main`(Task 28 머지 후 v1.1.4 릴리스·재배포 진행 중). Task
-  1~17·20~28 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스
-  7곳 중 1곳(데일리샷) 실등록).
+- 현재 브랜치: `main`. Task 1~17·20~28 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로
+  확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록).
   **`v1.0.0` 이후 Task 24(실사용 피드백 개선) 7개 PR 을 전부 머지하고([#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53)),
   데일리샷 등록 과정에서 발견한 어댑터 개선([#56](https://github.com/jihoon22-lee/SoolJang/pull/56))까지
   담아 `v1.1.0` 을 정식 릴리스했다. 이어서 Task 25(2차 UI/UX 피드백) 4개 PR([#62](https://github.com/jihoon22-lee/SoolJang/pull/62)~[#65](https://github.com/jihoon22-lee/SoolJang/pull/65))과
   NUL 바이트 수정([#66](https://github.com/jihoon22-lee/SoolJang/pull/66))까지 담아 `v1.1.1` 을 릴리스·재배포했다. Task 26
   (3차 UI/UX 피드백) [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) 를 담아 `v1.1.2` 를, 그 배포 직후 발견된 회귀를
   고친 Task 27 [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) 을 담아 `v1.1.3` 을, "현재 구조를 기본값으로 저장" 기능인
-  Task 28 [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) 을 담아 `v1.1.4` 를 릴리스 중이다.**
+  Task 28 [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) 을 담아 `v1.1.4` 를, 마이그레이션 수동 실행
+  함정 기록([#75](https://github.com/jihoon22-lee/SoolJang/pull/75))에 이어 품종 증식 결함 수정
+  [#76](https://github.com/jihoon22-lee/SoolJang/pull/76) 을 담아 `v1.1.5` 를 릴리스·재배포했다.**
   계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는 시점에 결정할
   선택 사항(GHCR pull 전환 여부는 이미 확정, 외부 소스 나머지 6곳 등록, Task 19 본
   착수)뿐이다 — 상세는
   `plan.md` §1
-- 버전: **`1.1.4` 릴리스 진행 중** — 이전 최신 버전 [`1.1.3`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.3)
+- 버전: **[`1.1.5`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.5)** (배포·헬스체크 확인 완료)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
@@ -53,9 +63,12 @@ bash scripts/install-hooks.sh
 uv sync
 npm ci --prefix web
 
-# 4) 데이터베이스 (Docker 기본)
-sg docker -c "docker compose up -d db"     # ← sg 가 필요한 이유는 §5 참조
-export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5432/sooljang"
+# 4) 데이터베이스 — **격리된 개발용 DB를 쓴다. `docker compose up -d db` 는 절대 쓰지
+#    않는다** — `v1.0.0` 부터 이 기기에 운영 배포가 상시 떠 있어서, `docker-compose.yml`
+#    의 `db` 서비스는 이제 실사용자 데이터가 든 **운영 DB**다(§1-1·§5 참조).
+bash scripts/dev-db.sh setup   # 최초 1회 (micromamba 로 홈 디렉토리에 PostgreSQL 17 설치)
+bash scripts/dev-db.sh start   # 포트 54329, DB sooljang_dev/sooljang_test — 운영과 완전 분리
+export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev"
 uv run alembic upgrade head
 
 # 5) 검증
@@ -78,12 +91,14 @@ Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴
 
 ## 1-1. 실제 데이터로 앱 써 보기
 
-Task 11 로 실제 429행이 들어간다. 직접 확인하려면 이렇게 한다.
+Task 11 로 실제 429행이 들어간다. 직접 확인하려면 이렇게 한다. **아래는 §1 과 같은 격리된
+개발용 DB(`sooljang_dev`, 포트 54329)를 쓴다 — `v1.0.0` 부터 `docker compose` 의 `db` 는
+운영 DB 라 여기서 다루지 않는다.**
 
 ```bash
-# 1) DB 기동 후 마이그레이션
-sg docker -c "docker compose up -d db"        # 새 셸이면 sg 없이 docker compose
-export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang:<암호>@127.0.0.1:5432/sooljang"
+# 1) DB 기동 후 마이그레이션 (없으면 먼저 `bash scripts/dev-db.sh setup`)
+bash scripts/dev-db.sh start
+export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev"
 uv run alembic upgrade head
 
 # 2) API 기동 (Compose api 컨테이너가 8000 을 쓰므로 다른 포트를 쓴다)
@@ -118,10 +133,11 @@ curl -c /tmp/j -X POST http://127.0.0.1:8210/api/v1/auth/setup \
 # 쓰기 요청은 X-CSRF-Token 헤더가 추가로 필요하다 (응답의 csrf_token 값).
 ```
 
-비밀번호를 잊었다면 DB 에서 사용자를 지우고 다시 설정한다.
+비밀번호를 잊었다면 DB 에서 사용자를 지우고 다시 설정한다 — **반드시 위 격리된 개발용
+DB에만 실행한다. `docker compose exec db ...` 는 운영 DB라 실사용자 계정을 지운다.**
 
 ```bash
-docker compose exec -T db psql -U sooljang -d sooljang -c 'DELETE FROM app_user'
+echo "DELETE FROM app_user;" | bash scripts/dev-db.sh psql
 ```
 
 ### 폰에서 접속하기
