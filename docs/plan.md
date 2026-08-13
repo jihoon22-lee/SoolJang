@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-13 (**Task 30 완료** — §9 백로그 정리 3개 PR: 통계 타입 드리프트 분리([#82](https://github.com/jihoon22-lee/SoolJang/pull/82))·구매일 범위 필터 서버 구현([#83](https://github.com/jihoon22-lee/SoolJang/pull/83))·외부 정보 카드/서비스 상태 패널 테스트([#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 머지. 버전을 1.2.0 으로 올려 릴리스·재배포 진행 중) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 30**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30 은 백로그 정리). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | 없음 — Task 30 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그 항목(대량 편집·구매처 통합·홈 대시보드·라벨 OCR 프리필 등)과 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
-| 현재 브랜치 | `chore/release-v1.2.0`(Task 30 머지 후 v1.2.0 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.2.0 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.2.0` 릴리스 진행 중**(2026-08-13) — Task 30(백로그 정리: 타입 드리프트·구매일 필터·테스트) 반영. 이전 최신 버전은 `v1.1.7`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.7)) |
+| 최종 갱신 | 2026-08-13 (**Task 31 완료** — §9 백로그 정리 2차 5개 PR: 라벨 OCR 생산자·숙성연수 프리필([#86](https://github.com/jihoon22-lee/SoolJang/pull/86))·구매처 통합([#87](https://github.com/jihoon22-lee/SoolJang/pull/87))·대량 편집([#88](https://github.com/jihoon22-lee/SoolJang/pull/88))·홈 대시보드([#89](https://github.com/jihoon22-lee/SoolJang/pull/89))·외부 검색 링크([#90](https://github.com/jihoon22-lee/SoolJang/pull/90)). `search` 전략(구글 스크래핑)은 포기로 결정(D167), Q2 해결. 버전을 1.3.0 으로 올려 릴리스·재배포 진행 중) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 31**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~31 은 백로그 정리). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
+| 다음 착수 Task | 없음 — Task 31 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그(목표가 감시·읽기 전용 공유 링크)와 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
+| 현재 브랜치 | `chore/release-v1.3.0`(Task 31 머지 후 v1.3.0 릴리스·재배포 진행 중) |
+| 진행 중 잔여 항목 | v1.3.0 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.3.0` 릴리스 진행 중**(2026-08-13) — Task 31(백로그 정리 2차: OCR 프리필·구매처 통합·대량 편집·홈 대시보드·외부 검색 링크) 반영. 이전 최신 버전은 `v1.2.0`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.2.0)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -243,6 +243,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 28 | 주종 관리: 현재 구조를 기본값으로 저장 | ✅ 완료·머지 | `feat/category-seed-save-as-default` | [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) |
 | 29 | 접근성·릴리스 가드 보강 | ✅ 완료·머지 | `feature/task29-a11y-release-guard` | [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) |
 | 30 | 백로그 정리 — 타입 드리프트·구매일 필터·테스트 | ✅ 완료·머지 | `refactor/offline-stats-types`·`feat/products-purchased-on-filter`·`test/external-health-components` | [#82](https://github.com/jihoon22-lee/SoolJang/pull/82)·[#83](https://github.com/jihoon22-lee/SoolJang/pull/83)·[#84](https://github.com/jihoon22-lee/SoolJang/pull/84) |
+| 31 | 백로그 정리 2차 — OCR 프리필·구매처 통합·대량 편집·홈 대시보드·외부 검색 링크 | ✅ 완료·머지 | `feat/ocr-producer-prefill`·`feat/vendor-merge`·`feat/bulk-category-edit`·`feat/home-dashboard`·`feat/external-search-link` | [#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90) |
 
 ### 의존 관계
 
@@ -1627,6 +1628,39 @@ max` 가 오프라인 Dexie 경로에만 구현돼 있어 서버 `GET /products`
 
 ---
 
+### ✅ Task 31 — 백로그 정리 2차 (OCR 프리필·구매처 통합·대량 편집·홈 대시보드·외부 검색 링크)
+
+§9 백로그의 중·소형 항목 4개 + 신규 "외부 검색 링크"를 각각 별도 PR 로 처리한다. 동시에
+`search` 전략(구글 스크래핑)은 포기로 결정한다(D167).
+
+**PR 1(`feat/ocr-producer-prefill`).** 라벨 OCR 생산자·숙성연수 프리필 — `producer_id`가
+백엔드 스키마엔 이미 있으나 Producer 목록·해석 경로가 없어 사실상 죽은 필드였다.
+`resolve_producer_id`(이름→id, 없으면 생성, 대소문자 무시 재사용)를 추가하고, `ProductCreate`/
+`ProductUpdate`에 `producer_name`(자유 텍스트)을 붙였다. `ProductForm`에 생산자·숙성연수
+입력칸을 추가하고 `LabelOcrPanel.toPrefill`이 메모 대신 실제 필드로 채우게 했다. 오프라인에선
+생산자를 미러에서 재사용하되 없으면(쓰기 대상 7종에 없어 새로 못 만듦) 메모로 보존한다.
+
+**PR 2(`feat/vendor-merge`).** 구매처 통합 — `merge_categories` 선례를 따라
+`POST /vendors/{id}:merge`로 구매 건을 재배치(`Purchase.vendor_id`)하고 원본을 soft delete.
+구매 건의 구매처를 NULL로 만들지 않아 "어디서 샀는지 모름"과 구분이 유지된다. `VendorsPage`에
+행별 "병합" 액션(대상 선택) 추가. 온라인 전용.
+
+**PR 3(`feat/bulk-category-edit`).** 대량 편집 — `ProductList`에 선택 체크박스(표·카드 양쪽),
+"주종 변경" 바에서 대상 주종을 골라 **클라이언트 루프**로 `PATCH /products/{id}`를 반복.
+성공/실패 건수 보고. 온라인 전용.
+
+**PR 4(`feat/home-dashboard`).** 홈 대시보드 — `"home"` 뷰를 추가해 앱 진입 기본 화면으로.
+요약 지표·주종별 보유·랭킹(100ml당 가격·내 평점 top 5)·최근 활동(최근 등록·최근 시음)을
+전부 Dexie 미러로 계산해 오프라인에서도 동작. 신규 `getRecentProducts`/`getRecentTastings`.
+
+**PR 5(`feat/external-search-link`).** 외부에서 찾기 링크 — 포기한 `search` 전략 대신,
+`ExternalInfoCard`에 제품명으로 구글 검색을 새 탭으로 여는 링크(제로 리스크)를 추가.
+
+검증: 각 PR에서 `ruff`·`ty`·`pytest`(711)·`npm run test`(473)·`npm run lint`/`typecheck`/`build`
+통과. 근거는 §5 Task 31 결정, D167~D171.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1634,13 +1668,8 @@ Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항�
 
 | 항목 | 근거 | 비고 |
 |---|---|---|
-| 대량 편집(여러 제품 주종 일괄 변경) | 405종 CSV 임포트라 교정 수요가 있을 수 있으나, 개별 수정(PR3)이 먼저다 — 실제로 불편한지 써 보고 판단한다 | Task 22 감사에서 이연 |
-| 구매처 통합(merge) | 백엔드에 이 API 자체가 없어 신규 개발이 필요하다(주종 merge 는 이미 있음, `application/categories.py`) | PR6(구매처 관리 화면)에서 이연 — 레지스트리 UI 는 있지만 병합 기능은 없다 |
-| 홈/대시보드 화면 | 진입 시 바로 "내 술" 목록이 뜬다(PR1). 요약 대시보드는 새 기능 아이디어라 릴리스를 막지 않는다 | |
 | 목표가 감시·웹 푸시 알림(Task 19/PR11) | Q5(웹 푸시 채널)가 미해결이다. PR9·10(외부 정보·매장 모드)이 실제로 쓸 만한지 확인한 뒤 별도로 계획한다 | 실제 인터넷 환경에서의 확인이 선행 조건(§1 참조) |
 | 읽기 전용 공유 링크 | Q6(지인 공유 권한 모델)이 미해결이라 Task 20 에서 이미 이연했다(D88) | Task 20 후속 |
-| `search` 전략(구글 검색 결과 스크래핑, Task 18 원 사양) | ToS·신뢰성 위험이 커 PR9 범위에서 뺐다(D91). 사용자가 "adapter 만 먼저" 를 선택 | 별도 PR + 별도 위험 검토 필요 |
-| 라벨 OCR 의 생산자·숙성연수 프리필 | `ProductForm` 에 대응 입력칸이 없어 메모 필드로 우회 중이다(Task 17 에서부터, `handoff.md` §2 참조). 제품 생성 API 에 `producer_id` 프리필 경로(이름→id 자동 매칭, `resolveVendorId` 와 같은 패턴)를 붙이는 게 개선 후보 | |
 
 ---
 
@@ -1965,12 +1994,22 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D165 | 구매일 범위 필터의 서버 구현은 `vendor_id` 와 같은 `Product.id.in_(select(Sku.product_id).join(Purchase))` 서브쿼리로 하고, 의미론은 "범위 안 구매 건이 하나라도 있으면 매치"로 통일한다 | 오프라인 Dexie 경로(`queries.ts::filterAndSortProducts`)가 이미 이 의미론이다. 서버가 다른 의미론을 쓰면 온/오프라인 결과가 갈린다. 구매일이 없는 구매 건(레거시 임포트)은 `purchased_on >= min` 비교가 항상 거짓이라 어느 범위에도 매치하지 않는데, 오프라인도 `purchaseDatesByProduct` 에서 null 을 제외하므로 동일하다 |
 | D166 | `ExternalInfoCard`·`HealthPanel` 테스트는 기존 `testing.tsx` 의 `renderWithQuery`+`stubRoutes` 를 그대로 쓴다(새 테스트 유틸·의존성 없음) | 두 컴포넌트는 외부 소스 조회·헬스 체크처럼 "독립 실행 위험이 있는 화면" 이지만 렌더 로직은 다른 컴포넌트와 같은 패턴(React Query + fetch)이라, 이미 검증된 스텁 방식으로 충분하다. `fetchHealth` 가 503 을 `acceptStatuses` 로 성공 처리하므로 degraded 케이스는 `status: 503` 스텁으로 흉내 낸다 |
 
+### Task 31 결정 (D167~D171)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D167 | `search` 전략(구글 SERP 스크래핑 + 검색 API + LLM 요약)을 **포기**하고 백로그에서 제거한다. 대신 "웹에서 검색" 링크(제품명으로 브라우저 검색을 새 탭으로 여는 것)로 대체한다 | ToS·신뢰성(anti-bot·구조 변경)·상시 예산(Q2) 위험이 크고, 실제 니즈("평점·시세·후기 참고")는 `adapter` + 데일리샷 + 향후 Q3 나머지 6곳으로 이미 커버된다. 링크는 스크래핑·LLM·예산 없이 "등록 안 된 사이트도 직접 확인" 경로를 제공한다 — 제로 리스크 대안 |
+| D168 | 생산자는 자유 텍스트 `producer_name` 으로 받아 서버 `resolve_producer_id` 가 해석한다(없으면 생성, 대소문자 무시 재사용). 별도 Producer CRUD·관리 화면은 만들지 않는다 | 품종(`variety_names`)과 같은 "자동 생성·재사용" 판단(사용자 선택). `producer_id`가 이미 스키마에 있으나 해석 경로가 없어 죽은 필드였던 공백을 최소 범위로 메운다. 오프라인에서는 생산자가 쓰기 대상 7종에 없어, 미러에서 재사용하되 없으면 메모로 보존한다(조용한 손실 방지) |
+| D169 | 구매처 merge 는 `merge_categories` 선례를 따라 `POST /vendors/{id}:merge`(구매 건 `vendor_id` 재배치 + 원본 soft delete)로 하고 온라인 전용으로 둔다 | 구매처는 평면 엔티티라 자식 이동·순환 검사가 필요 없어 주종 merge 보다 단순하다. 구매 건의 구매처를 NULL 로 만들지 않으므로 "어디서 샀는지 모름"과 구분이 유지된다(D25 와 같은 판단) |
+| D170 | 대량 편집(주종 일괄)은 벌크 엔드포인트 대신 **클라이언트 루프**(선택 제품마다 `PATCH /products/{id}`)로 구현하고 온라인 전용으로 둔다 | 개인 규모(수백 건)에서는 벌크 API의 부분 실패·오프라인 outbox 정합성 설계 비용이 루프보다 크다. 성공/실패 건수를 보고해 부분 실패도 드러나게 한다 |
+| D171 | 홈 대시보드는 `"home"` 뷰를 기본 진입 화면으로 두고, 요약·주종별 보유·랭킹·최근 활동을 전부 Dexie 미러 기반으로 계산한다 | "홈/대시보드"의 자연스러운 의미(진입 화면)에 맞추고, 읽기가 이미 Dexie 우선이라(Task 15) 오프라인 지원이 추가 작업 없이 충족된다. 랭킹·주종·최근 항목은 "내 술"로 건너뛰는 크로스 링크로 재사용한다 |
+
 ## 6. 열린 질문
 
 | # | 질문 | 상태 | 필요 시점 |
 |---|---|---|---|
 | ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
-| Q2 | 검색·LLM API 제공자와 예산. Task 17(OCR)·18(요약)에 필요 | **LLM 쪽 부분 해결 (Task 17 세션)** — 제공자 OpenAI, 사용자가 다른 프로젝트(naver-blog-assistant)에서 쓰던 키를 "테스트로 몇 차례만" 제공. 상시 예산 상한은 아직 정해지지 않았다. **`adapter` 전략은 LLM 을 쓰지 않아 이 제한과 무관하게 PR9 에서 구현했다(D91).** **검색 API 제공자(`search` 전략)는 여전히 미해결** | `search` 전략(PR11 이후) |
+| ~~Q2~~ | ~~검색·LLM API 제공자와 예산~~ | **✅ 해결** — LLM 쪽은 Task 17(OpenAI, "테스트 몇 차례만" 제한). `adapter` 전략은 LLM 을 안 쓴다(D91). **`search` 전략(구글 스크래핑 + 검색 API)은 포기로 결정(2026-08-13, D167)** — ToS·신뢰성·예산 위험이 커 제거하고, 대신 "웹에서 검색" 링크(제품명으로 브라우저 검색 열기)로 대체했다. 상시 LLM 예산 상한은 여전히 미정 | — |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | **7곳 중 1곳(데일리샷) 실제 등록 완료(2026-08-05)** — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24 중 데일리샷을 JSON 모드 `adapter_spec` 으로 등록하고 실제 조회까지 확인했다(D147~D148). 나머지 6곳은 각 사이트가 HTML 서버 렌더링인지 데일리샷처럼 SPA+JSON API 인지부터 조사해야 한다 — 사용자가 원하는 시점에 하나씩 진행 | Task 19 착수 전(나머지 6곳) |
 | ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션, 2026-08-03 재확인)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 개발 환경 자체가 이 tailnet 의 `main` 노드(홈 PC)다. `docker compose`(web/api/db, 2026-07-31 빌드 — Task 22 배치 이전) 가 이미 떠 있으나 `tailscale serve` 는 아직 설정 안 돼 있어 폰에서 아직 접속 불가. 폰에 Tailscale 앱 설치 + 같은 계정 로그인 + `tailscale serve` 실행 + 최신 이미지 재배포가 남았다(Task 23 진행 중) | — |
 | ~~Q5~~ | ~~웹 푸시 알림 채널~~ | **✅ 해결(사용자 결정, 2026-08-03)** — 웹 푸시로 간다. 단 Task 19 는 목표가를 비교할 시세 데이터(Q3 의 스크래핑) 가 있어야 값이 있어, 그 조사·등록을 미루기로 한 결정과 함께 Task 19 실행도 자연히 미뤄진다 | Task 19 |
