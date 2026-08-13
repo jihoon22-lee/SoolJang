@@ -28,6 +28,28 @@ function renderBadge() {
   );
 }
 
+/** 충돌 1건을 심고, 배지가 패널을 열 수 있는 상태로 만든다. */
+async function seedConflict() {
+  await db.conflict_log.put({
+    id: "c1",
+    user_id: "u1",
+    created_at: NOW,
+    updated_at: NOW,
+    deleted_at: null,
+    entity: "category",
+    entity_id: "cat1",
+    server_updated_at: NOW,
+    client_updated_at: NOW,
+    client_snapshot: { name: "내가 바꾸려던 이름" },
+    idempotency_key: "op1",
+  });
+  stubRoutes([
+    ...authenticatedRoutes(),
+    { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+    { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+  ]);
+}
+
 describe("SyncStatusBadge", () => {
   it("대기·실패·충돌이 없으면 최신 상태를 보여준다", async () => {
     stubRoutes([
@@ -256,5 +278,62 @@ describe("SyncStatusBadge", () => {
     expect(await db.vendor.get("v1")).toBeUndefined();
     expect(await screen.findByText("확인할 문제가 없습니다.")).toBeInTheDocument();
     vi.restoreAllMocks();
+  });
+
+  it("패널이 열리면 포커스가 패널로 이동한다", async () => {
+    await seedConflict();
+    renderBadge();
+
+    await userEvent.click(await screen.findByRole("button", { name: "충돌 1건" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "동기화 문제" });
+    expect(dialog).toHaveFocus();
+  });
+
+  it("Escape 를 누르면 패널이 닫히고 배지로 포커스가 돌아온다", async () => {
+    await seedConflict();
+    renderBadge();
+
+    const badge = await screen.findByRole("button", { name: "충돌 1건" });
+    await userEvent.click(badge);
+    await screen.findByRole("dialog", { name: "동기화 문제" });
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "동기화 문제" })).not.toBeInTheDocument();
+    await waitFor(() => expect(badge).toHaveFocus());
+  });
+
+  it("패널 바깥을 클릭하면 닫힌다", async () => {
+    await seedConflict();
+    renderBadge();
+
+    await userEvent.click(await screen.findByRole("button", { name: "충돌 1건" }));
+    await screen.findByRole("dialog", { name: "동기화 문제" });
+
+    await userEvent.click(document.body);
+
+    expect(screen.queryByRole("dialog", { name: "동기화 문제" })).not.toBeInTheDocument();
+  });
+
+  it("Tab 이 패널 안에서만 순환한다(포커스 트랩)", async () => {
+    await seedConflict();
+    renderBadge();
+
+    await userEvent.click(await screen.findByRole("button", { name: "충돌 1건" }));
+    await screen.findByRole("dialog", { name: "동기화 문제" });
+
+    const closeButton = screen.getByRole("button", { name: "닫기" });
+    const confirmButton = screen.getByRole("button", { name: "확인" });
+
+    // 마지막 포커스 가능 요소(확인)에서 Tab → 첫 요소(닫기)로 순환한다.
+    confirmButton.focus();
+    await userEvent.tab();
+    expect(closeButton).toHaveFocus();
+
+    // 첫 요소(닫기)에서 Shift+Tab → 마지막 요소(확인)로 순환한다.
+    closeButton.focus();
+    await userEvent.tab({ shift: true });
+    expect(confirmButton).toHaveFocus();
   });
 });
