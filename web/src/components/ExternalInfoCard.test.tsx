@@ -22,15 +22,25 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
 
 describe("ExternalInfoCard", () => {
   it("오프라인이면 조회 버튼을 비활성화하고 안내한다", () => {
-    renderWithQuery(<ExternalInfoCard productId="p1" offline />);
+    renderWithQuery(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
 
     expect(screen.getByRole("button", { name: "외부 정보 조회" })).toBeDisabled();
     expect(screen.getByText(/온라인일 때만/)).toBeInTheDocument();
   });
 
+  it("웹에서 검색 링크가 제품명으로 브라우저 검색을 새 탭으로 연다", () => {
+    renderWithQuery(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
+
+    const link = screen.getByRole("link", { name: "웹에서 검색" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("google.com/search"));
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
   it("조회 버튼을 누르면 결과와 출처 링크를 보여준다", async () => {
     stubRoutes([{ match: "/products/p1/external-lookup", method: "POST", body: [result()] }]);
-    renderWithQuery(<ExternalInfoCard productId="p1" offline={false} />);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
@@ -50,7 +60,9 @@ describe("ExternalInfoCard", () => {
         body: [result({ degraded: true, warning: "평점을 찾지 못했습니다" })],
       },
     ]);
-    renderWithQuery(<ExternalInfoCard productId="p1" offline={false} />);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
@@ -60,7 +72,9 @@ describe("ExternalInfoCard", () => {
 
   it("등록된 소스가 없으면 안내를 보여준다", async () => {
     stubRoutes([{ match: "/products/p1/external-lookup", method: "POST", body: [] }]);
-    renderWithQuery(<ExternalInfoCard productId="p1" offline={false} />);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
@@ -81,7 +95,9 @@ describe("ExternalInfoCard", () => {
         },
       },
     ]);
-    renderWithQuery(<ExternalInfoCard productId="p1" offline={false} />);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
