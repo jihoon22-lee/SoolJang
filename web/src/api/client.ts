@@ -273,6 +273,9 @@ export const vendorsApi = {
 
   create: (input: { name: string; kind?: string }) =>
     request<Vendor>("/vendors", { method: "POST", body: input }),
+
+  merge: (sourceId: string, targetId: string) =>
+    request<void>(`/vendors/${sourceId}:merge`, { method: "POST", body: { target_id: targetId } }),
 };
 
 export const purchasesApi = {

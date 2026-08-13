@@ -1,13 +1,18 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VendorsPage } from "@/pages/VendorsPage";
 import { db } from "@/sync/db";
-import { renderWithQuery } from "@/testing";
+import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
+import { renderWithQuery, stubRoutes } from "@/testing";
 
 function renderVendorsPage(onSelectVendor = vi.fn()) {
-  renderWithQuery(<VendorsPage onSelectVendor={onSelectVendor} />);
+  renderWithQuery(
+    <SyncStatusProvider>
+      <VendorsPage onSelectVendor={onSelectVendor} />
+    </SyncStatusProvider>,
+  );
   return { onSelectVendor };
 }
 
@@ -158,5 +163,28 @@ describe("VendorsPage", () => {
 
     const entries = await db.outbox.toArray();
     expect(entries.some((entry) => entry.entity === "vendor" && entry.op === "update")).toBe(true);
+  });
+
+  it("병합 대상 선택 후 확인하면 서버에 병합 요청을 보낸다", async () => {
+    await db.vendor.bulkPut([
+      row({ id: "v1", name: "합칠 곳", kind: "mart", url: null, note: null }),
+      row({ id: "v2", name: "남길 곳", kind: "mart", url: null, note: null }),
+    ]);
+    const { calls } = stubRoutes([
+      { match: "/vendors/v1:merge", method: "POST", status: 204, body: null },
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderVendorsPage();
+    const sourceRow = (await screen.findByText("합칠 곳")).closest("li");
+    expect(sourceRow).not.toBeNull();
+    await userEvent.click(within(sourceRow as HTMLElement).getByRole("button", { name: "병합" }));
+    await userEvent.selectOptions(screen.getByLabelText('"합칠 곳" 병합 대상'), "v2");
+    await userEvent.click(screen.getByRole("button", { name: "병합 확인" }));
+
+    await waitFor(() => {
+      expect(calls.some((call) => call.url.includes("/vendors/v1:merge"))).toBe(true);
+    });
   });
 });

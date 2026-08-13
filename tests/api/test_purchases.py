@@ -99,6 +99,39 @@ def test_update_vendor_kind(api_client: TestClient, prefix: str) -> None:
     assert response.json()["kind"] == "bottle_shop"
 
 
+def test_merge_vendor_reassigns_purchases_and_deletes_source(
+    api_client: TestClient, prefix: str
+) -> None:
+    source = _vendor(api_client, prefix, "합칠 구매처")
+    target = _vendor(api_client, prefix, "남길 구매처")
+    _, sku_id = _product_with_sku(api_client, prefix)
+    _post(
+        api_client,
+        f"{prefix}/purchases",
+        {"sku_id": sku_id, "vendor_id": source["id"], "quantity": 2},
+    )
+
+    response = api_client.post(
+        f"{prefix}/vendors/{source['id']}:merge", json={"target_id": target["id"]}
+    )
+
+    assert response.status_code == 204, response.text
+    listed = api_client.get(f"{prefix}/vendors").json()
+    assert [vendor["name"] for vendor in listed] == ["남길 구매처"]
+    # 원본의 구매 건 1건이 대상으로 옮겨진다.
+    assert listed[0]["purchase_count"] == 1
+
+
+def test_merge_vendor_rejects_self(api_client: TestClient, prefix: str) -> None:
+    vendor = _vendor(api_client, prefix, "혼자 있는 구매처")
+
+    response = api_client.post(
+        f"{prefix}/vendors/{vendor['id']}:merge", json={"target_id": vendor["id"]}
+    )
+
+    assert response.status_code == 409
+
+
 # --- 구매 건 ----------------------------------------------------------------
 
 

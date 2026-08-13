@@ -181,6 +181,12 @@ class VendorOut(BaseModel):
     purchase_count: int = 0
 
 
+class VendorMerge(BaseModel):
+    """구매처 병합 요청. 원본의 구매 건을 `target_id` 로 옮기고 원본을 soft delete 한다."""
+
+    target_id: uuid.UUID
+
+
 # --- 구매 건 ----------------------------------------------------------------
 
 
