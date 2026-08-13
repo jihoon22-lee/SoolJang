@@ -51,12 +51,12 @@ describe("App", () => {
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
   });
 
-  it("기본 화면은 술 목록이다", async () => {
+  it("기본 화면은 홈이다", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    expect(await screen.findByRole("heading", { name: /내 술/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "내 술" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("heading", { name: "홈" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "홈" })).toHaveAttribute("aria-current", "page");
   });
 
   it("주종 관리로 전환한다", async () => {
@@ -101,6 +101,8 @@ describe("App", () => {
     stubAll();
     renderWithQuery(<App />);
 
+    // 홈이 기본 화면이므로 "내 술" 탭으로 먼저 이동한다.
+    await userEvent.click(await screen.findByRole("link", { name: "내 술" }));
     await userEvent.click(await screen.findByRole("button", { name: "매장 모드로 전환" }));
 
     expect(await screen.findByRole("heading", { name: "매장 모드" })).toBeInTheDocument();
@@ -207,6 +209,8 @@ describe("App", () => {
     });
     renderWithQuery(<App />);
 
+    // 홈이 기본 화면이므로 "내 술" 탭으로 먼저 이동한다.
+    await userEvent.click(await screen.findByRole("link", { name: "내 술" }));
     await userEvent.click(
       (await screen.findAllByRole("button", { name: "글렌알라키 12년" }))[0] as Element,
     );
@@ -216,8 +220,7 @@ describe("App", () => {
 
     window.history.back();
 
-    // 처음 로드 시점엔 해시가 비어 있었다("" 도 목록으로 해석된다) — 되돌아간 뒤 중요한 건
-    // 실제로 목록 화면이 보이는지지 정확한 해시 문자열이 아니다.
+    // 뒤로가기는 제품 목록("내 술")으로 돌아간다.
     expect(await screen.findByRole("heading", { name: /내 술/ })).toBeInTheDocument();
     expect(window.location.hash).not.toContain("p1");
   });

@@ -15,6 +15,7 @@
  */
 
 export type View =
+  | "home"
   | "products"
   | "categories"
   | "vendors"
@@ -26,6 +27,7 @@ export type View =
   | "status";
 
 const VIEW_IDS: readonly View[] = [
+  "home",
   "products",
   "categories",
   "vendors",
@@ -51,13 +53,13 @@ function isView(value: string): value is View {
   return (VIEW_IDS as readonly string[]).includes(value);
 }
 
-/** `location.hash`(`#` 포함 여부 무관)를 라우트로 해석한다. 모르는 값은 항상 목록으로 떨어진다. */
+/** `location.hash`(`#` 포함 여부 무관)를 라우트로 해석한다. 모르는 값은 항상 홈으로 떨어진다. */
 export function parseHash(hash: string): Route {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
   const [pathPart = "", queryPart] = raw.split("?");
   const segments = pathPart.split("/").filter((segment) => segment.length > 0);
-  const viewCandidate = segments[0] ?? "products";
-  const view = isView(viewCandidate) ? viewCandidate : "products";
+  const viewCandidate = segments[0] ?? "home";
+  const view = isView(viewCandidate) ? viewCandidate : "home";
 
   if (view !== "products") {
     return { view };

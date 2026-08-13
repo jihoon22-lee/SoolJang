@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { parseHash, routeToHash } from "@/router";
 
 describe("parseHash", () => {
-  it("빈 해시는 제품 목록으로 해석한다", () => {
-    expect(parseHash("")).toEqual({ view: "products" });
-    expect(parseHash("#")).toEqual({ view: "products" });
+  it("빈 해시는 홈으로 해석한다", () => {
+    expect(parseHash("")).toEqual({ view: "home" });
+    expect(parseHash("#")).toEqual({ view: "home" });
   });
 
   it("단순 뷰 해시를 해석한다", () => {
+    expect(parseHash("#home")).toEqual({ view: "home" });
     expect(parseHash("#stats")).toEqual({ view: "stats" });
     expect(parseHash("#categories")).toEqual({ view: "categories" });
     expect(parseHash("#vendors")).toEqual({ view: "vendors" });
@@ -15,8 +16,8 @@ describe("parseHash", () => {
     expect(parseHash("#scan")).toEqual({ view: "scan" });
   });
 
-  it("모르는 뷰는 제품 목록으로 떨어진다", () => {
-    expect(parseHash("#no-such-view")).toEqual({ view: "products" });
+  it("모르는 뷰는 홈으로 떨어진다", () => {
+    expect(parseHash("#no-such-view")).toEqual({ view: "home" });
   });
 
   it("제품 상세 경로를 해석한다", () => {
