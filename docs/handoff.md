@@ -3,14 +3,21 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-10 (설정 화면에서 표시 이름을 바꿀 수 있는 기능 추가
-  (`PATCH /auth/me`), `docs/operations.md` 신규 — `.env` 변수 레퍼런스·로컬 개발
-  환경·프로덕션 재배포 런북·백업·트러블슈팅을 한 문서에 정리했다(`docs/handoff.md`
-  는 세션 인계용이라 상시 참고 가이드는 분리). [PR #78](https://github.com/jihoon22-lee/SoolJang/pull/78)
-  으로 머지, 버전을 1.1.6 으로 올려 릴리스·재배포 완료. 이 작업 중 `README.md`/
-  `docs/handoff.md` §1·§1-1 의 로컬 개발 안내가 `v1.0.0` 이전 기준으로 남아 있던
-  것(`docker compose up -d db` 가 지금은 운영 DB를 가리킴, `DELETE FROM app_user`
-  예시 포함)도 함께 고쳤다.
+- 최종 갱신: **2026-08-13 (Task 29 완료 — §9 백로그에 쌓여 있던 두 항목 처리. ①
+  `SyncIssuesPanel`(동기화 문제 패널)이 `role="dialog"` 인데 포커스 이동·트랩·Escape·
+  바깥 클릭 닫기가 없어 키보드/스크린리더 사용자가 "닫기" 버튼까지 탭해야만 닫을 수
+  있던 것을, 신규 `web/src/useModalDialog.ts` 훅으로 고쳤다(포커스 이동·Tab/Shift+Tab
+  순환 트랩·언마운트 시 트리거 포커스 복귀 + `aria-modal`·`aria-haspopup`·`aria-controls`).
+  ② `release.yml` 이 릴리스 태그와 `pyproject.toml` 버전만 비교하던 것을, 신규
+  `scripts/check_version_consistency.sh` 로 `pyproject.toml`·`src/sooljang/__init__.py`·
+  `web/package.json` 3자 일치까지 검증하게 바꿨고, `quality.yml` 에 `version-consistency`
+  잡을 추가해 PR 마다 드리프트를 잡는다. [PR #80](https://github.com/jihoon22-lee/SoolJang/pull/80)
+  으로 머지, 버전을 1.1.7 로 올려([#81](https://github.com/jihoon22-lee/SoolJang/pull/81))
+  릴리스·재배포 진행 중. 직전엔 설정 화면 표시 이름 수정(`PATCH /auth/me`) + `docs/
+  operations.md` 신규로 1.1.6 릴리스([#78](https://github.com/jihoon22-lee/SoolJang/pull/78)) 완료.
+  이 작업 중 `README.md`/`docs/handoff.md` §1·§1-1 의 로컬 개발 안내가 `v1.0.0` 이전
+  기준으로 남아 있던 것(`docker compose up -d db` 가 지금은 운영 DB를 가리킴, `DELETE
+  FROM app_user` 예시 포함)도 함께 고쳤다.
   전날엔 술 상세 저장 시 "품종·스타일" 이 증식하던 결함을 수정했다 — 원인은
   `_replace_varieties` 가 품종 연결을 매번 hard delete 뒤 새 id 로 재생성해, `deleted_at`
   기반 동기화 삭제 전파가 안 되던 것. 기존 연결 재사용(소프트 삭제·복원)으로 수정,
@@ -42,12 +49,13 @@
   함정 기록([#75](https://github.com/jihoon22-lee/SoolJang/pull/75))에 이어 품종 증식 결함 수정
   [#76](https://github.com/jihoon22-lee/SoolJang/pull/76) 을 담아 `v1.1.5` 를, 프로필 표시 이름
   수정 기능과 운영 가이드 문서화([#78](https://github.com/jihoon22-lee/SoolJang/pull/78))를
-  담아 `v1.1.6` 을 릴리스·재배포했다.**
+  담아 `v1.1.6` 을, 접근성·릴리스 가드 보강인 Task 29
+  [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) 를 담아 `v1.1.7` 을 릴리스·재배포했다.**
   계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는 시점에 결정할
   선택 사항(GHCR pull 전환 여부는 이미 확정, 외부 소스 나머지 6곳 등록, Task 19 본
   착수)뿐이다 — 상세는
   `plan.md` §1
-- 버전: **[`1.1.6`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.6)** (배포·헬스체크 확인 완료)
+- 버전: **[`1.1.7`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.7)** (배포·헬스체크 확인 완료)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프

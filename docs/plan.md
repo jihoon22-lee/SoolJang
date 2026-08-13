@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-13 (**Task 29 착수** — §9 백로그에 쌓여 있던 접근성(`SyncIssuesPanel` 모달 포커스 관리)·릴리스 버전 검증 강화. 그 사이 Task 28 이후 v1.1.5(품종 증식 결함 수정, [#76](https://github.com/jihoon22-lee/SoolJang/pull/76))·v1.1.6(프로필 표시 이름 수정 + 운영 가이드 문서화, [#78](https://github.com/jihoon22-lee/SoolJang/pull/78)) 릴리스가 완료됐다) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26, Task 27, Task 28**(Task 24~28 은 v1.1.x 실사용 피드백 개선). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | **Task 29**(접근성·릴리스 가드 보강) — 진행 중. 완료 후 v1.1.7 로 릴리스·재배포 예정 |
-| 현재 브랜치 | `feature/task29-a11y-release-guard`(Task 29 작업 중) |
-| 진행 중 잔여 항목 | Task 29(① `SyncIssuesPanel` 모달 포커스 관리 ② `release.yml` 3자 버전 검증 + `quality.yml` 드리프트 체크) → 완료 후 버전 올림(v1.1.7) → 릴리스·재배포 |
-| 최신 버전 | **`v1.1.6`**(2026-08-10 릴리스·재배포 완료, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.6)) — 다음은 Task 29 반영 `v1.1.7` |
+| 최종 갱신 | 2026-08-13 (**Task 29 완료** — 접근성(`SyncIssuesPanel` 모달 포커스 이동·트랩·Escape·바깥 클릭)·릴리스 버전 검증(3자 일치 + PR 드리프트 체크) 보강, PR [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) 머지. 버전을 1.1.7 로 올려([#81](https://github.com/jihoon22-lee/SoolJang/pull/81)) 릴리스·재배포 진행 중) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24 ~ Task 29**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
+| 다음 착수 Task | 없음 — Task 29 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그 항목과 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
+| 현재 브랜치 | `chore/release-v1.1.7`(Task 29 머지 후 v1.1.7 릴리스·재배포 진행 중) |
+| 진행 중 잔여 항목 | v1.1.7 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.1.7` 릴리스 진행 중**(2026-08-13) — Task 29(접근성·릴리스 가드) 반영. 이전 최신 버전은 `v1.1.6`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.6)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -241,7 +241,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 26 | v1.1.1 실사용 3차 피드백(내 술 레이아웃 재조정 + 주종 관리 액션 정리) | ✅ 완료·머지 | `chore/task26-layout-category-actions` | [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) |
 | 27 | 주종 관리: 이름 클릭 시 술 목록 이동 복원(Task 26 회귀 수정) | ✅ 완료·머지 | `fix/category-name-navigates-again` | [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) |
 | 28 | 주종 관리: 현재 구조를 기본값으로 저장 | ✅ 완료·머지 | `feat/category-seed-save-as-default` | [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) |
-| 29 | 접근성·릴리스 가드 보강 | 🟡 진행중 | `feature/task29-a11y-release-guard` | |
+| 29 | 접근성·릴리스 가드 보강 | ✅ 완료·머지 | `feature/task29-a11y-release-guard` | [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) |
 
 ### 의존 관계
 
@@ -1564,7 +1564,7 @@ DB(`sooljang_dev`, 프로덕션과 무관)로 `uv run sooljang-api` 를 띄우�
 
 ---
 
-### 🟡 Task 29 — 접근성·릴리스 가드 보강
+### ✅ Task 29 — 접근성·릴리스 가드 보강
 
 §9 백로그에 오래 쌓여 있던 두 항목을 처리한다. (1) `SyncIssuesPanel` 이 `role="dialog"`
 인데 포커스 이동·트랩·Escape·바깥 클릭 닫기가 없어 키보드/스크린리더 사용자는 "닫기"
