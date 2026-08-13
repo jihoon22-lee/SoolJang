@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-13 (**Task 29 완료** — 접근성(`SyncIssuesPanel` 모달 포커스 이동·트랩·Escape·바깥 클릭)·릴리스 버전 검증(3자 일치 + PR 드리프트 체크) 보강, PR [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) 머지. 버전을 1.1.7 로 올려([#81](https://github.com/jihoon22-lee/SoolJang/pull/81)) 릴리스·재배포 진행 중) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24 ~ Task 29**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | 없음 — Task 29 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그 항목과 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
-| 현재 브랜치 | `chore/release-v1.1.7`(Task 29 머지 후 v1.1.7 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.1.7 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.1.7` 릴리스 진행 중**(2026-08-13) — Task 29(접근성·릴리스 가드) 반영. 이전 최신 버전은 `v1.1.6`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.6)) |
+| 최종 갱신 | 2026-08-13 (**Task 30 완료** — §9 백로그 정리 3개 PR: 통계 타입 드리프트 분리([#82](https://github.com/jihoon22-lee/SoolJang/pull/82))·구매일 범위 필터 서버 구현([#83](https://github.com/jihoon22-lee/SoolJang/pull/83))·외부 정보 카드/서비스 상태 패널 테스트([#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 머지. 버전을 1.2.0 으로 올려 릴리스·재배포 진행 중) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 30**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30 은 백로그 정리). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
+| 다음 착수 Task | 없음 — Task 30 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그 항목(대량 편집·구매처 통합·홈 대시보드·라벨 OCR 프리필 등)과 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
+| 현재 브랜치 | `chore/release-v1.2.0`(Task 30 머지 후 v1.2.0 릴리스·재배포 진행 중) |
+| 진행 중 잔여 항목 | v1.2.0 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.2.0` 릴리스 진행 중**(2026-08-13) — Task 30(백로그 정리: 타입 드리프트·구매일 필터·테스트) 반영. 이전 최신 버전은 `v1.1.7`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.7)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -242,6 +242,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 27 | 주종 관리: 이름 클릭 시 술 목록 이동 복원(Task 26 회귀 수정) | ✅ 완료·머지 | `fix/category-name-navigates-again` | [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) |
 | 28 | 주종 관리: 현재 구조를 기본값으로 저장 | ✅ 완료·머지 | `feat/category-seed-save-as-default` | [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) |
 | 29 | 접근성·릴리스 가드 보강 | ✅ 완료·머지 | `feature/task29-a11y-release-guard` | [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) |
+| 30 | 백로그 정리 — 타입 드리프트·구매일 필터·테스트 | ✅ 완료·머지 | `refactor/offline-stats-types`·`feat/products-purchased-on-filter`·`test/external-health-components` | [#82](https://github.com/jihoon22-lee/SoolJang/pull/82)·[#83](https://github.com/jihoon22-lee/SoolJang/pull/83)·[#84](https://github.com/jihoon22-lee/SoolJang/pull/84) |
 
 ### 의존 관계
 
@@ -1594,6 +1595,38 @@ toml`(tomllib)·`__init__.py`(regex)·`web/package.json`(json) 세 곳의 버전
 
 ---
 
+### ✅ Task 30 — 백로그 정리 (타입 드리프트·구매일 필터·테스트)
+
+§9 백로그의 소형·저위험 항목 3개를 각각 별도 PR 로 정리한다(항목별 분리 — 한 PR 에
+억지로 묶지 않는다).
+
+**PR 1(`refactor/offline-stats-types`).** 통계 타입 드리프트 — `Rankings.by_value_for_money`
+와 `StatsSummary.{gifted_count,sold_count,avg_days_to_finish,avg_value_for_money}` 는
+오프라인 Dexie 계산(`queries.ts`)만 채우는 필드인데 REST 응답 타입에 함께 선언돼 있었다.
+`api/types.ts` 를 온라인 타입(`Rankings`·`StatsSummary`, 실제 `schemas/stats.py` 모양)과
+오프라인 확장 타입(`OfflineRankings`·`OfflineStatsSummary`, `extends` 로 분리)으로 나누고,
+`queries.ts` 의 `getStatsRankings`/`getStatsSummary`/`StatsDashboard` 가 오프라인 타입을
+반환하게 했다. `statsApi.rankings`/`statsApi.summary`(REST)는 이제 실제 응답 모양을 그대로
+반영한다 — 호출부가 서버가 안 주는 필드를 읽는 런타임 `undefined` 위험이 타입 수준에서
+차단된다.
+
+**PR 2(`feat/products-purchased-on-filter`).** 구매일 필터 서버 구현 — `purchased_on_min/
+max` 가 오프라인 Dexie 경로에만 구현돼 있어 서버 `GET /products` 가 조용히 무시했다.
+`application/products.py` 의 `ProductFilters` 에 두 필드를 추가하고, `build_product_query`
+에 `vendor_id` 와 같은 `Product.id.in_(select(Sku.product_id).join(Purchase).where(...))`
+서브쿼리로 구현했다. **의미론은 오프라인과 동일** — "범위 안 구매 건이 하나라도 있으면
+매치", 구매일이 없는 구매 건(레거시 임포트)은 어느 범위에도 매치하지 않음(None 비교는
+항상 거짓). 온/오프라인 결과가 갈리지 않는다.
+
+**PR 3(`test/external-health-components`).** `ExternalInfoCard`(5건)·`HealthPanel`(3건) 전용
+테스트 — 오프라인 비활성화·결과/출처 링크·degraded 배지·소스 없음·조회 실패, 그리고
+정상/degraded/연결 실패 상태. `testing.tsx` 의 `renderWithQuery`+`stubRoutes` 재사용.
+
+검증: `ruff check`/`ruff format --check`/`ty check` 통과, `pytest` 707 passed(30 skipped),
+`npm run test` 468 passed, `npm run lint`/`typecheck` 통과. 근거는 §5 Task 30 결정, D164~D166.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1608,9 +1641,6 @@ Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항�
 | 읽기 전용 공유 링크 | Q6(지인 공유 권한 모델)이 미해결이라 Task 20 에서 이미 이연했다(D88) | Task 20 후속 |
 | `search` 전략(구글 검색 결과 스크래핑, Task 18 원 사양) | ToS·신뢰성 위험이 커 PR9 범위에서 뺐다(D91). 사용자가 "adapter 만 먼저" 를 선택 | 별도 PR + 별도 위험 검토 필요 |
 | 라벨 OCR 의 생산자·숙성연수 프리필 | `ProductForm` 에 대응 입력칸이 없어 메모 필드로 우회 중이다(Task 17 에서부터, `handoff.md` §2 참조). 제품 생성 API 에 `producer_id` 프리필 경로(이름→id 자동 매칭, `resolveVendorId` 와 같은 패턴)를 붙이는 게 개선 후보 | |
-| `purchased_on_min`/`purchased_on_max` 구매일 필터(Task 25 PR1, D149~151 인근)가 온라인 상태에선 조용히 무시된다 | 오프라인 Dexie 경로(`queries.ts`)에만 구현했고 서버 `GET /products` 는 이 파라미터를 모른다(의도된 설계 — B2 휴면 엔드포인트). 그런데 온라인일 때 UI 가 필터를 적용한 것처럼 보이면서 실제로는 무시되는 것에 대한 안내가 없다 | 온라인/오프라인 구분 안내 문구 추가, 또는 필터 자체를 오프라인 전용 배지로 표시 |
-| `Rankings.by_value_for_money`/`StatsSummary.{gifted_count,sold_count,avg_days_to_finish,avg_value_for_money}`(`web/src/api/types.ts`) 타입이 실제 REST 응답(`schemas/stats.py`)엔 없는 필드를 약속한다 | 현재는 무해함 — `statsApi.rankings`/`statsApi.summary` 를 호출하는 컴포넌트가 없다(`PivotExplorer`/`TimeseriesChart` 만 실사용). 하지만 타입 시스템이 막아주지 않아 향후 호출부가 생기면 런타임에 `undefined` 를 읽게 된다 | 온라인 전용 타입과 오프라인 전용 타입을 분리하거나 주석을 `@deprecated`/`offline-only` 로 명확히 강화 |
-| `ExternalInfoCard.tsx`/`HealthPanel.tsx` 전용 테스트 파일이 없다 | 다른 컴포넌트 대비 상대적으로 독립 실행 위험이 있는 화면(외부 소스 조회, 헬스 체크 표시) | 여유 있을 때 단위 테스트 추가 |
 
 ---
 
@@ -1926,6 +1956,14 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 |---|---|---|
 | D162 | `SyncIssuesPanel` 의 포커스 관리(열림 이동·트랩·복귀)는 `useModalDialog` 훅으로 분리하고, 바깥 클릭·Escape 닫기는 `SyncStatusBadge` 가 `App.tsx` 설정 메뉴와 같은 패턴으로 처리한다 | 포커스 의미론은 "어느 트리거로 열렸는지" 와 무관해 훅으로 재사용할 수 있지만, 바깥 클릭 닫기는 트리거(배지)가 패널의 **형제**라서 닫기 범위를 "패널+트리거를 감싼 `.sync-status` 컨테이너" 로 잡아야 한다 — 패널만 기준으로 잡으면 배지를 재클릭했을 때 pointerdown 으로 닫힌 뒤 click 이 다시 열어 "닫았다 다시 열리는" 버그가 생긴다. `App.tsx` 설정 메뉴가 이미 이 패턴을 검증하고 있어 그대로 따른다 |
 | D163 | 버전 일관성 검증은 `scripts/check_version_consistency.sh` 하나로 두고 `quality.yml`(상호 일치, PR 마다)과 `release.yml`(태그 일치)이 공유한다. lockfile 은 검증 대상에서 뺀다 | `pyproject.toml`·`__init__.py`·`package.json` 세 곳의 드리프트를 CI 가 못 잡던 것이 백로그 원인이다. lockfile(`uv.lock`·`package-lock.json`)은 `uv sync --frozen`/`npm ci` 가 이미 불일치를 거부하므로, 스크립트가 다시 볼 필요가 없다(`check_commit_message.sh` 처럼 훅·CI 가 같은 로직을 공유하는 기존 관례를 따른다). Python 3.11+ 표준 라이브러리(tomllib·json)만 써 러너·로컬 어디서든 추가 의존성 없이 돌게 했다 |
+
+### Task 30 결정 (D164~D166)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D164 | REST 응답 타입과 오프라인 계산 타입을 `extends` 로 분리한다(`Rankings`/`OfflineRankings`, `StatsSummary`/`OfflineStatsSummary`) | 백로그 원인은 REST 에 없는 오프라인 전용 필드가 응답 타입에 함께 선언돼 있어, 타입 시스템이 "서버가 안 주는 필드를 읽는" 런타임 `undefined` 를 못 막던 것이다. 온라인 타입은 실제 `schemas/stats.py` 모양을 그대로 반영하고, 오프라인 함수(`queries.ts`)는 확장 타입을 반환하게 해 호출부가 어느 쪽을 쓰는지 타입이 드러나게 한다 |
+| D165 | 구매일 범위 필터의 서버 구현은 `vendor_id` 와 같은 `Product.id.in_(select(Sku.product_id).join(Purchase))` 서브쿼리로 하고, 의미론은 "범위 안 구매 건이 하나라도 있으면 매치"로 통일한다 | 오프라인 Dexie 경로(`queries.ts::filterAndSortProducts`)가 이미 이 의미론이다. 서버가 다른 의미론을 쓰면 온/오프라인 결과가 갈린다. 구매일이 없는 구매 건(레거시 임포트)은 `purchased_on >= min` 비교가 항상 거짓이라 어느 범위에도 매치하지 않는데, 오프라인도 `purchaseDatesByProduct` 에서 null 을 제외하므로 동일하다 |
+| D166 | `ExternalInfoCard`·`HealthPanel` 테스트는 기존 `testing.tsx` 의 `renderWithQuery`+`stubRoutes` 를 그대로 쓴다(새 테스트 유틸·의존성 없음) | 두 컴포넌트는 외부 소스 조회·헬스 체크처럼 "독립 실행 위험이 있는 화면" 이지만 렌더 로직은 다른 컴포넌트와 같은 패턴(React Query + fetch)이라, 이미 검증된 스텁 방식으로 충분하다. `fetchHealth` 가 503 을 `acceptStatuses` 로 성공 처리하므로 degraded 케이스는 `status: 503` 스텁으로 흉내 낸다 |
 
 ## 6. 열린 질문
 
