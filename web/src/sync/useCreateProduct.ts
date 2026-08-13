@@ -71,6 +71,8 @@ export function useCreateProduct() {
             category_id: values.categoryId || null,
             abv: values.abv || null,
             vintage: values.vintage ? Number(values.vintage) : null,
+            age_years: values.ageYears || null,
+            producer_name: values.producerName?.trim() || null,
             personal_rating: values.personalRating || null,
             note: values.note || null,
             variety_names: splitVarieties(values.varietyNames),
@@ -233,9 +235,12 @@ async function createProductOffline(values: ProductFormValues, userId: string): 
   const productId = newId();
   const abv = values.abv || null;
   const vintage = values.vintage ? Number(values.vintage) : null;
+  const ageYears = values.ageYears || null;
   const personalRating = values.personalRating || null;
-  const note = values.note || null;
   const categoryId = values.categoryId || null;
+  // 생산자는 오프라인 쓰기 대상 7종에 없어 새로 만들 수 없다 — 미러에 이미 있으면 재사용,
+  // 없으면 잃지 않게 메모로 보존한다(온라인 등록처럼 실제 필드로 저장할 수는 없다).
+  const { producerId, note } = await resolveOfflineProducer(values.producerName, values.note);
 
   await enqueue({
     entity: "product",
@@ -244,8 +249,10 @@ async function createProductOffline(values: ProductFormValues, userId: string): 
     fields: {
       name: values.name.trim(),
       category_id: categoryId,
+      producer_id: producerId,
       abv,
       vintage,
+      age_years: ageYears,
       personal_rating: personalRating,
       note,
     },
@@ -258,12 +265,12 @@ async function createProductOffline(values: ProductFormValues, userId: string): 
       name: values.name.trim(),
       name_en: null,
       category_id: categoryId,
-      producer_id: null,
+      producer_id: producerId,
       country: null,
       region: null,
       abv,
       vintage,
-      age_years: null,
+      age_years: ageYears,
       personal_rating: personalRating,
       note,
     },
@@ -385,4 +392,28 @@ async function resolveVendorIdOffline(name: string, userId: string): Promise<str
     },
   });
   return id;
+}
+
+/** 미러에서 생산자 이름으로 id 를 찾는다. 없으면(오프라인에서 새로 못 만든다) null. */
+export async function resolveProducerIdOffline(name: string): Promise<string | null> {
+  const producers = await db.producer.toArray();
+  const normalized = name.trim().toLowerCase();
+  const existing = producers.find(
+    (producer) =>
+      producer.deleted_at === null && String(producer.name).toLowerCase() === normalized,
+  );
+  return existing ? existing.id : null;
+}
+
+/** 오프라인 등록의 생산자 해석 — 미러에 있으면 id, 없으면 메모로 보존한다. */
+async function resolveOfflineProducer(
+  rawName: string,
+  existingNote: string | null,
+): Promise<{ producerId: string | null; note: string | null }> {
+  const name = rawName?.trim() || null;
+  if (!name) return { producerId: null, note: existingNote || null };
+  const producerId = await resolveProducerIdOffline(name);
+  if (producerId) return { producerId, note: existingNote || null };
+  const note = existingNote ? `${existingNote}\n생산자: ${name}` : `생산자: ${name}`;
+  return { producerId: null, note };
 }

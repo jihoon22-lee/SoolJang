@@ -38,6 +38,7 @@ from sooljang.application.products import (
     metrics_from_row,
     normalized_name_of,
     producer_name_map,
+    resolve_producer_id,
     resolve_variety_ids,
     sort_column_for,
 )
@@ -192,13 +193,19 @@ async def create_product(
     """
     await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
+    producer_id = payload.producer_id
+    if payload.producer_name is not None and payload.producer_name.strip():
+        producer_id = await resolve_producer_id(
+            session, user_id=user_id, name=payload.producer_name
+        )
+
     product = Product(
         user_id=user_id,
         name=payload.name.strip(),
         name_en=payload.name_en,
         normalized_name=normalized_name_of(payload.name),
         category_id=payload.category_id,
-        producer_id=payload.producer_id,
+        producer_id=producer_id,
         country=payload.country,
         region=payload.region,
         abv=payload.abv,
@@ -232,11 +239,16 @@ async def update_product(
     if payload.category_id is not None:
         await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
-    fields = payload.model_dump(exclude_unset=True, exclude={"variety_names"})
+    fields = payload.model_dump(exclude_unset=True, exclude={"variety_names", "producer_name"})
     for key, value in fields.items():
         setattr(product, key, value)
     if "name" in fields and fields["name"]:
         product.normalized_name = normalized_name_of(fields["name"])
+
+    if payload.producer_name is not None and payload.producer_name.strip():
+        product.producer_id = await resolve_producer_id(
+            session, user_id=user_id, name=payload.producer_name
+        )
 
     if payload.variety_names is not None:
         await _replace_varieties(session, user_id, product, payload.variety_names)

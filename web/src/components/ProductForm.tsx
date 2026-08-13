@@ -12,8 +12,10 @@ const MAX_SUGGESTIONS = 8;
 export interface ProductFormValues {
   name: string;
   categoryId: string;
+  producerName: string;
   abv: string;
   vintage: string;
+  ageYears: string;
   volumeMl: string;
   varietyNames: string;
   personalRating: string;
@@ -34,8 +36,10 @@ function isPositiveInteger(raw: string): boolean {
 export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   name: "",
   categoryId: "",
+  producerName: "",
   abv: "",
   vintage: "",
+  ageYears: "",
   volumeMl: "",
   varietyNames: "",
   personalRating: "",
@@ -267,6 +271,29 @@ export function ProductForm({
           {apiError?.errorFor("personal_rating") && (
             <span className="field-error">{apiError.errorFor("personal_rating")}</span>
           )}
+        </div>
+      </div>
+
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="form-producer">생산자</label>
+          <input
+            id="form-producer"
+            value={values.producerName}
+            placeholder="예: 글렌피딕"
+            onChange={(event) => set({ producerName: event.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="form-age-years">숙성 연수</label>
+          <input
+            id="form-age-years"
+            type="number"
+            min={0}
+            step="0.1"
+            value={values.ageYears}
+            onChange={(event) => set({ ageYears: event.target.value })}
+          />
         </div>
       </div>
 

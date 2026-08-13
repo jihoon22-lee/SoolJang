@@ -281,6 +281,27 @@ async def resolve_variety_ids(
     return resolved
 
 
+async def resolve_producer_id(session: AsyncSession, *, user_id: uuid.UUID, name: str) -> uuid.UUID:
+    """생산자 이름을 id 로 바꾼다. 없으면 만든다(자동 생성·재사용 — 품종과 같은 판단).
+
+    대소문자만 다른 중복("GLENFIDDICH" vs "Glenfiddich")이 생기지 않게 소문자로 비교한다.
+    """
+    normalized = name.strip()
+    existing = await session.scalar(
+        select(Producer).where(
+            Producer.user_id == user_id,
+            func.lower(Producer.name) == normalized.lower(),
+            Producer.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        return existing.id
+    producer = Producer(user_id=user_id, name=normalized)
+    session.add(producer)
+    await session.flush()
+    return producer.id
+
+
 async def ensure_category_exists(
     session: AsyncSession, *, user_id: uuid.UUID, category_id: uuid.UUID | None
 ) -> None:
