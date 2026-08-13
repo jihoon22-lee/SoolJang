@@ -193,7 +193,7 @@ export function ProductDetail({
 
       <BottleSection bottles={bottles} offline={offline} />
 
-      <ExternalInfoCard productId={product.id} offline={offline} />
+      <ExternalInfoCard productId={product.id} productName={product.name} offline={offline} />
     </article>
   );
 }

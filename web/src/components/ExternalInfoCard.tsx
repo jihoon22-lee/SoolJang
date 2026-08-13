@@ -13,22 +13,39 @@ import type { SourceLookupResult } from "@/api/types";
  * 제품 상세와 매장 모드(Task 22 PR10) 양쪽에서 쓰여 별도 컴포넌트로 뽑았다 — 두 화면이
  * 완전히 같은 조회 UI 를 필요로 하는 실제 중복이다.
  */
-export function ExternalInfoCard({ productId, offline }: { productId: string; offline: boolean }) {
+export function ExternalInfoCard({
+  productId,
+  productName,
+  offline,
+}: {
+  productId: string;
+  productName: string;
+  offline: boolean;
+}) {
   const lookup = useMutation({
     mutationFn: () => externalSourcesApi.lookup(productId),
   });
+
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(productName)}`;
 
   return (
     <>
       <div className="section-header">
         <h3>외부 정보</h3>
-        <button
-          type="button"
-          onClick={() => lookup.mutate()}
-          disabled={offline || lookup.isPending}
-        >
-          {lookup.isPending ? "조회 중…" : "외부 정보 조회"}
-        </button>
+        <div className="button-row">
+          {/* 등록된 소스가 없는 술도 직접 확인할 수 있게 — 브라우저 검색을 새 탭으로 연다.
+              스크래핑·LLM 없이 제로 리스크인 "외부에서 찾기" 경로다. */}
+          <a href={searchUrl} target="_blank" rel="noreferrer">
+            웹에서 검색
+          </a>
+          <button
+            type="button"
+            onClick={() => lookup.mutate()}
+            disabled={offline || lookup.isPending}
+          >
+            {lookup.isPending ? "조회 중…" : "외부 정보 조회"}
+          </button>
+        </div>
       </div>
       {offline && <p className="muted text-sm">외부 정보 조회는 온라인일 때만 할 수 있습니다.</p>}
 

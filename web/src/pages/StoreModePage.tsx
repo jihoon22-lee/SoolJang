@@ -254,7 +254,7 @@ function StoreModeSummary({
         </button>
       </div>
 
-      <ExternalInfoCard productId={productId} offline={offline} />
+      <ExternalInfoCard productId={productId} productName={product.name} offline={offline} />
     </section>
   );
 }
