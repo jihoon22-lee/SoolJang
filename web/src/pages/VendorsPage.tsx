@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type FormEvent, useMemo, useState } from "react";
 
+import { vendorsApi } from "@/api/client";
 import type { Vendor, VendorKind } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { formatMoney, formatVendorKind } from "@/format";
@@ -9,6 +10,7 @@ import { matchesQuery, rankByQuery } from "@/search";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { getVendors } from "@/sync/queries";
+import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
 //: `ProductDetail.tsx` 의 구매처 이름 자동완성과 같은 개수 제한이다.
 const MAX_SUGGESTIONS = 8;
@@ -41,11 +43,15 @@ const VENDOR_KINDS: VendorKind[] = [
  * `matchesQuery`(초성 검색 포함)로 아래 목록 자체도 실시간으로 좁힌다.
  */
 export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: string) => void }) {
+  const { state, triggerSync } = useSyncStatus();
+  const offline = state === "offline";
   const vendors = useLiveQuery(() => getVendors(), []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<VendorKind>("other");
   const [vendorQuery, setVendorQuery] = useState("");
+  const [mergingId, setMergingId] = useState<string | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState("");
 
   const update = useMutation({
     mutationFn: async (input: { id: string; name: string; kind: VendorKind }) => {
@@ -75,6 +81,24 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
     event.preventDefault();
     if (!editingId || !name.trim()) return;
     update.mutate({ id: editingId, name: name.trim(), kind });
+  }
+
+  // 구매처 병합은 온라인 전용이다(재배치 + soft delete 전파 — 주종 이동·병합과 같은 판단).
+  const merge = useMutation({
+    mutationFn: async (input: { sourceId: string; targetId: string }) => {
+      await vendorsApi.merge(input.sourceId, input.targetId);
+    },
+    onSuccess: () => {
+      setMergingId(null);
+      setMergeTargetId("");
+      triggerSync();
+    },
+  });
+
+  function startMerge(vendor: Vendor): void {
+    setMergingId(vendor.id);
+    setMergeTargetId("");
+    merge.reset();
   }
 
   // 로딩 중(`vendors === undefined`)에도 훅 호출 순서가 매번 같아야 하므로, 아래 조건부
@@ -161,6 +185,46 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
                   </div>
                 </form>
               </li>
+            ) : mergingId === vendor.id ? (
+              <li className="vendor-row" key={vendor.id}>
+                <div className="vendor-merge-form">
+                  <label htmlFor={`vendor-merge-target-${vendor.id}`}>
+                    "{vendor.name}" 병합 대상
+                  </label>
+                  <select
+                    id={`vendor-merge-target-${vendor.id}`}
+                    value={mergeTargetId}
+                    onChange={(event) => setMergeTargetId(event.target.value)}
+                  >
+                    <option value="">병합할 구매처를 선택하세요</option>
+                    {sorted
+                      .filter((target) => target.id !== vendor.id)
+                      .map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.name}
+                        </option>
+                      ))}
+                  </select>
+                  {merge.error ? (
+                    <p className="field-error" role="alert">
+                      {merge.error instanceof Error ? merge.error.message : "병합할 수 없습니다"}
+                    </p>
+                  ) : null}
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!mergeTargetId || merge.isPending}
+                      onClick={() => merge.mutate({ sourceId: vendor.id, targetId: mergeTargetId })}
+                    >
+                      {merge.isPending ? "병합 중…" : "병합 확인"}
+                    </button>
+                    <button type="button" onClick={() => setMergingId(null)}>
+                      취소
+                    </button>
+                  </div>
+                </div>
+              </li>
             ) : (
               <li className="vendor-row" key={vendor.id}>
                 <button
@@ -177,6 +241,9 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
                 <span className="muted">{formatMoney(vendor.total_spend)}</span>
                 <button type="button" onClick={() => startEdit(vendor)}>
                   수정
+                </button>
+                <button type="button" onClick={() => startMerge(vendor)} disabled={offline}>
+                  병합
                 </button>
               </li>
             ),

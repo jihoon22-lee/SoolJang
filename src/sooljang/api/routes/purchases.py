@@ -22,6 +22,7 @@ from sooljang.api.schemas.product import (
     PurchaseSplit,
     PurchaseUpdate,
     VendorCreate,
+    VendorMerge,
     VendorOut,
     VendorUpdate,
 )
@@ -124,6 +125,31 @@ async def _owned_vendor(session: SessionDep, user_id: uuid.UUID, vendor_id: uuid
     if vendor is None or vendor.deleted_at is not None or vendor.user_id != user_id:
         raise NotFoundError(f"구매처를 찾을 수 없습니다: {vendor_id}")
     return vendor
+
+
+@vendors_router.post(
+    "/{vendor_id}:merge", status_code=status.HTTP_204_NO_CONTENT, summary="구매처 병합"
+)
+async def merge_vendor(
+    vendor_id: uuid.UUID, payload: VendorMerge, session: SessionDep, user_id: UserDep
+) -> None:
+    """원본 구매처의 구매 건을 대상으로 옮기고 원본을 soft delete 한다.
+
+    중복 등록된 구매처를 정리하는 경로다(주종 merge 와 같은 목적). 구매 건의 구매처를 NULL 로
+    만들지 않고 재배치하므로 "어디서 샀는지 모름" 과 구분이 유지된다.
+    """
+    if payload.target_id == vendor_id:
+        raise ConflictError("자기 자신과 병합할 수 없습니다")
+    source = await _owned_vendor(session, user_id, vendor_id)
+    await _owned_vendor(session, user_id, payload.target_id)
+
+    purchases = await session.scalars(
+        select(Purchase).where(Purchase.vendor_id == vendor_id, Purchase.deleted_at.is_(None))
+    )
+    for purchase in purchases:
+        purchase.vendor_id = payload.target_id
+    source.deleted_at = datetime.datetime.now(datetime.UTC)
+    await session.flush()
 
 
 # --- 구매 건 ----------------------------------------------------------------
