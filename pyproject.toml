@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sooljang"
-version = "1.1.6"
+version = "1.1.7"
 description = "개인 주류 컬렉션 기록·관리·분석 플랫폼 (술장)"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
