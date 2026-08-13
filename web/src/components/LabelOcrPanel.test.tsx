@@ -74,7 +74,10 @@ describe("LabelOcrPanel", () => {
     expect(values.abv).toBe("46");
     expect(values.volumeMl).toBe("700");
     expect(values.categoryId).toBe("cat-whiskey");
-    expect(values.note).toBe("생산자: GlenAllachie · 숙성 12년");
+    // 생산자·숙성 연수는 이제 메모가 아니라 실제 입력칸으로 채운다.
+    expect(values.producerName).toBe("GlenAllachie");
+    expect(values.ageYears).toBe("12");
+    expect(values.note).toBeUndefined();
     expect(file.name).toBe("label.png");
 
     // 등록 후에는 다시 idle 로 돌아간다.

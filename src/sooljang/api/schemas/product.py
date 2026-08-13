@@ -65,6 +65,9 @@ class ProductCreate(ProductBase):
 
     variety_names: list[str] = Field(default_factory=list, max_length=20)
     skus: list[SkuCreate] = Field(default_factory=list, max_length=20)
+    # 생산자는 자유 텍스트 이름으로 받아 서버가 id 로 해석한다(없으면 생성). `producer_id`
+    # (UUID)보다 UI 입력에 자연스러운 경로다 — `resolve_producer_id` 참조.
+    producer_name: str | None = Field(default=None, max_length=200)
 
 
 class ProductUpdate(BaseModel):
@@ -80,6 +83,7 @@ class ProductUpdate(BaseModel):
     personal_rating: Decimal | None = Field(default=None, gt=0, le=6)
     note: str | None = None
     variety_names: list[str] | None = Field(default=None, max_length=20)
+    producer_name: str | None = Field(default=None, max_length=200)
 
 
 class ProductMetricsOut(BaseModel):

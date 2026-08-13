@@ -167,6 +167,7 @@ export interface ProductCreateInput {
   abv?: string | null;
   vintage?: number | null;
   age_years?: string | null;
+  producer_name?: string | null;
   personal_rating?: string | null;
   note?: string | null;
   variety_names?: string[];

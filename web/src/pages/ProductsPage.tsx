@@ -24,6 +24,7 @@ import {
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import {
   PartialProductCreationError,
+  resolveProducerIdOffline,
   resolveVendorId,
   splitVarieties,
   useCreateProduct,
@@ -311,8 +312,10 @@ function valuesFromProduct(product: Product): Partial<ProductFormValues> {
   return {
     name: product.name,
     categoryId: product.category_id ?? "",
+    producerName: product.producer_name ?? "",
     abv: product.abv ?? "",
     vintage: product.vintage !== null ? String(product.vintage) : "",
+    ageYears: product.age_years !== null ? product.age_years : "",
     personalRating: product.personal_rating ?? "",
     varietyNames: product.varieties.join(", "),
     note: product.note ?? "",
@@ -346,19 +349,23 @@ function ProductDetailView({
 
   const updateProduct = useMutation({
     mutationFn: async (values: ProductFormValues) => {
+      const producerName = values.producerName?.trim() || null;
       const fields = {
         name: values.name.trim(),
         category_id: values.categoryId || null,
         abv: values.abv || null,
         vintage: values.vintage ? Number(values.vintage) : null,
+        age_years: values.ageYears || null,
         personal_rating: values.personalRating || null,
         note: values.note || null,
       };
 
       if (!offline) {
         // variety_names 는 오프라인 제네릭 디스패치가 지원하지 않는다 — 온라인 전용으로 보낸다.
+        // producer_name 은 서버가 id 로 해석한다(자동 생성·재사용).
         await productsApi.update(productId, {
           ...fields,
+          producer_name: producerName,
           variety_names: splitVarieties(values.varietyNames),
         });
         triggerSync();
@@ -367,13 +374,28 @@ function ProductDetailView({
 
       const current = await db.product.get(productId);
       if (!current) throw new Error("제품을 찾을 수 없습니다");
+      // 생산자는 오프라인 쓰기 대상이 아니라 새로 못 만든다 — 미러에 있으면 재사용하고,
+      // 없으면 잃지 않게 메모로 보존한다.
+      const producerId = producerName ? await resolveProducerIdOffline(producerName) : null;
+      const note =
+        producerName && !producerId
+          ? fields.note
+            ? `${fields.note}\n생산자: ${producerName}`
+            : `생산자: ${producerName}`
+          : fields.note;
       await enqueue({
         entity: "product",
         op: "update",
         entityId: productId,
         baseUpdatedAt: current.updated_at as string,
-        fields,
-        optimisticRow: { ...current, ...fields, updated_at: new Date().toISOString() },
+        fields: { ...fields, producer_id: producerId, note },
+        optimisticRow: {
+          ...current,
+          ...fields,
+          producer_id: producerId,
+          note,
+          updated_at: new Date().toISOString(),
+        },
       });
     },
     onSuccess: () => setEditing(false),

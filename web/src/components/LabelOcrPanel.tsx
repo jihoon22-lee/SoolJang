@@ -184,10 +184,10 @@ function toSummary(extraction: LabelExtractionLike): FieldSummary[] {
 /**
  * OCR 결과를 폼 값으로 옮긴다.
  *
- * `ProductForm` 에는 생산자·숙성 연수 입력칸이 없다(아직 다른 화면에도 없는 기존 공백이라
- * Task 17 이 새로 만들지 않는다) — 잃어버리지 않게 메모에 적어 둔다. 주종 추정은 카테고리
- * 목록에서 이름이 정확히 일치하는 항목이 있을 때만 채운다. 오탐(엉뚱한 카테고리를 골라
- * 버림)이 이름 불일치로 안 채워지는 것보다 나쁘다.
+ * 생산자·숙성 연수는 `ProductForm` 에 실제 입력칸이 생겨(생산자 자동완성·숙성 연수 칸)
+ * 이제 메모가 아니라 그 필드로 채운다. 주종 추정은 카테고리 목록에서 이름이 정확히
+ * 일치하는 항목이 있을 때만 채운다. 오탐(엉뚱한 카테고리를 골라 버림)이 이름 불일치로
+ * 안 채워지는 것보다 나쁘다.
  */
 function toPrefill(
   extraction: LabelExtractionLike,
@@ -195,21 +195,17 @@ function toPrefill(
 ): Partial<ProductFormValues> {
   const values: Partial<ProductFormValues> = {};
   if (extraction.name) values.name = extraction.name;
+  if (extraction.producer) values.producerName = extraction.producer;
   if (extraction.abv !== null) values.abv = String(extraction.abv);
   if (extraction.volume_ml !== null) values.volumeMl = String(extraction.volume_ml);
   if (extraction.vintage !== null) values.vintage = String(extraction.vintage);
+  if (extraction.age_years !== null) values.ageYears = String(extraction.age_years);
 
   if (extraction.category_guess) {
     const guess = extraction.category_guess.trim().toLowerCase();
     const matched = categories.find((category) => category.name.trim().toLowerCase() === guess);
     if (matched) values.categoryId = matched.id;
   }
-
-  const noteParts = [
-    extraction.producer ? `생산자: ${extraction.producer}` : null,
-    extraction.age_years !== null ? `숙성 ${extraction.age_years}년` : null,
-  ].filter((part): part is string => part !== null);
-  if (noteParts.length > 0) values.note = noteParts.join(" · ");
 
   return values;
 }

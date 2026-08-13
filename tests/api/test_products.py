@@ -73,6 +73,31 @@ def test_variety_typo_is_normalized_on_create(api_client: TestClient, prefix: st
     assert created["varieties"] == ["Cabernet Sauvignon"]
 
 
+def test_create_product_resolves_and_reuses_producer_name(api_client: TestClient, prefix: str) -> None:
+    """생산자 이름은 자유 텍스트로 받아 id 로 해석하고, 같은 이름은 재사용한다(중복 생성 없음)."""
+    first = _post(api_client, f"{prefix}/products", {"name": "프로듀서 술 1", "producer_name": "글렌피딕"})
+    second = _post(api_client, f"{prefix}/products", {"name": "프로듀서 술 2", "producer_name": "글렌피딕"})
+    upper = _post(
+        api_client, f"{prefix}/products", {"name": "프로듀서 술 3", "producer_name": "글렌피딕".upper()}
+    )
+
+    assert first["producer_name"] == "글렌피딕"
+    assert second["producer_id"] == first["producer_id"]
+    # 대소문자만 달라도 같은 생산자로 본다.
+    assert upper["producer_id"] == first["producer_id"]
+
+
+def test_update_product_with_producer_name(api_client: TestClient, prefix: str) -> None:
+    product = _seed_product(api_client, prefix, name="수정 대상")
+
+    response = api_client.patch(
+        f"{prefix}/products/{product['id']}", json={"producer_name": "야마자키"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["producer_name"] == "야마자키"
+
+
 def test_get_product_detail(api_client: TestClient, prefix: str) -> None:
     created = _seed_product(api_client, prefix, name="상세 조회 대상")
 
