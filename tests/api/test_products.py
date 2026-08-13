@@ -73,12 +73,20 @@ def test_variety_typo_is_normalized_on_create(api_client: TestClient, prefix: st
     assert created["varieties"] == ["Cabernet Sauvignon"]
 
 
-def test_create_product_resolves_and_reuses_producer_name(api_client: TestClient, prefix: str) -> None:
+def test_create_product_resolves_and_reuses_producer_name(
+    api_client: TestClient, prefix: str
+) -> None:
     """생산자 이름은 자유 텍스트로 받아 id 로 해석하고, 같은 이름은 재사용한다(중복 생성 없음)."""
-    first = _post(api_client, f"{prefix}/products", {"name": "프로듀서 술 1", "producer_name": "글렌피딕"})
-    second = _post(api_client, f"{prefix}/products", {"name": "프로듀서 술 2", "producer_name": "글렌피딕"})
+    first = _post(
+        api_client, f"{prefix}/products", {"name": "프로듀서 술 1", "producer_name": "글렌피딕"}
+    )
+    second = _post(
+        api_client, f"{prefix}/products", {"name": "프로듀서 술 2", "producer_name": "글렌피딕"}
+    )
     upper = _post(
-        api_client, f"{prefix}/products", {"name": "프로듀서 술 3", "producer_name": "글렌피딕".upper()}
+        api_client,
+        f"{prefix}/products",
+        {"name": "프로듀서 술 3", "producer_name": "글렌피딕".upper()},
     )
 
     assert first["producer_name"] == "글렌피딕"
