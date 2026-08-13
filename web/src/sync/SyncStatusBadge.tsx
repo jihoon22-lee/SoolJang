@@ -6,12 +6,13 @@
  */
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { syncApi } from "@/api/client";
 import { db, type OutboxEntry } from "@/sync/db";
 import { discardFailedEntry } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { useModalDialog } from "@/useModalDialog";
 
 const ENTITY_LABELS: Record<string, string> = {
   category: "주종",
@@ -29,6 +30,29 @@ const ENTITY_LABELS: Record<string, string> = {
 export function SyncStatusBadge() {
   const { state, pendingCount, failedCount, conflictCount, triggerSync } = useSyncStatus();
   const [panelOpen, setPanelOpen] = useState(false);
+  const statusRef = useRef<HTMLDivElement | null>(null);
+  const badgeRef = useRef<HTMLButtonElement | null>(null);
+
+  // 바깥을 클릭하거나 Escape 를 누르면 닫는다. `App.tsx` 설정 메뉴와 같은 패턴이되,
+  // 트리거(배지)가 패널의 형제라서 "패널 + 트리거를 감싼 컨테이너(`.sync-status`)" 를
+  // 기준으로 잡아야 배지 재클릭이 바깥 클릭으로 오인되지 않는다.
+  useEffect(() => {
+    if (!panelOpen) return;
+    function onPointerDown(event: PointerEvent): void {
+      if (!statusRef.current?.contains(event.target as Node)) {
+        setPanelOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") setPanelOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [panelOpen]);
 
   const hasConflicts = conflictCount > 0;
   const hasFailed = failedCount > 0;
@@ -48,11 +72,14 @@ export function SyncStatusBadge() {
   const opensPanel = hasConflicts || hasFailed;
 
   return (
-    <div className="sync-status">
+    <div className="sync-status" ref={statusRef}>
       <button
         type="button"
+        ref={badgeRef}
         className={`sync-status-badge sync-status-${tone}`}
         aria-expanded={opensPanel ? panelOpen : undefined}
+        aria-haspopup={opensPanel ? "dialog" : undefined}
+        aria-controls={opensPanel ? "sync-issues-panel" : undefined}
         onClick={() => {
           if (opensPanel) {
             setPanelOpen((open) => !open);
@@ -65,7 +92,9 @@ export function SyncStatusBadge() {
       </button>
       {/* 마지막 항목을 확인/건너뛴 직후에도 "확인할 게 없습니다" 를 보여줘야 하므로
           opensPanel 이 아니라 panelOpen 에만 걸어 둔다. */}
-      {panelOpen && <SyncIssuesPanel onClose={() => setPanelOpen(false)} />}
+      {panelOpen && (
+        <SyncIssuesPanel onClose={() => setPanelOpen(false)} returnFocusRef={badgeRef} />
+      )}
     </div>
   );
 }
@@ -96,7 +125,14 @@ function describeEntry(entry: OutboxEntry): string {
   return `${entityLabel} ${opLabel}`;
 }
 
-function SyncIssuesPanel({ onClose }: { onClose: () => void }) {
+function SyncIssuesPanel({
+  onClose,
+  returnFocusRef,
+}: {
+  onClose: () => void;
+  returnFocusRef?: RefObject<HTMLButtonElement | null>;
+}) {
+  const dialogRef = useModalDialog(returnFocusRef);
   const conflicts = useLiveQuery(
     () => db.conflict_log.filter((row) => row.deleted_at === null).toArray(),
     [],
@@ -140,7 +176,15 @@ function SyncIssuesPanel({ onClose }: { onClose: () => void }) {
     (!conflicts || conflicts.length === 0) && (!failedEntries || failedEntries.length === 0);
 
   return (
-    <div className="sync-conflict-panel" role="dialog" aria-label="동기화 문제">
+    <div
+      className="sync-conflict-panel"
+      id="sync-issues-panel"
+      ref={dialogRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label="동기화 문제"
+    >
       <div className="sync-conflict-panel-header">
         <h3>동기화 문제</h3>
         <button type="button" onClick={onClose}>
