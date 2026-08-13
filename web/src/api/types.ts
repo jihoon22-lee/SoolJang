@@ -428,8 +428,12 @@ export interface Rankings {
   /** 정가 기준. 레거시 통계와 일치시키기 위한 결정이다. */
   by_price_per_100ml: RankingEntry[];
   by_personal_rating: RankingEntry[];
-  /** 가성비(평점 ÷ 100ml당 가격). `getStatsRankings()`(오프라인 계산)만 채운다 — `by_*`
-   * 나머지 셋과 같은 이유로 `/stats/rankings` 를 실제로 호출하는 화면이 없다. */
+}
+
+/** 오프라인 계산(`getStatsRankings()`)이 `/stats/rankings`(REST)에 없는 필드를 더한다.
+ * REST 응답을 받는 `Rankings` 와 분리해, 호출부가 서버가 안 주는 필드를 읽지 않게 한다. */
+export interface OfflineRankings extends Rankings {
+  /** 가성비(평점 ÷ 100ml당 가격). `getStatsRankings()`(오프라인 계산)만 채운다. */
   by_value_for_money: RankingEntry[];
 }
 
@@ -460,8 +464,12 @@ export interface StatsSummary {
   discount_rate: string | null;
   avg_personal_rating: string | null;
   vendor_count: number;
-  /** 증여·판매로 내보낸 병수. `getStatsSummary()`(오프라인 계산)만 채운다 — 지금은
-   * `/stats/summary` 를 실제로 호출하는 화면이 없다(Task 24 PR5 시점). */
+}
+
+/** 오프라인 계산(`getStatsSummary()`)이 `/stats/summary`(REST)에 없는 필드를 더한다.
+ * `Rankings`/`OfflineRankings` 와 같은 이유로 분리한다. */
+export interface OfflineStatsSummary extends StatsSummary {
+  /** 증여·판매로 내보낸 병수. `getStatsSummary()`(오프라인 계산)만 채운다. */
   gifted_count: number;
   sold_count: number;
   /** 개봉→소진 평균 일수. 개봉일·소진일이 모두 있는 병만의 평균이다. */

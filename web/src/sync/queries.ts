@@ -17,13 +17,13 @@ import type {
   CategoryNode,
   CategoryStat,
   CategoryTree,
+  OfflineRankings,
+  OfflineStatsSummary,
   Product,
   ProductFilters,
   Purchase,
   RankingEntry,
-  Rankings,
   SortKey,
-  StatsSummary,
   Vendor,
 } from "@/api/types";
 import {
@@ -822,7 +822,7 @@ function topAncestorMap(tree: CategoryTree): Map<string, CategoryNode> {
 export async function getStatsRankings(
   limit = DEFAULT_RANKING_LIMIT,
   data?: StatsData,
-): Promise<Rankings> {
+): Promise<OfflineRankings> {
   const { rows } = data ?? (await statsRows());
 
   function top(keyFn: (row: StatsRow) => Decimal | null): { row: StatsRow; value: Decimal }[] {
@@ -937,7 +937,7 @@ export async function getCategoryRollup(
 
 /** 전체 합계. 평균의 분모는 전체 병수·전체 용량이다(가격이 있는 구매 건만이 아니다) —
  * 가격 없는 선물 병도 "컬렉션 전체 평균"에는 한 병으로 들어가야 한다. */
-export async function getStatsSummary(data?: StatsData): Promise<StatsSummary> {
+export async function getStatsSummary(data?: StatsData): Promise<OfflineStatsSummary> {
   const { rows, vendorIds } = data ?? (await statsRows());
 
   const purchasedCount = rows.reduce((sum, row) => sum + row.prices.purchasedCount, 0);
@@ -982,9 +982,9 @@ export async function getStatsSummary(data?: StatsData): Promise<StatsSummary> {
 }
 
 export interface StatsDashboard {
-  rankings: Rankings;
+  rankings: OfflineRankings;
   categories: CategoryStat[];
-  totals: StatsSummary;
+  totals: OfflineStatsSummary;
   tree: CategoryTree;
 }
 
