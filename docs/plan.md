@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-08 (**Task 28 완료** — 사용자 요청으로 "현재 주종 구조를 기본값으로 저장" 기능 추가(신규 `CategorySeed` 테이블), PR [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) 머지. 버전을 1.1.4 로 올려([#74](https://github.com/jihoon22-lee/SoolJang/pull/74)) 릴리스·재배포 진행 중) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26, Task 27, Task 28**(Track 1~4, 10 PR + 사후 하드닝 PR 2개 + Task 24 7개 PR + Task 25 4개 PR + Task 26 1개 PR + Task 27 1개 PR + Task 28 1개 PR). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨(2026-08-03) — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. **Task 23(첫 릴리스·배포)은 완료** — 태그·릴리스·PC 배포에 이어 모바일 접속(Tailscale Serve)도 사용자가 켜서 끝났다(Q7) |
-| 다음 착수 Task | 없음 — Task 28 까지 계획된 작업이 전부 끝났다. 남은 건 전부 사용자가 원하는 시점에 결정할 선택 사항이다: **Q8**(GHCR pull 방식 전환, 급하지 않음), **Q9**(외부 소스 나머지 6곳 등록·Task 19 본 착수) |
-| 현재 브랜치 | `main`(Task 28 머지 후 v1.1.4 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.1.4 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §6 Q8·Q9 뿐이며 둘 다 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.1.4` 릴리스 진행 중**(2026-08-08) — Task 28(주종 구조를 기본값으로 저장) 반영. 이전 최신 버전은 `v1.1.3`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.3)) |
+| 최종 갱신 | 2026-08-13 (**Task 29 착수** — §9 백로그에 쌓여 있던 접근성(`SyncIssuesPanel` 모달 포커스 관리)·릴리스 버전 검증 강화. 그 사이 Task 28 이후 v1.1.5(품종 증식 결함 수정, [#76](https://github.com/jihoon22-lee/SoolJang/pull/76))·v1.1.6(프로필 표시 이름 수정 + 운영 가이드 문서화, [#78](https://github.com/jihoon22-lee/SoolJang/pull/78)) 릴리스가 완료됐다) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20, Task 21, Task 22, Task 24, Task 25, Task 26, Task 27, Task 28**(Task 24~28 은 v1.1.x 실사용 피드백 개선). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
+| 다음 착수 Task | **Task 29**(접근성·릴리스 가드 보강) — 진행 중. 완료 후 v1.1.7 로 릴리스·재배포 예정 |
+| 현재 브랜치 | `feature/task29-a11y-release-guard`(Task 29 작업 중) |
+| 진행 중 잔여 항목 | Task 29(① `SyncIssuesPanel` 모달 포커스 관리 ② `release.yml` 3자 버전 검증 + `quality.yml` 드리프트 체크) → 완료 후 버전 올림(v1.1.7) → 릴리스·재배포 |
+| 최신 버전 | **`v1.1.6`**(2026-08-10 릴리스·재배포 완료, [GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.1.6)) — 다음은 Task 29 반영 `v1.1.7` |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -241,6 +241,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 26 | v1.1.1 실사용 3차 피드백(내 술 레이아웃 재조정 + 주종 관리 액션 정리) | ✅ 완료·머지 | `chore/task26-layout-category-actions` | [#69](https://github.com/jihoon22-lee/SoolJang/pull/69) |
 | 27 | 주종 관리: 이름 클릭 시 술 목록 이동 복원(Task 26 회귀 수정) | ✅ 완료·머지 | `fix/category-name-navigates-again` | [#71](https://github.com/jihoon22-lee/SoolJang/pull/71) |
 | 28 | 주종 관리: 현재 구조를 기본값으로 저장 | ✅ 완료·머지 | `feat/category-seed-save-as-default` | [#73](https://github.com/jihoon22-lee/SoolJang/pull/73) |
+| 29 | 접근성·릴리스 가드 보강 | 🟡 진행중 | `feature/task29-a11y-release-guard` | |
 
 ### 의존 관계
 
@@ -1563,6 +1564,36 @@ DB(`sooljang_dev`, 프로덕션과 무관)로 `uv run sooljang-api` 를 띄우�
 
 ---
 
+### 🟡 Task 29 — 접근성·릴리스 가드 보강
+
+§9 백로그에 오래 쌓여 있던 두 항목을 처리한다. (1) `SyncIssuesPanel` 이 `role="dialog"`
+인데 포커스 이동·트랩·Escape·바깥 클릭 닫기가 없어 키보드/스크린리더 사용자는 "닫기"
+버튼까지 탭해야만 닫을 수 있었다. (2) `release.yml` 이 릴리스 태그와 `pyproject.toml`
+버전만 비교해, `src/sooljang/__init__.py`·`web/package.json` 의 버전 드리프트를 CI 가
+못 잡았다.
+
+**프론트엔드(접근성).** 새 의존성 없이 `web/src/useModalDialog.ts` 훅을 추가했다 — React
+는 아직 `<dialog>`/포커스 트랩을 대체할 내장 훅이 없어 직접 구현한다. 훅은 포커스 의미론
+3가지(열림 시 패널로 포커스 이동, `Tab`/`Shift+Tab` 이 패널 안에서만 순환하는 포커스 트랩,
+언마운트 시 트리거로 포커스 복귀)만 담당하고, 바깥 클릭·Escape 닫기는 `SyncStatusBadge`
+가 `App.tsx` 설정 메뉴와 같은 패턴으로 처리한다 — 트리거(배지)가 패널의 **형제**라서
+바깥 클릭 범위를 "패널 + 트리거를 감싼 `.sync-status` 컨테이너" 로 잡아야 배지 재클릭이
+바깥 클릭으로 오인돼 닫혔다 다시 열리는 문제를 막는다. 패널에 `tabIndex={-1}`·`aria-
+modal="true"`·`id` 를, 배지에 `aria-haspopup="dialog"`·`aria-controls` 를 추가했다.
+
+**CI(버전 일관성).** `scripts/check_version_consistency.sh` 를 새로 만들었다 — `pyproject.
+toml`(tomllib)·`__init__.py`(regex)·`web/package.json`(json) 세 곳의 버전을 추출해 상호
+일치를 검증하고, 인자로 버전을 주면 태그와의 일치까지 본다. lockfile(`uv.lock`·
+`package-lock.json`)은 `uv sync --frozen`·`npm ci` 가 이미 강제하므로 명시 검증 대상에서
+뺐다(D163). `quality.yml` 에 신규 잡 `version-consistency` 를 추가해 PR 마다 드리프트를
+잡고, `release.yml` 의 "Verify project version matches tag" 스텝을 이 스크립트 호출로
+교체했다.
+
+검증: `npm --prefix web run check`(lint+typecheck+test 신규 4건+build), `actionlint` 통과,
+스크립트를 로컬에서 정상/불일치 케이스로 직접 실행 확인. 근거는 §5 Task 29 결정, D162~D163.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -1577,10 +1608,8 @@ Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항�
 | 읽기 전용 공유 링크 | Q6(지인 공유 권한 모델)이 미해결이라 Task 20 에서 이미 이연했다(D88) | Task 20 후속 |
 | `search` 전략(구글 검색 결과 스크래핑, Task 18 원 사양) | ToS·신뢰성 위험이 커 PR9 범위에서 뺐다(D91). 사용자가 "adapter 만 먼저" 를 선택 | 별도 PR + 별도 위험 검토 필요 |
 | 라벨 OCR 의 생산자·숙성연수 프리필 | `ProductForm` 에 대응 입력칸이 없어 메모 필드로 우회 중이다(Task 17 에서부터, `handoff.md` §2 참조). 제품 생성 API 에 `producer_id` 프리필 경로(이름→id 자동 매칭, `resolveVendorId` 와 같은 패턴)를 붙이는 게 개선 후보 | |
-| `SyncIssuesPanel`(`sync/SyncStatusBadge.tsx:143-216`) 이 `role="dialog"` 인데 포커스 이동·트랩·Escape 닫기·바깥 클릭 닫기가 없다 | `App.tsx` 설정 메뉴 팝오버(같은 패턴이라고 CSS 주석에 적혀 있음, `styles.css:1138`)는 이미 구현돼 있는데 이쪽만 빠졌다. 2026-08-07 전수 점검에서 발견 | 키보드/스크린리더 사용자는 "닫기" 버튼까지 탭해야만 닫을 수 있다 |
 | `purchased_on_min`/`purchased_on_max` 구매일 필터(Task 25 PR1, D149~151 인근)가 온라인 상태에선 조용히 무시된다 | 오프라인 Dexie 경로(`queries.ts`)에만 구현했고 서버 `GET /products` 는 이 파라미터를 모른다(의도된 설계 — B2 휴면 엔드포인트). 그런데 온라인일 때 UI 가 필터를 적용한 것처럼 보이면서 실제로는 무시되는 것에 대한 안내가 없다 | 온라인/오프라인 구분 안내 문구 추가, 또는 필터 자체를 오프라인 전용 배지로 표시 |
 | `Rankings.by_value_for_money`/`StatsSummary.{gifted_count,sold_count,avg_days_to_finish,avg_value_for_money}`(`web/src/api/types.ts`) 타입이 실제 REST 응답(`schemas/stats.py`)엔 없는 필드를 약속한다 | 현재는 무해함 — `statsApi.rankings`/`statsApi.summary` 를 호출하는 컴포넌트가 없다(`PivotExplorer`/`TimeseriesChart` 만 실사용). 하지만 타입 시스템이 막아주지 않아 향후 호출부가 생기면 런타임에 `undefined` 를 읽게 된다 | 온라인 전용 타입과 오프라인 전용 타입을 분리하거나 주석을 `@deprecated`/`offline-only` 로 명확히 강화 |
-| `release.yml` 이 릴리스 태그와 `pyproject.toml` 버전만 비교하고 `web/package.json`/`src/sooljang/__init__.py` 는 검증하지 않는다 | 현재는 세 곳 다 1.1.1 로 일치하지만, CI 가 드리프트를 못 잡는다 | 릴리스 워크플로에 3자 버전 일치 검증 스텝 추가 |
 | `ExternalInfoCard.tsx`/`HealthPanel.tsx` 전용 테스트 파일이 없다 | 다른 컴포넌트 대비 상대적으로 독립 실행 위험이 있는 화면(외부 소스 조회, 헬스 체크 표시) | 여유 있을 때 단위 테스트 추가 |
 
 ---
@@ -1890,6 +1919,13 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | # | 결정 | 근거 |
 |---|---|---|
 | D161 | 저장된 구조가 "빈 트리"여도 정직하게 존중한다 — `_resolve_seed_paths` 는 `CategorySeed` 행이 **존재하는지**(빈 배열이라도)로 "저장됨"을 판정하지, 배열이 비었다고 하드코딩된 기본값으로 몰래 폴백하지 않는다 | 사용자가 정말로 "카테고리 없음"을 기본으로 저장했을 수 있다 — 그 경우 "기본 주종 복원"이 조용히 앱 기본값(맥주·와인 등)을 되살리면 사용자 의도를 무시하는 셈이다. `None`(저장 안 함)과 `[]`(빈 구조 저장함)을 구분해야만 정확하다 — 테스트(`test_save_as_default_with_empty_tree_makes_reset_seed_noop`)로 고정했다 |
+
+### Task 29 결정 (D162~D163)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D162 | `SyncIssuesPanel` 의 포커스 관리(열림 이동·트랩·복귀)는 `useModalDialog` 훅으로 분리하고, 바깥 클릭·Escape 닫기는 `SyncStatusBadge` 가 `App.tsx` 설정 메뉴와 같은 패턴으로 처리한다 | 포커스 의미론은 "어느 트리거로 열렸는지" 와 무관해 훅으로 재사용할 수 있지만, 바깥 클릭 닫기는 트리거(배지)가 패널의 **형제**라서 닫기 범위를 "패널+트리거를 감싼 `.sync-status` 컨테이너" 로 잡아야 한다 — 패널만 기준으로 잡으면 배지를 재클릭했을 때 pointerdown 으로 닫힌 뒤 click 이 다시 열어 "닫았다 다시 열리는" 버그가 생긴다. `App.tsx` 설정 메뉴가 이미 이 패턴을 검증하고 있어 그대로 따른다 |
+| D163 | 버전 일관성 검증은 `scripts/check_version_consistency.sh` 하나로 두고 `quality.yml`(상호 일치, PR 마다)과 `release.yml`(태그 일치)이 공유한다. lockfile 은 검증 대상에서 뺀다 | `pyproject.toml`·`__init__.py`·`package.json` 세 곳의 드리프트를 CI 가 못 잡던 것이 백로그 원인이다. lockfile(`uv.lock`·`package-lock.json`)은 `uv sync --frozen`/`npm ci` 가 이미 불일치를 거부하므로, 스크립트가 다시 볼 필요가 없다(`check_commit_message.sh` 처럼 훅·CI 가 같은 로직을 공유하는 기존 관례를 따른다). Python 3.11+ 표준 라이브러리(tomllib·json)만 써 러너·로컬 어디서든 추가 의존성 없이 돌게 했다 |
 
 ## 6. 열린 질문
 
