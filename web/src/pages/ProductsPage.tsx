@@ -59,7 +59,7 @@ export function ProductsPage({
   initialVendorId,
   onOpenStoreMode,
 }: ProductsPageProps) {
-  const { state } = useSyncStatus();
+  const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
   const [filters, setFilters] = useState<ProductFilters>(() => {
     if (initialCategoryId) return { ...DEFAULT_FILTERS, category_id: initialCategoryId };
@@ -89,6 +89,10 @@ export function ProductsPage({
   // 라벨을 다시 스캔하면(재촬영) 이 값을 바꿔 강제로 다시 마운트시켜야 새 프리필이 반영된다.
   const [formInstance, setFormInstance] = useState(0);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // 대량 편집(여러 제품 주종 일괄 변경) 상태. 온라인 전용이다(선택한 제품들에 PATCH 반복).
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkCategoryId, setBulkCategoryId] = useState("");
   // 필터가 바뀌면 첫 페이지부터 다시 보여준다. 렌더 중 상태를 조정하는 편이(리액트가
   // 권장하는 방식) 이 값을 읽지 않는 useEffect 보다 의도가 분명하다.
   const [countedFilters, setCountedFilters] = useState(filters);
@@ -183,6 +187,45 @@ export function ProductsPage({
     }));
   }
 
+  function toggleSelect(productId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  }
+
+  function exitSelection() {
+    setSelecting(false);
+    setSelectedIds(new Set());
+    setBulkCategoryId("");
+  }
+
+  // 대량 편집: 선택한 제품들에 PATCH 를 반복한다(클라이언트 루프). 개인 규모(수백 건)에서는
+  // 벌크 엔드포인트의 부분 실패·오프라인 정합성 설계 비용이 루프보다 크다.
+  const [bulkResult, setBulkResult] = useState<{ succeeded: number; failed: number } | null>(null);
+  const bulkChange = useMutation({
+    mutationFn: async (input: { ids: string[]; categoryId: string }) => {
+      let succeeded = 0;
+      let failed = 0;
+      for (const id of input.ids) {
+        try {
+          await productsApi.update(id, { category_id: input.categoryId || null });
+          succeeded += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      return { succeeded, failed };
+    },
+    onSuccess: (result) => {
+      triggerSync();
+      setBulkResult(result);
+      exitSelection();
+    },
+  });
+
   if (selectedProductId !== null) {
     return (
       <ProductDetailView
@@ -240,8 +283,59 @@ export function ProductsPage({
             >
               {formOpen ? "폼 닫기" : "새 술 등록"}
             </button>
+            {!offline && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (selecting) exitSelection();
+                  else setSelecting(true);
+                }}
+              >
+                {selecting ? "선택 취소" : "선택"}
+              </button>
+            )}
           </div>
         </div>
+
+        {/* 대량 편집(주종 일괄 변경) — 온라인 전용. 선택 모드에서만 보인다. */}
+        {selecting && (
+          <div className="bulk-edit-bar">
+            <span>{selectedIds.size}건 선택됨</span>
+            <label htmlFor="bulk-category">주종 변경</label>
+            <select
+              id="bulk-category"
+              value={bulkCategoryId}
+              onChange={(event) => setBulkCategoryId(event.target.value)}
+            >
+              <option value="">주종 선택</option>
+              {(categoryTree?.items ?? []).map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.path.join(" > ")}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="primary"
+              disabled={selectedIds.size === 0 || !bulkCategoryId || bulkChange.isPending}
+              onClick={() =>
+                bulkChange.mutate({
+                  ids: Array.from(selectedIds),
+                  categoryId: bulkCategoryId,
+                })
+              }
+            >
+              {bulkChange.isPending ? "변경 중…" : "변경"}
+            </button>
+          </div>
+        )}
+
+        {bulkResult && (
+          <output className="muted text-sm">
+            주종 변경 완료 {bulkResult.succeeded}건
+            {bulkResult.failed > 0 ? ` · 실패 ${bulkResult.failed}건` : ""}
+          </output>
+        )}
 
         {/* PC 에서는 표를 두 손가락으로 스캔하며 훑기 어렵고 카메라도 잘 안 쓴다 — 매장에서
             술을 앞에 두고 쓰는 모바일 전용 흐름이라 좁은 화면에서만 보인다(항목 6). */}
@@ -292,6 +386,9 @@ export function ProductsPage({
               sort={filters.sort ?? "name"}
               order={filters.order ?? "asc"}
               onSort={handleSort}
+              selectable={selecting}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
             {hasMore && (
               <div className="button-row mt-3">

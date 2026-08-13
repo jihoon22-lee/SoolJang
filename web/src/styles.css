@@ -649,6 +649,32 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* 대량 편집 선택 체크박스 열(표)과 카드의 선택 체크박스. */
+.product-table .select-col {
+  width: 2rem;
+  text-align: center;
+}
+
+.select-card {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+/* 대량 편집(주종 일괄 변경) 액션 바. */
+.bulk-edit-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  margin: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.bulk-edit-bar label {
+  font-weight: 600;
+}
+
 .sort-button {
   all: unset;
   cursor: pointer;
