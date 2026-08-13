@@ -234,6 +234,30 @@ def test_filter_by_variety(api_client: TestClient, prefix: str) -> None:
     assert [item["name"] for item in result["items"]] == ["IPA 맥주"]
 
 
+def test_filter_by_purchased_on_range(api_client: TestClient, prefix: str) -> None:
+    """구매일 범위 안 구매 건이 하나라도 있으면 매치한다. 구매일이 없는 구매는 어느
+    범위에도 매치하지 않는다 — 오프라인 Dexie 경로와 같은 의미론이다."""
+    early = _seed_product(api_client, prefix, name="이른 구매")
+    late = _seed_product(api_client, prefix, name="늦은 구매")
+    undated = _seed_product(api_client, prefix, name="구매일 없음")
+    _seed_product(api_client, prefix, name="구매 없음")
+
+    for product, purchased_on in ((early, "2020-01-15"), (late, "2024-06-01"), (undated, None)):
+        payload: dict[str, Any] = {"sku_id": product["skus"][0]["id"], "quantity": 1}
+        if purchased_on is not None:
+            payload["purchased_on"] = purchased_on
+        _post(api_client, f"{prefix}/purchases", payload)
+
+    result = _list(api_client, prefix, purchased_on_min="2023-01-01")
+    assert [item["name"] for item in result["items"]] == ["늦은 구매"]
+
+    result = _list(api_client, prefix, purchased_on_max="2021-12-31")
+    assert [item["name"] for item in result["items"]] == ["이른 구매"]
+
+    result = _list(api_client, prefix, purchased_on_min="2025-01-01", purchased_on_max="2025-12-31")
+    assert result["items"] == []
+
+
 def test_category_filter_includes_descendants(api_client: TestClient, prefix: str) -> None:
     """`위스키` 필터가 하위 3종을 모두 포함해야 한다."""
     tree = api_client.post(f"{prefix}/categories:reset-seed").json()

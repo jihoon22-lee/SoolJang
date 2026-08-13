@@ -9,6 +9,7 @@
 
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -85,6 +86,8 @@ class ProductFilters:
     variety: str | None = None
     price_per_100ml_min: Decimal | None = None
     price_per_100ml_max: Decimal | None = None
+    purchased_on_min: date | None = None
+    purchased_on_max: date | None = None
 
 
 async def _category_scope(
@@ -169,6 +172,23 @@ async def build_product_query(
                 )
             )
         )
+
+    # 구매일 범위. "범위 안 구매 건이 하나라도 있으면 매치" 한다 — 오프라인 Dexie 경로
+    # (`queries.ts::filterAndSortProducts`)와 같은 의미론이라 온/오프라인 결과가 갈리지
+    # 않는다. `purchased_on` 이 없는 구매 건(레거시 임포트 등)은 어느 범위에도 매치하지
+    # 않는다(None 비교는 항상 거짓) — 오프라인도 `purchaseDatesByProduct` 에서 null 을
+    # 제외하므로 동일하다.
+    if filters.purchased_on_min is not None or filters.purchased_on_max is not None:
+        purchase_scope = (
+            select(Sku.product_id)
+            .join(Purchase, Purchase.sku_id == Sku.id)
+            .where(Purchase.deleted_at.is_(None))
+        )
+        if filters.purchased_on_min is not None:
+            purchase_scope = purchase_scope.where(Purchase.purchased_on >= filters.purchased_on_min)
+        if filters.purchased_on_max is not None:
+            purchase_scope = purchase_scope.where(Purchase.purchased_on <= filters.purchased_on_max)
+        statement = statement.where(Product.id.in_(purchase_scope))
 
     statement = statement.options(
         selectinload(Product.skus),
