@@ -1,6 +1,7 @@
 """제품 라우터."""
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -95,6 +96,8 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
     variety: Annotated[str | None, Query(description="품종·스타일 부분 일치")] = None,
     price_per_100ml_min: Annotated[Decimal | None, Query(ge=0)] = None,
     price_per_100ml_max: Annotated[Decimal | None, Query(ge=0)] = None,
+    purchased_on_min: Annotated[date | None, Query(description="구매일 하한 (YYYY-MM-DD)")] = None,
+    purchased_on_max: Annotated[date | None, Query(description="구매일 상한 (YYYY-MM-DD)")] = None,
     sort: Annotated[SortKey, Query(description="정렬 키")] = "name",
     order: Annotated[SortOrder, Query()] = "asc",
     limit: Annotated[int | None, Query(ge=1, le=200)] = None,
@@ -121,6 +124,8 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
         variety=variety,
         price_per_100ml_min=price_per_100ml_min,
         price_per_100ml_max=price_per_100ml_max,
+        purchased_on_min=purchased_on_min,
+        purchased_on_max=purchased_on_max,
     )
 
     statement, metrics = await build_product_query(session, user_id=user_id, filters=filters)
