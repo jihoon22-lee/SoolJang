@@ -7,6 +7,10 @@ interface ProductListProps {
   sort: SortKey;
   order: SortOrder;
   onSort: (key: SortKey) => void;
+  /** 선택 모드(대량 편집)일 때 체크박스를 보여준다. */
+  selectable?: boolean;
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelect?: (productId: string) => void;
 }
 
 interface ColumnDef {
@@ -37,7 +41,16 @@ const COLUMNS: ColumnDef[] = [
  * 헤더 클릭 정렬은 새 정렬 로직을 만들지 않는다 — `ProductFilterPanel` 의 정렬 드롭다운과
  * 똑같은 `sort`/`order` 상태를 그대로 토글할 뿐이다(부모 `ProductsPage` 가 상태를 쥔다).
  */
-export function ProductList({ products, onSelect, sort, order, onSort }: ProductListProps) {
+export function ProductList({
+  products,
+  onSelect,
+  sort,
+  order,
+  onSort,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+}: ProductListProps) {
   if (products.length === 0) {
     return (
       <output className="notice">
@@ -55,6 +68,7 @@ export function ProductList({ products, onSelect, sort, order, onSort }: Product
           </caption>
           <thead>
             <tr>
+              {selectable && <th scope="col" className="select-col" />}
               {COLUMNS.map((column) => (
                 <ColumnHeader
                   key={column.label}
@@ -69,6 +83,16 @@ export function ProductList({ products, onSelect, sort, order, onSort }: Product
           <tbody>
             {products.map((product) => (
               <tr key={product.id}>
+                {selectable && (
+                  <td className="select-col">
+                    <input
+                      type="checkbox"
+                      aria-label={`${product.name} 선택`}
+                      checked={selectedIds?.has(product.id) ?? false}
+                      onChange={() => onToggleSelect?.(product.id)}
+                    />
+                  </td>
+                )}
                 <th scope="row">
                   <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
                     {product.name}
@@ -96,6 +120,16 @@ export function ProductList({ products, onSelect, sort, order, onSort }: Product
       <ul className="product-cards" aria-label="제품 목록 (카드 보기)">
         {products.map((product) => (
           <li key={product.id} className="product-card">
+            {selectable && (
+              <label className="select-card">
+                <input
+                  type="checkbox"
+                  aria-label={`${product.name} 선택`}
+                  checked={selectedIds?.has(product.id) ?? false}
+                  onChange={() => onToggleSelect?.(product.id)}
+                />
+              </label>
+            )}
             <h3>
               <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
                 {product.name}

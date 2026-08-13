@@ -798,6 +798,40 @@ describe("ProductsPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("제품을 불러올 수 없습니다");
     expect(screen.getByRole("button", { name: "← 목록으로" })).toBeInTheDocument();
   });
+
+  it("선택한 제품들의 주종을 일괄 변경한다", async () => {
+    await db.category.bulkPut([
+      row({ id: "liquor", parent_id: null, name: "양주" }),
+      row({ id: "whisky", parent_id: "liquor", name: "위스키" }),
+    ]);
+    await seedProduct("p1", "첫 번째 술", { category_id: null });
+    await seedProduct("p2", "두 번째 술", { category_id: null });
+    const { calls } = stubRoutes([
+      { match: "/products/p1", method: "PATCH", body: {} },
+      { match: "/products/p2", method: "PATCH", body: {} },
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+
+    renderProductsPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "선택" }));
+    // 테이블·카드 두 뷰가 모두 렌더되므로 같은 이름의 체크박스가 두 개다 — 첫 번째를 고른다.
+    const [firstCheckbox] = await screen.findAllByRole("checkbox", { name: "첫 번째 술 선택" });
+    await userEvent.click(firstCheckbox as Element);
+    const [secondCheckbox] = screen.getAllByRole("checkbox", { name: "두 번째 술 선택" });
+    await userEvent.click(secondCheckbox as Element);
+    await userEvent.selectOptions(screen.getByLabelText("주종 변경"), "whisky");
+    await userEvent.click(screen.getByRole("button", { name: "변경" }));
+
+    await waitFor(() => {
+      const patches = calls.filter(
+        (call) => call.method === "PATCH" && call.url.includes("/products/"),
+      );
+      expect(patches).toHaveLength(2);
+    });
+    expect(await screen.findByText(/주종 변경 완료 2건/)).toBeInTheDocument();
+  });
 });
 
 describe("CategoriesPage", () => {
