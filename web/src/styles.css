@@ -976,6 +976,35 @@ button:disabled {
   color: var(--accent-strong);
 }
 
+/* --- 홈 대시보드 ----------------------------------------------------------- */
+
+.home-category-list,
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-category-list li,
+.activity-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.home-activity-grid {
+  display: grid;
+  gap: var(--space);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.home-activity-grid h4 {
+  margin: 0 0 0.3rem;
+}
+
 /* --- 카테고리 트리 --------------------------------------------------------- */
 
 .category-tree {

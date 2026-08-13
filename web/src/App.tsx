@@ -6,6 +6,7 @@ import type { User } from "@/api/types";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
 import { CategoriesPage } from "@/pages/CategoriesPage";
+import { HomePage } from "@/pages/HomePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -20,6 +21,7 @@ import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 /** 자주 쓰는 화면만 주 탭에 남긴다(항목 3·6). "매장 모드" 는 nav 에서 빠졌지만 `#scan`
  * 라우트·화면은 그대로 있다 — `ProductsPage` 의 모바일 전용 진입 버튼으로만 들어간다. */
 const VIEWS: { id: View; label: string }[] = [
+  { id: "home", label: "홈" },
   { id: "products", label: "내 술" },
   { id: "categories", label: "주종 관리" },
   { id: "vendors", label: "구매처" },
@@ -208,6 +210,12 @@ export function App() {
         </header>
 
         <main className="app-main" id="main">
+          {route.view === "home" && (
+            <HomePage
+              onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+              onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+            />
+          )}
           {route.view === "products" && (
             <ProductsPage
               selectedProductId={route.productId ?? null}

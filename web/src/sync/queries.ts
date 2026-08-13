@@ -1000,3 +1000,64 @@ export async function getStatsDashboard(): Promise<StatsDashboard> {
     tree,
   };
 }
+
+// --- 홈 대시보드 최근 활동 -----------------------------------------------------
+
+export interface RecentProduct {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface RecentTasting {
+  id: string;
+  productId: string | null;
+  productName: string;
+  tastedOn: string;
+  rating: string | null;
+}
+
+/** 최근 등록된 제품(`created_at` 내림차순). */
+export async function getRecentProducts(limit = 5): Promise<RecentProduct[]> {
+  const products = await db.product.filter((row) => row.deleted_at === null).toArray();
+  return products
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .slice(0, limit)
+    .map((row) => ({
+      id: row.id,
+      name: String(row.name),
+      created_at: String(row.created_at),
+    }));
+}
+
+/** 최근 시음(`tasted_on` 내림차순). 제품 이름은 sku→product 로 붙인다. */
+export async function getRecentTastings(limit = 5): Promise<RecentTasting[]> {
+  const tastings = await db.tasting_session.filter((row) => row.deleted_at === null).toArray();
+  const recent = tastings
+    .sort((a, b) => String(b.tasted_on).localeCompare(String(a.tasted_on)))
+    .slice(0, limit);
+
+  const skuIds = recent.map((t) => t.sku_id as string);
+  const skus = await db.sku.bulkGet(skuIds);
+  const skuById = new Map(skus.filter((sku) => sku !== undefined).map((sku) => [sku.id, sku]));
+
+  const productIds = recent
+    .map((t) => skuById.get(t.sku_id as string)?.product_id)
+    .filter((id): id is string => typeof id === "string");
+  const products = await db.product.bulkGet(productIds);
+  const productById = new Map(
+    products.filter((product) => product !== undefined).map((product) => [product.id, product]),
+  );
+
+  return recent.map((t) => {
+    const sku = skuById.get(t.sku_id as string);
+    const product = sku ? productById.get(sku.product_id as string) : undefined;
+    return {
+      id: t.id,
+      productId: product?.id ?? null,
+      productName: product ? String(product.name) : "알 수 없는 술",
+      tastedOn: String(t.tasted_on),
+      rating: t.rating != null ? String(t.rating) : null,
+    };
+  });
+}
