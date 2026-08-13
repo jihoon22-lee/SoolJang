@@ -148,11 +148,10 @@ jobs:
         env:
           VERSION: ${{ steps.mode.outputs.version }}
         run: |
-          project_version="$(uv version --short)"
-          if [[ "$project_version" != "$VERSION" ]]; then
-            echo "pyproject.toml 버전($project_version)과 태그($VERSION)가 다릅니다." >&2
-            exit 1
-          fi
+          # pyproject.toml · src/sooljang/__init__.py · web/package.json 세 곳이 태그와
+          # 일치해야 한다. lockfile(uv.lock·package-lock.json)은 `uv sync --frozen`/
+          # `npm ci` 가 이미 강제한다(스크립트 주석 참조).
+          bash scripts/check_version_consistency.sh "$VERSION"
 
       - name: Install Node.js
         if: steps.layout.outputs.web == 'true'
