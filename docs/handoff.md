@@ -3,14 +3,17 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-13 (Task 31 완료 — §9 백로그 정리 2차 5개 PR. ① 라벨 OCR
-  생산자·숙성연수 프리필([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)) — `resolve_producer_id`(이름→id 자동 생성·재사용)와
-  `ProductForm` 생산자·숙성연수 입력칸. ② 구매처 통합 `POST /vendors/{id}:merge`([#87](https://github.com/jihoon22-lee/SoolJang/pull/87)).
-  ③ 대량 편집(주종 일괄, 클라이언트 루프)([#88](https://github.com/jihoon22-lee/SoolJang/pull/88)). ④ 홈 대시보드(기본 진입 화면, 요약·주종별
-  보유·랭킹·최근 활동, 오프라인 Dexie)([#89](https://github.com/jihoon22-lee/SoolJang/pull/89)). ⑤ 외부 검색 링크([#90](https://github.com/jihoon22-lee/SoolJang/pull/90)).
-  **`search` 전략(구글 스크래핑)은 포기(D167)** — Q2 해결. 버전을 1.3.0 으로 올려
-  릴리스·재배포 진행 중. 직전엔 Task 30(백로그 정리)로 1.2.0 릴리스([#82](https://github.com/jihoon22-lee/SoolJang/pull/82)~[#84](https://github.com/jihoon22-lee/SoolJang/pull/84)),
-  Task 29(접근성·릴리스 가드)로 1.1.7([#80](https://github.com/jihoon22-lee/SoolJang/pull/80)) 완료.
+- 최종 갱신: **2026-08-16 (Task 32 완료 — "내 술" 재고 표시·정렬 개선 2개 PR. ①
+  재고 배지에 개봉/미개봉 내역 상시 표시(호버 아님) + 재고 우선 정렬(미개봉 있음 >
+  개봉만 있음 > 재고 없음, `order` 는 각 티어 안에서만 방향 반전) + "재고 있는 술
+  먼저" 토글(기본 켬, `localStorage`)([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)).
+  ② 필터 패널 13개 필드 순서를 사용자가 커스터마이즈 — 하나의 순서 배열에서 앞
+  7개가 상시 표시, 경계 너머로 옮기면 자동으로 접힘/상시 전환. "필터 순서 편집"
+  전용 모드(값 입력과 분리)([#93](https://github.com/jihoon22-lee/SoolJang/pull/93)).
+  둘 다 이 목록이 서버 페이지네이션 없이 Dexie 카탈로그 전체를 프론트엔드에서
+  정렬하는 구조라 서버 변경 없이 완결됐다. 버전을 1.4.0 으로 올려 릴리스·재배포
+  진행 중. 직전엔 Task 31(백로그 정리 2차) 5개 PR([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90))로 1.3.0,
+  Task 30(백로그 정리)로 1.2.0 릴리스([#82](https://github.com/jihoon22-lee/SoolJang/pull/82)~[#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 완료.
   이 작업 중 `README.md`/`docs/handoff.md` §1·§1-1 의 로컬 개발 안내가 `v1.0.0` 이전
   기준으로 남아 있던 것(`docker compose up -d db` 가 지금은 운영 DB를 가리킴, `DELETE
   FROM app_user` 예시 포함)도 함께 고쳤다.
@@ -48,12 +51,13 @@
   담아 `v1.1.6` 을, 접근성·릴리스 가드 보강인 Task 29
   [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) 를 담아 `v1.1.7` 을, 백로그 정리인
   Task 30([#82](https://github.com/jihoon22-lee/SoolJang/pull/82)·[#83](https://github.com/jihoon22-lee/SoolJang/pull/83)·[#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 를 담아 `v1.2.0` 을, 백로그 정리 2차인
-  Task 31([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90)) 를 담아 `v1.3.0` 을 릴리스·재배포했다.**
+  Task 31([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90)) 를 담아 `v1.3.0` 을, "내 술" 재고 표시·정렬
+  개선인 Task 32([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93)) 를 담아 `v1.4.0` 을 릴리스·재배포했다.**
   계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는 시점에 결정할
   선택 사항(GHCR pull 전환 여부는 이미 확정, 외부 소스 나머지 6곳 등록, Task 19 본
   착수)뿐이다 — 상세는
   `plan.md` §1
-- 버전: **[`1.3.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.3.0)** (배포·헬스체크 확인 완료)
+- 버전: **[`1.4.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.0)** (재배포 진행 중 — 배포 완료 후 헬스체크로 확인)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
