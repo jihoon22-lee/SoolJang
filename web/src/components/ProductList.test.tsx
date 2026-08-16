@@ -118,6 +118,22 @@ describe("ProductList", () => {
     expect(screen.getAllByText("재고 없음").length).toBeGreaterThan(0);
   });
 
+  it("재고가 있으면 배지 아래 개봉/미개봉 내역을 항상 보여준다", () => {
+    const inStock = product({
+      metrics: { ...emptyMetrics, in_stock_count: 3, opened_count: 1, unopened_count: 2 },
+    });
+
+    renderList({ products: [inStock] });
+
+    expect(screen.getAllByText("개봉 1 / 미개봉 2").length).toBeGreaterThan(0);
+  });
+
+  it("재고가 없으면 개봉/미개봉 내역을 보여주지 않는다", () => {
+    renderList();
+
+    expect(screen.queryByText(/개봉 \d+ \/ 미개봉 \d+/)).not.toBeInTheDocument();
+  });
+
   it("주종 계층 경로를 보여준다", () => {
     renderList();
 

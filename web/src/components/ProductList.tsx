@@ -1,4 +1,4 @@
-import type { Product, SortKey, SortOrder } from "@/api/types";
+import type { Product, ProductMetrics, SortKey, SortOrder } from "@/api/types";
 import { formatAbv, formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
 
 interface ProductListProps {
@@ -102,7 +102,7 @@ export function ProductList({
                 <td>{formatCategoryPath(product.category_path)}</td>
                 <td className="numeric">{formatAbv(product.abv)}</td>
                 <td className="numeric">
-                  <StockBadge count={product.metrics.in_stock_count} />
+                  <StockBadge metrics={product.metrics} />
                 </td>
                 <td className="numeric">
                   {formatMoney(product.metrics.avg_list_price, { short: true })}
@@ -140,7 +140,7 @@ export function ProductList({
               {product.vintage !== null && ` · ${product.vintage}`}
               {product.skus.length > 0 && ` · ${formatVolume(product.skus[0]?.volume_ml)}`}
             </p>
-            <StockBadge count={product.metrics.in_stock_count} />
+            <StockBadge metrics={product.metrics} />
             <dl>
               <dt>도수</dt>
               <dd>{formatAbv(product.abv)}</dd>
@@ -200,11 +200,19 @@ function ColumnHeader({
   );
 }
 
-function StockBadge({ count }: { count: number }) {
+function StockBadge({ metrics }: { metrics: ProductMetrics }) {
+  const { in_stock_count: count, opened_count, unopened_count } = metrics;
   const hasStock = count > 0;
   return (
-    <span className={`badge ${hasStock ? "stock-some" : "stock-none"}`}>
-      {hasStock ? `재고 ${count}병` : "재고 없음"}
-    </span>
+    <>
+      <span className={`badge ${hasStock ? "stock-some" : "stock-none"}`}>
+        {hasStock ? `재고 ${count}병` : "재고 없음"}
+      </span>
+      {hasStock && (
+        <span className="stock-breakdown">
+          개봉 {opened_count} / 미개봉 {unopened_count}
+        </span>
+      )}
+    </>
   );
 }

@@ -433,6 +433,14 @@ const SORT_ACCESSORS: Record<SortKey, (p: Product) => number | string | null> = 
   purchased_count: (p) => p.metrics.purchased_count,
 };
 
+/** 재고 우선순위 티어. 낮을수록 먼저 나온다 — 미개봉 재고가 있는 술을 찾아 고칠 확률이
+ * 가장 높다는 게 근거다(수정할 때 개봉만 있는/재고 없는 술보다 먼저 눈에 띄어야 함). */
+function stockTier(product: Product): 0 | 1 | 2 {
+  if (product.metrics.unopened_count > 0) return 0;
+  if (product.metrics.in_stock_count > 0) return 1;
+  return 2;
+}
+
 export interface ProductCatalog {
   products: Product[];
   vendorIdsByProduct: Map<string, Set<string>>;
@@ -460,6 +468,15 @@ async function assembleCatalog(): Promise<ProductCatalog> {
   return { products, vendorIdsByProduct, purchaseDatesByProduct };
 }
 
+export interface ProductSortOptions {
+  /** 켜면 이름·도수 등 고른 정렬 키보다 재고 유무 티어(미개봉 있음 > 개봉만 있음 > 재고
+   * 없음)를 먼저 적용한다. `order` 는 각 티어 *안에서만* 방향을 뒤집는다 — 안 그러면
+   * 내림차순을 고를 때마다 재고 없는 술이 맨 위로 올라와 기능이 무의미해진다.
+   * `ProductFilters` 에 넣지 않는 이유는 그 타입이 서버 쿼리 파라미터 계약이라 서버가
+   * 모르는 필드를 섞으면 온/오프라인 정렬이 갈라지기 때문이다(순수 클라이언트 표시 설정). */
+  stockFirst?: boolean;
+}
+
 /** `getProductCatalog()` 로 이미 조립해 둔 카탈로그에 필터·정렬만 적용한다. 순수 함수라
  * DB 를 다시 읽지 않는다 — 화면이 이미 구독 중인 `CategoryTree` 를 그대로 받아써서
  * `category_id` 필터도 추가 조회 없이 처리한다(`docs/architecture.md` §4.3, 전부 AND). */
@@ -467,6 +484,7 @@ export function filterAndSortProducts(
   catalog: ProductCatalog,
   tree: CategoryTree,
   filters: ProductFilters,
+  options: ProductSortOptions = {},
 ): Product[] {
   let products = catalog.products;
 
@@ -550,7 +568,12 @@ export function filterAndSortProducts(
   const sortKey = filters.sort ?? "name";
   const order = filters.order ?? "asc";
   const accessor = SORT_ACCESSORS[sortKey];
+  const stockFirst = options.stockFirst ?? false;
   products.sort((a, b) => {
+    if (stockFirst) {
+      const tierDiff = stockTier(a) - stockTier(b);
+      if (tierDiff !== 0) return tierDiff;
+    }
     const av = accessor(a);
     const bv = accessor(b);
     if (av === null && bv === null) return a.id.localeCompare(b.id);
@@ -567,9 +590,12 @@ export function filterAndSortProducts(
  * 그만큼 다시 계산된다. 같은 화면에서 필터 있는/없는 조회를 동시에 쓴다면
  * `getProductCatalog()` + `filterAndSortProducts()` 로 한 번만 조립하는 쪽을 쓴다
  * (`ProductsPage` 참조). */
-export async function getProducts(filters: ProductFilters): Promise<Product[]> {
+export async function getProducts(
+  filters: ProductFilters,
+  options: ProductSortOptions = {},
+): Promise<Product[]> {
   const [catalog, tree] = await Promise.all([assembleCatalog(), getCategoryTree()]);
-  return filterAndSortProducts(catalog, tree, filters);
+  return filterAndSortProducts(catalog, tree, filters, options);
 }
 
 /** 필터 없는 전체 카탈로그. `filterAndSortProducts()` 와 짝지어 한 화면에서 필터

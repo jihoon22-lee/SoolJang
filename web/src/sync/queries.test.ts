@@ -240,6 +240,77 @@ describe("getProducts", () => {
     const descending = await getProducts({ sort: "created_at", order: "desc" });
     expect(descending.map((p) => p.id)).toEqual(["a-나중", "z-먼저"]);
   });
+
+  it("stockFirst 옵션은 미개봉 재고 > 개봉 재고만 > 재고 없음 순으로 묶고, 그룹 안에서는 정렬 키를 그대로 적용한다", async () => {
+    // 이름 알파벳 순서(가-나-다)와 기대하는 티어 순서가 어긋나도록 일부러 고른다 —
+    // 티어가 실제로 이름순보다 먼저 적용되는지 확인한다.
+    await db.product.bulkPut([
+      row({ id: "p-none", name: "가없음" }),
+      row({ id: "p-open", name: "나개봉" }),
+      row({ id: "p-unopened", name: "다미개봉" }),
+    ]);
+    await db.sku.bulkPut([
+      row({ id: "s-open", product_id: "p-open", volume_ml: 500 }),
+      row({ id: "s-unopened", product_id: "p-unopened", volume_ml: 500 }),
+    ]);
+    await db.purchase.bulkPut([
+      row({ id: "pu-open", sku_id: "s-open", quantity: 1 }),
+      row({ id: "pu-unopened", sku_id: "s-unopened", quantity: 1 }),
+    ]);
+    await db.bottle.bulkPut([
+      row({ id: "b-open", purchase_id: "pu-open", label_no: 1, status: "open" }),
+      row({ id: "b-unopened", purchase_id: "pu-unopened", label_no: 1, status: "unopened" }),
+    ]);
+
+    const stockFirst = await getProducts({ sort: "name", order: "asc" }, { stockFirst: true });
+    expect(stockFirst.map((p) => p.id)).toEqual(["p-unopened", "p-open", "p-none"]);
+
+    // 옵션이 꺼져 있으면(기본값) 순수 이름순으로, 재고 유무는 순서에 영향을 주지 않는다.
+    const withoutOption = await getProducts({ sort: "name", order: "asc" });
+    expect(withoutOption.map((p) => p.id)).toEqual(["p-none", "p-open", "p-unopened"]);
+  });
+
+  it("stockFirst 옵션은 내림차순에서도 티어 순서를 유지하고, 티어 안에서만 방향이 뒤집힌다", async () => {
+    await db.product.bulkPut([
+      row({ id: "p-unopened-a", name: "가미개봉" }),
+      row({ id: "p-unopened-b", name: "나미개봉" }),
+      row({ id: "p-none", name: "다없음" }),
+    ]);
+    await db.sku.bulkPut([
+      row({ id: "s-a", product_id: "p-unopened-a", volume_ml: 500 }),
+      row({ id: "s-b", product_id: "p-unopened-b", volume_ml: 500 }),
+    ]);
+    await db.purchase.bulkPut([
+      row({ id: "pu-a", sku_id: "s-a", quantity: 1 }),
+      row({ id: "pu-b", sku_id: "s-b", quantity: 1 }),
+    ]);
+    await db.bottle.bulkPut([
+      row({ id: "b-a", purchase_id: "pu-a", label_no: 1, status: "unopened" }),
+      row({ id: "b-b", purchase_id: "pu-b", label_no: 1, status: "unopened" }),
+    ]);
+
+    const descending = await getProducts({ sort: "name", order: "desc" }, { stockFirst: true });
+    // 재고 없는 술이 맨 위로 오면 안 된다 — 미개봉 그룹이 여전히 먼저 나오고, 그
+    // 그룹 안에서만 이름 내림차순(나미개봉 → 가미개봉)이 적용된다.
+    expect(descending.map((p) => p.id)).toEqual(["p-unopened-b", "p-unopened-a", "p-none"]);
+  });
+
+  it("stockFirst 옵션은 이름이 아닌 다른 정렬 키에도 적용된다", async () => {
+    await db.product.bulkPut([
+      row({ id: "p-none", name: "없음", abv: "10.0" }),
+      row({ id: "p-unopened", name: "미개봉", abv: "50.0" }),
+    ]);
+    await db.sku.put(row({ id: "s-unopened", product_id: "p-unopened", volume_ml: 500 }));
+    await db.purchase.put(row({ id: "pu-unopened", sku_id: "s-unopened", quantity: 1 }));
+    await db.bottle.put(
+      row({ id: "b-unopened", purchase_id: "pu-unopened", label_no: 1, status: "unopened" }),
+    );
+
+    // 도수 오름차순만 보면 재고 없는 술(도수 10)이 먼저 와야 하지만, stockFirst 가
+    // 켜져 있으면 재고 있는 술이 여전히 위에 남고 도수는 그룹 안에서만 적용된다.
+    const result = await getProducts({ sort: "abv", order: "asc" }, { stockFirst: true });
+    expect(result.map((p) => p.id)).toEqual(["p-unopened", "p-none"]);
+  });
 });
 
 describe("getBottles", () => {

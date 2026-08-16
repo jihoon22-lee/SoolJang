@@ -10,6 +10,7 @@ import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
 import { ProductList } from "@/components/ProductList";
 import { setLastVendorName } from "@/lastVendor";
+import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import {
@@ -66,6 +67,13 @@ export function ProductsPage({
     if (initialVendorId) return { ...DEFAULT_FILTERS, vendor_id: initialVendorId };
     return DEFAULT_FILTERS;
   });
+  // 재고 우선 정렬 켬/끔. 기기별 표시 설정이라 `filters`(서버 쿼리 계약)와 분리해 두고
+  // `localStorage` 에 기억한다(`stockFirstPreference.ts`, `lastVendor.ts` 와 같은 패턴).
+  const [stockFirst, setStockFirst] = useState(() => getStockFirstPreference());
+  function updateStockFirst(next: boolean) {
+    setStockFirst(next);
+    setStockFirstPreference(next);
+  }
   const [formOpen, setFormOpen] = useState(false);
   // 모바일 폭에서 기본 접힘인 필터 패널의 펼침 상태(항목 2). `ProductFilterPanel` 이 아니라
   // 여기서 쥐는 이유는 "/" 단축키가 접힌 상태에서도 검색창으로 포커스를 옮길 수 있어야 하기
@@ -114,8 +122,10 @@ export function ProductsPage({
   // 뿐, 다시 조회하지 않는다).
   const allProducts = useMemo(
     () =>
-      catalog && categoryTree ? filterAndSortProducts(catalog, categoryTree, filters) : undefined,
-    [catalog, categoryTree, filters],
+      catalog && categoryTree
+        ? filterAndSortProducts(catalog, categoryTree, filters, { stockFirst })
+        : undefined,
+    [catalog, categoryTree, filters, stockFirst],
   );
   // 이름 자동완성·중복 등록 경고는 현재 필터와 무관하게 전체 카탈로그를 대상으로 해야 한다
   // (필터가 걸려 있어도 "이미 등록된 술"을 놓치면 안 된다).
@@ -246,6 +256,8 @@ export function ProductsPage({
         onReset={() => setFilters(DEFAULT_FILTERS)}
         expanded={filterExpanded}
         onExpandedChange={setFilterExpanded}
+        stockFirst={stockFirst}
+        onStockFirstChange={updateStockFirst}
       />
 
       <section aria-labelledby="products-heading">

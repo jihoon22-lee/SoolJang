@@ -11,6 +11,10 @@ interface ProductFilterPanelProps {
    * 검색창으로 포커스를 옮길 수 있어야 하기 때문이다. */
   expanded: boolean;
   onExpandedChange: (next: boolean) => void;
+  /** 재고 우선 정렬(미개봉 있음 > 개봉만 있음 > 재고 없음) 켬/끔. `filters.sort` 와는 별개
+   * 상태다 — 서버 쿼리 계약(`ProductFilters`)에 없는 순수 클라이언트 표시 설정이라서다. */
+  stockFirst: boolean;
+  onStockFirstChange: (next: boolean) => void;
 }
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -46,6 +50,8 @@ export function ProductFilterPanel({
   onReset,
   expanded,
   onExpandedChange,
+  stockFirst,
+  onStockFirstChange,
 }: ProductFilterPanelProps) {
   const update = (patch: Partial<ProductFilters>) => onChange({ ...filters, ...patch });
 
@@ -183,6 +189,18 @@ export function ProductFilterPanel({
               <option value="desc">내림차순</option>
             </select>
           </div>
+        </div>
+
+        <div className="field checkbox-field">
+          <label htmlFor="filter-stock-first">
+            <input
+              id="filter-stock-first"
+              type="checkbox"
+              checked={stockFirst}
+              onChange={(event) => onStockFirstChange(event.target.checked)}
+            />
+            재고 있는 술 먼저 (미개봉 &gt; 개봉)
+          </label>
         </div>
 
         <details className="field">

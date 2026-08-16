@@ -801,6 +801,15 @@ button:disabled {
   background: var(--ok-surface);
 }
 
+/* 재고 배지 아래 개봉/미개봉 내역. `display: block` 으로 배지 밑에 줄바꿈되게 하고,
+   정렬은 부모(표 셀은 우측, 카드는 좌측)에서 상속받는다 — 여기서 강제하지 않는다. */
+.stock-breakdown {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
 .metrics-grid {
   display: grid;
   gap: var(--space);

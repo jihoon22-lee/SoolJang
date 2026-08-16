@@ -298,6 +298,53 @@ describe("ProductsPage", () => {
     });
   });
 
+  it("재고 우선 정렬은 기본으로 켜져 있어 이름순보다 재고(미개봉) 유무를 먼저 적용한다", async () => {
+    // 이름은 "가없음" 이 알파벳상 먼저지만, 재고 우선 정렬이 켜져 있으면 재고(미개봉)가
+    // 있는 "나재고" 가 먼저 나와야 한다.
+    await seedProduct("p-none", "가없음");
+    await seedProductWithPurchase("p-stock", "나재고", { inStock: true });
+
+    renderProductsPage();
+
+    await waitFor(() => {
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row").slice(1);
+      const names = rows.map((row) => within(row).getByRole("button").textContent);
+      expect(names).toEqual(["나재고", "가없음"]);
+    });
+  });
+
+  it("재고 우선 정렬 체크박스를 끄면 정렬 키만(재고 유무 무시) 적용된다", async () => {
+    await seedProduct("p-none", "가없음");
+    await seedProductWithPurchase("p-stock", "나재고", { inStock: true });
+
+    renderProductsPage();
+    const checkbox = await screen.findByRole("checkbox", { name: /재고 있는 술 먼저/ });
+    expect(checkbox).toBeChecked();
+
+    await userEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+
+    await waitFor(() => {
+      const table = screen.getByRole("table");
+      const rows = within(table).getAllByRole("row").slice(1);
+      const names = rows.map((row) => within(row).getByRole("button").textContent);
+      expect(names).toEqual(["가없음", "나재고"]);
+    });
+  });
+
+  it("재고 우선 정렬 선택은 localStorage 에 저장되어 재마운트해도 유지된다", async () => {
+    const { unmount } = renderProductsPage();
+    const checkbox = await screen.findByRole("checkbox", { name: /재고 있는 술 먼저/ });
+    await userEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    unmount();
+
+    renderProductsPage();
+    const remountedCheckbox = await screen.findByRole("checkbox", { name: /재고 있는 술 먼저/ });
+    expect(remountedCheckbox).not.toBeChecked();
+  });
+
   it("더 많은 필터(국가·빈티지 범위·구매처·품종·100ml당 가격 범위)를 적용한다", async () => {
     await db.vendor.bulkPut([
       row({ id: "vendorA", name: "가상마트A", kind: "mart" }),
