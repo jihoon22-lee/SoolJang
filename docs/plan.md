@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-13 (**Task 31 완료** — §9 백로그 정리 2차 5개 PR: 라벨 OCR 생산자·숙성연수 프리필([#86](https://github.com/jihoon22-lee/SoolJang/pull/86))·구매처 통합([#87](https://github.com/jihoon22-lee/SoolJang/pull/87))·대량 편집([#88](https://github.com/jihoon22-lee/SoolJang/pull/88))·홈 대시보드([#89](https://github.com/jihoon22-lee/SoolJang/pull/89))·외부 검색 링크([#90](https://github.com/jihoon22-lee/SoolJang/pull/90)). `search` 전략(구글 스크래핑)은 포기로 결정(D167), Q2 해결. 버전을 1.3.0 으로 올려 릴리스·재배포 진행 중) |
-| 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 31**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~31 은 백로그 정리). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | 없음 — Task 31 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그(목표가 감시·읽기 전용 공유 링크)와 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
-| 현재 브랜치 | `chore/release-v1.3.0`(Task 31 머지 후 v1.3.0 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.3.0 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.3.0` 릴리스 진행 중**(2026-08-13) — Task 31(백로그 정리 2차: OCR 프리필·구매처 통합·대량 편집·홈 대시보드·외부 검색 링크) 반영. 이전 최신 버전은 `v1.2.0`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.2.0)) |
+| 최종 갱신 | 2026-08-16 (**Task 32 완료** — "내 술" 재고 표시·정렬 개선 2개 PR: 재고 배지에 개봉/미개봉 내역 상시 표시 + 재고 우선 정렬(미개봉 있음 > 개봉만 있음 > 재고 없음, "재고 있는 술 먼저" 토글 기본 켬)([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)). 필터 패널 13개 필드 순서를 사용자가 커스터마이즈("필터 순서 편집" 모드, 앞 7개 상시 표시)할 수 있게 함([#93](https://github.com/jihoon22-lee/SoolJang/pull/93)). 둘 다 서버 변경 없이 프론트엔드(Dexie 오프라인 정렬)만으로 완결. 버전을 1.4.0 으로 올려 릴리스·재배포 진행 중) |
+| 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 32**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~32 는 백로그 정리·실사용 개선). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
+| 다음 착수 Task | 없음 — Task 32 까지 계획된 작업이 전부 끝났다. 남은 건 §9 백로그(목표가 감시·읽기 전용 공유 링크)와 §6 Q6(공유 권한)·Q9(외부 소스 6곳·Task 19) 뿐이며 전부 사용자가 원하는 시점에 결정할 선택 사항이다 |
+| 현재 브랜치 | `chore/release-v1.4.0`(Task 32 머지 후 v1.4.0 릴리스·재배포 진행 중) |
+| 진행 중 잔여 항목 | v1.4.0 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그 외엔 §9 백로그·§6 Q6·Q9 뿐이며 급하지 않은 선택 사항이다 |
+| 최신 버전 | **`v1.4.0` 릴리스 진행 중**(2026-08-16) — Task 32("내 술" 재고 표시·정렬 개선: 개봉/미개봉 상시 표시·재고 우선 정렬·필터 항목 순서 커스터마이즈) 반영. 이전 최신 버전은 `v1.3.0`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.3.0)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -244,6 +244,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 29 | 접근성·릴리스 가드 보강 | ✅ 완료·머지 | `feature/task29-a11y-release-guard` | [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) |
 | 30 | 백로그 정리 — 타입 드리프트·구매일 필터·테스트 | ✅ 완료·머지 | `refactor/offline-stats-types`·`feat/products-purchased-on-filter`·`test/external-health-components` | [#82](https://github.com/jihoon22-lee/SoolJang/pull/82)·[#83](https://github.com/jihoon22-lee/SoolJang/pull/83)·[#84](https://github.com/jihoon22-lee/SoolJang/pull/84) |
 | 31 | 백로그 정리 2차 — OCR 프리필·구매처 통합·대량 편집·홈 대시보드·외부 검색 링크 | ✅ 완료·머지 | `feat/ocr-producer-prefill`·`feat/vendor-merge`·`feat/bulk-category-edit`·`feat/home-dashboard`·`feat/external-search-link` | [#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90) |
+| 32 | "내 술" 재고 표시·정렬 개선 — 개봉/미개봉 상시 표시·재고 우선 정렬·필터 항목 순서 커스터마이즈 | ✅ 완료·머지 | `feat/stock-priority-sort-and-tooltip`·`feat/filter-field-reorder` | [#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93) |
 
 ### 의존 관계
 
@@ -1661,6 +1662,32 @@ max` 가 오프라인 Dexie 경로에만 구현돼 있어 서버 `GET /products`
 
 ---
 
+### ✅ Task 32 — "내 술" 재고 표시·정렬 개선 (재고 상시 표시·재고 우선 정렬·필터 순서 커스터마이즈)
+
+사용자가 "내 술" 목록을 쓰면서 나온 실사용 요청 2건을 각각 별도 PR로 처리한다. 둘 다
+서버 API·정렬 계약을 건드리지 않는다 — 이 목록은 서버 페이지네이션 없이 Dexie 카탈로그
+전체를 프론트엔드에서 필터·정렬하므로(`queries.ts::filterAndSortProducts`) 프론트엔드
+변경만으로 완결된다.
+
+**PR 1(`feat/stock-priority-sort-and-tooltip`, [#92](https://github.com/jihoon22-lee/SoolJang/pull/92)).**
+재고 배지 아래 "개봉 N / 미개봉 M" 내역을 표·카드 뷰 모두 상시 표시(호버 아님 — 처음
+제안한 툴팁 대신 사용자가 상시 표시로 결정). 목록 정렬 앞단에 재고 우선 티어를 추가:
+미개봉 재고 있음 > 개봉 재고만 있음 > 재고 없음. `order`(오름/내림차순)는 각 티어 *안에서만*
+방향을 뒤집는다. 필터 패널에 "재고 있는 술 먼저" 체크박스(기본 켬)를 추가하고
+`localStorage` 에 기억한다(`stockFirstPreference.ts`).
+
+**PR 2(`feat/filter-field-reorder`, [#93](https://github.com/jihoon22-lee/SoolJang/pull/93)).**
+필터 패널이 길어 자주 쓰는 필터를 위로 올리고 싶다는 요청에 따라, 13개 필드를 하나의
+순서 배열로 관리한다(`filterFieldOrder.ts`). 상시 표시/"더 많은 필터" 접힘 구분은
+그 배열의 앞 7개냐 아니냐로 정해져, 항목을 경계 너머로 옮기면 자동으로 상시/접힘이
+바뀐다. "필터 순서 편집" 전용 모드(값 입력 대신 이름 + ↑/↓ 버튼)로 조정하고
+`localStorage` 에 기억한다.
+
+검증: 각 PR에서 `npm run lint`/`typecheck`/`test`(495) 통과. 근거는 §5 Task 32 결정,
+D172~D173.
+
+---
+
 ## 9. 릴리스 후 백로그
 
 Task 21 분석·Task 22 실행 중 나왔지만 `v1.0.0` 을 막지 않는 항목을 여기에 모은다. 각 항목은
@@ -2003,6 +2030,13 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D169 | 구매처 merge 는 `merge_categories` 선례를 따라 `POST /vendors/{id}:merge`(구매 건 `vendor_id` 재배치 + 원본 soft delete)로 하고 온라인 전용으로 둔다 | 구매처는 평면 엔티티라 자식 이동·순환 검사가 필요 없어 주종 merge 보다 단순하다. 구매 건의 구매처를 NULL 로 만들지 않으므로 "어디서 샀는지 모름"과 구분이 유지된다(D25 와 같은 판단) |
 | D170 | 대량 편집(주종 일괄)은 벌크 엔드포인트 대신 **클라이언트 루프**(선택 제품마다 `PATCH /products/{id}`)로 구현하고 온라인 전용으로 둔다 | 개인 규모(수백 건)에서는 벌크 API의 부분 실패·오프라인 outbox 정합성 설계 비용이 루프보다 크다. 성공/실패 건수를 보고해 부분 실패도 드러나게 한다 |
 | D171 | 홈 대시보드는 `"home"` 뷰를 기본 진입 화면으로 두고, 요약·주종별 보유·랭킹·최근 활동을 전부 Dexie 미러 기반으로 계산한다 | "홈/대시보드"의 자연스러운 의미(진입 화면)에 맞추고, 읽기가 이미 Dexie 우선이라(Task 15) 오프라인 지원이 추가 작업 없이 충족된다. 랭킹·주종·최근 항목은 "내 술"로 건너뛰는 크로스 링크로 재사용한다 |
+
+### Task 32 결정 (D172~D173)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D172 | 재고 우선 정렬은 `order`(오름/내림차순)와 독립된 별도 티어로 얹는다 — 미개봉 있음 > 개봉만 있음 > 재고 없음 순으로 먼저 묶고, 그 안에서만 고른 정렬 키·방향을 적용한다. 토글은 기본 켬이고 `ProductFilters`(서버 쿼리 계약)가 아니라 `localStorage` 에 별도로 둔다 | 내림차순을 고를 때마다 티어까지 뒤집히면 재고 없는 술이 맨 위로 올라와 "재고 있는 술을 먼저 보고 싶다"는 원래 목적이 무의미해진다. 서버 계약에 넣지 않은 이유는 순수 클라이언트 표시 설정을 섞으면 온/오프라인 정렬이 갈릴 위험이 있어서다(이 목록 자체가 오프라인 전용 정렬 경로라 서버 변경 없이도 충분했다) |
+| D173 | 필터 패널 항목 순서는 "상시 표시/접힘"이라는 별도 카테고리가 아니라, **하나의 순서 배열에서 몇 번째냐**(고정 경계 7개)로 정한다. 편집은 실제 필드 입력과 분리된 전용 모드(이름 + ↑/↓ 버튼)로 한다 | 항목을 경계 너머로 옮기면 상시/접힘이 자동으로 바뀌어야 "자주 쓰는 필터를 위로" 요청과 맞아떨어진다 — 두 그룹을 계속 분리해 두면 접힌 필터를 상시 표시로 승격할 수 없다. 값 입력과 순서 편집을 한 폼에 섞지 않은 이유는 13개 필드 각각의 JSX 를 순서 편집 UI 로 다시 감쌀 필요 없이, 이름 목록만으로 훨씬 단순하게 구현되기 때문이다 |
 
 ## 6. 열린 질문
 
