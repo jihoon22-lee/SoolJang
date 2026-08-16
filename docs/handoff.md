@@ -3,7 +3,11 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-16 (Task 32 완료 — "내 술" 재고 표시·정렬 개선 2개 PR. ①
+- 최종 갱신: **2026-08-16 (Task 33 완료 — Task 32 회귀 수정. 재고 우선 정렬 순위가
+  사용자 의도와 반대(미개봉 우선)로 구현돼 있던 것을 "개봉 있음 > 미개봉만 있음 >
+  재고 없음"으로 뒤집었다(D174, [#95](https://github.com/jihoon22-lee/SoolJang/pull/95)). `queries.ts::stockTier()` 두 분기 순서만
+  교체하고 체크박스 라벨·테스트를 맞췄다. 버전을 1.4.1 로 올려 릴리스·재배포 진행 중.
+  직전엔 Task 32 완료 — "내 술" 재고 표시·정렬 개선 2개 PR. ①
   재고 배지에 개봉/미개봉 내역 상시 표시(호버 아님) + 재고 우선 정렬(미개봉 있음 >
   개봉만 있음 > 재고 없음, `order` 는 각 티어 안에서만 방향 반전) + "재고 있는 술
   먼저" 토글(기본 켬, `localStorage`)([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)).
@@ -52,12 +56,13 @@
   [#80](https://github.com/jihoon22-lee/SoolJang/pull/80) 를 담아 `v1.1.7` 을, 백로그 정리인
   Task 30([#82](https://github.com/jihoon22-lee/SoolJang/pull/82)·[#83](https://github.com/jihoon22-lee/SoolJang/pull/83)·[#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 를 담아 `v1.2.0` 을, 백로그 정리 2차인
   Task 31([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90)) 를 담아 `v1.3.0` 을, "내 술" 재고 표시·정렬
-  개선인 Task 32([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93)) 를 담아 `v1.4.0` 을 릴리스·재배포했다.**
+  개선인 Task 32([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93)) 를 담아 `v1.4.0` 을, 그 회귀 수정인
+  Task 33([#95](https://github.com/jihoon22-lee/SoolJang/pull/95)) 를 담아 `v1.4.1` 을 릴리스·재배포했다.**
   계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는 시점에 결정할
   선택 사항(GHCR pull 전환 여부는 이미 확정, 외부 소스 나머지 6곳 등록, Task 19 본
   착수)뿐이다 — 상세는
   `plan.md` §1
-- 버전: **[`1.4.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.0)** (재배포 진행 중 — 배포 완료 후 헬스체크로 확인)
+- 버전: **[`1.4.1`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.1)** (재배포 진행 중 — 배포 완료 후 헬스체크로 확인)
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프

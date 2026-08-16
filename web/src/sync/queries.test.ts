@@ -241,7 +241,7 @@ describe("getProducts", () => {
     expect(descending.map((p) => p.id)).toEqual(["a-나중", "z-먼저"]);
   });
 
-  it("stockFirst 옵션은 미개봉 재고 > 개봉 재고만 > 재고 없음 순으로 묶고, 그룹 안에서는 정렬 키를 그대로 적용한다", async () => {
+  it("stockFirst 옵션은 개봉 재고 > 미개봉 재고만 > 재고 없음 순으로 묶고, 그룹 안에서는 정렬 키를 그대로 적용한다", async () => {
     // 이름 알파벳 순서(가-나-다)와 기대하는 티어 순서가 어긋나도록 일부러 고른다 —
     // 티어가 실제로 이름순보다 먼저 적용되는지 확인한다.
     await db.product.bulkPut([
@@ -263,7 +263,7 @@ describe("getProducts", () => {
     ]);
 
     const stockFirst = await getProducts({ sort: "name", order: "asc" }, { stockFirst: true });
-    expect(stockFirst.map((p) => p.id)).toEqual(["p-unopened", "p-open", "p-none"]);
+    expect(stockFirst.map((p) => p.id)).toEqual(["p-open", "p-unopened", "p-none"]);
 
     // 옵션이 꺼져 있으면(기본값) 순수 이름순으로, 재고 유무는 순서에 영향을 주지 않는다.
     const withoutOption = await getProducts({ sort: "name", order: "asc" });
