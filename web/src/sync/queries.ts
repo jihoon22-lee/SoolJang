@@ -433,11 +433,11 @@ const SORT_ACCESSORS: Record<SortKey, (p: Product) => number | string | null> = 
   purchased_count: (p) => p.metrics.purchased_count,
 };
 
-/** 재고 우선순위 티어. 낮을수록 먼저 나온다 — 미개봉 재고가 있는 술을 찾아 고칠 확률이
- * 가장 높다는 게 근거다(수정할 때 개봉만 있는/재고 없는 술보다 먼저 눈에 띄어야 함). */
+/** 재고 우선순위 티어. 낮을수록 먼저 나온다 — 개봉한 병이 있는 술을 찾아 고칠(마셔서
+ * 없애거나 소진 처리할) 확률이 가장 높다는 게 근거다. */
 function stockTier(product: Product): 0 | 1 | 2 {
-  if (product.metrics.unopened_count > 0) return 0;
-  if (product.metrics.in_stock_count > 0) return 1;
+  if (product.metrics.opened_count > 0) return 0;
+  if (product.metrics.unopened_count > 0) return 1;
   return 2;
 }
 
@@ -469,7 +469,7 @@ async function assembleCatalog(): Promise<ProductCatalog> {
 }
 
 export interface ProductSortOptions {
-  /** 켜면 이름·도수 등 고른 정렬 키보다 재고 유무 티어(미개봉 있음 > 개봉만 있음 > 재고
+  /** 켜면 이름·도수 등 고른 정렬 키보다 재고 유무 티어(개봉 있음 > 미개봉만 있음 > 재고
    * 없음)를 먼저 적용한다. `order` 는 각 티어 *안에서만* 방향을 뒤집는다 — 안 그러면
    * 내림차순을 고를 때마다 재고 없는 술이 맨 위로 올라와 기능이 무의미해진다.
    * `ProductFilters` 에 넣지 않는 이유는 그 타입이 서버 쿼리 파라미터 계약이라 서버가

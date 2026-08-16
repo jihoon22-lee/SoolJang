@@ -21,7 +21,7 @@ interface ProductFilterPanelProps {
    * 검색창으로 포커스를 옮길 수 있어야 하기 때문이다. */
   expanded: boolean;
   onExpandedChange: (next: boolean) => void;
-  /** 재고 우선 정렬(미개봉 있음 > 개봉만 있음 > 재고 없음) 켬/끔. `filters.sort` 와는 별개
+  /** 재고 우선 정렬(개봉 있음 > 미개봉만 있음 > 재고 없음) 켬/끔. `filters.sort` 와는 별개
    * 상태다 — 서버 쿼리 계약(`ProductFilters`)에 없는 순수 클라이언트 표시 설정이라서다. */
   stockFirst: boolean;
   onStockFirstChange: (next: boolean) => void;
@@ -231,7 +231,7 @@ export function ProductFilterPanel({
                 checked={stockFirst}
                 onChange={(event) => onStockFirstChange(event.target.checked)}
               />
-              재고 있는 술 먼저 (미개봉 &gt; 개봉)
+              재고 있는 술 먼저 (개봉 &gt; 미개봉)
             </label>
           </div>
         );
