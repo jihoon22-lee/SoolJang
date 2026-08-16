@@ -345,6 +345,22 @@ describe("ProductsPage", () => {
     expect(remountedCheckbox).not.toBeChecked();
   });
 
+  it("필터 순서를 편집하면 실제 화면에 반영되고 재마운트해도 유지된다", async () => {
+    const { unmount } = renderProductsPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
+    await userEvent.click(screen.getByRole("button", { name: "국가 위로 이동" }));
+    await userEvent.click(screen.getByRole("button", { name: "완료" }));
+
+    // "국가" 가 기본 순서에서 상시 표시 바로 다음(접힌 영역의 첫 항목)이라, 한 번만
+    // 위로 옮기면 "더 많은 필터" 밖(상시 표시)으로 나온다.
+    expect(screen.getByLabelText("국가")).toBeInTheDocument();
+    unmount();
+
+    renderProductsPage();
+    expect(await screen.findByLabelText("국가")).toBeInTheDocument();
+  });
+
   it("더 많은 필터(국가·빈티지 범위·구매처·품종·100ml당 가격 범위)를 적용한다", async () => {
     await db.vendor.bulkPut([
       row({ id: "vendorA", name: "가상마트A", kind: "mart" }),

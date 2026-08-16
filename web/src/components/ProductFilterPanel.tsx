@@ -1,4 +1,14 @@
+import { Fragment, useState } from "react";
 import type { CategoryNode, ProductFilters, SortKey, SortOrder, Vendor } from "@/api/types";
+import {
+  ALWAYS_VISIBLE_FIELD_COUNT,
+  DEFAULT_FILTER_FIELD_ORDER,
+  type FilterFieldId,
+  getFilterFieldOrder,
+  moveFieldDown,
+  moveFieldUp,
+  setFilterFieldOrder,
+} from "@/filterFieldOrder";
 import { formatCategoryPath } from "@/format";
 
 interface ProductFilterPanelProps {
@@ -32,15 +42,33 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "purchased_count", label: "총 구매 병수" },
 ];
 
+/** 순서 편집 목록에 쓰는 필드 이름표. `filterFieldOrder.ts::FilterFieldId` 전체를 다뤄야
+ * 한다 — 하나라도 빠지면 그 필드는 편집 목록에서 이름 없이 나온다. */
+const FIELD_LABELS: Record<FilterFieldId, string> = {
+  q: "이름 검색",
+  category: "주종",
+  abv: "도수",
+  rating: "내 평점",
+  stock: "재고",
+  sort: "정렬",
+  stockFirst: "재고 있는 술 먼저",
+  country: "국가",
+  vintage: "빈티지",
+  vendor: "구매처",
+  variety: "품종·스타일",
+  price100ml: "100ml당 가격",
+  purchasedOn: "구매일",
+};
+
 /**
  * 제품 목록 필터.
  *
  * 모든 필터는 서버에서 AND 로 결합된다. 필터를 바꾸면 커서를 버리고 첫 페이지부터 다시
  * 읽어야 하는데, 그 처리는 목록 화면이 담당한다.
  *
- * 국가·빈티지 범위·구매처·품종·100ml당 가격 범위는 자주 쓰는 필터가 아니라
- * `<details>` 로 접어 둔다 — 항상 펼쳐 두면 자주 쓰는 필터(이름·주종·도수)를 찾기 더
- * 어려워진다.
+ * 필드 순서는 사용자가 커스터마이즈할 수 있다(`filterFieldOrder.ts`) — 순서 배열의 앞
+ * `ALWAYS_VISIBLE_FIELD_COUNT` 개는 상시 표시하고 나머지는 `<details>`("더 많은 필터")
+ * 로 접는다. 자주 쓰는 필터를 앞으로 옮기면 자동으로 상시 표시 쪽으로 넘어온다.
  */
 export function ProductFilterPanel({
   filters,
@@ -54,159 +82,162 @@ export function ProductFilterPanel({
   onStockFirstChange,
 }: ProductFilterPanelProps) {
   const update = (patch: Partial<ProductFilters>) => onChange({ ...filters, ...patch });
+  const [fieldOrder, setFieldOrderState] = useState<FilterFieldId[]>(() => getFilterFieldOrder());
+  // "순서 편집" 모드일 때만 화살표 목록을 보여준다(항상 노출하지 않는다) — 평소 필터
+  // 입력에 방해가 되지 않게 하기 위해서다.
+  const [orderEditing, setOrderEditing] = useState(false);
 
-  return (
-    <div className="panel filter-panel">
-      <div className="section-header">
-        <h2 id="filter-heading">검색과 필터</h2>
-        <button
-          type="button"
-          className="filter-panel-toggle"
-          aria-expanded={expanded}
-          aria-controls="filter-panel-body"
-          onClick={() => onExpandedChange(!expanded)}
-        >
-          {expanded ? "접기" : "펼치기"}
-        </button>
-      </div>
-      <form
-        id="filter-panel-body"
-        className={
-          expanded ? "filter-panel-body" : "filter-panel-body filter-panel-body--collapsed"
-        }
-        aria-labelledby="filter-heading"
-        onSubmit={(event) => event.preventDefault()}
-      >
-        <div className="field">
-          <label htmlFor="filter-q">이름 검색</label>
-          <input
-            id="filter-q"
-            type="search"
-            value={filters.q ?? ""}
-            placeholder="한글·영문 부분 검색"
-            onChange={(event) => update({ q: event.target.value })}
-          />
-        </div>
+  function updateFieldOrder(next: FilterFieldId[]) {
+    setFieldOrderState(next);
+    setFilterFieldOrder(next);
+  }
 
-        <div className="field">
-          <label htmlFor="filter-category">주종</label>
-          <select
-            id="filter-category"
-            value={filters.category_id ?? ""}
-            onChange={(event) => update({ category_id: event.target.value || undefined })}
-          >
-            <option value="">전체</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {formatCategoryPath(category.path)}
-                {category.descendant_product_count > 0 && ` (${category.descendant_product_count})`}
-              </option>
-            ))}
-          </select>
-          <p className="muted text-sm mt-0 mb-0">
-            상위 주종을 고르면 하위 주종까지 포함해 찾습니다.
-          </p>
-        </div>
-
-        <fieldset className="field fieldset-plain">
-          <legend className="sr-only">도수 범위</legend>
-          <label htmlFor="filter-abv-min">도수 (%)</label>
-          <div className="field-row">
+  function renderField(id: FilterFieldId) {
+    switch (id) {
+      case "q":
+        return (
+          <div className="field">
+            <label htmlFor="filter-q">이름 검색</label>
             <input
-              id="filter-abv-min"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              placeholder="최소"
-              value={filters.abv_min ?? ""}
-              onChange={(event) => update({ abv_min: event.target.value || undefined })}
-            />
-            <input
-              aria-label="도수 최대"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              placeholder="최대"
-              value={filters.abv_max ?? ""}
-              onChange={(event) => update({ abv_max: event.target.value || undefined })}
+              id="filter-q"
+              type="search"
+              value={filters.q ?? ""}
+              placeholder="한글·영문 부분 검색"
+              onChange={(event) => update({ q: event.target.value })}
             />
           </div>
-        </fieldset>
-
-        <div className="field">
-          <label htmlFor="filter-rating">내 평점 최소</label>
-          <input
-            id="filter-rating"
-            type="number"
-            min={0.5}
-            max={6}
-            step="0.5"
-            placeholder="예: 4"
-            value={filters.rating_min ?? ""}
-            onChange={(event) => update({ rating_min: event.target.value || undefined })}
-          />
-        </div>
-
-        <div className="field">
-          <label htmlFor="filter-stock">재고</label>
-          <select
-            id="filter-stock"
-            value={filters.in_stock === undefined ? "" : String(filters.in_stock)}
-            onChange={(event) =>
-              update({
-                in_stock: event.target.value === "" ? undefined : event.target.value === "true",
-              })
-            }
-          >
-            <option value="">전체</option>
-            <option value="true">재고 있음</option>
-            <option value="false">재고 없음</option>
-          </select>
-        </div>
-
-        <div className="field">
-          <label htmlFor="filter-sort">정렬</label>
-          <div className="field-row">
+        );
+      case "category":
+        return (
+          <div className="field">
+            <label htmlFor="filter-category">주종</label>
             <select
-              id="filter-sort"
-              value={filters.sort ?? "name"}
-              onChange={(event) => update({ sort: event.target.value as SortKey })}
+              id="filter-category"
+              value={filters.category_id ?? ""}
+              onChange={(event) => update({ category_id: event.target.value || undefined })}
             >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              <option value="">전체</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {formatCategoryPath(category.path)}
+                  {category.descendant_product_count > 0 &&
+                    ` (${category.descendant_product_count})`}
                 </option>
               ))}
             </select>
+            <p className="muted text-sm mt-0 mb-0">
+              상위 주종을 고르면 하위 주종까지 포함해 찾습니다.
+            </p>
+          </div>
+        );
+      case "abv":
+        return (
+          <fieldset className="field fieldset-plain">
+            <legend className="sr-only">도수 범위</legend>
+            <label htmlFor="filter-abv-min">도수 (%)</label>
+            <div className="field-row">
+              <input
+                id="filter-abv-min"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                placeholder="최소"
+                value={filters.abv_min ?? ""}
+                onChange={(event) => update({ abv_min: event.target.value || undefined })}
+              />
+              <input
+                aria-label="도수 최대"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                placeholder="최대"
+                value={filters.abv_max ?? ""}
+                onChange={(event) => update({ abv_max: event.target.value || undefined })}
+              />
+            </div>
+          </fieldset>
+        );
+      case "rating":
+        return (
+          <div className="field">
+            <label htmlFor="filter-rating">내 평점 최소</label>
+            <input
+              id="filter-rating"
+              type="number"
+              min={0.5}
+              max={6}
+              step="0.5"
+              placeholder="예: 4"
+              value={filters.rating_min ?? ""}
+              onChange={(event) => update({ rating_min: event.target.value || undefined })}
+            />
+          </div>
+        );
+      case "stock":
+        return (
+          <div className="field">
+            <label htmlFor="filter-stock">재고</label>
             <select
-              aria-label="정렬 방향"
-              value={filters.order ?? "asc"}
-              onChange={(event) => update({ order: event.target.value as SortOrder })}
+              id="filter-stock"
+              value={filters.in_stock === undefined ? "" : String(filters.in_stock)}
+              onChange={(event) =>
+                update({
+                  in_stock: event.target.value === "" ? undefined : event.target.value === "true",
+                })
+              }
             >
-              <option value="asc">오름차순</option>
-              <option value="desc">내림차순</option>
+              <option value="">전체</option>
+              <option value="true">재고 있음</option>
+              <option value="false">재고 없음</option>
             </select>
           </div>
-        </div>
-
-        <div className="field checkbox-field">
-          <label htmlFor="filter-stock-first">
-            <input
-              id="filter-stock-first"
-              type="checkbox"
-              checked={stockFirst}
-              onChange={(event) => onStockFirstChange(event.target.checked)}
-            />
-            재고 있는 술 먼저 (미개봉 &gt; 개봉)
-          </label>
-        </div>
-
-        <details className="field">
-          <summary>더 많은 필터</summary>
-
-          <div className="field mt-2">
+        );
+      case "sort":
+        return (
+          <div className="field">
+            <label htmlFor="filter-sort">정렬</label>
+            <div className="field-row">
+              <select
+                id="filter-sort"
+                value={filters.sort ?? "name"}
+                onChange={(event) => update({ sort: event.target.value as SortKey })}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="정렬 방향"
+                value={filters.order ?? "asc"}
+                onChange={(event) => update({ order: event.target.value as SortOrder })}
+              >
+                <option value="asc">오름차순</option>
+                <option value="desc">내림차순</option>
+              </select>
+            </div>
+          </div>
+        );
+      case "stockFirst":
+        return (
+          <div className="field checkbox-field">
+            <label htmlFor="filter-stock-first">
+              <input
+                id="filter-stock-first"
+                type="checkbox"
+                checked={stockFirst}
+                onChange={(event) => onStockFirstChange(event.target.checked)}
+              />
+              재고 있는 술 먼저 (미개봉 &gt; 개봉)
+            </label>
+          </div>
+        );
+      case "country":
+        return (
+          <div className="field">
             <label htmlFor="filter-country">국가</label>
             <input
               id="filter-country"
@@ -215,7 +246,9 @@ export function ProductFilterPanel({
               onChange={(event) => update({ country: event.target.value || undefined })}
             />
           </div>
-
+        );
+      case "vintage":
+        return (
           <fieldset className="field fieldset-plain">
             <legend className="sr-only">빈티지 범위</legend>
             <label htmlFor="filter-vintage-min">빈티지</label>
@@ -248,7 +281,9 @@ export function ProductFilterPanel({
               />
             </div>
           </fieldset>
-
+        );
+      case "vendor":
+        return (
           <div className="field">
             <label htmlFor="filter-vendor">구매처</label>
             <select
@@ -264,7 +299,9 @@ export function ProductFilterPanel({
               ))}
             </select>
           </div>
-
+        );
+      case "variety":
+        return (
           <div className="field">
             <label htmlFor="filter-variety">품종·스타일</label>
             <input
@@ -274,7 +311,9 @@ export function ProductFilterPanel({
               onChange={(event) => update({ variety: event.target.value || undefined })}
             />
           </div>
-
+        );
+      case "price100ml":
+        return (
           <fieldset className="field fieldset-plain">
             <legend className="sr-only">100ml당 가격 범위</legend>
             <label htmlFor="filter-price-min">100ml당 가격 (원)</label>
@@ -301,7 +340,9 @@ export function ProductFilterPanel({
               />
             </div>
           </fieldset>
-
+        );
+      case "purchasedOn":
+        return (
           <fieldset className="field fieldset-plain">
             <legend className="sr-only">구매일 범위</legend>
             <label htmlFor="filter-purchased-min">구매일</label>
@@ -320,12 +361,128 @@ export function ProductFilterPanel({
               />
             </div>
           </fieldset>
-        </details>
+        );
+    }
+  }
 
-        <button type="button" onClick={onReset}>
-          필터 초기화
+  const visibleIds = fieldOrder.slice(0, ALWAYS_VISIBLE_FIELD_COUNT);
+  const collapsedIds = fieldOrder.slice(ALWAYS_VISIBLE_FIELD_COUNT);
+
+  return (
+    <div className="panel filter-panel">
+      <div className="section-header">
+        <h2 id="filter-heading">검색과 필터</h2>
+        <button
+          type="button"
+          className="filter-panel-toggle"
+          aria-expanded={expanded}
+          aria-controls="filter-panel-body"
+          onClick={() => onExpandedChange(!expanded)}
+        >
+          {expanded ? "접기" : "펼치기"}
         </button>
+      </div>
+      <form
+        id="filter-panel-body"
+        className={
+          expanded ? "filter-panel-body" : "filter-panel-body filter-panel-body--collapsed"
+        }
+        aria-labelledby="filter-heading"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        {orderEditing ? (
+          <FilterOrderEditor
+            order={fieldOrder}
+            onChange={updateFieldOrder}
+            onDone={() => setOrderEditing(false)}
+          />
+        ) : (
+          <>
+            {visibleIds.map((id) => (
+              <Fragment key={id}>{renderField(id)}</Fragment>
+            ))}
+
+            {collapsedIds.length > 0 && (
+              <details className="field">
+                <summary>더 많은 필터</summary>
+                {collapsedIds.map((id) => (
+                  <Fragment key={id}>{renderField(id)}</Fragment>
+                ))}
+              </details>
+            )}
+
+            <div className="button-row">
+              <button type="button" onClick={onReset}>
+                필터 초기화
+              </button>
+              <button type="button" onClick={() => setOrderEditing(true)}>
+                필터 순서 편집
+              </button>
+            </div>
+          </>
+        )}
       </form>
+    </div>
+  );
+}
+
+/** 순서 편집 화면. 실제 필터 입력 대신 필드 이름 + 위/아래 버튼만 보여준다 — 값 입력과
+ * 순서 편집을 한 폼에 섞으면 레이아웃도, 각 필드 JSX 를 감싸는 것도 더 복잡해진다. */
+function FilterOrderEditor({
+  order,
+  onChange,
+  onDone,
+}: {
+  order: FilterFieldId[];
+  onChange: (next: FilterFieldId[]) => void;
+  onDone: () => void;
+}) {
+  return (
+    <div className="field filter-order-editor">
+      <p className="muted text-sm mt-0">
+        화살표로 순서를 바꾸세요. 위 {ALWAYS_VISIBLE_FIELD_COUNT}개는 항상 보이고, 그 아래는 "더
+        많은 필터"에 접힙니다.
+      </p>
+      <ol className="filter-order-list">
+        {order.map((id, index) => (
+          <Fragment key={id}>
+            {index === ALWAYS_VISIBLE_FIELD_COUNT && (
+              <li className="filter-order-divider" aria-hidden="true">
+                여기부터 "더 많은 필터"에 접힘
+              </li>
+            )}
+            <li className="filter-order-item">
+              <span>{FIELD_LABELS[id]}</span>
+              <div className="button-row">
+                <button
+                  type="button"
+                  aria-label={`${FIELD_LABELS[id]} 위로 이동`}
+                  disabled={index === 0}
+                  onClick={() => onChange(moveFieldUp(order, id))}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${FIELD_LABELS[id]} 아래로 이동`}
+                  disabled={index === order.length - 1}
+                  onClick={() => onChange(moveFieldDown(order, id))}
+                >
+                  ↓
+                </button>
+              </div>
+            </li>
+          </Fragment>
+        ))}
+      </ol>
+      <div className="button-row">
+        <button type="button" onClick={() => onChange(DEFAULT_FILTER_FIELD_ORDER)}>
+          기본 순서로
+        </button>
+        <button type="button" onClick={onDone}>
+          완료
+        </button>
+      </div>
     </div>
   );
 }

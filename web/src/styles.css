@@ -462,6 +462,37 @@ h4 {
   flex: none;
 }
 
+/* 필터 순서 편집 목록. 실제 필드 입력 대신 이름 + 위/아래 버튼만 보여준다
+   (`ProductFilterPanel.tsx::FilterOrderEditor`). */
+.filter-order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* 상시 표시/"더 많은 필터" 경계를 나타내는 장식용 구분선. 상호작용 없음(`aria-hidden`). */
+.filter-order-divider {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: center;
+  padding: 2px 0;
+  border-top: 1px dashed var(--border);
+}
+
 .code-textarea {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
