@@ -14,16 +14,27 @@ rate limit 은 인메모리 슬라이딩 윈도로 추적한다. 이 앱은 단�
 
 import time
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.products import ensure_category_exists
-from sooljang.infrastructure.database.models import ExternalLookupCache, ExternalSource, Product
-from sooljang.infrastructure.external.adapter import fetch_snapshot
+from sooljang.infrastructure.database.models import (
+    ExternalLookupCache,
+    ExternalProductMatch,
+    ExternalSource,
+    Product,
+)
+from sooljang.infrastructure.external.adapter import (
+    LookupCandidate,
+    PinnedMatch,
+    fetch_snapshot,
+    is_same_host,
+)
 
 #: 소스별 최근 요청 시각(초, `time.monotonic()`). 슬라이딩 60초 윈도로 rate limit 을 본다.
 _rate_limit_history: dict[uuid.UUID, list[float]] = {}
@@ -119,34 +130,118 @@ async def delete_source(session: AsyncSession, source: ExternalSource) -> None:
     source.deleted_at = datetime.now(UTC)
 
 
+# --- 매칭 고정 ----------------------------------------------------------------
+
+
+class PinHostMismatchError(ValueError):
+    """고정하려는 URL 이 소스의 `base_url` 과 다른 호스트다(§7.2 SSRF 방어)."""
+
+
+async def get_match(
+    session: AsyncSession, *, source_id: uuid.UUID, product_id: uuid.UUID
+) -> ExternalProductMatch | None:
+    return await session.scalar(
+        select(ExternalProductMatch).where(
+            ExternalProductMatch.source_id == source_id,
+            ExternalProductMatch.product_id == product_id,
+            ExternalProductMatch.deleted_at.is_(None),
+        )
+    )
+
+
+async def _purge_cache(
+    session: AsyncSession, *, source_id: uuid.UUID, product_id: uuid.UUID
+) -> None:
+    """고정이 바뀌면 그 (소스, 제품) 의 캐시를 버린다.
+
+    캐시는 "이 제품을 이 소스에서 조회한 결과" 인데 고정을 바꾸면 그 결과가 가리키던
+    상품 자체가 달라진다. 남겨 두면 `ttl_hours`(기본 24시간) 동안 옛 상품 값을 계속
+    보여준다 — 고정을 고친 이유가 바로 그것이므로 즉시 버려야 한다.
+    """
+    await session.execute(
+        delete(ExternalLookupCache).where(
+            ExternalLookupCache.source_id == source_id,
+            ExternalLookupCache.product_id == product_id,
+        )
+    )
+
+
+async def pin_match(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    source: ExternalSource,
+    product_id: uuid.UUID,
+    external_url: str,
+    external_name: str,
+    external_key: str | None = None,
+) -> ExternalProductMatch:
+    """ "이 제품 = 이 소스의 이 상품" 을 확정한다. 이미 있으면 덮어쓴다."""
+    if not is_same_host(source.base_url, external_url):
+        raise PinHostMismatchError(
+            f"고정 대상 URL 이 소스의 주소와 다른 호스트입니다: {external_url}"
+        )
+
+    confirmed_at = datetime.now(UTC)
+    match = await get_match(session, source_id=source.id, product_id=product_id)
+    if match is None:
+        match = ExternalProductMatch(
+            user_id=user_id,
+            source_id=source.id,
+            product_id=product_id,
+            external_url=external_url,
+            external_name=external_name,
+            external_key=external_key,
+            confirmed_at=confirmed_at,
+        )
+        session.add(match)
+    else:
+        match.external_url = external_url
+        match.external_name = external_name
+        match.external_key = external_key
+        match.confirmed_at = confirmed_at
+
+    await _purge_cache(session, source_id=source.id, product_id=product_id)
+    await session.flush()
+    return match
+
+
+async def unpin_match(
+    session: AsyncSession, *, source_id: uuid.UUID, product_id: uuid.UUID
+) -> bool:
+    """고정을 해제한다. 해제할 것이 없었으면 `False`."""
+    match = await get_match(session, source_id=source_id, product_id=product_id)
+    if match is None:
+        return False
+    match.deleted_at = datetime.now(UTC)
+    await _purge_cache(session, source_id=source_id, product_id=product_id)
+    await session.flush()
+    return True
+
+
 # --- 온디맨드 조회 ------------------------------------------------------------
 
 
+@dataclass
 class SourceLookupResult:
     """조회에 참여한 소스 하나의 결과. API 스키마가 이 필드를 그대로 옮겨 담는다."""
 
-    def __init__(
-        self,
-        *,
-        source_id: uuid.UUID,
-        source_name: str,
-        cached: bool,
-        source_url: str | None,
-        fields: dict[str, Any],
-        raw_excerpt: str | None,
-        degraded: bool,
-        warning: str | None,
-        fetched_at: datetime | None,
-    ) -> None:
-        self.source_id = source_id
-        self.source_name = source_name
-        self.cached = cached
-        self.source_url = source_url
-        self.fields = fields
-        self.raw_excerpt = raw_excerpt
-        self.degraded = degraded
-        self.warning = warning
-        self.fetched_at = fetched_at
+    source_id: uuid.UUID
+    source_name: str
+    cached: bool
+    source_url: str | None
+    fields: dict[str, Any]
+    raw_excerpt: str | None
+    degraded: bool
+    warning: str | None
+    fetched_at: datetime | None
+    #: 실제로 어떤 상품에 매칭됐는지와 그 확신도(Task 34 PR1). 화면이 "엉뚱한 술이
+    #: 잡혔다" 를 사용자가 알아챌 수 있게 하는 값이다.
+    matched_name: str | None = None
+    match_score: float | None = None
+    needs_confirmation: bool = False
+    pinned: bool = False
+    candidates: list[LookupCandidate] = field(default_factory=list)
 
 
 async def _fresh_cache(
@@ -196,6 +291,13 @@ async def lookup_product(
 
     results: list[SourceLookupResult] = []
     for source in sources:
+        match = await get_match(session, source_id=source.id, product_id=product.id)
+        pinned = (
+            PinnedMatch(external_url=match.external_url, external_key=match.external_key)
+            if match is not None
+            else None
+        )
+
         cached = await _fresh_cache(session, source=source, product_id=product.id)
         if cached is not None:
             results.append(
@@ -209,6 +311,9 @@ async def lookup_product(
                     degraded=cached.degraded,
                     warning=cached.warning,
                     fetched_at=cached.fetched_at,
+                    matched_name=cached.snapshot.get("matched_name"),
+                    match_score=cached.snapshot.get("match_score"),
+                    pinned=pinned is not None,
                 )
             )
             continue
@@ -225,12 +330,17 @@ async def lookup_product(
                     degraded=True,
                     warning="이 소스는 잠시 후 다시 시도해 주세요(요청 한도 초과)",
                     fetched_at=None,
+                    pinned=pinned is not None,
                 )
             )
             continue
 
         adapter_result = await fetch_snapshot(
-            source.adapter_spec, base_url=source.base_url, query=product.name, transport=transport
+            source.adapter_spec,
+            base_url=source.base_url,
+            query=product.name,
+            transport=transport,
+            pinned=pinned,
         )
         fetched_at = datetime.now(UTC)
 
@@ -249,6 +359,9 @@ async def lookup_product(
                         "source_url": adapter_result.source_url,
                         "fields": adapter_result.fields,
                         "raw_excerpt": adapter_result.raw_excerpt,
+                        "matched_name": adapter_result.matched_name,
+                        "match_score": adapter_result.match_score,
+                        "external_key": adapter_result.matched_key,
                     },
                     degraded=adapter_result.degraded,
                     warning=adapter_result.warning,
@@ -267,6 +380,11 @@ async def lookup_product(
                 raw_excerpt=adapter_result.raw_excerpt,
                 degraded=adapter_result.degraded,
                 warning=adapter_result.warning,
+                matched_name=adapter_result.matched_name,
+                match_score=adapter_result.match_score,
+                needs_confirmation=adapter_result.needs_confirmation,
+                pinned=adapter_result.pinned,
+                candidates=adapter_result.candidates,
                 fetched_at=fetched_at,
             )
         )

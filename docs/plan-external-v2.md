@@ -286,10 +286,10 @@ POST /products/{product_id}/external-lookup     (기존, 응답 확장)
 
 ### 완료 조건
 
-- [ ] 위 15개 테스트 통과, 커버리지 게이트 유지
-- [ ] `alembic upgrade head` / `downgrade -1` 왕복 성공
-- [ ] 절대 규칙 7 재확인 — `external_url` 이 NOT NULL 이고, URL 없는 결과는 여전히 캐시하지 않는다
-- [ ] `docs/architecture.md` §7.4 신설, `plan.md` 갱신
+- [x] 위 15개 테스트 통과, 커버리지 게이트 유지
+- [x] `alembic upgrade head` / `downgrade -1` 왕복 성공 + `alembic check` 드리프트 없음
+- [x] 절대 규칙 7 재확인 — `external_url` 이 NOT NULL 이고, URL 없는 결과는 여전히 캐시하지 않는다
+- [x] `docs/architecture.md` §7.4 신설, `plan.md` 갱신
 
 ### 위험과 대응
 
@@ -854,7 +854,7 @@ D167 에서 폐기한 `search` 전략은 **검색엔진 결과를 스크래핑**
 
 | PR | 상태 | 차단 | 비고 |
 |---|---|---|---|
-| 1 | ⬜ 대기 | 없음 | |
+| 1 | ✅ 완료 | 없음 | 후보 노출·매칭 고정. D175~D178 |
 | 2 | ⬜ 대기 | 없음 | PR1 선행 |
 | 3 | ⬜ 대기 | 없음 | PR2 선행 |
 | 4 | ⬜ 대기 | 없음 | PR3 뒤 아무 때나, 병렬 가능 |

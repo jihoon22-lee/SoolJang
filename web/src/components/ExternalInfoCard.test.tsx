@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SourceLookupResult } from "@/api/types";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { renderWithQuery, stubRoutes } from "@/testing";
@@ -16,6 +16,11 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
     degraded: false,
     warning: null,
     fetched_at: "2026-08-13T00:00:00Z",
+    matched_name: null,
+    match_score: null,
+    needs_confirmation: false,
+    pinned: false,
+    candidates: [],
     ...overrides,
   };
 }
@@ -102,5 +107,114 @@ describe("ExternalInfoCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+  it("확신이 낮으면 확인 문구와 후보 목록을 펼쳐 보여준다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            matched_name: "글렌알라키 12년 셰리",
+            match_score: 0.62,
+            needs_confirmation: true,
+            candidates: [
+              { name: "글렌알라키 12년 셰리", url: "https://d.co/1", key: "1", score: 0.62 },
+              { name: "글렌알라키 10년 CS", url: "https://d.co/2", key: "2", score: 0.55 },
+            ],
+          }),
+        ],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+    expect(await screen.findByText(/이 술이 맞는지 확인해 주세요/)).toBeInTheDocument();
+    expect(screen.getByText("글렌알라키 10년 CS")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "이걸로 고정" })).toHaveLength(2);
+  });
+
+  it("후보를 고정하면 고정 요청을 보내고 다시 조회한다", async () => {
+    const { calls } = stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            needs_confirmation: true,
+            candidates: [
+              { name: "글렌알라키 10년 CS", url: "https://d.co/2", key: "2", score: 0.55 },
+            ],
+          }),
+        ],
+      },
+      { match: "/products/p1/external-matches", method: "POST", body: {} },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await userEvent.click(await screen.findByRole("button", { name: "이걸로 고정" }));
+
+    const pinCall = await vi.waitFor(() => {
+      const found = calls.find((call) => call.url.includes("/external-matches"));
+      expect(found).toBeDefined();
+      return found;
+    });
+    expect(pinCall?.body).toMatchObject({
+      source_id: "s1",
+      external_url: "https://d.co/2",
+      external_name: "글렌알라키 10년 CS",
+      external_key: "2",
+    });
+  });
+
+  it("고정된 결과면 고정 배지와 해제 버튼을 보여준다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [result({ pinned: true, matched_name: "글렌알라키 10년 CS", match_score: 1 })],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+    expect(await screen.findByText("고정됨")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "고정 해제" })).toBeEnabled();
+  });
+
+  it("오프라인이면 고정 버튼을 비활성화한다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            needs_confirmation: true,
+            candidates: [
+              { name: "글렌알라키 10년 CS", url: "https://d.co/2", key: "2", score: 0.55 },
+            ],
+          }),
+        ],
+      },
+    ]);
+    // 조회 결과를 받은 뒤 오프라인으로 바뀐 상태를 흉내 낸다.
+    const { rerender } = renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await screen.findByRole("button", { name: "이걸로 고정" });
+
+    rerender(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
+
+    expect(screen.getByRole("button", { name: "이걸로 고정" })).toBeDisabled();
   });
 });

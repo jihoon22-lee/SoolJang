@@ -13,6 +13,7 @@ import type {
   CategoryStat,
   CategoryTree,
   DeleteStrategy,
+  ExternalMatchInput,
   ExternalSource,
   ExternalSourceInput,
   FieldError,
@@ -492,6 +493,13 @@ export const externalSourcesApi = {
   /** 제품 상세 "외부 정보" 카드가 사용자 조작(버튼 클릭) 시점에만 호출한다 — 자동 조회 없음. */
   lookup: (productId: string) =>
     request<SourceLookupResult[]>(`/products/${productId}/external-lookup`, { method: "POST" }),
+
+  /** 후보 중 하나를 "이 술이 맞다" 로 확정한다. 이후 조회는 유사도를 쓰지 않는다. */
+  pinMatch: (productId: string, input: ExternalMatchInput) =>
+    request<unknown>(`/products/${productId}/external-matches`, { method: "POST", body: input }),
+
+  unpinMatch: (productId: string, sourceId: string) =>
+    request<void>(`/products/${productId}/external-matches/${sourceId}`, { method: "DELETE" }),
 };
 
 /** 라벨 OCR(Task 17). Vision LLM 호출이라 온라인 전용이다 — outbox 를 거치지 않는다.

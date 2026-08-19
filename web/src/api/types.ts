@@ -640,6 +640,13 @@ export interface ExternalSourceInput {
   note?: string | null;
 }
 
+export interface LookupCandidate {
+  name: string;
+  url: string;
+  key: string | null;
+  score: number;
+}
+
 export interface SourceLookupResult {
   source_id: string;
   source_name: string;
@@ -650,4 +657,19 @@ export interface SourceLookupResult {
   degraded: boolean;
   warning: string | null;
   fetched_at: string | null;
+  /** 실제로 매칭된 상품명. 엉뚱한 술이 잡혔는지 사용자가 바로 알아채는 근거다(Task 34 PR1). */
+  matched_name: string | null;
+  match_score: number | null;
+  /** 점수가 자동 채택 구간에 못 미쳐 사용자 확인이 필요한지. */
+  needs_confirmation: boolean;
+  /** 사용자가 고정해 둔 매칭으로 조회한 결과인지. */
+  pinned: boolean;
+  candidates: LookupCandidate[];
+}
+
+export interface ExternalMatchInput {
+  source_id: string;
+  external_url: string;
+  external_name: string;
+  external_key?: string | null;
 }

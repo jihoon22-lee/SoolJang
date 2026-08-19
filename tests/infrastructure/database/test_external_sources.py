@@ -14,12 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError
 from sooljang.application.external_sources import (
+    PinHostMismatchError,
     create_source,
     delete_source,
     get_owned_source,
     list_sources,
     lookup_product,
+    pin_match,
     reset_rate_limit_history,
+    unpin_match,
     update_source,
 )
 from sooljang.infrastructure.database.models import Category, ExternalLookupCache, Product
@@ -438,3 +441,127 @@ class TestLookup:
         assert second[0].source_url is None
         assert second[0].warning is not None
         assert "한도" in second[0].warning
+
+
+class TestMatchPinning:
+    """매칭 고정이 캐시·조회 경로에 미치는 영향(Task 34 PR1)."""
+
+    async def test_고정하면_해당_소스_제품의_캐시를_버린다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        """고정을 바꾸면 캐시가 가리키던 상품 자체가 달라진다.
+
+        남겨 두면 `ttl_hours`(기본 24시간) 동안 옛 상품 값을 계속 보여준다 — 고정을
+        고친 이유가 바로 그것이므로 즉시 버려야 한다.
+        """
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+        cached_before = await session.scalars(
+            select(ExternalLookupCache).where(ExternalLookupCache.product_id == product.id)
+        )
+        assert len(list(cached_before)) == 1
+
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            source=source,
+            product_id=product.id,
+            external_url="https://example.com/product/1",
+            external_name="글렌피딕 12년",
+            external_key="1",
+        )
+
+        cached_after = await session.scalars(
+            select(ExternalLookupCache).where(ExternalLookupCache.product_id == product.id)
+        )
+        assert list(cached_after) == []
+
+    async def test_해제해도_캐시를_버린다(self, session: AsyncSession, product: Product) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            source=source,
+            product_id=product.id,
+            external_url="https://example.com/product/1",
+            external_name="글렌피딕 12년",
+            external_key="1",
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        removed = await unpin_match(session, source_id=source.id, product_id=product.id)
+
+        cached = await session.scalars(
+            select(ExternalLookupCache).where(ExternalLookupCache.product_id == product.id)
+        )
+        assert removed is True
+        assert list(cached) == []
+
+    async def test_고정된_소스는_조회에서_검색을_건너뛴다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            source=source,
+            product_id=product.id,
+            external_url="https://example.com/product/1",
+            external_name="글렌피딕 12년",
+            external_key="1",
+        )
+
+        call_log: list[str] = []
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_found_transport(call_log),
+        )
+
+        assert results[0].pinned is True
+        assert results[0].source_url == "https://example.com/product/1"
+        assert "/search" not in call_log
+
+    async def test_다른_호스트로_고정하면_거부한다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="데일리샷",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(PinHostMismatchError):
+            await pin_match(
+                session,
+                user_id=USER_ID,
+                source=source,
+                product_id=product.id,
+                external_url="https://evil.example.net/product/1",
+                external_name="글렌피딕 12년",
+            )
