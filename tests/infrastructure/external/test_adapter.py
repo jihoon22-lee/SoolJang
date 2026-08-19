@@ -18,6 +18,7 @@ from sooljang.infrastructure.external.adapter import (
     fetch_snapshot,
     reset_robots_cache,
 )
+from sooljang.infrastructure.external.matching import ProductIdentity
 
 #: 도메인별 robots.txt 캐시가 테스트 간에 새지 않게 한다 — 여러 테스트가 같은
 #: `https://example.com` 도메인에 서로 다른 robots.txt 를 흉내 낸다.
@@ -88,7 +89,10 @@ async def test_검색과_상세를_통해_필드를_뽑는다() -> None:
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url == "https://example.com/product/1"
@@ -103,7 +107,10 @@ async def test_셀렉터가_깨지면_부분_결과와_degraded를_반환한다(
     )
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url == "https://example.com/product/1"
@@ -118,7 +125,10 @@ async def test_검색_결과가_없으면_후보_없음으로_처리한다() -> 
     transport = _transport({"/search": (200, "<div>결과 없음</div>")})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -133,7 +143,7 @@ async def test_이름이_너무_다르면_후보로_보지_않는다() -> None:
     result = await fetch_snapshot(
         ADAPTER_SPEC,
         base_url="https://example.com",
-        query="완전히 다른 제품명",
+        identity=ProductIdentity(name="완전히 다른 제품명"),
         transport=transport,
     )
 
@@ -145,9 +155,9 @@ async def test_이름이_너무_다르면_후보로_보지_않는다() -> None:
 
 async def test_증류소_이름이_다르면_접두사만_같아도_후보로_보지_않는다() -> None:
     # "글렌고인" 을 검색했는데 "글렌리벳" 만 있다 — 둘 다 "글렌…" 으로 시작해 전체 문자열
-    # 유사도(0.53)는 기존 임계값(0.4)을 넘지만, 실제로는 다른 증류소다. 실측(데일리샷)에서
-    # 실제로 겪은 오탐이다 — 접두사 게이트가 이런 "다른 술인데 앞부분만 같은" 후보를
-    # 걸러야 한다.
+    # 유사도(0.53)는 옛 임계값(0.4)을 넘었다. 실측(데일리샷)에서 실제로 겪은 오탐이다.
+    # Task 34 PR2 의 토큰 집합 점수는 이 조합을 0.2 로 떨어뜨려, 접두사 게이트라는
+    # 임시방편 없이도 걸러낸다.
     search_page = """
     <div class="product-card">
       <span class="title">글렌리벳 12년</span>
@@ -157,13 +167,16 @@ async def test_증류소_이름이_다르면_접두사만_같아도_후보로_�
     transport = _transport({"/search": (200, search_page)})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌고인 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌고인 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
     assert result.degraded is True
     assert result.warning is not None
-    assert "앞부분" in result.warning
+    assert "충분히 비슷한 후보가 없습니다" in result.warning
 
 
 async def test_robots_txt가_검색_페이지를_막으면_조회하지_않는다() -> None:
@@ -176,7 +189,10 @@ async def test_robots_txt가_검색_페이지를_막으면_조회하지_않는�
     )
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -195,7 +211,10 @@ async def test_robots_txt가_상세_페이지만_막으면_상세를_조회하�
     )
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -208,7 +227,10 @@ async def test_검색_페이지_조회_실패시_degraded를_반환한다() -> N
     transport = _transport({"/search": (500, "internal error")})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -221,7 +243,10 @@ async def test_상세_페이지_조회_실패시_출처_URL은_남기고_degrade
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (500, "internal error")})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url == "https://example.com/product/1"
@@ -233,7 +258,10 @@ async def test_상세_페이지_조회_실패시_출처_URL은_남기고_degrade
 
 async def test_search_설정이_없으면_바로_degraded를_반환한다() -> None:
     result = await fetch_snapshot(
-        {"detail": {"fields": {}}}, base_url="https://example.com", query="아무거나", transport=None
+        {"detail": {"fields": {}}},
+        base_url="https://example.com",
+        identity=ProductIdentity(name="아무거나"),
+        transport=None,
     )
 
     assert result.source_url is None
@@ -245,7 +273,10 @@ async def test_성공하면_ok가_True다() -> None:
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.ok is True
@@ -257,7 +288,10 @@ async def test_상세_페이지_조회_실패시_ok는_False다() -> None:
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (500, "internal error")})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url == "https://example.com/product/1"
@@ -268,7 +302,7 @@ async def test_search가_dict가_아니면_예외_대신_degraded를_반환한�
     result = await fetch_snapshot(
         {"search": "이건 문자열입니다"},
         base_url="https://example.com",
-        query="아무거나",
+        identity=ProductIdentity(name="아무거나"),
         transport=None,
     )
 
@@ -284,7 +318,10 @@ async def test_url_template에_알_수_없는_치환자가_있으면_예외_대�
     }
 
     result = await fetch_snapshot(
-        spec, base_url="https://example.com", query="글렌피딕", transport=None
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕"),
+        transport=None,
     )
 
     assert result.source_url is None
@@ -302,7 +339,10 @@ async def test_검색_아이템_셀렉터가_문법_오류여도_예외_대신_d
     transport = _transport({"/search": (200, _SEARCH_PAGE)})
 
     result = await fetch_snapshot(
-        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -324,7 +364,10 @@ async def test_알_수_없는_transform은_해당_필드만_건너뛴다() -> No
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
 
     result = await fetch_snapshot(
-        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url == "https://example.com/product/1"
@@ -341,7 +384,10 @@ async def test_필드_스펙이_dict가_아니면_그_필드만_건너뛴다() -
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
 
     result = await fetch_snapshot(
-        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.fields["price"] is None
@@ -358,7 +404,10 @@ async def test_검색_결과_링크가_다른_호스트면_상세를_조회하�
     transport = _transport({"/search": (200, search_page_off_host)})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -384,7 +433,10 @@ async def test_상세_페이지가_다른_호스트로_리다이렉트되면_거
     transport = httpx.MockTransport(handler)
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -434,7 +486,7 @@ async def test_JSON_모드에서_검색_결과로_바로_필드를_뽑는다() -
     result = await fetch_snapshot(
         JSON_ADAPTER_SPEC,
         base_url="https://example.com",
-        query="글렌피딕 12년",
+        identity=ProductIdentity(name="글렌피딕 12년"),
         transport=transport,
     )
 
@@ -452,7 +504,7 @@ async def test_JSON_결과_필드가_없으면_degraded와_경고를_반환한�
     result = await fetch_snapshot(
         JSON_ADAPTER_SPEC,
         base_url="https://example.com",
-        query="글렌피딕 12년",
+        identity=ProductIdentity(name="글렌피딕 12년"),
         transport=transport,
     )
 
@@ -467,7 +519,10 @@ async def test_JSON_모드에서_검색_응답이_올바른_JSON이_아니면_de
     transport = _transport({"/api/search": (200, "이건 JSON이 아닙니다")})
 
     result = await fetch_snapshot(
-        JSON_ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕", transport=transport
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -481,7 +536,10 @@ async def test_JSON_모드에서_item_경로가_리스트가_아니면_후보_�
     transport = _transport({"/api/search": (200, body)})
 
     result = await fetch_snapshot(
-        JSON_ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕", transport=transport
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -504,7 +562,10 @@ async def test_JSON_모드에서도_링크가_다른_호스트면_거부한다()
     transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
 
     result = await fetch_snapshot(
-        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -528,7 +589,10 @@ async def test_JSON_url_template에_없는_필드를_참조하면_그_후보만_
     transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
 
     result = await fetch_snapshot(
-        spec, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.source_url is None
@@ -561,7 +625,10 @@ async def test_자동_채택_구간이면_확인이_필요없고_후보도_함�
     )
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
     )
 
     assert result.matched_name == "글렌피딕 12년"
@@ -577,11 +644,14 @@ async def test_확인_필요_구간이면_값은_주되_needs_confirmation을_�
         {"/search": (200, _MULTI_SEARCH_PAGE), "/product/2": (200, _DETAIL_PAGE_FULL)}
     )
 
-    # "글렌피딕 15년" 은 오히려 "글렌피딕 12년" 과 0.857 로 더 비슷하다(한 글자 차이) —
-    # 자동 채택 구간에 걸려 이 테스트의 의도를 벗어난다. 연식을 빼고 수식어만 남기면
-    # 0.824 로 확인 필요 구간에 정확히 들어간다.
+    # PR2 의 토큰 점수에서는 "글렌피딕 솔레라" 가 "글렌피딕 15년 솔레라" 와 토큰이 완전히
+    # 같아져(연식은 속성으로 빠진다) 1.0 이 된다 — 자동 채택 구간이라 이 테스트의 의도를
+    # 벗어난다. 한쪽에만 있는 토큰을 하나 더해 0.729 로 확인 필요 구간에 들어가게 한다.
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 솔레라", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 솔레라 리저브"),
+        transport=transport,
     )
 
     assert result.fields["price"] == 35000.0
@@ -594,7 +664,10 @@ async def test_점수가_낮으면_값_없이_후보만_돌려준다() -> None:
     transport = _transport({"/search": (200, _MULTI_SEARCH_PAGE)})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌드로낙 21년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌드로낙 21년"),
+        transport=transport,
     )
 
     assert result.fields == {}
@@ -613,7 +686,10 @@ async def test_후보는_점수_내림차순이고_최대_다섯개다() -> None
     transport = _transport({"/search": (200, many), "/product/1": (200, _DETAIL_PAGE_FULL)})
 
     result = await fetch_snapshot(
-        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 1년", transport=transport
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 1년"),
+        transport=transport,
     )
 
     scores = [candidate.score for candidate in result.candidates]
@@ -629,7 +705,7 @@ async def test_고정되어_있으면_검색을_아예_건너뛴다() -> None:
     result = await fetch_snapshot(
         ADAPTER_SPEC,
         base_url="https://example.com",
-        query="아무 이름이나",
+        identity=ProductIdentity(name="아무 이름이나"),
         transport=transport,
         pinned=PinnedMatch(external_url="https://example.com/product/2", external_key=None),
     )
@@ -646,7 +722,7 @@ async def test_고정된_URL_이_다른_호스트면_조회하지_않는다() ->
     result = await fetch_snapshot(
         ADAPTER_SPEC,
         base_url="https://example.com",
-        query="글렌피딕 12년",
+        identity=ProductIdentity(name="글렌피딕 12년"),
         transport=transport,
         pinned=PinnedMatch(external_url="https://evil.example.net/product/2", external_key=None),
     )
@@ -663,7 +739,7 @@ async def test_result_fields_모드는_고정돼도_검색하되_키로_고른�
     result = await fetch_snapshot(
         JSON_ADAPTER_SPEC,
         base_url="https://example.com",
-        query="글렌피딕 12년",
+        identity=ProductIdentity(name="글렌피딕 12년"),
         transport=transport,
         pinned=PinnedMatch(external_url="https://example.com/item/2", external_key="2"),
     )
@@ -679,7 +755,7 @@ async def test_고정된_상품이_검색결과에서_사라지면_유사도로_
     result = await fetch_snapshot(
         JSON_ADAPTER_SPEC,
         base_url="https://example.com",
-        query="글렌피딕 12년",
+        identity=ProductIdentity(name="글렌피딕 12년"),
         transport=transport,
         pinned=PinnedMatch(external_url="https://example.com/item/99", external_key="99"),
     )
@@ -690,3 +766,84 @@ async def test_고정된_상품이_검색결과에서_사라지면_유사도로_
     assert result.warning is not None and "고정된 상품" in result.warning
     # 재고정할 수 있도록 후보는 함께 준다.
     assert len(result.candidates) == 2
+
+
+# --- 질의 확장(Task 34 PR2) ----------------------------------------------------
+async def test_첫_질의가_자동_채택이면_두번째_질의를_보내지_않는다() -> None:
+    """질의 하나가 HTTP 요청 1회라 소스의 rate limit 을 그만큼 소비한다 — 조기 종료가 기본."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            calls.append(request.url.params.get("q", ""))
+            return httpx.Response(200, text=_SEARCH_PAGE)
+        return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년", name_en="Glenfiddich 12"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.needs_confirmation is False
+    assert len(calls) == 1
+
+
+async def test_첫_질의가_실패하면_영문명으로_다시_시도한다() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            query = request.url.params.get("q", "")
+            calls.append(query)
+            # 국내 몰에 영문명으로만 올라온 상품을 흉내 낸다.
+            if "Glenfiddich" not in query:
+                return httpx.Response(200, text="<div>결과 없음</div>")
+            return httpx.Response(
+                200,
+                text=(
+                    '<div class="product-card">'
+                    '<span class="title">Glenfiddich 12</span>'
+                    '<a href="/product/1">보기</a>'
+                    "</div>"
+                ),
+            )
+        return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년", name_en="Glenfiddich 12"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.source_url == "https://example.com/product/1"
+    assert result.fields["price"] == 35000.0
+    assert len(calls) == 2
+
+
+async def test_고정된_소스는_질의를_확장하지_않는다() -> None:
+    """고정돼 있으면 어차피 그 상품만 찾으면 되므로 요청을 늘릴 이유가 없다."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        calls.append(request.url.path)
+        return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="없는 이름", name_en="Nonexistent"),
+        transport=httpx.MockTransport(handler),
+        pinned=PinnedMatch(external_url="https://example.com/product/1", external_key=None),
+    )
+
+    assert result.pinned is True
+    assert calls == ["/product/1"]

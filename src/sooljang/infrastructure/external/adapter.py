@@ -25,7 +25,6 @@ JSON 으로 파싱한다 — 최근 국내 쇼핑몰은 Next.js 등으로 만들
 최상위 필드들을 그대로 치환한다(`{"url_template": "https://x.com/item/{id}"}` 가
 `item["id"]` 를 채운다)."""
 
-import difflib
 import json
 import logging
 import math
@@ -38,6 +37,9 @@ from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup, Tag
+
+from sooljang.infrastructure.external.matching import ProductIdentity, build_queries
+from sooljang.infrastructure.external.matching import score as score_name
 
 logger = logging.getLogger(__name__)
 
@@ -116,32 +118,6 @@ class AdapterResult:
     candidates: list[LookupCandidate] = field(default_factory=list)
     #: 이 결과가 사용자가 고정해 둔 매칭으로부터 나왔는지.
     pinned: bool = False
-
-
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", "", text).lower()
-
-
-def _similarity(a: str, b: str) -> float:
-    return difflib.SequenceMatcher(None, a, b).ratio()
-
-
-#: 브랜드·증류소 이름은 보통 상품명 맨 앞 몇 글자에 담긴다(글렌피딕/부나하벤/아벨라워 등).
-#: 전체 문자열 유사도만 보면 "글렌고인"과 "글렌리벳" 처럼 접두사만 같고 실제로는 다른
-#: 증류소인 이름이 높은 점수를 받는다(둘 다 "글렌…" 이라 문자 겹침이 크다) — 실측으로
-#: 확인했다. 이 접두사 게이트가 그런 오탐을 걸러낸다. 단, "우드포드 리저브" 검색어가
-#: "우드포드 리저브 라이"(다른 제품)의 완전한 접두사인 경우처럼, 검색어 자체가 다른
-#: 상품명의 앞부분과 완전히 겹치는 경우는 이 게이트로 걸러지지 않는다 — 순수 문자열
-#: 비교로는 원천적으로 구분할 수 없는 남은 한계다.
-_PREFIX_LENGTH = 4
-_MIN_PREFIX_SIMILARITY = 0.75
-
-
-def _plausible_candidate(query_norm: str, name_norm: str) -> bool:
-    return (
-        _similarity(query_norm[:_PREFIX_LENGTH], name_norm[:_PREFIX_LENGTH])
-        >= _MIN_PREFIX_SIMILARITY
-    )
 
 
 def _apply_transform(value: Any, transform: str) -> Any:
@@ -328,14 +304,15 @@ _ScoredCandidate = tuple[LookupCandidate, dict[str, Any] | None]
 
 
 def _score_candidates(
-    query: str, raw: list[tuple[str, str, dict[str, Any] | None]]
+    identity: ProductIdentity,
+    query: str,
+    raw: list[tuple[str, str, dict[str, Any] | None]],
 ) -> list[_ScoredCandidate]:
     """후보에 점수를 매겨 내림차순으로 정렬한다.
 
-    점수 함수 자체는 아직 전체 문자열 유사도 하나다 — Task 34 PR2 에서 토큰 집합과
-    하드 제약(용량·연수·빈티지·도수)으로 교체한다.
+    점수·하드 제약은 `matching` 모듈(순수 함수)이 계산한다 — 어댑터는 네트워크만 맡고
+    판정 규칙은 표 기반 테스트로 따로 검증된다(AGENTS.md 의 계층 분리 규약).
     """
-    query_norm = _normalize(query)
     scored: list[_ScoredCandidate] = []
     for name, url, item in raw:
         # JSON API 는 관례적으로 `id` 를 식별자로 쓴다. 다른 이름이면 키가 비지만,
@@ -347,7 +324,7 @@ def _score_candidates(
                     name=name,
                     url=url,
                     key=str(key) if key is not None else None,
-                    score=_similarity(query_norm, _normalize(name)),
+                    score=score_name(identity, name, query=query).value,
                 ),
                 item,
             )
@@ -386,26 +363,54 @@ async def fetch_snapshot(
     adapter_spec: dict[str, Any],
     *,
     base_url: str,
-    query: str,
+    identity: ProductIdentity,
     transport: httpx.AsyncBaseTransport | None = None,
     pinned: PinnedMatch | None = None,
 ) -> AdapterResult:
-    """`query`(제품명)로 검색해 가장 비슷한 후보의 상세 정보를 가져온다.
+    """제품을 검색해 가장 잘 맞는 후보의 상세 정보를 가져온다.
 
-    `pinned` 가 있으면 유사도 대신 사용자가 확정해 둔 매칭을 쓴다(Task 34 PR1).
+    `identity` 의 이름·영문명·용량·도수 등을 매칭에 함께 쓴다(Task 34 PR2). 질의는 최대
+    3개까지 시도하되 **자동 채택 구간에 들면 즉시 멈춘다** — 질의 하나가 HTTP 요청 1회라
+    소스의 `rate_limit_per_min` 을 그만큼 소비하기 때문이다.
+
+    `pinned` 가 있으면 유사도 대신 사용자가 확정해 둔 매칭을 쓴다(Task 34 PR1). 이때는
+    질의를 확장하지 않는다 — 어차피 고정된 상품만 찾으면 되기 때문이다.
 
     `transport` 는 테스트가 `httpx.MockTransport` 로 실제 네트워크 없이 응답을 흉내 낼 수
     있게 하는 자리다 — 운영에서는 항상 `None`(기본 전송).
     """
-    try:
-        return await _fetch_snapshot_unsafe(
-            adapter_spec, base_url=base_url, query=query, transport=transport, pinned=pinned
-        )
-    except Exception as error:
-        # 여기까지 오는 건 아래 구체적인 방어로도 못 잡은 진짜 예상 밖의 adapter_spec
-        # 모양이다 — 그래도 이 함수의 계약("절대 예외를 던지지 않는다")은 지킨다.
-        logger.warning("adapter_spec 처리 중 예상 못 한 예외: %s", error, exc_info=True)
-        return AdapterResult(None, {}, None, True, f"adapter_spec 처리 실패: {error}")
+    queries = [identity.name] if pinned is not None else build_queries(identity)
+    best: AdapterResult | None = None
+
+    for query in queries:
+        try:
+            result = await _fetch_snapshot_unsafe(
+                adapter_spec,
+                base_url=base_url,
+                identity=identity,
+                query=query,
+                transport=transport,
+                pinned=pinned,
+            )
+        except Exception as error:
+            # 여기까지 오는 건 아래 구체적인 방어로도 못 잡은 진짜 예상 밖의 adapter_spec
+            # 모양이다 — 그래도 이 함수의 계약("절대 예외를 던지지 않는다")은 지킨다.
+            logger.warning("adapter_spec 처리 중 예상 못 한 예외: %s", error, exc_info=True)
+            return AdapterResult(None, {}, None, True, f"adapter_spec 처리 실패: {error}")
+
+        if best is None or _is_better(result, best):
+            best = result
+        if result.ok and not result.needs_confirmation:
+            break
+
+    return best if best is not None else AdapterResult(None, {}, None, True, "질의가 없습니다")
+
+
+def _is_better(candidate: AdapterResult, current: AdapterResult) -> bool:
+    """질의를 바꿔 가며 얻은 결과 중 무엇을 쓸지. 값을 얻은 쪽이 늘 우선이다."""
+    if candidate.ok != current.ok:
+        return candidate.ok
+    return (candidate.match_score or 0.0) > (current.match_score or 0.0)
 
 
 async def _fetch_pinned_detail(
@@ -512,6 +517,7 @@ async def _fetch_snapshot_unsafe(
     adapter_spec: dict[str, Any],
     *,
     base_url: str,
+    identity: ProductIdentity,
     query: str,
     transport: httpx.AsyncBaseTransport | None,
     pinned: PinnedMatch | None,
@@ -597,7 +603,7 @@ async def _fetch_snapshot_unsafe(
                 pinned=pinned is not None,
             )
 
-        scored = _score_candidates(query, raw)
+        scored = _score_candidates(identity, query, raw)
         # 자동 채택 여부와 무관하게 상위 후보를 늘 함께 돌려준다 — 사용자가 다른 것을
         # 고를 수 있어야 하기 때문이다(진단 6번).
         candidates = [entry[0] for entry in scored[:MAX_CANDIDATES]]
@@ -615,23 +621,9 @@ async def _fetch_snapshot_unsafe(
                     pinned=True,
                 )
         else:
-            query_norm = _normalize(query)
-            plausible = [
-                entry
-                for entry in scored
-                if _plausible_candidate(query_norm, _normalize(entry[0].name))
-            ]
-            if not plausible:
-                return AdapterResult(
-                    None,
-                    {},
-                    None,
-                    True,
-                    "이름 앞부분이 충분히 비슷한 후보가 없습니다"
-                    f"(가장 가까움: {scored[0][0].name!r})",
-                    candidates=candidates,
-                )
-            selected = plausible[0]
+            # 하드 제약(용량·연수·빈티지·도수 불일치)에 걸린 후보는 점수가 0 이라
+            # 정렬만으로 자연스럽게 뒤로 밀린다 — 별도 필터가 필요 없다.
+            selected = scored[0]
             if selected[0].score < MIN_CANDIDATE:
                 return AdapterResult(
                     None,

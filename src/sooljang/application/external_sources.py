@@ -28,6 +28,7 @@ from sooljang.infrastructure.database.models import (
     ExternalProductMatch,
     ExternalSource,
     Product,
+    Sku,
 )
 from sooljang.infrastructure.external.adapter import (
     LookupCandidate,
@@ -35,6 +36,7 @@ from sooljang.infrastructure.external.adapter import (
     fetch_snapshot,
     is_same_host,
 )
+from sooljang.infrastructure.external.matching import ProductIdentity
 
 #: 소스별 최근 요청 시각(초, `time.monotonic()`). 슬라이딩 60초 윈도로 rate limit 을 본다.
 _rate_limit_history: dict[uuid.UUID, list[float]] = {}
@@ -262,6 +264,28 @@ async def _fresh_cache(
     return cached
 
 
+async def _build_identity(session: AsyncSession, product: Product) -> ProductIdentity:
+    """매칭에 쓸 제품 식별 정보를 모은다(Task 34 PR2).
+
+    Task 18 은 `product.name` 하나만 넘겼다 — 나머지 필드가 스키마에 있는데도 놀았다.
+    SKU 용량은 `Sku` 를 직접 조회한다(`product.skus` 는 lazy 라 여기서 만지면 비동기
+    컨텍스트에서 터진다).
+    """
+    volumes = await session.scalars(
+        select(Sku.volume_ml).where(Sku.product_id == product.id, Sku.deleted_at.is_(None))
+    )
+    producer = product.producer.name if product.producer is not None else None
+    return ProductIdentity(
+        name=product.name,
+        name_en=product.name_en,
+        producer=producer,
+        abv=product.abv,
+        vintage=product.vintage,
+        age_years=product.age_years,
+        volumes_ml=tuple(sorted(set(volumes))),
+    )
+
+
 async def lookup_product(
     session: AsyncSession,
     *,
@@ -275,6 +299,7 @@ async def lookup_product(
     진행한다. 결과가 없는 소스도 `degraded=True` 항목으로 포함해 사용자에게 "왜 안 나왔는지"
     보여준다.
     """
+    identity = await _build_identity(session, product)
     sources = await session.scalars(
         select(ExternalSource)
         .where(
@@ -338,7 +363,7 @@ async def lookup_product(
         adapter_result = await fetch_snapshot(
             source.adapter_spec,
             base_url=source.base_url,
-            query=product.name,
+            identity=identity,
             transport=transport,
             pinned=pinned,
         )
