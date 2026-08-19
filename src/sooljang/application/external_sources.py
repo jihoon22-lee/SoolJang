@@ -22,11 +22,13 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sooljang.api.errors import NotFoundError
 from sooljang.application.products import ensure_category_exists
 from sooljang.infrastructure.database.models import (
     ExternalLookupCache,
     ExternalProductMatch,
     ExternalSource,
+    ExternalSourceCredential,
     ExternalSourceProbe,
     Product,
     Sku,
@@ -39,6 +41,8 @@ from sooljang.infrastructure.external.adapter import (
 )
 from sooljang.infrastructure.external.fields import NormalizedFields, split_fields
 from sooljang.infrastructure.external.matching import ProductIdentity
+from sooljang.infrastructure.external.presets import get_preset
+from sooljang.infrastructure.security.secrets import decrypt_secret, encrypt_secret
 
 #: 소스별 최근 요청 시각(초, `time.monotonic()`). 슬라이딩 60초 윈도로 rate limit 을 본다.
 _rate_limit_history: dict[uuid.UUID, list[float]] = {}
@@ -69,14 +73,39 @@ def _rate_limit_ok(source_id: uuid.UUID, limit_per_min: int) -> bool:
 # --- 레지스트리 CRUD ---------------------------------------------------------
 
 
+def _sync_preset_if_stale(source: ExternalSource) -> bool:
+    """프리셋 버전이 오르면 `adapter_spec`을 최신으로 맞춘다(Task 34 PR5). 갱신했으면 True.
+
+    `spec_overridden` 인 소스는 건드리지 않는다 — 사용자가 직접 고친 스펙을 앱 업데이트가
+    덮어쓰지 않는다는 것이 이 필드가 존재하는 이유다.
+    """
+    if source.preset_key is None or source.spec_overridden:
+        return False
+    preset = get_preset(source.preset_key)
+    if preset is None or preset.version <= (source.preset_version or 0):
+        return False
+    source.adapter_spec = preset.adapter_spec
+    source.base_url = preset.base_url
+    source.preset_version = preset.version
+    return True
+
+
 async def list_sources(session: AsyncSession, *, user_id: uuid.UUID) -> list[ExternalSource]:
-    return list(
+    """등록된 소스 목록. 프리셋 기반 소스는 여기서 최신 버전으로 자동 갱신된다(Task 34 PR5).
+
+    "앱 시작 시" 대신 "목록을 조회할 때" 동기화한다 — 별도 부팅 훅 없이 사용자가 소스
+    화면을 열 때마다(가장 흔한 진입점) 최신 상태를 보게 된다는 점에서 더 낫다.
+    """
+    sources = list(
         await session.scalars(
             select(ExternalSource)
             .where(ExternalSource.user_id == user_id, ExternalSource.deleted_at.is_(None))
             .order_by(ExternalSource.priority, ExternalSource.name)
         )
     )
+    if any(_sync_preset_if_stale(source) for source in sources):
+        await session.flush()
+    return sources
 
 
 async def create_source(
@@ -93,6 +122,7 @@ async def create_source(
     ttl_hours: int = 24,
     note: str | None = None,
 ) -> ExternalSource:
+    """커스텀 등록(`adapter_spec` JSON 직접 입력). 프리셋 등록은 `create_source_from_preset`."""
     await ensure_category_exists(session, user_id=user_id, category_id=category_id)
     source = ExternalSource(
         user_id=user_id,
@@ -105,6 +135,49 @@ async def create_source(
         rate_limit_per_min=rate_limit_per_min,
         ttl_hours=ttl_hours,
         note=note,
+    )
+    session.add(source)
+    await session.flush()
+    return source
+
+
+async def create_source_from_preset(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    preset_key: str,
+    name: str | None = None,
+    category_id: uuid.UUID | None = None,
+    priority: int = 0,
+    is_active: bool = True,
+    rate_limit_per_min: int = 6,
+    ttl_hours: int = 24,
+    note: str | None = None,
+) -> ExternalSource:
+    """프리셋 카탈로그(`infrastructure/external/presets.py`)에서 소스를 등록한다(Task 34 PR5).
+
+    `adapter_spec`·`base_url` 은 프리셋 값을 그대로 쓴다 — 사용자가 셀렉터 문법을 몰라도
+    등록할 수 있게 하는 것이 프리셋의 목적이다. 이름은 원하면 바꿀 수 있다.
+    """
+    preset = get_preset(preset_key)
+    if preset is None:
+        raise NotFoundError(f"프리셋을 찾을 수 없습니다: {preset_key}")
+
+    await ensure_category_exists(session, user_id=user_id, category_id=category_id)
+    source = ExternalSource(
+        user_id=user_id,
+        name=name or preset.name,
+        base_url=preset.base_url,
+        adapter_spec=preset.adapter_spec,
+        category_id=category_id,
+        priority=priority,
+        is_active=is_active,
+        rate_limit_per_min=rate_limit_per_min,
+        ttl_hours=ttl_hours,
+        note=note,
+        preset_key=preset.key,
+        preset_version=preset.version,
+        spec_overridden=False,
     )
     session.add(source)
     await session.flush()
@@ -129,6 +202,11 @@ async def update_source(
     for key in ("name", "base_url"):
         if key in fields and isinstance(fields[key], str):
             fields[key] = fields[key].strip()
+    # 프리셋으로 등록한 소스를 사용자가 직접 고치면, 앱 업데이트로 인한 자동 갱신 대상에서
+    # 뺀다(Task 34 PR5) — 그러지 않으면 다음 프리셋 버전 갱신이 사용자 편집을 덮어쓴다.
+    editing_spec = "adapter_spec" in fields and "spec_overridden" not in fields
+    if editing_spec and source.preset_key is not None:
+        fields["spec_overridden"] = True
     for key, value in fields.items():
         setattr(source, key, value)
     await session.flush()
@@ -137,6 +215,85 @@ async def update_source(
 
 async def delete_source(session: AsyncSession, source: ExternalSource) -> None:
     source.deleted_at = datetime.now(UTC)
+
+
+# --- 자격 증명 (Task 34 PR5) ---------------------------------------------------
+
+#: 마스킹 시 보여줄 꼬리 글자 수. `application/llm_settings.py::_VISIBLE_SUFFIX` 와 같다.
+_CREDENTIAL_VISIBLE_SUFFIX = 4
+
+
+def _credential_hint(value: str) -> str:
+    if len(value) >= _CREDENTIAL_VISIBLE_SUFFIX:
+        return value[-_CREDENTIAL_VISIBLE_SUFFIX:]
+    return value
+
+
+async def set_credentials(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    source_id: uuid.UUID,
+    values: dict[str, str],
+    master_key: str,
+) -> dict[str, str]:
+    """소스의 자격 증명을 일괄 저장한다(있으면 덮어쓴다).
+
+    반환값은 마스킹된 힌트뿐이다 — 원문은 이 함수를 벗어나지 않는다(`LlmSetting` 과 같은
+    Fernet 패턴, `infrastructure/security/secrets.py`).
+    """
+    hints: dict[str, str] = {}
+    for name, value in values.items():
+        ciphertext = encrypt_secret(value, master_key=master_key)
+        hint = _credential_hint(value)
+        existing = await session.scalar(
+            select(ExternalSourceCredential).where(
+                ExternalSourceCredential.source_id == source_id,
+                ExternalSourceCredential.name == name,
+                ExternalSourceCredential.deleted_at.is_(None),
+            )
+        )
+        if existing is None:
+            session.add(
+                ExternalSourceCredential(
+                    user_id=user_id,
+                    source_id=source_id,
+                    name=name,
+                    secret_ciphertext=ciphertext,
+                    hint=hint,
+                )
+            )
+        else:
+            existing.secret_ciphertext = ciphertext
+            existing.hint = hint
+        hints[name] = hint
+    await session.flush()
+    return hints
+
+
+async def get_credential_hints(session: AsyncSession, *, source_id: uuid.UUID) -> dict[str, str]:
+    """저장된 자격 증명의 이름→마스킹 힌트. 원문은 절대 포함하지 않는다."""
+    rows = await session.scalars(
+        select(ExternalSourceCredential).where(
+            ExternalSourceCredential.source_id == source_id,
+            ExternalSourceCredential.deleted_at.is_(None),
+        )
+    )
+    return {row.name: row.hint for row in rows}
+
+
+async def _load_credential_values(
+    session: AsyncSession, *, source_id: uuid.UUID, master_key: str
+) -> dict[str, str]:
+    """복호화된 자격 증명 값. `fetch_snapshot` 호출 직전에만 쓰고, 반환값을 API 응답
+    스키마·로그·에러 메시지 어디에도 담지 않는다."""
+    rows = await session.scalars(
+        select(ExternalSourceCredential).where(
+            ExternalSourceCredential.source_id == source_id,
+            ExternalSourceCredential.deleted_at.is_(None),
+        )
+    )
+    return {row.name: decrypt_secret(row.secret_ciphertext, master_key=master_key) for row in rows}
 
 
 # --- 매칭 고정 ----------------------------------------------------------------
@@ -370,6 +527,7 @@ async def probe_source(
     source: ExternalSource,
     sample_name: str,
     transport: httpx.AsyncBaseTransport | None = None,
+    master_key: str | None = None,
 ) -> ProbeResult:
     """샘플 제품명으로 소스를 테스트 조회한다.
 
@@ -377,6 +535,9 @@ async def probe_source(
     이 결과가 다른 조회에 섞여 들어가면 안 된다. 대신 헬스 로그에는 남긴다. 이 함수가
     바로 그 소스에 지금 무슨 일이 있는지 확인하는 유일한 온디맨드 수단이라, 여기서
     기록하지 않으면 사용자가 "테스트 조회" 를 눌러도 헬스 화면에 반영되지 않는다.
+
+    `master_key` 가 있으면 저장된 자격 증명을 복호화해 함께 전달한다(Task 34 PR5) — 자격
+    증명이 필요한 소스도 실제 요청이 나가는 모양 그대로 테스트할 수 있어야 한다.
     """
     identity = ProductIdentity(
         name=sample_name,
@@ -387,8 +548,17 @@ async def probe_source(
         age_years=None,
         volumes_ml=(),
     )
+    credential_values = (
+        await _load_credential_values(session, source_id=source.id, master_key=master_key)
+        if master_key is not None
+        else {}
+    )
     result = await fetch_snapshot(
-        source.adapter_spec, base_url=source.base_url, identity=identity, transport=transport
+        source.adapter_spec,
+        base_url=source.base_url,
+        identity=identity,
+        transport=transport,
+        credentials=credential_values or None,
     )
     await _record_probe(
         session,
@@ -487,12 +657,16 @@ async def lookup_product(
     user_id: uuid.UUID,
     product: Product,
     transport: httpx.AsyncBaseTransport | None = None,
+    master_key: str | None = None,
 ) -> list[SourceLookupResult]:
     """제품 이름으로 등록된 소스들을 조회한다. 사용자 조작(버튼 클릭)에서만 호출해야 한다.
 
     소스별로 독립적으로 시도한다 — 하나가 실패하거나 rate limit 에 걸려도 나머지는 계속
     진행한다. 결과가 없는 소스도 `degraded=True` 항목으로 포함해 사용자에게 "왜 안 나왔는지"
     보여준다.
+
+    `master_key` 가 있으면 소스별로 저장된 자격 증명을 복호화해 조회에 함께 쓴다(Task 34
+    PR5). 캐시 적중 경로는 자격 증명이 필요 없다 — 이미 성공한 값을 그대로 돌려줄 뿐이다.
     """
     identity = await _build_identity(session, product)
     sources = await session.scalars(
@@ -557,12 +731,18 @@ async def lookup_product(
             )
             continue
 
+        credential_values = (
+            await _load_credential_values(session, source_id=source.id, master_key=master_key)
+            if master_key is not None
+            else {}
+        )
         adapter_result = await fetch_snapshot(
             source.adapter_spec,
             base_url=source.base_url,
             identity=identity,
             transport=transport,
             pinned=pinned,
+            credentials=credential_values or None,
         )
         fetched_at = datetime.now(UTC)
 

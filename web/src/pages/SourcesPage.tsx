@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 
 import { ApiError, externalSourcesApi } from "@/api/client";
-import type { ExternalSource, ExternalSourceInput, SourceHealth } from "@/api/types";
+import type { ExternalSource, ExternalSourceInput, SourceHealth, SourcePreset } from "@/api/types";
 import { formatCategoryPath } from "@/format";
 import { getCategoryTree } from "@/sync/queries";
 
@@ -227,6 +227,8 @@ export function SourcesPage() {
         <output className="notice">등록된 외부 소스가 없습니다.</output>
       )}
 
+      <PresetCatalog onCreated={invalidate} />
+
       <form className="mt-3" onSubmit={handleSubmit}>
         <h3>{editingId ? "소스 수정" : "새 소스 등록"}</h3>
 
@@ -369,6 +371,162 @@ export function SourcesPage() {
 }
 
 /**
+ * 프리셋 카탈로그 — 검증된 스펙을 이름 하나로 골라 등록한다(Task 34 PR5).
+ *
+ * `adapter_spec` JSON 을 직접 쓰지 않아도 되는 것이 프리셋의 요점이다. 자격 증명이
+ * 필요한 프리셋은 "추가" 를 눌러도 바로 등록하지 않고 입력 폼을 먼저 연다 — 값 없이
+ * 등록하면 조회가 인증 없이 나가 사이트가 거부할 뿐이라, 처음부터 받는 편이 낫다.
+ */
+function PresetCatalog({ onCreated }: { onCreated: () => void }) {
+  const presets = useQuery({
+    queryKey: ["external-source-presets"],
+    queryFn: ({ signal }) => externalSourcesApi.presets(signal),
+  });
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [credentialName, setCredentialName] = useState("");
+  const [credentialValue, setCredentialValue] = useState("");
+
+  const createFromPreset = useMutation({
+    mutationFn: async (input: {
+      presetKey: string;
+      credential: { name: string; value: string } | null;
+    }) => {
+      const source = await externalSourcesApi.create({ preset_key: input.presetKey });
+      if (input.credential?.name && input.credential.value) {
+        await externalSourcesApi.setCredentials(source.id, {
+          values: { [input.credential.name]: input.credential.value },
+        });
+      }
+      return source;
+    },
+    onSuccess: () => {
+      setOpenKey(null);
+      setCredentialName("");
+      setCredentialValue("");
+      onCreated();
+    },
+  });
+
+  if (!presets.data || presets.data.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-3">
+      <h3>추천 소스에서 추가</h3>
+      <p className="muted text-sm">
+        검증된 설정으로 바로 등록합니다. 사이트 개편 시 앱 업데이트로 자동 갱신됩니다(직접 수정한
+        스펙은 덮어쓰지 않습니다).
+      </p>
+      <ul className="vendor-list">
+        {presets.data.map((preset) => (
+          <PresetRow
+            key={preset.key}
+            preset={preset}
+            formOpen={openKey === preset.key}
+            onToggleForm={() =>
+              setOpenKey((current) => (current === preset.key ? null : preset.key))
+            }
+            credentialName={credentialName}
+            credentialValue={credentialValue}
+            onCredentialNameChange={setCredentialName}
+            onCredentialValueChange={setCredentialValue}
+            onAddPlain={() => createFromPreset.mutate({ presetKey: preset.key, credential: null })}
+            onAddWithCredential={() =>
+              createFromPreset.mutate({
+                presetKey: preset.key,
+                credential: { name: credentialName.trim(), value: credentialValue },
+              })
+            }
+            adding={createFromPreset.isPending}
+          />
+        ))}
+      </ul>
+      {createFromPreset.isError && (
+        <p className="alert" role="alert">
+          추가에 실패했습니다:{" "}
+          {createFromPreset.error instanceof Error
+            ? createFromPreset.error.message
+            : "알 수 없는 오류"}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function PresetRow({
+  preset,
+  formOpen,
+  onToggleForm,
+  credentialName,
+  credentialValue,
+  onCredentialNameChange,
+  onCredentialValueChange,
+  onAddPlain,
+  onAddWithCredential,
+  adding,
+}: {
+  preset: SourcePreset;
+  formOpen: boolean;
+  onToggleForm: () => void;
+  credentialName: string;
+  credentialValue: string;
+  onCredentialNameChange: (value: string) => void;
+  onCredentialValueChange: (value: string) => void;
+  onAddPlain: () => void;
+  onAddWithCredential: () => void;
+  adding: boolean;
+}) {
+  return (
+    <li className="vendor-row">
+      <span className="name">{preset.name}</span>
+      <span className="muted">{preset.base_url}</span>
+      <span className="muted text-sm">{preset.description}</span>
+
+      {preset.requires_credentials ? (
+        <div className="button-row">
+          <button type="button" onClick={onToggleForm}>
+            {formOpen ? "닫기" : "추가(자격 증명 필요)"}
+          </button>
+        </div>
+      ) : (
+        <div className="button-row">
+          <button type="button" onClick={onAddPlain} disabled={adding}>
+            추가
+          </button>
+        </div>
+      )}
+
+      {formOpen && (
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor={`preset-cred-name-${preset.key}`}>자격 증명 이름</label>
+            <input
+              id={`preset-cred-name-${preset.key}`}
+              value={credentialName}
+              onChange={(event) => onCredentialNameChange(event.target.value)}
+              placeholder="예: client_id"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor={`preset-cred-value-${preset.key}`}>값</label>
+            <input
+              id={`preset-cred-value-${preset.key}`}
+              type="password"
+              value={credentialValue}
+              onChange={(event) => onCredentialValueChange(event.target.value)}
+            />
+          </div>
+          <button type="button" onClick={onAddWithCredential} disabled={adding}>
+            등록
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
  * 소스 한 행 — 등록 정보에 더해 헬스 배지와 "테스트 조회" 를 붙인다(Task 34 PR4).
  *
  * 실제 소유한 제품이 없어도 샘플 이름으로 소스가 지금 살아 있는지 바로 확인할 수 있게
@@ -392,13 +550,32 @@ function SourceRow({
   const queryClient = useQueryClient();
   const [probeOpen, setProbeOpen] = useState(false);
   const [sampleName, setSampleName] = useState(source.name);
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
+  const [credentialName, setCredentialName] = useState("");
+  const [credentialValue, setCredentialValue] = useState("");
+
+  const invalidateSources = () =>
+    void queryClient.invalidateQueries({ queryKey: ["external-sources"] });
 
   const probe = useMutation({
     mutationFn: () => externalSourcesApi.probe(source.id, { name: sampleName.trim() }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["external-sources-health"] }),
   });
 
+  const saveCredential = useMutation({
+    mutationFn: () =>
+      externalSourcesApi.setCredentials(source.id, {
+        values: { [credentialName.trim()]: credentialValue },
+      }),
+    onSuccess: () => {
+      setCredentialName("");
+      setCredentialValue("");
+      invalidateSources();
+    },
+  });
+
   const status = health?.status ?? "unknown";
+  const credentialEntries = Object.entries(source.credential_hints);
 
   return (
     <li className="vendor-row">
@@ -409,6 +586,12 @@ function SourceRow({
       <span className="muted">{categoryPath}</span>
       <span className="badge">{HEALTH_LABELS[status]}</span>
       {health?.last_warning && <span className="muted text-sm">{health.last_warning}</span>}
+      {source.preset_key && (
+        <span className="muted text-sm">
+          프리셋: {source.preset_key}
+          {source.spec_overridden && " (직접 수정됨)"}
+        </span>
+      )}
 
       <div className="button-row">
         <button type="button" onClick={onEdit}>
@@ -419,6 +602,9 @@ function SourceRow({
         </button>
         <button type="button" onClick={() => setProbeOpen((open) => !open)}>
           {probeOpen ? "테스트 조회 닫기" : "테스트 조회"}
+        </button>
+        <button type="button" onClick={() => setCredentialsOpen((open) => !open)}>
+          {credentialsOpen ? "자격 증명 닫기" : "자격 증명"}
         </button>
       </div>
 
@@ -453,6 +639,56 @@ function SourceRow({
           테스트 조회에 실패했습니다:{" "}
           {probe.error instanceof Error ? probe.error.message : "알 수 없는 오류"}
         </p>
+      )}
+
+      {credentialsOpen && (
+        <div className="mt-1">
+          {credentialEntries.length > 0 && (
+            <dl className="external-info-fields">
+              {credentialEntries.map(([name, hint]) => (
+                <Fragment key={name}>
+                  <dt className="muted">{name}</dt>
+                  <dd>...{hint}</dd>
+                </Fragment>
+              ))}
+            </dl>
+          )}
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor={`cred-name-${source.id}`}>이름</label>
+              <input
+                id={`cred-name-${source.id}`}
+                value={credentialName}
+                onChange={(event) => setCredentialName(event.target.value)}
+                placeholder="예: client_id"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`cred-value-${source.id}`}>값</label>
+              <input
+                id={`cred-value-${source.id}`}
+                type="password"
+                value={credentialValue}
+                onChange={(event) => setCredentialValue(event.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => saveCredential.mutate()}
+              disabled={saveCredential.isPending || !credentialName.trim() || !credentialValue}
+            >
+              저장
+            </button>
+          </div>
+          {saveCredential.isError && (
+            <p className="alert" role="alert">
+              저장에 실패했습니다:{" "}
+              {saveCredential.error instanceof Error
+                ? saveCredential.error.message
+                : "알 수 없는 오류"}
+            </p>
+          )}
+        </div>
       )}
     </li>
   );

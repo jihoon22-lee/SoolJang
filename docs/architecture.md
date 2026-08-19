@@ -678,9 +678,37 @@ volume_ml × 100`)은 **저장하지 않는다**(절대 규칙 6) — `Normalize
 못 덮는다. 캐시 스냅샷에는 `"version": 2` 를 넣고, 버전이 낮은(표준 키 도입 이전) 행은
 TTL 과 무관하게 stale 로 취급해 다음 조회에서 자연스럽게 새 모양으로 교체한다.
 
+**`adapter_spec` v2**(Task 34 PR5): 실제 사이트를 붙이려면 `v1` 스펙으로는 부족하다.
+`version` 키가 없거나 `1`이면 새 키가 없는 것으로 보고 기존 동작(`GET`, 헤더 없음) 그대로
+동작한다 — 하위 호환이 깨지지 않는다.
+
+```yaml
+search:
+  method: POST                  # 기본 GET. POST 로 검색하는 국내 몰용
+  body: { keyword: "{query}" }  # method: POST 일 때만 쓴다. "{query}" 를 재귀 치환
+  headers: { Accept: "application/json" }  # 정적 헤더
+credentials:                    # 공식 API 키. 값은 스펙에 두지 않는다(아래 참조)
+  - name: client_id
+    inject: { type: header, key: "X-Naver-Client-Id" }
+  - name: client_secret
+    inject: { type: header, key: "X-Naver-Client-Secret" }
+detail:
+  fields:
+    title: { path: "title", transform: [strip_tags] }  # `<b>` 강조 태그 제거(네이버 쇼핑 등)
+```
+
+**자격 증명**: 값 자체는 `adapter_spec` 에 두지 않고 `external_source_credential` 에
+Fernet 으로 암호화해 저장한다(`LlmSetting` 과 같은 패턴, `infrastructure/security/
+secrets.py`) — 평문 저장 금지, 마지막 4자만 힌트로 노출, 요청 직전에만 복호화한다.
+**헤더 주입만 지원한다**(쿼리 파라미터 주입은 없음) — 값이 URL 에 들어가면 접근 로그·
+리다이렉트 Location 등으로 새기 쉽다.
+
 ### 7.3 준수 규칙
 
-- 요청 전 `robots.txt`를 확인하고 캐시한다
+- 요청 전 `robots.txt`를 확인하고 캐시한다 — **실제 요청 대상 호스트**에서 받는다
+  (Task 34 PR5, D187). 검색 호스트와 상세 링크 호스트가 다른 소스(데일리샷의
+  `api.dailyshot.co` vs `dailyshot.co`)에서, 소스의 `base_url` 호스트 것만 받으면 실제로
+  요청이 나가는 다른 호스트의 규약을 확인하지 못한다 — robots.txt 는 호스트별 규약이다
 - 소스별 `rate_limit_per_min`을 적용하고, 조회는 사용자 조작 시점에만 발생시킨다
 - `ttl_hours` 내 재조회는 캐시를 반환한다
 - User-Agent에 프로젝트 식별자와 연락 수단을 넣는다
@@ -771,6 +799,19 @@ TTL 과 무관하게 stale 로 취급해 다음 조회에서 자연스럽게 새
 `GET /external-sources/health`가 소스별 상태·마지막 성공 시각·연속 실패 횟수·마지막
 경고를 돌려준다. `SourcesPage`가 배지로 보여주고, "테스트 조회" 버튼으로 샘플 제품명을
 넣어 즉시 확인할 수 있다.
+
+### 7.6 소스 프리셋 카탈로그 (Task 34 PR5)
+
+`adapter_spec` JSON 을 직접 쓰는 등록(Task 18)은 정확하지만 사용자가 셀렉터 문법을
+알아야 한다. `infrastructure/external/presets.py::PRESET_CATALOG` 가 검증된 스펙을
+이름 하나로 골라 등록할 수 있게 한다 — `GET /external-sources/presets` 로 목록을 받고,
+`POST /external-sources`에 `preset_key`만 넘기면 `base_url`·`adapter_spec`을 프리셋
+값으로 채운다.
+
+**자동 갱신**: `external_source`에 `preset_key`·`preset_version`·`spec_overridden`을
+둔다. `list_sources` 조회 시점에(부팅 훅이 아니다) `spec_overridden=False`인 프리셋
+소스를 카탈로그의 최신 버전으로 맞춘다. 사용자가 `adapter_spec`을 직접 고치면
+`spec_overridden=True`로 자동 전환되어, 앱 업데이트가 그 편집을 덮어쓰지 않는다.
 
 ## 8. 배포
 

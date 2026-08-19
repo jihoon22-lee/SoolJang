@@ -38,8 +38,11 @@ import type {
   SavedViewInput,
   SetupStatus,
   Sku,
+  SourceCredentialsInput,
+  SourceCredentialsResult,
   SourceHealth,
   SourceLookupResult,
+  SourcePreset,
   SourceProbeRequest,
   SourceProbeResult,
   StatsSummary,
@@ -512,6 +515,17 @@ export const externalSourcesApi = {
   probe: (sourceId: string, input: SourceProbeRequest) =>
     request<SourceProbeResult>(`/external-sources/${sourceId}/probe`, {
       method: "POST",
+      body: input,
+    }),
+
+  /** 번들 소스 프리셋 카탈로그(Task 34 PR5). */
+  presets: (signal?: AbortSignal) =>
+    request<SourcePreset[]>("/external-sources/presets", signal ? { signal } : {}),
+
+  /** 소스에 필요한 자격 증명을 일괄 저장한다(암호화). 반환값은 마스킹된 힌트뿐이다. */
+  setCredentials: (sourceId: string, input: SourceCredentialsInput) =>
+    request<SourceCredentialsResult>(`/external-sources/${sourceId}/credentials`, {
+      method: "PUT",
       body: input,
     }),
 };

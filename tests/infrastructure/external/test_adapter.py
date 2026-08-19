@@ -847,3 +847,189 @@ async def test_고정된_소스는_질의를_확장하지_않는다() -> None:
 
     assert result.pinned is True
     assert calls == ["/product/1"]
+
+
+# --- adapter_spec v2 (Task 34 PR5) --------------------------------------------
+
+_MULTI_HOST_ADAPTER_SPEC: dict[str, Any] = {
+    "format": "json",
+    "search": {
+        "url_template": "https://search.example.com/api?q={query}",
+        "item": "results",
+        "fields": {
+            "name": {"path": "name"},
+            "url": {"url_template": "https://example.com/item/{id}"},
+        },
+        "result_fields": {"price": {"path": "price"}},
+    },
+}
+
+
+async def test_robots_txt는_실제_요청_호스트에서_확인한다() -> None:
+    """검색 호스트(`search.example.com`)가 소스의 `base_url` 호스트(`example.com`)와
+    다르면, robots.txt 도 검색 호스트 자신에게서 받아야 한다(D187). `base_url` 호스트의
+    robots.txt 는 전체 차단이지만 검색 호스트는 허용이므로, 이 fix 가 없다면(예전처럼
+    `base_url` 의 robots.txt 를 봤다면) 검색 자체가 차단됐을 것이다."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        if request.url.path == "/robots.txt":
+            if host == "example.com":
+                return httpx.Response(200, text="User-agent: *\nDisallow: /")
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if host == "search.example.com" and request.url.path == "/api":
+            body = json.dumps({"results": [{"id": 1, "name": "글렌피딕 12년", "price": 35000}]})
+            return httpx.Response(200, text=body)
+        raise AssertionError(f"unexpected request: {host}{request.url.path}")
+
+    result = await fetch_snapshot(
+        _MULTI_HOST_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.ok is True
+    assert result.degraded is False
+    assert result.fields["price"] == 35000
+
+
+_POST_ADAPTER_SPEC: dict[str, Any] = {
+    "format": "json",
+    "search": {
+        "url_template": "https://example.com/api/search",
+        "method": "POST",
+        "body": {"keyword": "{query}", "page": 1},
+        "item": "results",
+        "fields": {
+            "name": {"path": "name"},
+            "url": {"url_template": "https://example.com/item/{id}"},
+        },
+        "result_fields": {"price": {"path": "price"}},
+    },
+}
+
+
+async def test_POST_검색과_body_템플릿이_치환된다() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/api/search":
+            captured["method"] = request.method
+            captured["body"] = json.loads(request.content)
+            body = json.dumps({"results": [{"id": 1, "name": "글렌피딕 12년", "price": 35000}]})
+            return httpx.Response(200, text=body)
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    result = await fetch_snapshot(
+        _POST_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert captured["method"] == "POST"
+    assert captured["body"] == {"keyword": "글렌피딕 12년", "page": 1}
+    assert result.fields["price"] == 35000
+
+
+_HEADER_ADAPTER_SPEC: dict[str, Any] = {
+    "format": "json",
+    "search": {
+        "url_template": "https://example.com/api/search?q={query}",
+        "headers": {"Accept": "application/json"},
+        "item": "results",
+        "fields": {
+            "name": {"path": "name"},
+            "url": {"url_template": "https://example.com/item/{id}"},
+        },
+        "result_fields": {"price": {"path": "price"}},
+    },
+    "credentials": [
+        {"name": "client_id", "inject": {"type": "header", "key": "X-Client-Id"}},
+        {"name": "client_secret", "inject": {"type": "header", "key": "X-Client-Secret"}},
+    ],
+}
+
+
+async def test_정적_헤더와_자격_증명이_함께_주입된다() -> None:
+    captured_headers: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/api/search":
+            captured_headers.update(request.headers)
+            body = json.dumps({"results": [{"id": 1, "name": "글렌피딕 12년", "price": 35000}]})
+            return httpx.Response(200, text=body)
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    await fetch_snapshot(
+        _HEADER_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+        credentials={"client_id": "abc123", "client_secret": "s3cr3t"},
+    )
+
+    assert captured_headers["accept"] == "application/json"
+    assert captured_headers["x-client-id"] == "abc123"
+    assert captured_headers["x-client-secret"] == "s3cr3t"
+
+
+async def test_값이_없는_자격_증명_이름은_건너뛴다() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/api/search":
+            assert "x-client-id" not in request.headers
+            body = json.dumps({"results": [{"id": 1, "name": "글렌피딕 12년", "price": 35000}]})
+            return httpx.Response(200, text=body)
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    result = await fetch_snapshot(
+        _HEADER_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+        credentials=None,
+    )
+
+    assert result.ok is True
+
+
+_STRIP_TAGS_JSON_SPEC: dict[str, Any] = {
+    "format": "json",
+    "search": {
+        "url_template": "https://example.com/api/search?q={query}",
+        "item": "results",
+        "fields": {
+            "name": {"path": "name"},
+            "url": {"url_template": "https://example.com/item/{id}"},
+        },
+        "result_fields": {
+            "title_clean": {"path": "title", "transform": ["strip_tags"]},
+        },
+    },
+}
+
+
+async def test_JSON_모드에서_strip_tags가_태그를_제거한다() -> None:
+    """네이버 쇼핑처럼 JSON 필드 값 자체에 `<b>` 강조 태그가 섞여 오는 경우를 흉내 낸다.
+    HTML 모드는 `get_text()` 로 이미 태그가 빠진 뒤 transform 이 실행되지만, JSON 모드는
+    문자열 값을 그대로 넘겨받으므로 이 transform 이 의미가 있다."""
+    body = json.dumps(
+        {"results": [{"id": 1, "name": "글렌피딕 12년", "title": "<b>글렌</b>피딕 12년"}]}
+    )
+    transport = _transport({"/api/search": (200, body)})
+
+    result = await fetch_snapshot(
+        _STRIP_TAGS_JSON_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
+    )
+
+    assert result.fields["title_clean"] == "글렌피딕 12년"

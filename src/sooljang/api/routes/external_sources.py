@@ -8,8 +8,9 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.api.deps import SessionDep, UserDep
+from sooljang.api.deps import SessionDep, SettingsDep, UserDep
 from sooljang.api.errors import NotFoundError
 from sooljang.api.schemas.external_sources import (
     ExternalProductMatchCreate,
@@ -19,34 +20,64 @@ from sooljang.api.schemas.external_sources import (
     ExternalSourceUpdate,
     LookupCandidateOut,
     NormalizedFieldsOut,
+    SourceCredentialsIn,
+    SourceCredentialsOut,
     SourceHealthOut,
     SourceLookupOut,
+    SourcePresetOut,
     SourceProbeOut,
     SourceProbeRequest,
 )
 from sooljang.application.external_sources import (
     PinHostMismatchError,
     create_source,
+    create_source_from_preset,
     delete_source,
+    get_credential_hints,
     get_health,
     get_owned_source,
     list_sources,
     lookup_product,
     pin_match,
     probe_source,
+    set_credentials,
     unpin_match,
     update_source,
 )
 from sooljang.application.products import load_product
+from sooljang.infrastructure.database.models import ExternalSource
+from sooljang.infrastructure.external.presets import PRESET_CATALOG
 
 router = APIRouter(prefix="/external-sources", tags=["external-sources"])
 lookup_router = APIRouter(prefix="/products", tags=["external-sources"])
 
 
+async def _to_source_out(session: AsyncSession, source: ExternalSource) -> ExternalSourceOut:
+    out = ExternalSourceOut.model_validate(source)
+    out.credential_hints = await get_credential_hints(session, source_id=source.id)
+    return out
+
+
 @router.get("", response_model=list[ExternalSourceOut], summary="외부 소스 목록")
 async def list_external_sources(session: SessionDep, user_id: UserDep) -> list[ExternalSourceOut]:
     sources = await list_sources(session, user_id=user_id)
-    return [ExternalSourceOut.model_validate(source) for source in sources]
+    return [await _to_source_out(session, source) for source in sources]
+
+
+@router.get("/presets", response_model=list[SourcePresetOut], summary="번들 소스 프리셋 카탈로그")
+async def list_source_presets() -> list[SourcePresetOut]:
+    return [
+        SourcePresetOut(
+            key=preset.key,
+            name=preset.name,
+            base_url=preset.base_url,
+            description=preset.description,
+            category_hint=preset.category_hint,
+            requires_credentials=preset.requires_credentials,
+            version=preset.version,
+        )
+        for preset in PRESET_CATALOG
+    ]
 
 
 @router.post(
@@ -58,20 +89,39 @@ async def list_external_sources(session: SessionDep, user_id: UserDep) -> list[E
 async def create_external_source(
     payload: ExternalSourceCreate, session: SessionDep, user_id: UserDep
 ) -> ExternalSourceOut:
-    source = await create_source(
-        session,
-        user_id=user_id,
-        name=payload.name.strip(),
-        base_url=payload.base_url.strip(),
-        adapter_spec=payload.adapter_spec,
-        category_id=payload.category_id,
-        priority=payload.priority,
-        is_active=payload.is_active,
-        rate_limit_per_min=payload.rate_limit_per_min,
-        ttl_hours=payload.ttl_hours,
-        note=payload.note,
-    )
-    return ExternalSourceOut.model_validate(source)
+    if payload.preset_key is not None:
+        source = await create_source_from_preset(
+            session,
+            user_id=user_id,
+            preset_key=payload.preset_key,
+            name=payload.name.strip() if payload.name else None,
+            category_id=payload.category_id,
+            priority=payload.priority,
+            is_active=payload.is_active,
+            rate_limit_per_min=payload.rate_limit_per_min,
+            ttl_hours=payload.ttl_hours,
+            note=payload.note,
+        )
+    else:
+        # `ExternalSourceCreate` 의 검증기가 preset_key 없으면 이 셋을 강제하므로 여기선
+        # 이미 채워져 있다.
+        assert payload.name is not None
+        assert payload.base_url is not None
+        assert payload.adapter_spec is not None
+        source = await create_source(
+            session,
+            user_id=user_id,
+            name=payload.name.strip(),
+            base_url=payload.base_url.strip(),
+            adapter_spec=payload.adapter_spec,
+            category_id=payload.category_id,
+            priority=payload.priority,
+            is_active=payload.is_active,
+            rate_limit_per_min=payload.rate_limit_per_min,
+            ttl_hours=payload.ttl_hours,
+            note=payload.note,
+        )
+    return await _to_source_out(session, source)
 
 
 @router.get("/health", response_model=list[SourceHealthOut], summary="소스별 최근 조회 이력 요약")
@@ -96,12 +146,21 @@ async def get_sources_health(session: SessionDep, user_id: UserDep) -> list[Sour
     summary="샘플 제품명으로 소스를 테스트 조회(캐시에 저장하지 않음)",
 )
 async def probe_external_source(
-    source_id: uuid.UUID, payload: SourceProbeRequest, session: SessionDep, user_id: UserDep
+    source_id: uuid.UUID,
+    payload: SourceProbeRequest,
+    session: SessionDep,
+    user_id: UserDep,
+    settings: SettingsDep,
 ) -> SourceProbeOut:
     source = await get_owned_source(session, user_id=user_id, source_id=source_id)
     if source is None:
         raise NotFoundError(f"외부 소스를 찾을 수 없습니다: {source_id}")
-    result = await probe_source(session, source=source, sample_name=payload.name.strip())
+    result = await probe_source(
+        session,
+        source=source,
+        sample_name=payload.name.strip(),
+        master_key=settings.secret_key,
+    )
     return SourceProbeOut(
         ok=result.ok,
         degraded=result.degraded,
@@ -121,7 +180,32 @@ async def update_external_source(
     source = await update_source(
         session, source, user_id=user_id, fields=payload.model_dump(exclude_unset=True)
     )
-    return ExternalSourceOut.model_validate(source)
+    return await _to_source_out(session, source)
+
+
+@router.put(
+    "/{source_id}/credentials",
+    response_model=SourceCredentialsOut,
+    summary="소스에 필요한 자격 증명을 일괄 저장(암호화)",
+)
+async def put_source_credentials(
+    source_id: uuid.UUID,
+    payload: SourceCredentialsIn,
+    session: SessionDep,
+    user_id: UserDep,
+    settings: SettingsDep,
+) -> SourceCredentialsOut:
+    source = await get_owned_source(session, user_id=user_id, source_id=source_id)
+    if source is None:
+        raise NotFoundError(f"외부 소스를 찾을 수 없습니다: {source_id}")
+    hints = await set_credentials(
+        session,
+        user_id=user_id,
+        source_id=source_id,
+        values=payload.values,
+        master_key=settings.secret_key,
+    )
+    return SourceCredentialsOut(hints=hints)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT, summary="외부 소스 삭제")
@@ -141,10 +225,12 @@ async def delete_external_source(
     summary="제품에 대해 등록된 외부 소스를 조회",
 )
 async def lookup_external_sources(
-    product_id: uuid.UUID, session: SessionDep, user_id: UserDep
+    product_id: uuid.UUID, session: SessionDep, user_id: UserDep, settings: SettingsDep
 ) -> list[SourceLookupOut]:
     product = await load_product(session, user_id=user_id, product_id=product_id)
-    results = await lookup_product(session, user_id=user_id, product=product)
+    results = await lookup_product(
+        session, user_id=user_id, product=product, master_key=settings.secret_key
+    )
     return [
         SourceLookupOut(
             source_id=result.source_id,

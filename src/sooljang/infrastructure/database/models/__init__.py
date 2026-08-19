@@ -13,6 +13,7 @@ from sooljang.infrastructure.database.models.external_source import (
     ExternalLookupCache,
     ExternalProductMatch,
     ExternalSource,
+    ExternalSourceCredential,
     ExternalSourceProbe,
 )
 from sooljang.infrastructure.database.models.inventory import (
@@ -62,6 +63,7 @@ __all__ = [
     "ExternalLookupCache",
     "ExternalProductMatch",
     "ExternalSource",
+    "ExternalSourceCredential",
     "ExternalSourceProbe",
     "LlmProvider",
     "LlmSetting",

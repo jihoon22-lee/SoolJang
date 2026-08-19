@@ -125,6 +125,10 @@ def _apply_transform(value: Any, transform: str) -> Any:
         return value
     if transform == "strip_currency":
         return re.sub(r"[^\d.]", "", value)
+    if transform == "strip_tags":
+        # 네이버 쇼핑 등 `<b>` 로 검색어를 강조해 돌려주는 사이트를 위한 것이다(Task 34
+        # PR5). BeautifulSoup 로 태그만 걷어내고 텍스트는 그대로 둔다.
+        return BeautifulSoup(value, "html.parser").get_text()
     if transform == "to_number":
         cleaned = value.strip()
         if not cleaned:
@@ -231,9 +235,15 @@ def _extract_field_json(item: Any, spec: Any) -> Any:
         return None
 
 
-async def _allowed(base_url: str, target_url: str, *, client: httpx.AsyncClient) -> bool:
-    """robots.txt 가 `target_url` 을 허용하는지. 도메인 단위로 캐시한다(§7.3)."""
-    parsed = urllib.parse.urlparse(base_url)
+async def _allowed(target_url: str, *, client: httpx.AsyncClient) -> bool:
+    """robots.txt 가 `target_url` 을 허용하는지. 도메인 단위로 캐시한다(§7.3).
+
+    robots.txt 는 **호스트별 규약**이라, `target_url` 자신의 호스트에서 받아야 한다
+    (Task 34 PR5, D187). 예전에는 소스의 `base_url` 호스트에서 늘 받았는데, 검색 호스트와
+    링크 호스트가 다른 소스(데일리샷의 `api.dailyshot.co` vs `dailyshot.co`)에서 검색
+    요청의 robots.txt 가 실제로는 확인되지 않는 버그가 있었다.
+    """
+    parsed = urllib.parse.urlparse(target_url)
     domain = f"{parsed.scheme}://{parsed.netloc}"
     now = time.monotonic()
     cached = _robots_cache.get(domain)
@@ -366,6 +376,7 @@ async def fetch_snapshot(
     identity: ProductIdentity,
     transport: httpx.AsyncBaseTransport | None = None,
     pinned: PinnedMatch | None = None,
+    credentials: dict[str, str] | None = None,
 ) -> AdapterResult:
     """제품을 검색해 가장 잘 맞는 후보의 상세 정보를 가져온다.
 
@@ -375,6 +386,10 @@ async def fetch_snapshot(
 
     `pinned` 가 있으면 유사도 대신 사용자가 확정해 둔 매칭을 쓴다(Task 34 PR1). 이때는
     질의를 확장하지 않는다 — 어차피 고정된 상품만 찾으면 되기 때문이다.
+
+    `credentials` 는 이름→복호화된 값(Task 34 PR5). `adapter_spec.credentials` 의
+    `inject` 규칙에 따라 요청 헤더로만 주입한다 — 로그·`raw_excerpt`·에러 메시지 어디에도
+    남기지 않는다(값 자체가 이 함수 밖으로 나가는 유일한 통로가 헤더 주입뿐이다).
 
     `transport` 는 테스트가 `httpx.MockTransport` 로 실제 네트워크 없이 응답을 흉내 낼 수
     있게 하는 자리다 — 운영에서는 항상 `None`(기본 전송).
@@ -391,6 +406,7 @@ async def fetch_snapshot(
                 query=query,
                 transport=transport,
                 pinned=pinned,
+                credentials=credentials,
             )
         except Exception as error:
             # 여기까지 오는 건 아래 구체적인 방어로도 못 잡은 진짜 예상 밖의 adapter_spec
@@ -429,7 +445,7 @@ async def _fetch_pinned_detail(
         return AdapterResult(
             None, {}, None, True, "고정된 링크가 등록된 사이트 밖을 가리켜 건너뜁니다", pinned=True
         )
-    if not await _allowed(base_url, pinned.external_url, client=client):
+    if not await _allowed(pinned.external_url, client=client):
         return AdapterResult(
             None, {}, None, True, "robots.txt 가 상세 페이지 접근을 금지합니다", pinned=True
         )
@@ -513,6 +529,65 @@ async def _fetch_detail(
     )
 
 
+def _search_method(search_spec: dict[str, Any]) -> str:
+    """`search.method`(Task 34 PR5). 모르는 값·없는 값은 기존과 같은 GET 이다."""
+    method = search_spec.get("method")
+    return method.upper() if isinstance(method, str) and method.upper() == "POST" else "GET"
+
+
+def _fill_template(value: Any, query: str) -> Any:
+    """`search.body`(Task 34 PR5) 안의 `{query}` 를 재귀적으로 치환한다.
+
+    `str.format` 을 쓰지 않는다 — JSON 본문에는 이미 중괄호가 있을 수 있어(`{}`), 문자열
+    전체를 포맷 템플릿으로 다루면 관계없는 중괄호에서 예외가 난다. 대신 파싱된 Python
+    값을 그대로 순회하며 `{query}` 문자열만 치환한다.
+    """
+    if isinstance(value, str):
+        return value.replace("{query}", query)
+    if isinstance(value, dict):
+        return {key: _fill_template(item, query) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_fill_template(item, query) for item in value]
+    return value
+
+
+def _build_request_headers(
+    adapter_spec: dict[str, Any],
+    search_spec: dict[str, Any],
+    credentials: dict[str, str] | None,
+) -> dict[str, str]:
+    """`search.headers`(정적 헤더)와 `credentials` 주입(Task 34 PR5)을 합친다.
+
+    자격 증명 값은 **헤더로만** 주입한다 — URL 에 넣으면 접근 로그·리다이렉트 Location
+    등으로 새기 쉽다. 스펙에 없는 이름이거나 값이 없으면 조용히 건너뛴다: 그 요청은
+    인증 없이 나가 사이트가 401 등으로 거부할 뿐이고, 조회 전체를 막을 이유가 없다.
+    """
+    headers: dict[str, str] = {}
+    static_headers = search_spec.get("headers")
+    if isinstance(static_headers, dict):
+        for key, value in static_headers.items():
+            if isinstance(key, str) and isinstance(value, str):
+                headers[key] = value
+
+    entries = adapter_spec.get("credentials")
+    if credentials and isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("name")
+            inject = entry.get("inject")
+            if not isinstance(name, str) or not isinstance(inject, dict):
+                continue
+            if inject.get("type") != "header":
+                continue
+            key = inject.get("key")
+            value = credentials.get(name)
+            if isinstance(key, str) and value is not None:
+                headers[key] = value
+
+    return headers
+
+
 async def _fetch_snapshot_unsafe(
     adapter_spec: dict[str, Any],
     *,
@@ -521,6 +596,7 @@ async def _fetch_snapshot_unsafe(
     query: str,
     transport: httpx.AsyncBaseTransport | None,
     pinned: PinnedMatch | None,
+    credentials: dict[str, str] | None = None,
 ) -> AdapterResult:
     search_spec = adapter_spec.get("search")
     if not isinstance(search_spec, dict):
@@ -549,13 +625,22 @@ async def _fetch_snapshot_unsafe(
         except (KeyError, IndexError, ValueError) as error:
             return AdapterResult(None, {}, None, True, f"url_template 형식이 잘못됐습니다: {error}")
 
-        if not await _allowed(base_url, search_url, client=client):
+        if not await _allowed(search_url, client=client):
             return AdapterResult(
                 None, {}, None, True, "robots.txt 가 검색 페이지 접근을 금지합니다"
             )
 
+        request_headers = _build_request_headers(adapter_spec, search_spec, credentials)
+        method = _search_method(search_spec)
         try:
-            response = await client.get(search_url)
+            if method == "POST":
+                body = search_spec.get("body")
+                payload = _fill_template(body, query) if isinstance(body, dict) else None
+                response = await client.post(
+                    search_url, json=payload, headers=request_headers or None
+                )
+            else:
+                response = await client.get(search_url, headers=request_headers or None)
             response.raise_for_status()
         except httpx.HTTPError as error:
             return AdapterResult(None, {}, None, True, f"검색 페이지 조회 실패: {error}")
@@ -671,7 +756,7 @@ async def _fetch_snapshot_unsafe(
                 pinned=pinned is not None,
             )
 
-        if not await _allowed(base_url, best.url, client=client):
+        if not await _allowed(best.url, client=client):
             return AdapterResult(
                 None,
                 {},

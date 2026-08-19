@@ -14,7 +14,17 @@ import datetime
 import uuid
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -28,6 +38,11 @@ class ExternalSource(Base, EntityMixin):
     `adapter_spec` 은 `docs/architecture.md` §7.2 의 YAML 스키마와 같은 모양을 JSON 으로
     저장한다(`search.url_template`/`search.item`/`search.fields`, `detail.fields`) — 별도
     파서 없이 그대로 역직렬화해 쓴다.
+
+    `preset_key`/`preset_version`/`spec_overridden`(Task 34 PR5) 은 프리셋 카탈로그
+    (`infrastructure/external/presets.py`)로 등록한 소스의 자동 갱신을 추적한다. 사용자가
+    `adapter_spec` 을 직접 고치면 `spec_overridden=True` 가 되어, 앱 업데이트로 프리셋이
+    바뀌어도 사용자 편집을 덮어쓰지 않는다.
     """
 
     __tablename__ = "external_source"
@@ -47,6 +62,14 @@ class ExternalSource(Base, EntityMixin):
     rate_limit_per_min: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     ttl_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
     note: Mapped[str | None] = mapped_column(Text, default=None)
+    #: 이 소스를 만든 프리셋의 키(`infrastructure/external/presets.py::PRESET_CATALOG`).
+    #: 커스텀 등록(JSON 직접 입력)이면 `None`.
+    preset_key: Mapped[str | None] = mapped_column(String(100), default=None)
+    #: 등록 당시(또는 마지막 자동 갱신 시점) 프리셋 버전. 카탈로그 버전과 비교해 갱신
+    #: 여부를 판단한다.
+    preset_version: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: 사용자가 `adapter_spec` 을 직접 편집했는지. 참이면 프리셋 자동 갱신 대상에서 빠진다.
+    spec_overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_external_source_user_id_name"),
@@ -176,3 +199,43 @@ class ExternalSourceProbe(Base, EntityMixin):
 
     def __repr__(self) -> str:
         return f"<ExternalSourceProbe source={self.source_id} ok={self.ok}>"
+
+
+class ExternalSourceCredential(Base, EntityMixin):
+    """소스 하나에 필요한 자격 증명(API 키 등) 하나(Task 34 PR5).
+
+    `LlmSetting.api_key_ciphertext` 와 같은 Fernet 패턴을 재사용한다 — 원문을 요청 직전에만
+    복호화해 써야 하므로(공식 API 호출), 단방향 해시가 아니라 대칭 암호화를 쓴다. 평문은
+    절대 저장하지 않는다.
+
+    동기화 대상이 아니다(`SYNC_ENTITIES` 에 넣지 않는다) — `llm_setting` 과 같은 이유로,
+    이 값이 클라이언트 IndexedDB 에 평문으로 미러링되면 브라우저 저장소에 그대로 노출된다.
+    """
+
+    __tablename__ = "external_source_credential"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
+    )
+    #: `adapter_spec.credentials[].name` 과 대응하는 이름(예: `client_id`).
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    #: Fernet 암호문. base64 텍스트가 아니라 원시 바이트로 저장한다.
+    secret_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    #: 값의 마지막 4자만 평문으로 따로 둔다 — 화면에 "...ab12" 로 보여줘 저장된 값을
+    #: 알아볼 수 있게 하되, 이 정도로는 원문을 재구성할 수 없다.
+    hint: Mapped[str] = mapped_column(String(4), nullable=False)
+
+    __table_args__ = (
+        # 부분 유니크 인덱스. `uq_product_identity` 선례를 따른다 — soft delete 된 행이
+        # 자리를 차지해 같은 (소스, 이름) 을 다시 저장하지 못하게 되는 것을 막는다.
+        Index(
+            "uq_external_source_credential_identity",
+            "source_id",
+            "name",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExternalSourceCredential source={self.source_id} name={self.name!r}>"
