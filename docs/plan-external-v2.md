@@ -305,7 +305,8 @@ class ProductIdentity:
     abv: Decimal | None
     vintage: int | None
     age_years: Decimal | None
-    volumes_ml: tuple[int, ...]      # 이 제품의 SKU 용량들
+    volumes_ml: tuple[int, ...]  # 이 제품의 SKU 용량들
+
 
 @dataclass(frozen=True)
 class NameFacts:
@@ -314,6 +315,7 @@ class NameFacts:
     age_years: float | None
     abv: float | None
     vintage: int | None
+
 
 def parse_name(text: str) -> NameFacts: ...
 def score(identity: ProductIdentity, candidate_name: str) -> MatchScore: ...
