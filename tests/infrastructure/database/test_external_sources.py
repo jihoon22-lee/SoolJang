@@ -11,6 +11,7 @@ from decimal import Decimal
 import httpx
 import pytest
 import pytest_asyncio
+from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +21,9 @@ from sooljang.application.external_sources import (
     PROBE_HISTORY_LIMIT,
     PinHostMismatchError,
     create_source,
+    create_source_from_preset,
     delete_source,
+    get_credential_hints,
     get_health,
     get_owned_source,
     list_sources,
@@ -28,6 +31,7 @@ from sooljang.application.external_sources import (
     pin_match,
     probe_source,
     reset_rate_limit_history,
+    set_credentials,
     unpin_match,
     update_source,
 )
@@ -38,6 +42,10 @@ from sooljang.infrastructure.database.models import (
     Product,
 )
 from sooljang.infrastructure.external.adapter import reset_robots_cache
+from sooljang.infrastructure.external.presets import get_preset
+
+#: 유효한 Fernet 키 형태만 있으면 되므로 테스트마다 새로 만든다.
+MASTER_KEY = Fernet.generate_key().decode()
 
 USER_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
 OTHER_USER_ID = uuid.UUID("00000000-0000-0000-0000-0000000000bb")
@@ -866,3 +874,330 @@ class TestHealth:
         assert health[0].source_id == source.id
         assert health[0].status == "unknown"
         assert health[0].last_success_at is None
+
+
+class TestPresets:
+    """프리셋 카탈로그 등록·자동 갱신(Task 34 PR5)."""
+
+    async def test_프리셋으로_소스를_등록한다(self, session: AsyncSession) -> None:
+        source = await create_source_from_preset(session, user_id=USER_ID, preset_key="dailyshot")
+
+        assert source.name == "데일리샷"
+        assert source.base_url == "https://dailyshot.co"
+        assert source.preset_key == "dailyshot"
+        assert source.preset_version == 1
+        assert source.spec_overridden is False
+
+    async def test_없는_프리셋_키는_거부한다(self, session: AsyncSession) -> None:
+        with pytest.raises(NotFoundError):
+            await create_source_from_preset(session, user_id=USER_ID, preset_key="존재하지-않음")
+
+    async def test_이름을_지정하면_프리셋_이름_대신_쓴다(self, session: AsyncSession) -> None:
+        source = await create_source_from_preset(
+            session, user_id=USER_ID, preset_key="dailyshot", name="내 데일리샷"
+        )
+        assert source.name == "내 데일리샷"
+
+    async def test_프리셋_소스의_스펙을_직접_고치면_spec_overridden이_된다(
+        self, session: AsyncSession
+    ) -> None:
+        source = await create_source_from_preset(session, user_id=USER_ID, preset_key="dailyshot")
+
+        await update_source(
+            session, source, user_id=USER_ID, fields={"adapter_spec": {"search": {}}}
+        )
+
+        assert source.spec_overridden is True
+
+    async def test_커스텀_소스는_스펙을_고쳐도_spec_overridden이_안된다(
+        self, session: AsyncSession
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="커스텀",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        await update_source(
+            session, source, user_id=USER_ID, fields={"adapter_spec": {"search": {}}}
+        )
+
+        assert source.spec_overridden is False
+
+    async def test_프리셋_버전이_오르면_목록_조회시_자동_갱신된다(
+        self, session: AsyncSession
+    ) -> None:
+        source = await create_source_from_preset(session, user_id=USER_ID, preset_key="dailyshot")
+        # 구버전으로 되돌려 최신 카탈로그보다 낮게 만든다.
+        source.preset_version = 0
+        source.adapter_spec = {"search": {"url_template": "https://old.example.com/{query}"}}
+        await session.flush()
+
+        sources = await list_sources(session, user_id=USER_ID)
+
+        preset = get_preset("dailyshot")
+        assert preset is not None
+        assert sources[0].preset_version == preset.version
+        assert sources[0].adapter_spec == preset.adapter_spec
+
+    async def test_spec_overridden이면_자동_갱신에서_제외된다(self, session: AsyncSession) -> None:
+        source = await create_source_from_preset(session, user_id=USER_ID, preset_key="dailyshot")
+        source.preset_version = 0
+        source.spec_overridden = True
+        await session.flush()
+
+        sources = await list_sources(session, user_id=USER_ID)
+
+        assert sources[0].preset_version == 0
+
+
+#: 자격 증명 헤더 주입을 확인하는 스펙(Task 34 PR5).
+_CREDENTIAL_ADAPTER_SPEC = {
+    "search": {
+        "url_template": "https://example.com/search?q={query}",
+        "item": ".product-card",
+        "fields": {
+            "name": {"selector": ".title", "attr": "text"},
+            "url": {"selector": "a", "attr": "href", "absolute": True},
+        },
+    },
+    "detail": {"fields": {"price": {"selector": ".price", "attr": "text"}}},
+    "credentials": [{"name": "api_key", "inject": {"type": "header", "key": "X-Api-Key"}}],
+}
+
+
+def _credential_capture_transport(captured: dict[str, str]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            captured.update(request.headers)
+            query = request.url.params.get("q", "")
+            body = (
+                '<div class="product-card">'
+                f'<span class="title">{query}</span>'
+                '<a href="/product/1">보기</a>'
+                "</div>"
+            )
+            return httpx.Response(200, text=body)
+        if request.url.path == "/product/1":
+            return httpx.Response(200, text='<div class="price">35,000원</div>')
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    return httpx.MockTransport(handler)
+
+
+class TestCredentials:
+    """자격 증명 암호화 저장과 요청 주입(Task 34 PR5)."""
+
+    async def test_저장하면_힌트만_반환된다(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        hints = await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-abcdef1234"},
+            master_key=MASTER_KEY,
+        )
+
+        assert hints == {"api_key": "1234"}
+
+    async def test_저장된_힌트를_다시_조회할_수_있다(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-abcdef1234"},
+            master_key=MASTER_KEY,
+        )
+
+        hints = await get_credential_hints(session, source_id=source.id)
+
+        assert hints == {"api_key": "1234"}
+
+    async def test_다시_저장하면_덮어쓴다(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "old-0000"},
+            master_key=MASTER_KEY,
+        )
+
+        hints = await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "new-9999"},
+            master_key=MASTER_KEY,
+        )
+
+        assert hints == {"api_key": "9999"}
+        assert await get_credential_hints(session, source_id=source.id) == {"api_key": "9999"}
+
+    async def test_조회시_자격_증명이_헤더로_주입된다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=_CREDENTIAL_ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-abcdef1234"},
+            master_key=MASTER_KEY,
+        )
+        captured: dict[str, str] = {}
+
+        await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_credential_capture_transport(captured),
+            master_key=MASTER_KEY,
+        )
+
+        assert captured.get("x-api-key") == "sk-abcdef1234"
+
+    async def test_master_key가_없으면_자격_증명을_주입하지_않는다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=_CREDENTIAL_ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-abcdef1234"},
+            master_key=MASTER_KEY,
+        )
+        captured: dict[str, str] = {}
+
+        result = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_credential_capture_transport(captured),
+        )
+
+        assert "x-api-key" not in captured
+        assert result[0].degraded is False
+
+    async def test_테스트_조회에도_자격_증명이_주입된다(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=_CREDENTIAL_ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-abcdef1234"},
+            master_key=MASTER_KEY,
+        )
+        captured: dict[str, str] = {}
+
+        await probe_source(
+            session,
+            source=source,
+            sample_name="글렌피딕 12년",
+            transport=_credential_capture_transport(captured),
+            master_key=MASTER_KEY,
+        )
+
+        assert captured.get("x-api-key") == "sk-abcdef1234"
+
+    async def test_자격_증명_값이_경고_메시지에_나타나지_않는다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=_CREDENTIAL_ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-super-secret-999"},
+            master_key=MASTER_KEY,
+        )
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_not_found_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert results[0].warning is not None
+        assert "sk-super-secret-999" not in (results[0].warning or "")
+        assert "sk-super-secret-999" not in str(results[0].fields)
+
+    async def test_자격_증명_값이_로그에_나타나지_않는다(
+        self, session: AsyncSession, product: Product, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=_CREDENTIAL_ADAPTER_SPEC,
+        )
+        await set_credentials(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            values={"api_key": "sk-super-secret-999"},
+            master_key=MASTER_KEY,
+        )
+
+        with caplog.at_level("DEBUG"):
+            await lookup_product(
+                session,
+                user_id=USER_ID,
+                product=product,
+                transport=_credential_capture_transport({}),
+                master_key=MASTER_KEY,
+            )
+
+        assert "sk-super-secret-999" not in caplog.text

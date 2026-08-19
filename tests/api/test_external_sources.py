@@ -185,3 +185,106 @@ def test_없는_소스로_테스트_조회하면_404(api_client: TestClient, pre
         json={"name": "글렌피딕 12년"},
     )
     assert response.status_code == 404, response.text
+
+
+# --- 프리셋 카탈로그와 자격 증명 (Task 34 PR5) -----------------------------------
+
+
+def test_프리셋_카탈로그를_조회한다(api_client: TestClient, prefix: str) -> None:
+    response = api_client.get(f"{prefix}/external-sources/presets")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body) > 0
+    dailyshot = next(p for p in body if p["key"] == "dailyshot")
+    assert dailyshot["name"] == "데일리샷"
+    assert dailyshot["base_url"] == "https://dailyshot.co"
+    assert dailyshot["version"] == 1
+    # 등록 시점에 서버가 채우는 구현 세부사항이라 응답에 adapter_spec 은 없다.
+    assert "adapter_spec" not in dailyshot
+
+
+def test_프리셋_카탈로그_조회도_로그인이_필요하다(anon_client: TestClient, prefix: str) -> None:
+    """이 라우터는 전체가 `protected` 의존성 아래 묶여 있다(app.py) — 목록이라고 예외는 아니다."""
+    response = anon_client.get(f"{prefix}/external-sources/presets")
+    assert response.status_code == 401, response.text
+
+
+def test_프리셋_키로_소스를_등록한다(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(f"{prefix}/external-sources", json={"preset_key": "dailyshot"})
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["name"] == "데일리샷"
+    assert body["base_url"] == "https://dailyshot.co"
+    assert body["preset_key"] == "dailyshot"
+    assert body["preset_version"] == 1
+    assert body["spec_overridden"] is False
+
+
+def test_없는_프리셋_키로_등록하면_404(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(f"{prefix}/external-sources", json={"preset_key": "존재하지-않음"})
+    assert response.status_code == 404, response.text
+
+
+def test_preset_key도_커스텀_필드도_없으면_422(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(f"{prefix}/external-sources", json={})
+    assert response.status_code == 422, response.text
+
+
+def test_프리셋_소스의_스펙을_고치면_spec_overridden이_true가_된다(
+    api_client: TestClient, prefix: str
+) -> None:
+    source = api_client.post(f"{prefix}/external-sources", json={"preset_key": "dailyshot"}).json()
+
+    response = api_client.patch(
+        f"{prefix}/external-sources/{source['id']}",
+        json={"adapter_spec": {"search": {"url_template": "https://x/{query}"}}},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["spec_overridden"] is True
+
+
+def test_자격_증명을_저장하면_힌트만_돌아온다(api_client: TestClient, prefix: str) -> None:
+    source = _create_source(api_client, prefix)
+
+    response = api_client.put(
+        f"{prefix}/external-sources/{source['id']}/credentials",
+        json={"values": {"api_key": "sk-abcdef1234"}},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"hints": {"api_key": "1234"}}
+    # 원문이 응답 어디에도 없어야 한다.
+    assert "sk-abcdef1234" not in response.text
+
+
+def test_저장된_자격_증명_힌트가_소스_조회에_함께_온다(api_client: TestClient, prefix: str) -> None:
+    source = _create_source(api_client, prefix)
+    api_client.put(
+        f"{prefix}/external-sources/{source['id']}/credentials",
+        json={"values": {"api_key": "sk-abcdef1234"}},
+    )
+
+    response = api_client.get(f"{prefix}/external-sources")
+
+    assert response.status_code == 200, response.text
+    body = next(s for s in response.json() if s["id"] == source["id"])
+    assert body["credential_hints"] == {"api_key": "1234"}
+
+
+def test_없는_소스에_자격_증명을_저장하면_404(api_client: TestClient, prefix: str) -> None:
+    response = api_client.put(
+        f"{prefix}/external-sources/00000000-0000-0000-0000-0000000000ff/credentials",
+        json={"values": {"api_key": "sk-abcdef1234"}},
+    )
+    assert response.status_code == 404, response.text
+
+
+def test_자격_증명_저장은_로그인하지_않으면_거부한다(anon_client: TestClient, prefix: str) -> None:
+    response = anon_client.put(
+        f"{prefix}/external-sources/00000000-0000-0000-0000-0000000000ff/credentials",
+        json={"values": {"api_key": "sk-abcdef1234"}},
+    )
+    assert response.status_code == 401, response.text

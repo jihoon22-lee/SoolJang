@@ -626,18 +626,47 @@ export interface ExternalSource {
   rate_limit_per_min: number;
   ttl_hours: number;
   note: string | null;
+  /** 이 소스를 만든 프리셋의 키. 커스텀 등록이면 null(Task 34 PR5). */
+  preset_key: string | null;
+  preset_version: number | null;
+  /** 사용자가 `adapter_spec` 을 직접 편집해 프리셋 자동 갱신 대상에서 빠졌는지. */
+  spec_overridden: boolean;
+  /** 저장된 자격 증명의 이름→마스킹 힌트("...ab12"). 원문은 절대 포함되지 않는다. */
+  credential_hints: Record<string, string>;
 }
 
 export interface ExternalSourceInput {
-  name: string;
-  base_url: string;
-  adapter_spec: AdapterSpec;
+  /** 프리셋 카탈로그에서 고른 키(Task 34 PR5). 있으면 `base_url`·`adapter_spec` 은
+   * 생략할 수 있다 — 서버가 프리셋 값을 그대로 쓴다. */
+  preset_key?: string | undefined;
+  name?: string | undefined;
+  base_url?: string | undefined;
+  adapter_spec?: AdapterSpec | undefined;
   category_id?: string | null;
   priority?: number;
   is_active?: boolean;
   rate_limit_per_min?: number;
   ttl_hours?: number;
   note?: string | null;
+}
+
+/** 프리셋 카탈로그 항목 하나(Task 34 PR5). */
+export interface SourcePreset {
+  key: string;
+  name: string;
+  base_url: string;
+  description: string;
+  category_hint: string | null;
+  requires_credentials: boolean;
+  version: number;
+}
+
+export interface SourceCredentialsInput {
+  values: Record<string, string>;
+}
+
+export interface SourceCredentialsResult {
+  hints: Record<string, string>;
 }
 
 export interface LookupCandidate {

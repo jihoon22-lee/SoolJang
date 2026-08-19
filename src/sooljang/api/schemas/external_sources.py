@@ -3,24 +3,42 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ExternalSourceCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    base_url: str = Field(min_length=1)
+    #: 프리셋 카탈로그(`GET /external-sources/presets`)에서 고른 키(Task 34 PR5). 있으면
+    #: `base_url`·`adapter_spec` 은 프리셋 값을 그대로 쓰므로 생략할 수 있다.
+    preset_key: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    base_url: str | None = Field(default=None, min_length=1)
     #: `docs/architecture.md` §7.2 스키마와 같은 모양의 JSON. 형식 검증은 조회 시점에
     #: `infrastructure/external/adapter.py` 가 각 필드를 관대하게 읽으며 수행한다 — 등록
     #: 단계에서 엄격한 스키마 검증을 두면 사이트 구조가 조금만 달라도 등록 자체가 막힌다.
-    adapter_spec: dict[str, Any]
+    #: `preset_key` 가 없으면 필수다.
+    adapter_spec: dict[str, Any] | None = None
     category_id: uuid.UUID | None = None
     priority: int = 0
     is_active: bool = True
     rate_limit_per_min: int = Field(default=6, ge=1, le=60)
     ttl_hours: int = Field(default=24, ge=1, le=24 * 30)
     note: str | None = None
+
+    @model_validator(mode="after")
+    def _require_custom_fields_without_preset(self) -> Self:
+        if self.preset_key is None:
+            missing = [
+                field
+                for field, value in (("name", self.name), ("base_url", self.base_url))
+                if value is None
+            ]
+            if self.adapter_spec is None:
+                missing.append("adapter_spec")
+            if missing:
+                raise ValueError(f"preset_key 가 없으면 다음이 필요합니다: {', '.join(missing)}")
+        return self
 
 
 class ExternalSourceUpdate(BaseModel):
@@ -48,6 +66,38 @@ class ExternalSourceOut(BaseModel):
     rate_limit_per_min: int
     ttl_hours: int
     note: str | None
+    #: 이 소스를 만든 프리셋의 키. 커스텀 등록이면 `None`(Task 34 PR5).
+    preset_key: str | None = None
+    preset_version: int | None = None
+    #: 사용자가 `adapter_spec` 을 직접 편집해 프리셋 자동 갱신 대상에서 빠졌는지.
+    spec_overridden: bool = False
+    #: 저장된 자격 증명의 이름→마스킹 힌트. 원문은 절대 담기지 않는다. 라우터가 별도
+    #: 조회로 채운다 — `ExternalSource` ORM 모델의 속성이 아니다.
+    credential_hints: dict[str, str] = Field(default_factory=dict)
+
+
+class SourcePresetOut(BaseModel):
+    """프리셋 카탈로그 항목 하나(Task 34 PR5). `adapter_spec` 은 노출하지 않는다 —
+    등록 시점에 서버가 채워 넣을 뿐, 사용자가 미리 볼 필요가 없는 구현 세부사항이다."""
+
+    key: str
+    name: str
+    base_url: str
+    description: str
+    category_hint: str | None
+    requires_credentials: bool
+    version: int
+
+
+class SourceCredentialsIn(BaseModel):
+    """소스에 필요한 자격 증명을 일괄 저장한다(Task 34 PR5). 이름→원문 값."""
+
+    values: dict[str, str] = Field(min_length=1)
+
+
+class SourceCredentialsOut(BaseModel):
+    #: 이름→마스킹 힌트. 원문은 응답에 절대 담기지 않는다.
+    hints: dict[str, str]
 
 
 class LookupCandidateOut(BaseModel):
