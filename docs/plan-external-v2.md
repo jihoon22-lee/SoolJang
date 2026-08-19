@@ -530,8 +530,20 @@ DB 안 데이터**다. 앱이 시작할 때 자동으로 고치지 않고, PR5(�
 
 ### 완료 조건
 
-- [ ] 절대 규칙 6 재확인 — `rating_normalized`·100ml당 가격이 DB 어디에도 저장되지 않음
-- [ ] 기존 데일리샷 소스로 조회했을 때 값이 하나도 사라지지 않음 (`extra` 폴백 확인)
+- [x] 절대 규칙 6 재확인 — `rating_normalized`·100ml당 가격이 DB 어디에도 저장되지 않음(`NormalizedFields` 프로퍼티로만 존재, 응답 조립 시점에 계산)
+- [x] 기존 데일리샷 소스로 조회했을 때 값이 하나도 사라지지 않음(`extra` 폴백 확인)
+
+### 실제 구현 메모 (계획 대비 차이)
+
+- **분류 위치**: `adapter.py` 대신 `application/external_sources.py::lookup_product` 에서
+  캐시 적중·신규 조회 양쪽에 공통으로 `split_fields` 를 호출했다. `AdapterResult` 생성
+  지점이 십여 곳이라 adapter.py 안에 넣으면 캐시 적중 경로를 못 덮는다(D182)
+- **버전 필드**: `SNAPSHOT_VERSION = 2` 상수를 `application/external_sources.py` 에 두고
+  `_fresh_cache` 가 `snapshot.get("version", 1) < SNAPSHOT_VERSION` 이면 stale 로 본다
+- **비교 뷰**: `ExternalInfoCard` 를 소스별 카드 나열에서 `<table>` 하나로 바꿨다. 100ml당
+  가격이 가장 낮은 소스에 "최저" 배지, `myPricePer100ml`(제품의 실평단가) 를 주면 델타
+  퍼센트도 함께 보여준다. 매칭 정보·후보·고정 해제는 행別 "상세" 토글에 접어 둔다
+- **테스트**: 위 표 케이스 + `tests/infrastructure/database/test_external_sources.py::TestNormalizedFields`(표준 키 분류·캐시 버전 staleness) + `ExternalInfoCard.test.tsx`(최저가 배지·델타·extra 폴백)
 
 ---
 
@@ -856,7 +868,7 @@ D167 에서 폐기한 `search` 전략은 **검색엔진 결과를 스크래핑**
 |---|---|---|---|
 | 1 | ✅ 완료 | 없음 | 후보 노출·매칭 고정. D175~D178 |
 | 2 | ✅ 완료 | 없음 | 점수 재작성·질의 확장. D179~D181 |
-| 3 | ⬜ 대기 | 없음 | PR2 선행 |
+| 3 | ✅ 완료 | 없음 | 표준 필드 스키마·가격 비교 뷰. D182~D184 |
 | 4 | ⬜ 대기 | 없음 | PR3 뒤 아무 때나, 병렬 가능 |
 | 5 | ⬜ 대기 | 없음 | 데일리샷 스펙 원문 확보됨(2026-08-19) |
 | 6 | ⬜ 대기 | 없음 | 월 상한은 설정값, 기본 200회 제안 |

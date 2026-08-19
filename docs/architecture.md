@@ -653,6 +653,31 @@ search:
 `degraded`로 표시해 사용자에게 알린다. 사이트 구조 변경은 정상적으로 발생하는 일이므로
 실패가 앱 전체를 막아서는 안 된다.
 
+**표준 필드(Task 34 PR3)**: 소스마다 `가격`·`price`·`sale_price` 처럼 제각각인 필드명을
+쓰면 비교·최저가 계산이 불가능하다. `detail.fields`/`search.result_fields` 가 아래 키로
+값을 내보내면 `infrastructure/external/fields.py::split_fields` 가 이를 추려 타입까지
+맞춘다. 표준 키가 아닌 값은 `extra`로 손실 없이 보존된다 — 소스가 아직 표준 키로 안
+바뀌어도 값 자체는 그대로 보인다.
+
+| 키 | 타입 | 비고 |
+|---|---|---|
+| `price_krw` | int | 실제 판매가 |
+| `list_price_krw` | int \| null | 정가 |
+| `currency` | str | 기본 `"KRW"` |
+| `volume_ml` | int \| null | 이 가격이 어느 용량의 가격인지 |
+| `rating` | float \| null | 원 척도 그대로 |
+| `rating_scale` | float \| null | 5 / 100 등 |
+| `review_count` | int \| null | |
+| `in_stock` | bool \| null | |
+
+파생값(`rating_normalized` = `rating / rating_scale × 5`, `price_per_100ml` = `price_krw /
+volume_ml × 100`)은 **저장하지 않는다**(절대 규칙 6) — `NormalizedFields` 의 프로퍼티로
+응답을 조립할 때마다 다시 계산된다. 이 분류는 `adapter.py` 가 아니라
+`application/external_sources.py::lookup_product` 가 캐시 적중·신규 조회 양쪽 공통으로
+호출한다 — `AdapterResult` 생성 지점이 여러 곳이라 그중 하나에 두면 캐시 적중 경로를
+못 덮는다. 캐시 스냅샷에는 `"version": 2` 를 넣고, 버전이 낮은(표준 키 도입 이전) 행은
+TTL 과 무관하게 stale 로 취급해 다음 조회에서 자연스럽게 새 모양으로 교체한다.
+
 ### 7.3 준수 규칙
 
 - 요청 전 `robots.txt`를 확인하고 캐시한다

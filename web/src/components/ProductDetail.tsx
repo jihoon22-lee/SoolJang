@@ -193,7 +193,12 @@ export function ProductDetail({
 
       <BottleSection bottles={bottles} offline={offline} />
 
-      <ExternalInfoCard productId={product.id} productName={product.name} offline={offline} />
+      <ExternalInfoCard
+        productId={product.id}
+        productName={product.name}
+        offline={offline}
+        myPricePer100ml={metrics.price_per_100ml_paid}
+      />
     </article>
   );
 }

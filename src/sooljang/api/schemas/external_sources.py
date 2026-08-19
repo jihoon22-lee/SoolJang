@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,6 +59,29 @@ class LookupCandidateOut(BaseModel):
     score: float
 
 
+class NormalizedFieldsOut(BaseModel):
+    """`fields` 를 표준 키로 분류하고 파생값을 계산한 결과(Task 34 PR3).
+
+    비교 뷰(최저가·100ml당 가격)가 이 값을 쓴다. `rating_normalized`·`price_per_100ml`
+    은 응답을 조립할 때 매번 계산되며 DB 에는 저장되지 않는다(절대 규칙 6).
+    """
+
+    price_krw: int | None
+    list_price_krw: int | None
+    currency: str
+    volume_ml: int | None
+    rating: float | None
+    rating_scale: float | None
+    #: 평점을 5점 만점으로 환산. 척도를 모르면 `None`.
+    rating_normalized: Decimal | None
+    review_count: int | None
+    in_stock: bool | None
+    #: 100ml당 가격. 용량을 모르면 `None`(0 나눗셈 방지).
+    price_per_100ml: Decimal | None
+    #: 표준 키가 아닌 값. 소스가 표준 키로 안 바뀌어도 값이 사라지지 않는다.
+    extra: dict[str, Any]
+
+
 class SourceLookupOut(BaseModel):
     """소스 하나의 조회 결과. `degraded` 면 `fields` 가 일부만 채워졌을 수 있다."""
 
@@ -79,6 +103,8 @@ class SourceLookupOut(BaseModel):
     #: 사용자가 고정해 둔 매칭으로 조회한 결과인지.
     pinned: bool = False
     candidates: list[LookupCandidateOut] = Field(default_factory=list)
+    #: 비교 뷰용 표준 필드(Task 34 PR3).
+    normalized: NormalizedFieldsOut
 
 
 class ExternalProductMatchCreate(BaseModel):

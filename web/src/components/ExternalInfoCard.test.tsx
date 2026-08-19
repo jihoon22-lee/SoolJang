@@ -1,9 +1,26 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { SourceLookupResult } from "@/api/types";
+import type { NormalizedFields, SourceLookupResult } from "@/api/types";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { renderWithQuery, stubRoutes } from "@/testing";
+
+function normalized(overrides: Partial<NormalizedFields> = {}): NormalizedFields {
+  return {
+    price_krw: null,
+    list_price_krw: null,
+    currency: "KRW",
+    volume_ml: null,
+    rating: null,
+    rating_scale: null,
+    rating_normalized: null,
+    review_count: null,
+    in_stock: null,
+    price_per_100ml: null,
+    extra: {},
+    ...overrides,
+  };
+}
 
 function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult {
   return {
@@ -11,7 +28,7 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
     source_name: "데일리샷",
     cached: false,
     source_url: "https://dailyshot.co/item/123",
-    fields: { price: "45,000원", rating: "4.2" },
+    fields: { price_krw: 45000, volume_ml: 900 },
     raw_excerpt: null,
     degraded: false,
     warning: null,
@@ -21,6 +38,7 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
     needs_confirmation: false,
     pinned: false,
     candidates: [],
+    normalized: normalized({ price_krw: 45000, volume_ml: 900, price_per_100ml: "5000.00" }),
     ...overrides,
   };
 }
@@ -41,7 +59,7 @@ describe("ExternalInfoCard", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  it("조회 버튼을 누르면 결과와 출처 링크를 보여준다", async () => {
+  it("조회 버튼을 누르면 표준 필드를 표로 보여준다", async () => {
     stubRoutes([{ match: "/products/p1/external-lookup", method: "POST", body: [result()] }]);
     renderWithQuery(
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
@@ -50,11 +68,109 @@ describe("ExternalInfoCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
     expect(await screen.findByText("데일리샷")).toBeInTheDocument();
-    expect(await screen.findByText("45,000원")).toBeInTheDocument();
+    expect(screen.getByText("45,000원")).toBeInTheDocument();
+    expect(screen.getByText("5,000원")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute(
       "href",
       "https://dailyshot.co/item/123",
     );
+  });
+
+  it("100ml당 가격이 가장 낮은 소스에 최저 배지를 붙인다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            source_id: "s1",
+            source_name: "데일리샷",
+            normalized: normalized({
+              price_krw: 45000,
+              volume_ml: 900,
+              price_per_100ml: "5000.00",
+            }),
+          }),
+          result({
+            source_id: "s2",
+            source_name: "이마트몰",
+            normalized: normalized({
+              price_krw: 63000,
+              volume_ml: 900,
+              price_per_100ml: "7000.00",
+            }),
+          }),
+        ],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await screen.findByText("데일리샷");
+
+    const rows = screen.getAllByRole("row");
+    const dailyshotRow = rows.find((row) => row.textContent?.includes("데일리샷"));
+    const emartRow = rows.find((row) => row.textContent?.includes("이마트몰"));
+    expect(dailyshotRow?.textContent).toContain("최저");
+    expect(emartRow?.textContent).not.toContain("최저");
+  });
+
+  it("내 실평단가를 주면 소스 가격과의 델타를 보여준다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            normalized: normalized({
+              price_krw: 55000,
+              volume_ml: 1000,
+              price_per_100ml: "5500.00",
+            }),
+          }),
+        ],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard
+        productId="p1"
+        productName="글렌알라키 12년"
+        offline={false}
+        myPricePer100ml="5000.00"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+    expect(await screen.findByText(/내 가격 대비 \+10%/)).toBeInTheDocument();
+  });
+
+  it("표준 키가 아닌 값은 상세에서 손실 없이 보인다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            matched_name: "글렌알라키 12년",
+            match_score: 1,
+            fields: { 메모: "인기 상품" },
+            normalized: normalized({ extra: { 메모: "인기 상품" } }),
+          }),
+        ],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await userEvent.click(await screen.findByRole("button", { name: "상세" }));
+
+    expect(screen.getByText("메모")).toBeInTheDocument();
+    expect(screen.getByText("인기 상품")).toBeInTheDocument();
   });
 
   it("일부만 확인됐으면 배지와 경고를 보여준다", async () => {
@@ -108,6 +224,7 @@ describe("ExternalInfoCard", () => {
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
+
   it("확신이 낮으면 확인 문구와 후보 목록을 펼쳐 보여준다", async () => {
     stubRoutes([
       {

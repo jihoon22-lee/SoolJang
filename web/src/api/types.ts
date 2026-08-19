@@ -647,6 +647,25 @@ export interface LookupCandidate {
   score: number;
 }
 
+/** 표준 필드로 분류·계산된 값(Task 34 PR3). 소스마다 다른 키 이름 문제를 없애 비교
+ * 뷰(최저가·100ml당 가격)를 가능하게 한다. `extra` 에는 표준 키가 아닌 값이 그대로
+ * 남아 있다 — 소스가 아직 표준 키를 안 써도 값이 사라지지 않는다. */
+export interface NormalizedFields {
+  price_krw: number | null;
+  list_price_krw: number | null;
+  currency: string;
+  volume_ml: number | null;
+  rating: number | null;
+  rating_scale: number | null;
+  /** 5점 만점 환산. 척도를 모르면 null. */
+  rating_normalized: Money;
+  review_count: number | null;
+  in_stock: boolean | null;
+  /** 100ml당 가격. 용량을 모르면 null. */
+  price_per_100ml: Money;
+  extra: Record<string, unknown>;
+}
+
 export interface SourceLookupResult {
   source_id: string;
   source_name: string;
@@ -665,6 +684,7 @@ export interface SourceLookupResult {
   /** 사용자가 고정해 둔 매칭으로 조회한 결과인지. */
   pinned: boolean;
   candidates: LookupCandidate[];
+  normalized: NormalizedFields;
 }
 
 export interface ExternalMatchInput {

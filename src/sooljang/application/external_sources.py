@@ -36,10 +36,16 @@ from sooljang.infrastructure.external.adapter import (
     fetch_snapshot,
     is_same_host,
 )
+from sooljang.infrastructure.external.fields import NormalizedFields, split_fields
 from sooljang.infrastructure.external.matching import ProductIdentity
 
 #: 소스별 최근 요청 시각(초, `time.monotonic()`). 슬라이딩 60초 윈도로 rate limit 을 본다.
 _rate_limit_history: dict[uuid.UUID, list[float]] = {}
+
+#: 캐시 스냅샷 모양의 버전(Task 34 PR3). `fields` 가 표준 키를 쓰기 시작한 시점을
+#: 표시한다 — 버전이 낮은 행은 `_fresh_cache` 가 TTL 과 무관하게 stale 로 취급해, 다음
+#: 조회에서 자연스럽게 새 모양으로 교체된다(별도 데이터 마이그레이션 없음).
+SNAPSHOT_VERSION = 2
 
 
 def reset_rate_limit_history() -> None:
@@ -244,6 +250,10 @@ class SourceLookupResult:
     needs_confirmation: bool = False
     pinned: bool = False
     candidates: list[LookupCandidate] = field(default_factory=list)
+    #: 표준 키로 분류하고 파생값(정규화 평점·100ml당 가격)을 계산한 결과(Task 34 PR3).
+    #: `fields` 원본은 위에 그대로 남아 있다 — 이 값은 매 응답마다 다시 계산되고 저장되지
+    #: 않는다(절대 규칙 6).
+    normalized: NormalizedFields = field(default_factory=NormalizedFields)
 
 
 async def _fresh_cache(
@@ -260,6 +270,10 @@ async def _fresh_cache(
         .limit(1)
     )
     if cached is None or cached.fetched_at < cutoff:
+        return None
+    # 버전이 낮은 스냅샷(표준 키 도입 이전)은 TTL 이 안 지났어도 stale 로 본다 — `fields`
+    # 가 옛 자유 dict 모양이라 비교 뷰가 값을 못 잡는다. 다음 조회가 새로 채운다.
+    if cached.snapshot.get("version", 1) < SNAPSHOT_VERSION:
         return None
     return cached
 
@@ -325,13 +339,14 @@ async def lookup_product(
 
         cached = await _fresh_cache(session, source=source, product_id=product.id)
         if cached is not None:
+            cached_fields = cached.snapshot.get("fields", {})
             results.append(
                 SourceLookupResult(
                     source_id=source.id,
                     source_name=source.name,
                     cached=True,
                     source_url=cached.snapshot.get("source_url"),
-                    fields=cached.snapshot.get("fields", {}),
+                    fields=cached_fields,
                     raw_excerpt=cached.snapshot.get("raw_excerpt"),
                     degraded=cached.degraded,
                     warning=cached.warning,
@@ -339,6 +354,7 @@ async def lookup_product(
                     matched_name=cached.snapshot.get("matched_name"),
                     match_score=cached.snapshot.get("match_score"),
                     pinned=pinned is not None,
+                    normalized=split_fields(cached_fields),
                 )
             )
             continue
@@ -381,6 +397,7 @@ async def lookup_product(
                     source_id=source.id,
                     product_id=product.id,
                     snapshot={
+                        "version": SNAPSHOT_VERSION,
                         "source_url": adapter_result.source_url,
                         "fields": adapter_result.fields,
                         "raw_excerpt": adapter_result.raw_excerpt,
@@ -411,6 +428,7 @@ async def lookup_product(
                 pinned=adapter_result.pinned,
                 candidates=adapter_result.candidates,
                 fetched_at=fetched_at,
+                normalized=split_fields(adapter_result.fields),
             )
         )
 

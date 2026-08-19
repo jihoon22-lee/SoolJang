@@ -5,6 +5,8 @@
 """
 
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -51,6 +53,22 @@ ADAPTER_SPEC = {
     },
 }
 _ROBOTS_ALLOW_ALL = "User-agent: *\nAllow: /"
+
+#: 표준 필드 키로 값을 내보내는 스펙(Task 34 PR3). `price` 대신 `price_krw`, 그리고
+#: 상수 `volume_ml` 을 함께 둬 100ml당 가격 계산까지 확인한다.
+ADAPTER_SPEC_STANDARD = {
+    "search": ADAPTER_SPEC["search"],
+    "detail": {
+        "fields": {
+            "price_krw": {
+                "selector": ".price",
+                "attr": "text",
+                "transform": ["strip_currency", "to_number"],
+            },
+            "volume_ml": {"const": 700},
+        }
+    },
+}
 
 
 @pytest.fixture(autouse=True)
@@ -565,3 +583,87 @@ class TestMatchPinning:
                 external_url="https://evil.example.net/product/1",
                 external_name="글렌피딕 12년",
             )
+
+
+class TestNormalizedFields:
+    """표준 필드 분류와 파생값(Task 34 PR3)."""
+
+    async def test_표준_키_필드는_normalized로_분류되고_파생값이_계산된다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC_STANDARD,
+        )
+
+        results = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        assert results[0].normalized.price_krw == 35000
+        assert results[0].normalized.volume_ml == 700
+        assert results[0].normalized.price_per_100ml == Decimal("5000.00")
+
+    async def test_캐시된_결과도_normalized가_채워진다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC_STANDARD,
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        cached = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        assert cached[0].cached is True
+        assert cached[0].normalized.price_krw == 35000
+
+    async def test_버전이_낮은_캐시_행은_TTL과_무관하게_다시_조회한다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        """표준 키 도입 이전 스냅샷(`version` 없음)은 TTL 이 남아 있어도 stale 로 본다 —
+        `fields` 가 옛 자유 dict 모양이라 비교 뷰가 값을 못 잡기 때문이다."""
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        session.add(
+            ExternalLookupCache(
+                user_id=USER_ID,
+                source_id=source.id,
+                product_id=product.id,
+                snapshot={
+                    "source_url": "https://example.com/product/1",
+                    "fields": {"price": 30000.0},
+                    "raw_excerpt": None,
+                    "matched_name": None,
+                    "match_score": None,
+                    "external_key": None,
+                },
+                degraded=False,
+                warning=None,
+                fetched_at=datetime.now(UTC),
+            )
+        )
+        await session.flush()
+
+        call_log: list[str] = []
+        results = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport(call_log)
+        )
+
+        assert results[0].cached is False
+        assert len(call_log) > 0

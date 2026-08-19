@@ -408,7 +408,7 @@ describe("ProductDetail", () => {
               source_name: "데일리샷",
               cached: false,
               source_url: "https://example.com/product/1",
-              fields: { price: 35000, rating: 4.5 },
+              fields: { price_krw: 35000, rating: 4.5 },
               raw_excerpt: null,
               degraded: false,
               warning: null,
@@ -418,6 +418,19 @@ describe("ProductDetail", () => {
               needs_confirmation: false,
               pinned: false,
               candidates: [],
+              normalized: {
+                price_krw: 35000,
+                list_price_krw: null,
+                currency: "KRW",
+                volume_ml: null,
+                rating: 4.5,
+                rating_scale: null,
+                rating_normalized: null,
+                review_count: null,
+                in_stock: null,
+                price_per_100ml: null,
+                extra: {},
+              },
             },
           ],
         },
@@ -427,7 +440,7 @@ describe("ProductDetail", () => {
       await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
       expect(await screen.findByText("데일리샷")).toBeInTheDocument();
-      expect(screen.getByText("35000")).toBeInTheDocument();
+      expect(screen.getByText("35,000원")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute(
         "href",
         "https://example.com/product/1",
@@ -455,6 +468,19 @@ describe("ProductDetail", () => {
               needs_confirmation: false,
               pinned: false,
               candidates: [],
+              normalized: {
+                price_krw: null,
+                list_price_krw: null,
+                currency: "KRW",
+                volume_ml: null,
+                rating: null,
+                rating_scale: null,
+                rating_normalized: null,
+                review_count: null,
+                in_stock: null,
+                price_per_100ml: null,
+                extra: {},
+              },
             },
           ],
         },
