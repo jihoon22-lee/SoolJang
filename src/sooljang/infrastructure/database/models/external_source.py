@@ -140,3 +140,39 @@ class ExternalProductMatch(Base, EntityMixin):
 
     def __repr__(self) -> str:
         return f"<ExternalProductMatch source={self.source_id} product={self.product_id}>"
+
+
+class ExternalSourceProbe(Base, EntityMixin):
+    """소스 하나에 실제로 조회를 시도한 기록 하나(Task 34 PR4).
+
+    `ExternalLookupCache` 는 **성공한 조회만** 담는다(절대 규칙 7 + `ok` 가드) — 실패
+    기록이 남는 곳이 없어 "이 소스가 언제부터 깨졌는지"를 알 방법이 없었다. 이 테이블은
+    성공·실패를 가리지 않고 시도 결과를 그대로 남기는 운영 로그다. 절대 규칙 6(파생값
+    저장 금지)에 걸리지 않는다 — 도메인 파생 지표가 아니라 다른 어디에서도 재계산할 수
+    없는 1차 사실이다.
+
+    소스별 최근 `PROBE_HISTORY_LIMIT`(`application/external_sources.py`)개만 남기는
+    롤링 로그라 소프트 삭제를 쓰지 않는다 — `EntityMixin` 의 `deleted_at` 은 두되(공통
+    컬럼 규약), 오래된 행은 하드 삭제한다.
+
+    동기화 대상이 아니다(`SYNC_ENTITIES` 에 넣지 않는다) — `external_lookup_cache` 와
+    같은 이유로, 순수 운영 로그이자 온라인 전용 기능의 부산물이다.
+    """
+
+    __tablename__ = "external_source_probe"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
+    )
+    attempted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: 셀렉터 일부가 깨져 부분 결과만 얻었는지. `ok=True` 여도 참일 수 있다.
+    degraded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    warning: Mapped[str | None] = mapped_column(Text, default=None)
+
+    __table_args__ = (
+        Index("ix_external_source_probe_source_id_attempted_at", "source_id", "attempted_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExternalSourceProbe source={self.source_id} ok={self.ok}>"

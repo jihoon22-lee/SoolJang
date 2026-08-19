@@ -82,6 +82,10 @@ describe("App", () => {
   it("설정 메뉴를 열어 외부 소스 관리로 전환한다", async () => {
     stubRoutes([
       ...authenticatedRoutes(),
+      // "/external-sources/health" 가 "/health" 의 상위 문자열이라, 더 구체적인 이
+      // 스텁을 앞에 둬야 한다 — 그러지 않으면 서비스 헬스체크 응답(배열이 아님)이
+      // 대신 매칭돼 SourcesPage 의 소스별 헬스 목록이 깨진다.
+      { match: "/external-sources/health", body: [] },
       { match: "/health", body: healthy },
       { match: "/categories", body: emptyTree },
       { match: "/products", body: { items: [], next_cursor: null } },

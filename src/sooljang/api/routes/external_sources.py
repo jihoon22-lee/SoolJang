@@ -19,16 +19,21 @@ from sooljang.api.schemas.external_sources import (
     ExternalSourceUpdate,
     LookupCandidateOut,
     NormalizedFieldsOut,
+    SourceHealthOut,
     SourceLookupOut,
+    SourceProbeOut,
+    SourceProbeRequest,
 )
 from sooljang.application.external_sources import (
     PinHostMismatchError,
     create_source,
     delete_source,
+    get_health,
     get_owned_source,
     list_sources,
     lookup_product,
     pin_match,
+    probe_source,
     unpin_match,
     update_source,
 )
@@ -67,6 +72,43 @@ async def create_external_source(
         note=payload.note,
     )
     return ExternalSourceOut.model_validate(source)
+
+
+@router.get("/health", response_model=list[SourceHealthOut], summary="소스별 최근 조회 이력 요약")
+async def get_sources_health(session: SessionDep, user_id: UserDep) -> list[SourceHealthOut]:
+    health = await get_health(session, user_id=user_id)
+    return [
+        SourceHealthOut(
+            source_id=entry.source_id,
+            source_name=entry.source_name,
+            status=entry.status,
+            last_success_at=entry.last_success_at,
+            consecutive_failures=entry.consecutive_failures,
+            last_warning=entry.last_warning,
+        )
+        for entry in health
+    ]
+
+
+@router.post(
+    "/{source_id}/probe",
+    response_model=SourceProbeOut,
+    summary="샘플 제품명으로 소스를 테스트 조회(캐시에 저장하지 않음)",
+)
+async def probe_external_source(
+    source_id: uuid.UUID, payload: SourceProbeRequest, session: SessionDep, user_id: UserDep
+) -> SourceProbeOut:
+    source = await get_owned_source(session, user_id=user_id, source_id=source_id)
+    if source is None:
+        raise NotFoundError(f"외부 소스를 찾을 수 없습니다: {source_id}")
+    result = await probe_source(session, source=source, sample_name=payload.name.strip())
+    return SourceProbeOut(
+        ok=result.ok,
+        degraded=result.degraded,
+        warning=result.warning,
+        matched_name=result.matched_name,
+        match_score=result.match_score,
+    )
 
 
 @router.patch("/{source_id}", response_model=ExternalSourceOut, summary="외부 소스 수정")

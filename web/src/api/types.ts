@@ -693,3 +693,27 @@ export interface ExternalMatchInput {
   external_name: string;
   external_key?: string | null;
 }
+
+/** 소스 하나의 최근 조회 이력 요약(Task 34 PR4). */
+export interface SourceHealth {
+  source_id: string;
+  source_name: string;
+  /** "healthy"(정상) | "degraded"(부분 실패) | "failing"(연속 실패) | "unknown"(이력 없음) */
+  status: "healthy" | "degraded" | "failing" | "unknown";
+  last_success_at: string | null;
+  consecutive_failures: number;
+  last_warning: string | null;
+}
+
+export interface SourceProbeRequest {
+  name: string;
+}
+
+/** 테스트 조회 결과. 캐시에는 저장되지 않는다. */
+export interface SourceProbeResult {
+  ok: boolean;
+  degraded: boolean;
+  warning: string | null;
+  matched_name: string | null;
+  match_score: number | null;
+}
