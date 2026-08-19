@@ -18,6 +18,7 @@ from sooljang.api.schemas.external_sources import (
     ExternalSourceOut,
     ExternalSourceUpdate,
     LookupCandidateOut,
+    NormalizedFieldsOut,
     SourceLookupOut,
 )
 from sooljang.application.external_sources import (
@@ -126,6 +127,19 @@ async def lookup_external_sources(
                 )
                 for candidate in result.candidates
             ],
+            normalized=NormalizedFieldsOut(
+                price_krw=result.normalized.price_krw,
+                list_price_krw=result.normalized.list_price_krw,
+                currency=result.normalized.currency,
+                volume_ml=result.normalized.volume_ml,
+                rating=result.normalized.rating,
+                rating_scale=result.normalized.rating_scale,
+                rating_normalized=result.normalized.rating_normalized,
+                review_count=result.normalized.review_count,
+                in_stock=result.normalized.in_stock,
+                price_per_100ml=result.normalized.price_per_100ml,
+                extra=result.normalized.extra,
+            ),
         )
         for result in results
     ]

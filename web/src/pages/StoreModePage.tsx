@@ -254,7 +254,12 @@ function StoreModeSummary({
         </button>
       </div>
 
-      <ExternalInfoCard productId={productId} productName={product.name} offline={offline} />
+      <ExternalInfoCard
+        productId={productId}
+        productName={product.name}
+        offline={offline}
+        myPricePer100ml={product.metrics.price_per_100ml_paid}
+      />
     </section>
   );
 }
