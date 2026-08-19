@@ -16,18 +16,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError
 from sooljang.application.external_sources import (
+    FAILING_THRESHOLD,
+    PROBE_HISTORY_LIMIT,
     PinHostMismatchError,
     create_source,
     delete_source,
+    get_health,
     get_owned_source,
     list_sources,
     lookup_product,
     pin_match,
+    probe_source,
     reset_rate_limit_history,
     unpin_match,
     update_source,
 )
-from sooljang.infrastructure.database.models import Category, ExternalLookupCache, Product
+from sooljang.infrastructure.database.models import (
+    Category,
+    ExternalLookupCache,
+    ExternalSourceProbe,
+    Product,
+)
 from sooljang.infrastructure.external.adapter import reset_robots_cache
 
 USER_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
@@ -667,3 +676,193 @@ class TestNormalizedFields:
 
         assert results[0].cached is False
         assert len(call_log) > 0
+
+
+class TestHealth:
+    """소스 헬스 체크(Task 34 PR4). `external_lookup_cache` 는 성공한 조회만 담아
+    실패 이력이 남는 곳이 없었다 — `external_source_probe` 가 그 공백을 메운다."""
+
+    async def test_실제_조회는_헬스_로그에_남는다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        health = await get_health(session, user_id=USER_ID)
+        assert len(health) == 1
+        assert health[0].source_id == source.id
+        assert health[0].status == "healthy"
+        assert health[0].consecutive_failures == 0
+        assert health[0].last_success_at is not None
+
+    async def test_캐시_적중은_새_헬스_기록을_남기지_않는다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+        probes_after_first = list(await session.scalars(select(ExternalSourceProbe)))
+        assert len(probes_after_first) == 1
+
+        # 두 번째 조회는 캐시 적중이라 실제 시도가 아니다.
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        probes_after_second = list(await session.scalars(select(ExternalSourceProbe)))
+        assert len(probes_after_second) == 1
+
+    async def test_실패가_연속_3회_이상이면_failing(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        for _ in range(FAILING_THRESHOLD):
+            await lookup_product(
+                session, user_id=USER_ID, product=product, transport=_not_found_transport()
+            )
+
+        health = await get_health(session, user_id=USER_ID)
+        assert health[0].source_id == source.id
+        assert health[0].status == "failing"
+        assert health[0].consecutive_failures == FAILING_THRESHOLD
+
+    async def test_실패_2회는_failing이_아니라_degraded(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        for _ in range(FAILING_THRESHOLD - 1):
+            await lookup_product(
+                session, user_id=USER_ID, product=product, transport=_not_found_transport()
+            )
+
+        health = await get_health(session, user_id=USER_ID)
+        assert health[0].status == "degraded"
+        assert health[0].consecutive_failures == FAILING_THRESHOLD - 1
+
+    async def test_실패_후_성공하면_연속_실패가_0으로_리셋된다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_not_found_transport()
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        health = await get_health(session, user_id=USER_ID)
+        assert health[0].status == "healthy"
+        assert health[0].consecutive_failures == 0
+
+    async def test_이력이_20개를_넘으면_오래된_것부터_삭제된다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        # rate limit 이 롤링 로그 검증을 방해하지 않도록 충분히 넉넉하게 둔다.
+        source.rate_limit_per_min = PROBE_HISTORY_LIMIT + 5
+        await session.flush()
+
+        for _ in range(PROBE_HISTORY_LIMIT + 3):
+            await lookup_product(
+                session, user_id=USER_ID, product=product, transport=_not_found_transport()
+            )
+
+        probes = list(await session.scalars(select(ExternalSourceProbe)))
+        assert len(probes) == PROBE_HISTORY_LIMIT
+
+    async def test_테스트_조회는_캐시에_저장하지_않지만_헬스_로그에는_남는다(
+        self, session: AsyncSession
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        result = await probe_source(
+            session, source=source, sample_name="글렌피딕 12년", transport=_found_transport()
+        )
+
+        assert result.ok is True
+        cached_rows = list(await session.scalars(select(ExternalLookupCache)))
+        assert cached_rows == []
+        probes = list(await session.scalars(select(ExternalSourceProbe)))
+        assert len(probes) == 1
+        assert probes[0].ok is True
+
+    async def test_소스_삭제시_probe_행이_cascade_삭제된다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+
+        await session.delete(source)
+        await session.flush()
+
+        probes = list(await session.scalars(select(ExternalSourceProbe)))
+        assert probes == []
+
+    async def test_등록만_하고_조회한_적_없으면_unknown(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        health = await get_health(session, user_id=USER_ID)
+
+        assert health[0].source_id == source.id
+        assert health[0].status == "unknown"
+        assert health[0].last_success_at is None

@@ -38,7 +38,10 @@ import type {
   SavedViewInput,
   SetupStatus,
   Sku,
+  SourceHealth,
   SourceLookupResult,
+  SourceProbeRequest,
+  SourceProbeResult,
   StatsSummary,
   SyncBatchResponse,
   SyncOperationRequest,
@@ -500,6 +503,17 @@ export const externalSourcesApi = {
 
   unpinMatch: (productId: string, sourceId: string) =>
     request<void>(`/products/${productId}/external-matches/${sourceId}`, { method: "DELETE" }),
+
+  /** 소스별 최근 조회 이력 요약(Task 34 PR4). */
+  health: (signal?: AbortSignal) =>
+    request<SourceHealth[]>("/external-sources/health", signal ? { signal } : {}),
+
+  /** 샘플 제품명으로 소스를 테스트 조회한다. 캐시에는 저장되지 않는다. */
+  probe: (sourceId: string, input: SourceProbeRequest) =>
+    request<SourceProbeResult>(`/external-sources/${sourceId}/probe`, {
+      method: "POST",
+      body: input,
+    }),
 };
 
 /** 라벨 OCR(Task 17). Vision LLM 호출이라 온라인 전용이다 — outbox 를 거치지 않는다.

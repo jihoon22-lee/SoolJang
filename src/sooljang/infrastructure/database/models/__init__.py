@@ -13,6 +13,7 @@ from sooljang.infrastructure.database.models.external_source import (
     ExternalLookupCache,
     ExternalProductMatch,
     ExternalSource,
+    ExternalSourceProbe,
 )
 from sooljang.infrastructure.database.models.inventory import (
     IN_STOCK_STATUSES,
@@ -61,6 +62,7 @@ __all__ = [
     "ExternalLookupCache",
     "ExternalProductMatch",
     "ExternalSource",
+    "ExternalSourceProbe",
     "LlmProvider",
     "LlmSetting",
     "OutboxReceipt",

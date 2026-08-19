@@ -3,9 +3,17 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { type FormEvent, useState } from "react";
 
 import { ApiError, externalSourcesApi } from "@/api/client";
-import type { ExternalSource, ExternalSourceInput } from "@/api/types";
+import type { ExternalSource, ExternalSourceInput, SourceHealth } from "@/api/types";
 import { formatCategoryPath } from "@/format";
 import { getCategoryTree } from "@/sync/queries";
+
+//: 헬스 상태별 화면 표시 문구(Task 34 PR4).
+const HEALTH_LABELS: Record<SourceHealth["status"], string> = {
+  healthy: "정상",
+  degraded: "부분 실패",
+  failing: "실패",
+  unknown: "미확인",
+};
 
 interface SourceFormState {
   name: string;
@@ -105,6 +113,11 @@ export function SourcesPage() {
     queryKey: ["external-sources"],
     queryFn: ({ signal }) => externalSourcesApi.list(signal),
   });
+  const health = useQuery({
+    queryKey: ["external-sources-health"],
+    queryFn: ({ signal }) => externalSourcesApi.health(signal),
+  });
+  const healthBySourceId = new Map((health.data ?? []).map((entry) => [entry.source_id, entry]));
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<SourceFormState>(EMPTY_FORM);
@@ -191,31 +204,21 @@ export function SourcesPage() {
       {sources.data && sources.data.length > 0 && (
         <ul className="vendor-list">
           {sources.data.map((source) => (
-            <li className="vendor-row" key={source.id}>
-              <span className="name">{source.name}</span>
-              <span className="muted">{source.base_url}</span>
-              <span className="muted">{source.is_active ? "활성" : "비활성"}</span>
-              <span className="muted">우선순위 {source.priority}</span>
-              <span className="muted">
-                {source.category_id
+            <SourceRow
+              key={source.id}
+              source={source}
+              health={healthBySourceId.get(source.id)}
+              categoryPath={
+                source.category_id
                   ? formatCategoryPath(
                       categories.find((c) => c.id === source.category_id)?.path ?? [],
                     )
-                  : "전체 주종"}
-              </span>
-              <div className="button-row">
-                <button type="button" onClick={() => startEdit(source)}>
-                  수정
-                </button>
-                <button
-                  type="button"
-                  onClick={() => remove.mutate(source.id)}
-                  disabled={remove.isPending}
-                >
-                  삭제
-                </button>
-              </div>
-            </li>
+                  : "전체 주종"
+              }
+              onEdit={() => startEdit(source)}
+              onRemove={() => remove.mutate(source.id)}
+              removing={remove.isPending}
+            />
           ))}
         </ul>
       )}
@@ -362,5 +365,95 @@ export function SourcesPage() {
         </div>
       </form>
     </section>
+  );
+}
+
+/**
+ * 소스 한 행 — 등록 정보에 더해 헬스 배지와 "테스트 조회" 를 붙인다(Task 34 PR4).
+ *
+ * 실제 소유한 제품이 없어도 샘플 이름으로 소스가 지금 살아 있는지 바로 확인할 수 있게
+ * 한다. 결과는 캐시에 저장되지 않고 헬스 로그에만 남는다(`POST .../probe`).
+ */
+function SourceRow({
+  source,
+  health,
+  categoryPath,
+  onEdit,
+  onRemove,
+  removing,
+}: {
+  source: ExternalSource;
+  health: SourceHealth | undefined;
+  categoryPath: string;
+  onEdit: () => void;
+  onRemove: () => void;
+  removing: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [probeOpen, setProbeOpen] = useState(false);
+  const [sampleName, setSampleName] = useState(source.name);
+
+  const probe = useMutation({
+    mutationFn: () => externalSourcesApi.probe(source.id, { name: sampleName.trim() }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["external-sources-health"] }),
+  });
+
+  const status = health?.status ?? "unknown";
+
+  return (
+    <li className="vendor-row">
+      <span className="name">{source.name}</span>
+      <span className="muted">{source.base_url}</span>
+      <span className="muted">{source.is_active ? "활성" : "비활성"}</span>
+      <span className="muted">우선순위 {source.priority}</span>
+      <span className="muted">{categoryPath}</span>
+      <span className="badge">{HEALTH_LABELS[status]}</span>
+      {health?.last_warning && <span className="muted text-sm">{health.last_warning}</span>}
+
+      <div className="button-row">
+        <button type="button" onClick={onEdit}>
+          수정
+        </button>
+        <button type="button" onClick={onRemove} disabled={removing}>
+          삭제
+        </button>
+        <button type="button" onClick={() => setProbeOpen((open) => !open)}>
+          {probeOpen ? "테스트 조회 닫기" : "테스트 조회"}
+        </button>
+      </div>
+
+      {probeOpen && (
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor={`probe-name-${source.id}`}>샘플 제품명</label>
+            <input
+              id={`probe-name-${source.id}`}
+              value={sampleName}
+              onChange={(event) => setSampleName(event.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => probe.mutate()}
+            disabled={probe.isPending || !sampleName.trim()}
+          >
+            {probe.isPending ? "조회 중…" : "실행"}
+          </button>
+        </div>
+      )}
+
+      {probe.isSuccess && (
+        <output className="notice text-sm">
+          {probe.data.ok ? `성공 — 매칭: ${probe.data.matched_name ?? "확인 안 됨"}` : "실패"}
+          {probe.data.warning && ` (${probe.data.warning})`}
+        </output>
+      )}
+      {probe.isError && (
+        <p className="alert" role="alert">
+          테스트 조회에 실패했습니다:{" "}
+          {probe.error instanceof Error ? probe.error.message : "알 수 없는 오류"}
+        </p>
+      )}
+    </li>
   );
 }

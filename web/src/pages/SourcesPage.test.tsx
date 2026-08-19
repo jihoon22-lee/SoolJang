@@ -51,6 +51,12 @@ function sourceRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+//: `.includes()` 매칭이라 "/external-sources" 가 "/external-sources/health" 의 부분
+//: 문자열이기도 하다 — 이 스텁을 먼저 둬야 health 요청이 목록 스텁에 가로채이지 않는다.
+function emptyHealthRoute() {
+  return { match: "/external-sources/health", method: "GET", body: [] };
+}
+
 beforeEach(async () => {
   await db.open();
 });
@@ -62,7 +68,7 @@ afterEach(async () => {
 
 describe("SourcesPage", () => {
   it("소스가 없으면 안내한다", async () => {
-    stubRoutes([{ match: "/external-sources", method: "GET", body: [] }]);
+    stubRoutes([emptyHealthRoute(), { match: "/external-sources", method: "GET", body: [] }]);
 
     renderWithQuery(<SourcesPage />);
 
@@ -70,7 +76,10 @@ describe("SourcesPage", () => {
   });
 
   it("등록된 소스를 목록으로 보여준다", async () => {
-    stubRoutes([{ match: "/external-sources", method: "GET", body: [sourceRow()] }]);
+    stubRoutes([
+      emptyHealthRoute(),
+      { match: "/external-sources", method: "GET", body: [sourceRow()] },
+    ]);
 
     renderWithQuery(<SourcesPage />);
 
@@ -82,8 +91,72 @@ describe("SourcesPage", () => {
     expect(row).toHaveTextContent("전체 주종");
   });
 
+  it("헬스 이력이 없으면 미확인 배지를 보여준다", async () => {
+    stubRoutes([
+      emptyHealthRoute(),
+      { match: "/external-sources", method: "GET", body: [sourceRow()] },
+    ]);
+
+    renderWithQuery(<SourcesPage />);
+
+    const row = (await screen.findByText("데일리샷")).closest("li");
+    expect(row).toHaveTextContent("미확인");
+  });
+
+  it("헬스가 failing 이면 실패 배지와 경고를 보여준다", async () => {
+    stubRoutes([
+      {
+        match: "/external-sources/health",
+        method: "GET",
+        body: [
+          {
+            source_id: "src-1",
+            source_name: "데일리샷",
+            status: "failing",
+            last_success_at: null,
+            consecutive_failures: 3,
+            last_warning: "검색 결과에서 후보를 찾지 못했습니다",
+          },
+        ],
+      },
+      { match: "/external-sources", method: "GET", body: [sourceRow()] },
+    ]);
+
+    renderWithQuery(<SourcesPage />);
+
+    const row = (await screen.findByText("데일리샷")).closest("li");
+    expect(row).toHaveTextContent("실패");
+    expect(row).toHaveTextContent("검색 결과에서 후보를 찾지 못했습니다");
+  });
+
+  it("테스트 조회를 실행하면 결과를 인라인으로 보여준다", async () => {
+    const { calls } = stubRoutes([
+      emptyHealthRoute(),
+      { match: "/external-sources", method: "GET", body: [sourceRow()] },
+      {
+        match: "/external-sources/src-1/probe",
+        method: "POST",
+        body: {
+          ok: true,
+          degraded: false,
+          warning: null,
+          matched_name: "데일리샷 글렌피딕 12년",
+          match_score: 0.9,
+        },
+      },
+    ]);
+
+    renderWithQuery(<SourcesPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "테스트 조회" }));
+    await userEvent.click(screen.getByRole("button", { name: "실행" }));
+
+    expect(await screen.findByText(/성공 — 매칭: 데일리샷 글렌피딕 12년/)).toBeInTheDocument();
+    expect(calls.some((call) => call.method === "POST" && call.url.includes("/probe"))).toBe(true);
+  });
+
   it("새 소스를 등록하면 입력한 값으로 요청을 보낸다", async () => {
     const { calls } = stubRoutes([
+      emptyHealthRoute(),
       { match: "/external-sources", method: "GET", body: [] },
       { match: "/external-sources", method: "POST", status: 201, body: sourceRow() },
     ]);
@@ -108,7 +181,10 @@ describe("SourcesPage", () => {
   });
 
   it("adapter_spec 이 잘못된 JSON이면 요청을 보내지 않고 오류를 보여준다", async () => {
-    const { calls } = stubRoutes([{ match: "/external-sources", method: "GET", body: [] }]);
+    const { calls } = stubRoutes([
+      emptyHealthRoute(),
+      { match: "/external-sources", method: "GET", body: [] },
+    ]);
 
     renderWithQuery(<SourcesPage />);
     await screen.findByText("등록된 외부 소스가 없습니다.");
@@ -125,7 +201,10 @@ describe("SourcesPage", () => {
   });
 
   it("수정을 누르면 현재 값이 채워진 폼이 열린다", async () => {
-    stubRoutes([{ match: "/external-sources", method: "GET", body: [sourceRow()] }]);
+    stubRoutes([
+      emptyHealthRoute(),
+      { match: "/external-sources", method: "GET", body: [sourceRow()] },
+    ]);
 
     renderWithQuery(<SourcesPage />);
     await userEvent.click(await screen.findByRole("button", { name: "수정" }));
@@ -137,7 +216,7 @@ describe("SourcesPage", () => {
 
   it("적용 주종 select 에 카테고리 목록이 채워진다", async () => {
     await db.category.put(categoryRow({}));
-    stubRoutes([{ match: "/external-sources", method: "GET", body: [] }]);
+    stubRoutes([emptyHealthRoute(), { match: "/external-sources", method: "GET", body: [] }]);
 
     renderWithQuery(<SourcesPage />);
     await screen.findByText("등록된 외부 소스가 없습니다.");
@@ -147,6 +226,7 @@ describe("SourcesPage", () => {
 
   it("삭제를 누르면 삭제 요청을 보낸다", async () => {
     const { calls } = stubRoutes([
+      emptyHealthRoute(),
       { match: "/external-sources", method: "GET", body: [sourceRow()] },
       { match: "/external-sources", method: "DELETE", status: 204, body: null },
     ]);

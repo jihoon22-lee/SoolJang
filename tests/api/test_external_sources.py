@@ -152,4 +152,36 @@ def test_등록된_소스가_없으면_조회는_빈_목록(api_client: TestClie
     response = api_client.post(f"{prefix}/products/{product_id}/external-lookup")
 
     assert response.status_code == 200, response.text
+
+
+def test_소스가_없으면_헬스는_빈_목록(api_client: TestClient, prefix: str) -> None:
+    response = api_client.get(f"{prefix}/external-sources/health")
+
+    assert response.status_code == 200, response.text
     assert response.json() == []
+
+
+def test_이력이_없으면_헬스_상태는_unknown(api_client: TestClient, prefix: str) -> None:
+    source = _create_source(api_client, prefix)
+
+    response = api_client.get(f"{prefix}/external-sources/health")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["source_id"] == source["id"]
+    assert body[0]["status"] == "unknown"
+    assert body[0]["consecutive_failures"] == 0
+
+
+def test_헬스_조회는_로그인하지_않으면_거부한다(anon_client: TestClient, prefix: str) -> None:
+    response = anon_client.get(f"{prefix}/external-sources/health")
+    assert response.status_code == 401, response.text
+
+
+def test_없는_소스로_테스트_조회하면_404(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(
+        f"{prefix}/external-sources/00000000-0000-0000-0000-0000000000ff/probe",
+        json={"name": "글렌피딕 12년"},
+    )
+    assert response.status_code == 404, response.text

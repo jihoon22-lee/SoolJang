@@ -125,3 +125,31 @@ class ExternalProductMatchOut(BaseModel):
     external_name: str
     external_key: str | None
     confirmed_at: datetime
+
+
+class SourceHealthOut(BaseModel):
+    """소스 하나의 최근 조회 이력 요약(Task 34 PR4)."""
+
+    source_id: uuid.UUID
+    source_name: str
+    #: "healthy"(정상) | "degraded"(부분 실패) | "failing"(연속 실패) | "unknown"(이력 없음)
+    status: str
+    last_success_at: datetime | None
+    consecutive_failures: int
+    last_warning: str | None
+
+
+class SourceProbeRequest(BaseModel):
+    """헬스 화면의 "테스트 조회" 요청. 실제 소유한 제품이 아닌 샘플 이름으로 조회한다."""
+
+    name: str = Field(min_length=1, max_length=200)
+
+
+class SourceProbeOut(BaseModel):
+    """테스트 조회 결과. 값은 화면에만 보여줄 뿐 캐시에는 저장되지 않는다."""
+
+    ok: bool
+    degraded: bool
+    warning: str | None
+    matched_name: str | None
+    match_score: float | None

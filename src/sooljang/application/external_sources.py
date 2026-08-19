@@ -27,6 +27,7 @@ from sooljang.infrastructure.database.models import (
     ExternalLookupCache,
     ExternalProductMatch,
     ExternalSource,
+    ExternalSourceProbe,
     Product,
     Sku,
 )
@@ -227,6 +228,186 @@ async def unpin_match(
     return True
 
 
+# --- 소스 헬스 체크 (Task 34 PR4) ----------------------------------------------
+
+#: 소스별로 유지할 최근 시도 기록 개수(롤링 로그). 헬스 판정에 필요한 것보다 넉넉히
+#: 잡아 뒀다 — 화면에서 최근 이력을 몇 개 더 보여주고 싶어져도 여유가 있게.
+PROBE_HISTORY_LIMIT = 20
+#: 가장 최근 시도부터 연속 실패가 이 값 이상이면 헬스를 "failing" 으로 본다.
+FAILING_THRESHOLD = 3
+
+
+@dataclass(frozen=True, slots=True)
+class SourceHealth:
+    """소스 하나의 최근 조회 이력 요약."""
+
+    source_id: uuid.UUID
+    source_name: str
+    #: "healthy"(정상) | "degraded"(부분 실패) | "failing"(연속 실패) | "unknown"(이력 없음)
+    status: str
+    last_success_at: datetime | None
+    #: 가장 최근 시도부터 센 연속 실패 횟수. 성공이 하나라도 나오면 거기서 멈춘다.
+    consecutive_failures: int
+    last_warning: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeResult:
+    """`probe_source` 한 번의 결과. 캐시에는 안 남기고 헬스 로그에만 기록한다."""
+
+    ok: bool
+    degraded: bool
+    warning: str | None
+    matched_name: str | None
+    match_score: float | None
+
+
+async def _trim_probes(session: AsyncSession, *, source_id: uuid.UUID) -> None:
+    """소스별 최근 `PROBE_HISTORY_LIMIT` 개만 남기고 오래된 시도 기록을 지운다."""
+    stale_ids = list(
+        await session.scalars(
+            select(ExternalSourceProbe.id)
+            .where(ExternalSourceProbe.source_id == source_id)
+            .order_by(ExternalSourceProbe.attempted_at.desc())
+            .offset(PROBE_HISTORY_LIMIT)
+        )
+    )
+    if stale_ids:
+        await session.execute(
+            delete(ExternalSourceProbe).where(ExternalSourceProbe.id.in_(stale_ids))
+        )
+
+
+async def _record_probe(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    source_id: uuid.UUID,
+    ok: bool,
+    degraded: bool,
+    warning: str | None,
+    attempted_at: datetime,
+) -> None:
+    """소스에 실제로 조회를 시도한 결과 하나를 헬스 로그에 남긴다.
+
+    `external_lookup_cache` 는 성공한 조회만 담아(절대 규칙 7) 실패 이력이 남는 곳이
+    없었다. 캐시 적중은 실제 시도가 아니므로 여기 기록하지 않는다 — 사이트가 지금
+    살아 있는지를 보려는 것이지, 캐시 재사용 빈도를 보려는 게 아니다.
+    """
+    session.add(
+        ExternalSourceProbe(
+            user_id=user_id,
+            source_id=source_id,
+            attempted_at=attempted_at,
+            ok=ok,
+            degraded=degraded,
+            warning=warning,
+        )
+    )
+    await session.flush()
+    await _trim_probes(session, source_id=source_id)
+    await session.flush()
+
+
+def _summarize_health(source: ExternalSource, probes: list[ExternalSourceProbe]) -> SourceHealth:
+    """최근 시도 기록(최신순)에서 헬스 상태를 계산한다."""
+    if not probes:
+        return SourceHealth(
+            source_id=source.id,
+            source_name=source.name,
+            status="unknown",
+            last_success_at=None,
+            consecutive_failures=0,
+            last_warning=None,
+        )
+
+    consecutive_failures = 0
+    for probe in probes:
+        if probe.ok:
+            break
+        consecutive_failures += 1
+
+    last_success_at = next((probe.attempted_at for probe in probes if probe.ok), None)
+    latest = probes[0]
+
+    if consecutive_failures >= FAILING_THRESHOLD:
+        status = "failing"
+    elif not latest.ok or latest.degraded:
+        status = "degraded"
+    else:
+        status = "healthy"
+
+    return SourceHealth(
+        source_id=source.id,
+        source_name=source.name,
+        status=status,
+        last_success_at=last_success_at,
+        consecutive_failures=consecutive_failures,
+        last_warning=latest.warning,
+    )
+
+
+async def get_health(session: AsyncSession, *, user_id: uuid.UUID) -> list[SourceHealth]:
+    """사용자가 등록한 소스마다 최근 이력을 요약한다. 등록 순서를 그대로 따른다."""
+    sources = await list_sources(session, user_id=user_id)
+    results: list[SourceHealth] = []
+    for source in sources:
+        probes = list(
+            await session.scalars(
+                select(ExternalSourceProbe)
+                .where(ExternalSourceProbe.source_id == source.id)
+                .order_by(ExternalSourceProbe.attempted_at.desc())
+                .limit(PROBE_HISTORY_LIMIT)
+            )
+        )
+        results.append(_summarize_health(source, probes))
+    return results
+
+
+async def probe_source(
+    session: AsyncSession,
+    *,
+    source: ExternalSource,
+    sample_name: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> ProbeResult:
+    """샘플 제품명으로 소스를 테스트 조회한다.
+
+    실제로 소유한 제품이 아니므로 `external_lookup_cache` 에는 저장하지 않는다 —
+    이 결과가 다른 조회에 섞여 들어가면 안 된다. 대신 헬스 로그에는 남긴다. 이 함수가
+    바로 그 소스에 지금 무슨 일이 있는지 확인하는 유일한 온디맨드 수단이라, 여기서
+    기록하지 않으면 사용자가 "테스트 조회" 를 눌러도 헬스 화면에 반영되지 않는다.
+    """
+    identity = ProductIdentity(
+        name=sample_name,
+        name_en=None,
+        producer=None,
+        abv=None,
+        vintage=None,
+        age_years=None,
+        volumes_ml=(),
+    )
+    result = await fetch_snapshot(
+        source.adapter_spec, base_url=source.base_url, identity=identity, transport=transport
+    )
+    await _record_probe(
+        session,
+        user_id=source.user_id,
+        source_id=source.id,
+        ok=result.ok,
+        degraded=result.degraded,
+        warning=result.warning,
+        attempted_at=datetime.now(UTC),
+    )
+    return ProbeResult(
+        ok=result.ok,
+        degraded=result.degraded,
+        warning=result.warning,
+        matched_name=result.matched_name,
+        match_score=result.match_score,
+    )
+
+
 # --- 온디맨드 조회 ------------------------------------------------------------
 
 
@@ -411,6 +592,18 @@ async def lookup_product(
                 )
             )
             await session.flush()
+
+        # 실제 시도였으니 헬스 로그에 남긴다(캐시 적중·rate limit 스킵은 시도가 아니라
+        # 위 두 continue 에서 이미 걸러졌다).
+        await _record_probe(
+            session,
+            user_id=user_id,
+            source_id=source.id,
+            ok=adapter_result.ok,
+            degraded=adapter_result.degraded,
+            warning=adapter_result.warning,
+            attempted_at=fetched_at,
+        )
 
         results.append(
             SourceLookupResult(
