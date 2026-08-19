@@ -49,6 +49,15 @@ class ExternalSourceOut(BaseModel):
     note: str | None
 
 
+class LookupCandidateOut(BaseModel):
+    """검색 결과 후보 하나. 사용자가 이 중 하나를 골라 고정할 수 있다(Task 34 PR1)."""
+
+    name: str
+    url: str
+    key: str | None
+    score: float
+
+
 class SourceLookupOut(BaseModel):
     """소스 하나의 조회 결과. `degraded` 면 `fields` 가 일부만 채워졌을 수 있다."""
 
@@ -61,3 +70,32 @@ class SourceLookupOut(BaseModel):
     degraded: bool
     warning: str | None
     fetched_at: datetime | None
+    #: 실제로 매칭된 상품명과 그 점수. 값이 있어도 이 이름이 엉뚱하면 사용자가 바로
+    #: 알아채고 고칠 수 있어야 한다는 것이 Task 34 PR1 의 요지다.
+    matched_name: str | None = None
+    match_score: float | None = None
+    #: 점수가 자동 채택 구간에 못 미쳐 사용자 확인이 필요한지.
+    needs_confirmation: bool = False
+    #: 사용자가 고정해 둔 매칭으로 조회한 결과인지.
+    pinned: bool = False
+    candidates: list[LookupCandidateOut] = Field(default_factory=list)
+
+
+class ExternalProductMatchCreate(BaseModel):
+    """ "이 제품 = 이 소스의 이 상품" 고정 요청."""
+
+    source_id: uuid.UUID
+    external_url: str = Field(min_length=1)
+    external_name: str = Field(min_length=1)
+    external_key: str | None = Field(default=None, max_length=200)
+
+
+class ExternalProductMatchOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source_id: uuid.UUID
+    product_id: uuid.UUID
+    external_url: str
+    external_name: str
+    external_key: str | None
+    confirmed_at: datetime

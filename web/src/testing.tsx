@@ -10,7 +10,13 @@ export function renderWithQuery(node: ReactNode): RenderResult {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+  const wrap = (child: ReactNode) => (
+    <QueryClientProvider client={client}>{child}</QueryClientProvider>
+  );
+  const result = render(wrap(node));
+  // `rerender` 를 그대로 노출하면 provider 가 빠진 트리로 교체돼 훅이 터진다.
+  // prop 을 바꿔 다시 그리는 테스트(오프라인 전환 등)를 위해 감싸서 돌려준다.
+  return { ...result, rerender: (next: ReactNode) => result.rerender(wrap(next)) };
 }
 
 /** 테스트용 로그인 사용자. */

@@ -87,3 +87,56 @@ class ExternalLookupCache(Base, EntityMixin):
 
     def __repr__(self) -> str:
         return f"<ExternalLookupCache source={self.source_id} product={self.product_id}>"
+
+
+class ExternalProductMatch(Base, EntityMixin):
+    """ "이 제품 = 이 소스의 이 상품" 을 사용자가 확정한 기록(Task 34 PR1).
+
+    이름 유사도 매칭은 아무리 좋아져도 100% 가 되지 않는다. 틀렸을 때 사용자가 한 번
+    고쳐 두면 그 제품은 영구히 정확해지도록 하는 것이 이 테이블의 목적이다 — 조회할
+    때마다 후보를 다시 고르지 않고 여기 적힌 상품을 그대로 쓴다.
+
+    **고정은 사용자의 명시적 조작으로만 만들어진다.** 점수가 높다고 자동으로 고정하지
+    않는다(오답을 영구화할 위험). LLM 재판정(Task 34 PR6)도 추천만 하고 고정은 사용자
+    확인을 받는다.
+
+    `external_url` 이 NOT NULL 인 것은 §8 절대 규칙 7("외부 데이터는 출처 URL 없이
+    저장하지 않는다")의 귀결이다 — 출처를 모르는 고정은 성립하지 않는다.
+
+    동기화 대상이 아니다(`SYNC_ENTITIES` 에 넣지 않는다). 외부 조회 자체가 온라인
+    전용이고, `external_source`·`external_lookup_cache` 도 같은 이유로 빠져 있다.
+    """
+
+    __tablename__ = "external_product_match"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=False
+    )
+    #: 고정된 상품의 출처 URL. 조회 시점에도 소스의 `base_url` 과 같은 호스트인지 다시
+    #: 확인한다 — 저장 후에 `base_url` 이 바뀔 수 있다(SSRF 방어, §7.2).
+    external_url: Mapped[str] = mapped_column(Text, nullable=False)
+    #: 화면에 "무엇으로 고정했는지" 보여주기 위한 상품명.
+    external_name: Mapped[str] = mapped_column(Text, nullable=False)
+    #: JSON API 아이템 식별자. `search.result_fields` 모드는 상세 페이지를 조회하지 않아
+    #: 검색 결과에서 고정된 항목을 되찾아야 하는데, 그때 이 값으로 찾는다.
+    external_key: Mapped[str | None] = mapped_column(String(200), default=None)
+    confirmed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        # 부분 유니크 인덱스. `uq_product_identity` 선례를 따른다 — soft delete 된 행이
+        # 자리를 차지해 같은 (소스, 제품) 을 다시 고정하지 못하게 되는 것을 막는다.
+        Index(
+            "uq_external_product_match_identity",
+            "source_id",
+            "product_id",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
+        Index("ix_external_product_match_user_id_product_id", "user_id", "product_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExternalProductMatch source={self.source_id} product={self.product_id}>"

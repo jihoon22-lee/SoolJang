@@ -7,22 +7,28 @@
 
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import NotFoundError
 from sooljang.api.schemas.external_sources import (
+    ExternalProductMatchCreate,
+    ExternalProductMatchOut,
     ExternalSourceCreate,
     ExternalSourceOut,
     ExternalSourceUpdate,
+    LookupCandidateOut,
     SourceLookupOut,
 )
 from sooljang.application.external_sources import (
+    PinHostMismatchError,
     create_source,
     delete_source,
     get_owned_source,
     list_sources,
     lookup_product,
+    pin_match,
+    unpin_match,
     update_source,
 )
 from sooljang.application.products import load_product
@@ -107,6 +113,74 @@ async def lookup_external_sources(
             degraded=result.degraded,
             warning=result.warning,
             fetched_at=result.fetched_at,
+            matched_name=result.matched_name,
+            match_score=result.match_score,
+            needs_confirmation=result.needs_confirmation,
+            pinned=result.pinned,
+            candidates=[
+                LookupCandidateOut(
+                    name=candidate.name,
+                    url=candidate.url,
+                    key=candidate.key,
+                    score=candidate.score,
+                )
+                for candidate in result.candidates
+            ],
         )
         for result in results
     ]
+
+
+@lookup_router.post(
+    "/{product_id}/external-matches",
+    response_model=ExternalProductMatchOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="제품과 외부 소스 상품의 매칭을 고정",
+)
+async def create_external_match(
+    product_id: uuid.UUID,
+    payload: ExternalProductMatchCreate,
+    session: SessionDep,
+    user_id: UserDep,
+) -> ExternalProductMatchOut:
+    """이름 유사도가 틀렸을 때 사용자가 직접 상품을 지정한다.
+
+    한 번 고정하면 이후 조회는 유사도를 쓰지 않고 이 상품을 그대로 본다 — 그 제품에
+    한해 정확도가 100% 가 된다.
+    """
+    # 제품 소유권 확인. 없으면 `load_product` 가 404 를 낸다.
+    await load_product(session, user_id=user_id, product_id=product_id)
+    source = await get_owned_source(session, user_id=user_id, source_id=payload.source_id)
+    if source is None:
+        raise NotFoundError(f"외부 소스를 찾을 수 없습니다: {payload.source_id}")
+
+    try:
+        match = await pin_match(
+            session,
+            user_id=user_id,
+            source=source,
+            product_id=product_id,
+            external_url=payload.external_url.strip(),
+            external_name=payload.external_name.strip(),
+            external_key=payload.external_key,
+        )
+    except PinHostMismatchError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return ExternalProductMatchOut.model_validate(match)
+
+
+@lookup_router.delete(
+    "/{product_id}/external-matches/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="매칭 고정 해제",
+)
+async def delete_external_match(
+    product_id: uuid.UUID, source_id: uuid.UUID, session: SessionDep, user_id: UserDep
+) -> None:
+    await load_product(session, user_id=user_id, product_id=product_id)
+    source = await get_owned_source(session, user_id=user_id, source_id=source_id)
+    if source is None:
+        raise NotFoundError(f"외부 소스를 찾을 수 없습니다: {source_id}")
+    await unpin_match(session, source_id=source_id, product_id=product_id)

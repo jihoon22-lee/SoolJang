@@ -10,7 +10,14 @@ from typing import Any
 import httpx
 import pytest
 
-from sooljang.infrastructure.external.adapter import fetch_snapshot, reset_robots_cache
+from sooljang.infrastructure.external.adapter import (
+    AUTO_ACCEPT,
+    MAX_CANDIDATES,
+    MIN_CANDIDATE,
+    PinnedMatch,
+    fetch_snapshot,
+    reset_robots_cache,
+)
 
 #: 도메인별 robots.txt 캐시가 테스트 간에 새지 않게 한다 — 여러 테스트가 같은
 #: `https://example.com` 도메인에 서로 다른 robots.txt 를 흉내 낸다.
@@ -528,3 +535,158 @@ async def test_JSON_url_template에_없는_필드를_참조하면_그_후보만_
     assert result.degraded is True
     assert result.warning is not None
     assert "후보" in result.warning
+
+
+# --- 후보 노출과 매칭 고정(Task 34 PR1) ---------------------------------------
+#: 이름이 서로 다른 상품 셋. 질의를 바꿔 가며 자동 채택·확인 필요·후보 없음 구간을 만든다.
+_MULTI_SEARCH_PAGE = """
+<div class="product-card">
+  <span class="title">글렌피딕 12년</span>
+  <a href="/product/1">보기</a>
+</div>
+<div class="product-card">
+  <span class="title">글렌피딕 15년 솔레라</span>
+  <a href="/product/2">보기</a>
+</div>
+<div class="product-card">
+  <span class="title">글렌피딕 18년 스몰배치</span>
+  <a href="/product/3">보기</a>
+</div>
+"""
+
+
+async def test_자동_채택_구간이면_확인이_필요없고_후보도_함께_온다() -> None:
+    transport = _transport(
+        {"/search": (200, _MULTI_SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)}
+    )
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 12년", transport=transport
+    )
+
+    assert result.matched_name == "글렌피딕 12년"
+    assert result.match_score is not None and result.match_score >= AUTO_ACCEPT
+    assert result.needs_confirmation is False
+    # 자동 채택이어도 후보는 준다 — 사용자가 다른 것을 고를 수 있어야 한다.
+    assert [candidate.name for candidate in result.candidates][0] == "글렌피딕 12년"
+    assert len(result.candidates) == 3
+
+
+async def test_확인_필요_구간이면_값은_주되_needs_confirmation을_세운다() -> None:
+    transport = _transport(
+        {"/search": (200, _MULTI_SEARCH_PAGE), "/product/2": (200, _DETAIL_PAGE_FULL)}
+    )
+
+    # "글렌피딕 15년" 은 오히려 "글렌피딕 12년" 과 0.857 로 더 비슷하다(한 글자 차이) —
+    # 자동 채택 구간에 걸려 이 테스트의 의도를 벗어난다. 연식을 빼고 수식어만 남기면
+    # 0.824 로 확인 필요 구간에 정확히 들어간다.
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 솔레라", transport=transport
+    )
+
+    assert result.fields["price"] == 35000.0
+    assert result.matched_name == "글렌피딕 15년 솔레라"
+    assert MIN_CANDIDATE <= (result.match_score or 0) < AUTO_ACCEPT
+    assert result.needs_confirmation is True
+
+
+async def test_점수가_낮으면_값_없이_후보만_돌려준다() -> None:
+    transport = _transport({"/search": (200, _MULTI_SEARCH_PAGE)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌드로낙 21년", transport=transport
+    )
+
+    assert result.fields == {}
+    assert result.ok is False
+    assert result.degraded is True
+    # 사용자가 직접 고를 수 있도록 후보는 남긴다.
+    assert len(result.candidates) == 3
+
+
+async def test_후보는_점수_내림차순이고_최대_다섯개다() -> None:
+    many = "".join(
+        f'<div class="product-card"><span class="title">글렌피딕 {n}년</span>'
+        f'<a href="/product/{n}">보기</a></div>'
+        for n in range(1, 9)
+    )
+    transport = _transport({"/search": (200, many), "/product/1": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC, base_url="https://example.com", query="글렌피딕 1년", transport=transport
+    )
+
+    scores = [candidate.score for candidate in result.candidates]
+    assert len(result.candidates) == MAX_CANDIDATES
+    assert scores == sorted(scores, reverse=True)
+
+
+async def test_고정되어_있으면_검색을_아예_건너뛴다() -> None:
+    # 검색 경로를 등록하지 않는다 — 검색을 시도하면 KeyError 로 실패해, 정말로
+    # 건너뛰었는지가 테스트로 강제된다.
+    transport = _transport({"/product/2": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        query="아무 이름이나",
+        transport=transport,
+        pinned=PinnedMatch(external_url="https://example.com/product/2", external_key=None),
+    )
+
+    assert result.source_url == "https://example.com/product/2"
+    assert result.fields["price"] == 35000.0
+    assert result.pinned is True
+    assert result.needs_confirmation is False
+
+
+async def test_고정된_URL_이_다른_호스트면_조회하지_않는다() -> None:
+    transport = _transport({"/product/2": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        query="글렌피딕 12년",
+        transport=transport,
+        pinned=PinnedMatch(external_url="https://evil.example.net/product/2", external_key=None),
+    )
+
+    assert result.source_url is None
+    assert result.degraded is True
+    assert result.warning is not None and "밖" in result.warning
+
+
+async def test_result_fields_모드는_고정돼도_검색하되_키로_고른다() -> None:
+    # 질의는 1번 상품과 훨씬 비슷하지만, 고정된 키가 2번이므로 2번이 선택돼야 한다.
+    transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
+
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        query="글렌피딕 12년",
+        transport=transport,
+        pinned=PinnedMatch(external_url="https://example.com/item/2", external_key="2"),
+    )
+
+    assert result.source_url == "https://example.com/item/2"
+    assert result.fields["price"] == 45000
+    assert result.pinned is True
+
+
+async def test_고정된_상품이_검색결과에서_사라지면_유사도로_폴백하지_않는다() -> None:
+    transport = _transport({"/api/search": (200, _JSON_SEARCH_BODY)})
+
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        query="글렌피딕 12년",
+        transport=transport,
+        pinned=PinnedMatch(external_url="https://example.com/item/99", external_key="99"),
+    )
+
+    assert result.fields == {}
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None and "고정된 상품" in result.warning
+    # 재고정할 수 있도록 후보는 함께 준다.
+    assert len(result.candidates) == 2

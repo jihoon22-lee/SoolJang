@@ -1701,6 +1701,33 @@ button:disabled {
   margin: 0;
 }
 
+/* 매칭 후보 목록(Task 34 PR1). 확신이 낮을 때만 펼쳐 두고, 자동 채택된 결과는
+   "다른 후보 보기" 로 접어 둔다 — 늘 펼치면 카드가 길어지기만 한다. */
+.external-candidate-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.external-candidate {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.external-candidate .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* --- 매장 모드(Task 22 PR10) -------------------------------------------------- */
 
 /* "내 술" 목록 위에 두는 매장 모드 진입 버튼(Task 24 PR4, 항목 6). PC 에서는 매장 모드
