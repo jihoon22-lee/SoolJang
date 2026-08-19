@@ -390,13 +390,15 @@ describe("SourcesPage", () => {
       if (row === null) throw new Error("row not found");
       await userEvent.click(within(row).getByRole("button", { name: "자격 증명" }));
       await userEvent.type(within(row).getByLabelText("이름"), "api_key");
-      await userEvent.type(within(row).getByLabelText("값"), "sk-abcdef1234");
+      await userEvent.type(within(row).getByLabelText("값"), "sk-test-1234567890abcdef"); // scan-secrets-allow
       await userEvent.click(within(row).getByRole("button", { name: "저장" }));
 
       await waitFor(() => {
         const put = calls.find((call) => call.method === "PUT" && call.url.includes("credentials"));
         expect(put).toBeDefined();
-        expect(put?.body).toMatchObject({ values: { api_key: "sk-abcdef1234" } });
+        expect(put?.body).toMatchObject({
+          values: { api_key: "sk-test-1234567890abcdef" }, // scan-secrets-allow
+        });
       });
     });
   });
