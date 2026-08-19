@@ -8,6 +8,10 @@
 재사용하기 위한 캐시이자, 마지막으로 무엇을 봤는지의 기록이다 — 이 앱은 단일 프로세스로만
 배포되므로(§8.1) rate limit·robots.txt 캐시는 애플리케이션 계층 메모리로 충분하고, DB 에는
 재조회를 피하기 위한 TTL 캐시만 둔다.
+
+`ExternalProductMatch` 는 "이 제품 = 이 소스의 이 URL" 매칭을 사용자가 명시적으로 고정한
+기록이다(Task 34 PR1, §7.4). 외부 소스 3형제가 한 파일에 모여 있는 편이 읽기 쉬워 여기에
+함께 둔다.
 """
 
 import datetime
@@ -87,3 +91,50 @@ class ExternalLookupCache(Base, EntityMixin):
 
     def __repr__(self) -> str:
         return f"<ExternalLookupCache source={self.source_id} product={self.product_id}>"
+
+
+class ExternalProductMatch(Base, EntityMixin):
+    """이 제품과 이 소스의 특정 URL 이 같은 상품이라는 사용자 고정(Task 34 PR1, §7.4).
+
+    조회는 기본적으로 매번 검색·유사도 매칭을 다시 한다 — 사용자가 후보 중 하나를
+    "이걸로 고정" 하면 이 행이 생기고, 그 뒤로는 `infrastructure/external/adapter.py` 가
+    `PinnedMatch` 로 이 값을 받아 검색을 건너뛰거나(상세 페이지가 있는 소스), 검색은 하되
+    유사도 대신 `external_url` 일치로 후보를 고른다(`search.result_fields` 모드).
+
+    `external_url` 이 출처이므로 절대 규칙 7(출처 URL 없는 외부 데이터 저장 금지)에 따라
+    `NOT NULL` 이다 — URL 없는 고정은 성립하지 않는다.
+    """
+
+    __tablename__ = "external_product_match"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=False
+    )
+    external_url: Mapped[str] = mapped_column(Text, nullable=False)
+    #: 화면에 "무엇으로 고정했는지" 보여주기 위한 값. 어댑터가 다시 계산해 주지 않는
+    #: 경우(상세 페이지 직접 조회 경로)도 있어 여기 저장해 둔다.
+    external_name: Mapped[str] = mapped_column(Text, nullable=False)
+    #: JSON API 아이템 id. 지금은 매칭에 쓰지 않는다(`external_url` 동등 비교로 충분하다,
+    #: `infrastructure/external/adapter.py::CandidateInfo` 참조) — 사이트별 id 필드 추출
+    #: 스펙이 생기면(PR5 이후) 쓸 자리를 미리 마련해 둔다.
+    external_key: Mapped[str | None] = mapped_column(String(200), default=None)
+    confirmed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        # `uq_product_identity`(product.py) 와 같은 부분 유니크 인덱스 패턴 — soft delete
+        # 된 행이 자리를 차지해 재고정을 막는 문제를 피한다.
+        Index(
+            "uq_external_product_match_identity",
+            "source_id",
+            "product_id",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
+        Index("ix_external_product_match_user_id_product_id", "user_id", "product_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExternalProductMatch source={self.source_id} product={self.product_id}>"

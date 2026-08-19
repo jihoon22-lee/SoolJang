@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-16 (**Task 33 완료** — Task 32 회귀 수정. 재고 우선 정렬 순위가 사용자 의도와 반대(미개봉 우선)로 구현돼 있었던 것을 "개봉 있음 > 미개봉만 있음 > 재고 없음"으로 뒤집었다(D174). `stockTier()` 분기 순서만 교체 + 체크박스 라벨·테스트 동기화. 버전을 1.4.1 로 올려 릴리스·재배포 진행 중) |
+| 최종 갱신 | 2026-08-19 (**Task 34 PR1 완료** — 후보 노출과 매칭 고정. `external_product_match` 테이블 신설, `adapter.py` 에 신뢰 구간 3분할(자동 채택/확인 필요/후보 없음)과 `PinnedMatch` 경로 추가, `ExternalInfoCard` 에 후보 목록·고정 UI. 백엔드 737건·프론트엔드 499건 전체 통과. 상세는 §5 D175~D178, [plan-external-v2.md](plan-external-v2.md) PR1 절) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 33**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | **Task 34 — 외부 정보 조회 v2**(PR1~PR7, [실행 계획](plan-external-v2.md)). 일곱 개 모두 사용자 입력 없이 진행 가능하고, 현황 진단 10건을 전부 덮는다. 새 사이트를 실제로 붙이는 일은 이번 범위가 아니라 계획서 §7 에 향후 고려로만 기록했다. `v1.4.1` 릴리스·재배포를 먼저 마친 뒤 PR1 부터 시작한다 |
-| 현재 브랜치 | `fix/stock-tier-priority-order`(Task 33 머지 후 v1.4.1 릴리스·재배포 진행 중) |
-| 진행 중 잔여 항목 | v1.4.1 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`). 그다음이 Task 34 다. 그 외엔 §9 백로그·§6 Q6 뿐이며 급하지 않은 선택 사항이다 |
+| 다음 착수 Task | **Task 34 PR2 — 매칭 점수 재작성과 질의 확장**([실행 계획](plan-external-v2.md) PR2 절). PR1 이 머지된 뒤 이어서 진행한다. PR3~PR7 도 순서대로 이어진다 — 일곱 개 모두 사용자 입력 없이 진행 가능하다 |
+| 현재 브랜치 | `feat/external-match-pin`(Task 34 PR1, PR 생성·CI 대기) |
+| 진행 중 잔여 항목 | v1.4.1 릴리스·재배포(태그 푸시 → GHCR 게시 → `docker compose pull && up -d`) — Task 34 완료 후 함께 진행 예정. 그 외엔 §9 백로그·§6 Q6 뿐이며 급하지 않은 선택 사항이다 |
 | 최신 버전 | **`v1.4.1` 릴리스 진행 중**(2026-08-16) — Task 33(재고 우선 정렬 순위 수정) 반영. 이전 최신 버전은 `v1.4.0`([GitHub 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.0)) |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -2084,6 +2084,15 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | # | 결정 | 근거 |
 |---|---|---|
 | D174 | 재고 우선 정렬 티어를 "개봉 있음 > 미개봉만 있음 > 재고 없음" 으로 뒤집는다(D172 을 대체) | 사용자가 실제 써 보니 D172 의 순서(미개봉 우선)가 의도와 반대였다 — 개봉한 병이 있는 술을 찾아 고칠(마셔서 없애거나 소진 처리) 확률이 미개봉만 있는 술보다 높다는 게 실제 근거였다. 티어 로직이 `stockTier()` 한 함수에 모여 있어 두 분기 순서만 바꾸면 됐다 |
+
+### Task 34 PR1 결정 (D175~D178)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D175 | 매칭 고정은 `external_key` 가 아니라 **`external_url` 동등 비교**로 후보를 고른다. `ExternalProductMatch.external_key` 컬럼은 만들어 두되 이번 PR 에서는 항상 `None` 이다 | 계획서 초안은 "external_key/external_url 일치" 로 둘 다 언급했지만, 후보 목록(`CandidateInfo`)에 `url` 은 이미 있고(HTML·JSON 두 모드 공통) `key` 는 사이트별 JSON 아이템 id 추출 스펙이 아직 없어 채울 방법이 없었다. URL 은 두 모드 모두에서 이미 유일 식별자로 쓰이고 있어 그것만으로 충분했다 — 존재하지 않는 스펙을 이 PR 에 억지로 끼워 넣지 않았다 |
+| D176 | 신뢰 구간을 계산하는 후보 목록(`_rank_candidates`)은 접두사 게이트(`_plausible_candidate`) 통과 여부와 무관하게 **검색으로 찾은 전체 후보**에서 뽑는다 | 게이트는 "글렌고인 vs 글렌리벳" 같은 오탐을 막기 위한 것이지만, `[단독] 글렌알라키…` 처럼 접두사 자체가 다른 문자열로 시작하면 정답을 잘못 걸러낸다(D148 에 이미 문서화된 한계). "확인 필요" 구간의 목적이 "사용자가 직접 고를 수 있게" 이므로, 게이트가 숨긴 정답도 후보 목록에는 나와야 그 목적이 성립한다 |
+| D177 | `infrastructure/external/adapter.py::_same_host` 를 `same_host` 로 이름을 바꿔 모듈 경계를 넘어 재사용한다(`application/external_sources.py::pin_match` 의 호스트 검증) | 계획서가 "저장 시점과 조회 시점 양쪽에서 같은 `_same_host` 를 재사용한다" 고 명시했다. 언더스코어 접두사 함수를 다른 모듈이 그대로 import 하는 것은 어색해, 이 시점에 공개 이름으로 승격했다 — 로직 변경은 없다 |
+| D178 | 로컬 개발 환경에서 CPython 3.14.0rc2 + pydantic 2.13.4 조합이 `BaseModel`/`BaseSettings` 서브클래스 정의 자체에서 깨지는 것(`typing._eval_type() got an unexpected keyword argument 'prefer_fwd_module'`)을 확인했다 — sooljang 코드가 아니라 이 환경의 인터프리터·의존성 조합 문제다. 저장소에는 아무 변경도 하지 않고, `.venv/lib/python3.14/site-packages/sitecustomize.py`(gitignore 대상, `uv sync` 재실행 시 사라짐)로 로컬에서만 우회했다 | CI(GitHub Actions `astral-sh/setup-uv`)는 이 문제 없이 계속 통과해 왔다 — PR96 의 CI 실행이 그 직후 증거다. 문제를 코드로 "고치면" 실제로 존재하지 않는 버그를 고치는 셈이 되어 위험하다. 대신 로컬에서 pytest·alembic 을 실제로 돌려 검증할 수 있게 하는 것이 이 PR 부터 시작해 남은 PR2~7 전체의 검증 신뢰도를 크게 높인다 |
 
 ## 6. 열린 질문
 

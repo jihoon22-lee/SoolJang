@@ -11,6 +11,7 @@ from sooljang.infrastructure.database.models.category import Category, Producer,
 from sooljang.infrastructure.database.models.category_seed import CategorySeed
 from sooljang.infrastructure.database.models.external_source import (
     ExternalLookupCache,
+    ExternalProductMatch,
     ExternalSource,
 )
 from sooljang.infrastructure.database.models.inventory import (
@@ -58,6 +59,7 @@ __all__ = [
     "CategorySeed",
     "ConflictLog",
     "ExternalLookupCache",
+    "ExternalProductMatch",
     "ExternalSource",
     "LlmProvider",
     "LlmSetting",

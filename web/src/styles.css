@@ -1701,6 +1701,37 @@ button:disabled {
   margin: 0;
 }
 
+/* --- 매칭 고정(Task 34 PR1) --------------------------------------------------- */
+
+.candidate-list {
+  margin-top: 0.5rem;
+  font-size: var(--text-sm);
+}
+
+.candidate-list summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.candidate-list ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.candidate-name {
+  flex: 1;
+}
+
 /* --- 매장 모드(Task 22 PR10) -------------------------------------------------- */
 
 /* "내 술" 목록 위에 두는 매장 모드 진입 버튼(Task 24 PR4, 항목 6). PC 에서는 매장 모드

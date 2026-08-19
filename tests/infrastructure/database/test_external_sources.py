@@ -2,6 +2,9 @@
 
 `lookup_product` 이 §7.3 준수 규칙(TTL 캐시 재사용, rate limit, `source_url` 없는 결과는
 저장 거부)을 실제로 지키는지가 핵심이다. HTTP 는 `httpx.MockTransport` 로 흉내 낸다.
+
+`TestMatchPin` 은 매칭 고정(Task 34 PR1, §7.4) — `pin_match`/`unpin_match` 가 소유권·호스트를
+검증하고, 캐시를 지우고, `lookup_product` 가 실제로 검색을 건너뛰는지를 확인한다.
 """
 
 import uuid
@@ -9,20 +12,29 @@ import uuid
 import httpx
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.api.errors import NotFoundError
+from sooljang.api.errors import NotFoundError, ValidationFailedError
 from sooljang.application.external_sources import (
     create_source,
     delete_source,
+    get_match,
     get_owned_source,
     list_sources,
     lookup_product,
+    pin_match,
     reset_rate_limit_history,
+    unpin_match,
     update_source,
 )
-from sooljang.infrastructure.database.models import Category, ExternalLookupCache, Product
+from sooljang.infrastructure.database.models import (
+    Category,
+    ExternalLookupCache,
+    ExternalProductMatch,
+    ExternalSource,
+    Product,
+)
 from sooljang.infrastructure.external.adapter import reset_robots_cache
 
 USER_ID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
@@ -438,3 +450,277 @@ class TestLookup:
         assert second[0].source_url is None
         assert second[0].warning is not None
         assert "한도" in second[0].warning
+
+
+class TestMatchPin:
+    async def test_고정하면_매칭이_생긴다(self, session: AsyncSession, product: Product) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        match = await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="글렌피딕 12년 고정",
+        )
+
+        assert match.external_url == "https://example.com/product/1"
+        assert match.external_name == "글렌피딕 12년 고정"
+        assert match.external_key is None
+
+    async def test_다시_고정하면_그_자리에서_바뀐다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="첫 고정",
+        )
+
+        second = await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/2",
+            external_name="다시 고정",
+        )
+
+        rows = list(await session.scalars(select(ExternalProductMatch)))
+        assert len(rows) == 1
+        assert second.external_url == "https://example.com/product/2"
+        assert second.external_name == "다시 고정"
+
+    async def test_다른_호스트로_고정하면_거부한다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(ValidationFailedError):
+            await pin_match(
+                session,
+                user_id=USER_ID,
+                product_id=product.id,
+                source_id=source.id,
+                external_url="https://evil.example/product/1",
+                external_name="가짜",
+            )
+
+    async def test_없는_제품에_고정하면_404(self, session: AsyncSession) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(NotFoundError):
+            await pin_match(
+                session,
+                user_id=USER_ID,
+                product_id=uuid.uuid4(),
+                source_id=source.id,
+                external_url="https://example.com/product/1",
+                external_name="X",
+            )
+
+    async def test_없는_소스에_고정하면_404(self, session: AsyncSession, product: Product) -> None:
+        with pytest.raises(NotFoundError):
+            await pin_match(
+                session,
+                user_id=USER_ID,
+                product_id=product.id,
+                source_id=uuid.uuid4(),
+                external_url="https://example.com/product/1",
+                external_name="X",
+            )
+
+    async def test_다른_사용자의_소스에는_고정할_수_없다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        other_source = await create_source(
+            session,
+            user_id=OTHER_USER_ID,
+            name="다른 사용자 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(NotFoundError):
+            await pin_match(
+                session,
+                user_id=USER_ID,
+                product_id=product.id,
+                source_id=other_source.id,
+                external_url="https://example.com/product/1",
+                external_name="X",
+            )
+
+    async def test_해제하면_없어진다(self, session: AsyncSession, product: Product) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="X",
+        )
+
+        await unpin_match(session, user_id=USER_ID, product_id=product.id, source_id=source.id)
+
+        assert (
+            await get_match(session, user_id=USER_ID, source_id=source.id, product_id=product.id)
+            is None
+        )
+
+    async def test_없는_고정을_해제하면_404(self, session: AsyncSession, product: Product) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+
+        with pytest.raises(NotFoundError):
+            await unpin_match(session, user_id=USER_ID, product_id=product.id, source_id=source.id)
+
+    async def test_고정하면_기존_캐시가_지워진다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+        assert len(list(await session.scalars(select(ExternalLookupCache)))) == 1
+
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="X",
+        )
+
+        assert list(await session.scalars(select(ExternalLookupCache))) == []
+
+    async def test_해제하면_캐시도_지워진다(self, session: AsyncSession, product: Product) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="X",
+        )
+        await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport()
+        )
+        assert len(list(await session.scalars(select(ExternalLookupCache)))) == 1
+
+        await unpin_match(session, user_id=USER_ID, product_id=product.id, source_id=source.id)
+
+        assert list(await session.scalars(select(ExternalLookupCache))) == []
+
+    async def test_고정된_조회는_검색을_건너뛴다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="고정된 이름",
+        )
+        call_log: list[str] = []
+
+        results = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_found_transport(call_log)
+        )
+
+        assert "/search" not in call_log
+        assert results[0].pinned is True
+        assert results[0].matched_name == "고정된 이름"
+        assert results[0].needs_confirmation is False
+        assert results[0].fields == {"price": 35000.0}
+
+    async def test_소스를_삭제하면_고정도_함께_지워진다(
+        self, session: AsyncSession, product: Product
+    ) -> None:
+        source = await create_source(
+            session,
+            user_id=USER_ID,
+            name="전역 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+        )
+        await pin_match(
+            session,
+            user_id=USER_ID,
+            product_id=product.id,
+            source_id=source.id,
+            external_url="https://example.com/product/1",
+            external_name="X",
+        )
+        await session.flush()
+
+        # `delete_source` 는 소프트 삭제라 FK CASCADE 를 트리거하지 않는다 — 실제 행
+        # 삭제를 확인하려면 하드 삭제해야 한다.
+        await session.execute(delete(ExternalSource).where(ExternalSource.id == source.id))
+        await session.flush()
+
+        rows = list(await session.scalars(select(ExternalProductMatch)))
+        assert rows == []

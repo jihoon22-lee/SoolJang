@@ -640,6 +640,14 @@ export interface ExternalSourceInput {
   note?: string | null;
 }
 
+/** 조회 결과에 함께 온 후보 하나(Task 34 PR1, §7.4). `url` 을 그대로 고정 요청에 쓴다. */
+export interface LookupCandidate {
+  name: string;
+  url: string;
+  key: string | null;
+  score: number;
+}
+
 export interface SourceLookupResult {
   source_id: string;
   source_name: string;
@@ -650,4 +658,30 @@ export interface SourceLookupResult {
   degraded: boolean;
   warning: string | null;
   fetched_at: string | null;
+  matched_name: string | null;
+  match_score: number | null;
+  /** `true` 면 후보 목록을 펼쳐 사용자 확인을 유도해야 한다. */
+  needs_confirmation: boolean;
+  /** 이 소스에 이 제품이 고정돼 있는지. */
+  pinned: boolean;
+  /** 점수 내림차순, 최대 5개. */
+  candidates: LookupCandidate[];
+}
+
+/** "이 제품 = 이 소스의 이 URL" 고정 요청(Task 34 PR1). */
+export interface ExternalProductMatchInput {
+  source_id: string;
+  external_url: string;
+  external_name: string;
+  external_key?: string | null;
+}
+
+export interface ExternalProductMatch {
+  id: string;
+  source_id: string;
+  product_id: string;
+  external_url: string;
+  external_name: string;
+  external_key: string | null;
+  confirmed_at: string;
 }
