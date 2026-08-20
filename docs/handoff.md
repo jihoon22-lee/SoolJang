@@ -85,7 +85,8 @@
   `plan.md` §1
 - 버전: **[`1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)** 배포 중.
   API·웹 이미지 `1.6.0`, migration revision `0012_llm_rematch`, 컨테이너 3개 healthy를
-  2026-08-20에 확인했다
+  2026-08-20에 확인했다. Tailnet 접속 주소는
+  **`https://main.tail30f401.ts.net:8080`**이며 API health와 웹 루트도 이 주소로 확인했다
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
@@ -189,9 +190,14 @@ echo "DELETE FROM app_user;" | bash scripts/dev-db.sh psql
 ### 폰에서 접속하기
 
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
-scripts/serve-https.sh            # 접속 주소를 알려준다
+tailscale serve status
+curl -fsS https://main.tail30f401.ts.net:8080/api/v1/health
 ```
+
+현재 홈 PC는 여러 서비스를 함께 공개한다. 술장은 HTTPS 8080 포트를 쓰므로 폰에서는
+`https://main.tail30f401.ts.net:8080`으로 접속한다. 무포트 443 URL은 다른 서비스가 사용한다.
+기존 `scripts/serve-https.sh --start`는 443 포트를 관리하므로 현재 공유 호스트에서 상태 확인
+없이 실행하면 안 된다. 술장 프록시 상태는 먼저 `tailscale serve status`로 확인한다.
 
 HTTPS 가 필요한 이유는 편의가 아니다. 카메라(Task 16·17)와 서비스 워커(Task 15)는
 브라우저가 secure context 를 요구해 평문 HTTP 에서는 아예 동작하지 않는다.
@@ -475,7 +481,7 @@ scripts/serve-https.sh
 
 | # | 질문 | 필요 시점 |
 |---|---|---|
-| ~~Q4~~ | ~~Tailscale 설치 여부와 tailnet 이름~~ | **✅ 해결** — `tail30f401.ts.net`, `https://main.tail30f401.ts.net`. §4 참조 |
+| ~~Q4~~ | ~~Tailscale 설치 여부와 tailnet 이름~~ | **✅ 해결·재검증(2026-08-20)** — `tail30f401.ts.net`, 술장 접속 주소 `https://main.tail30f401.ts.net:8080`. §1 참조 |
 | Q2 | 검색·LLM API 제공자와 예산 | **LLM 쪽 부분 해결(Task 17)** — OpenAI, 테스트용 키만. **`adapter` 전략은 LLM 없이 PR9 에서 구현 완료.** `search` 전략(검색 API)·상시 LLM 예산은 여전히 미해결 |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | **답 받음(2026-08-03)** — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24. 레지스트리 UI(`#sources`)는 준비됐지만 실제 `adapter_spec` 등록은 아직 안 함 — Task 19/PR11 전 남은 작업 |
 | Q5 | 목표가 알림 채널 (웹 푸시 vs 다른 수단) | Task 19 |
