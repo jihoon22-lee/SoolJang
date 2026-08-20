@@ -16,12 +16,12 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-20 (**Task 34 PR7 완료 — PR1~PR7 전체 구현 완료**. 제외 키워드(`adapter_spec.search.exclude_keywords`)가 후보 이름을 토큰 단위로 비교해 비주류 상품을 걸러낸다(`matching.py::is_excluded`, 부분 문자열 오탐 없음). 고정된 상품은 이 필터의 영향을 받지 않는다. 데일리샷 프리셋에 실사용 근거 초안 목록을 반영하고 버전을 2로 올렸다(`list_sources` 자동 갱신으로 기존 소스도 받는다). D193. 이전 갱신은 PR6 완료 — 애매 구간 LLM 재판정(D191~D192)) |
+| 최종 갱신 | 2026-08-20 (**Task 34와 `v1.6.0` 릴리스·운영 재배포 완료**. PR1~PR7 전체 구현·병합 후 [릴리스 PR #108](https://github.com/jihoon22-lee/SoolJang/pull/108)과 [`v1.6.0` Release](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)를 게시했다. 홈 PC의 API·웹 이미지를 `1.6.0`으로 교체하고 DB를 `0012_llm_rematch`까지 마이그레이션했다. API·웹 프록시 헬스체크와 컨테이너 3개 healthy를 확인했다) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | **없음 — Task 34 PR1~PR7 전체 완료.** 다음은 릴리스(`v1.6.0`)와 재배포뿐이다 |
+| 다음 착수 Task | **없음 — Task 34 PR1~PR7과 `v1.6.0` 릴리스·재배포까지 완료.** §9 백로그와 §6의 열린 질문은 사용자가 원하는 시점에 결정할 선택 사항이다 |
 | 현재 브랜치 | `main`(Task 34 PR7, 머지 완료) |
 | 진행 중 잔여 항목 | 없음(Task 34 완료). §9 백로그·§6 Q6 뿐이며 급하지 않은 선택 사항이다 |
-| 최신 버전 | **`v1.4.1`**(2026-08-16, 태그·GHCR 이미지 게시 완료) — Task 33(재고 우선 정렬 순위 수정) 반영. 홈 PC 에 `sooljang-api:1.4.1`·`sooljang-web:1.4.1` 로 배포돼 실행 중임을 확인했다(2026-08-20). Task 34 는 PR1~PR7 전체를 묶어 **`v1.6.0`** 하나로 나간다(릴리스 계획 갱신, [plan-external-v2.md](plan-external-v2.md) §5) |
+| 최신 버전 | **[`v1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)**(2026-08-20) — Task 34 PR1~PR7 전체 반영. GHCR의 `sooljang-api:1.6.0`·`sooljang-web:1.6.0`을 홈 PC에 배포했고 API 버전 `1.6.0`, DB 연결 정상, migration revision `0012_llm_rematch`, 웹 HTTP 200을 확인했다 |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
 > 절차를 5분 안에 파악할 수 있게 정리해 두었다.
@@ -246,7 +246,7 @@ Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부�
 | 31 | 백로그 정리 2차 — OCR 프리필·구매처 통합·대량 편집·홈 대시보드·외부 검색 링크 | ✅ 완료·머지 | `feat/ocr-producer-prefill`·`feat/vendor-merge`·`feat/bulk-category-edit`·`feat/home-dashboard`·`feat/external-search-link` | [#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90) |
 | 32 | "내 술" 재고 표시·정렬 개선 — 개봉/미개봉 상시 표시·재고 우선 정렬·필터 항목 순서 커스터마이즈 | ✅ 완료·머지 | `feat/stock-priority-sort-and-tooltip`·`feat/filter-field-reorder` | [#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93) |
 | 33 | 재고 우선 정렬 순위 수정(Task 32 회귀 수정) — 개봉 > 미개봉만 > 재고 없음 | ✅ 완료·머지 | `fix/stock-tier-priority-order` | [#95](https://github.com/jihoon22-lee/SoolJang/pull/95) |
-| 34 | 외부 정보 조회 v2 — 매칭 정확도 개선과 소스 등록 개선(PR1~PR7, [실행 계획](plan-external-v2.md)) | 🟡 PR1·PR2 완료 | `feat/external-*` (PR별 분리) | |
+| 34 | 외부 정보 조회 v2 — 매칭 정확도 개선과 소스 등록 개선(PR1~PR7, [실행 계획](plan-external-v2.md)) | ✅ PR1~PR7 완료·`v1.6.0` 릴리스·배포 | `feat/external-*` (PR별 분리) | [#97](https://github.com/jihoon22-lee/SoolJang/pull/97)·[#98](https://github.com/jihoon22-lee/SoolJang/pull/98)·[#100](https://github.com/jihoon22-lee/SoolJang/pull/100)·[#101](https://github.com/jihoon22-lee/SoolJang/pull/101)·[#102](https://github.com/jihoon22-lee/SoolJang/pull/102)·[#104](https://github.com/jihoon22-lee/SoolJang/pull/104)·[#107](https://github.com/jihoon22-lee/SoolJang/pull/107)·[#108](https://github.com/jihoon22-lee/SoolJang/pull/108) |
 
 ### 의존 관계
 
@@ -1705,7 +1705,8 @@ docstring·테스트를 맞춰 고쳤다.
 - **결과(2026-08-20)**: PR1~PR7 전체 완료·병합. 매칭 고정(PR1)·점수 재작성(PR2)·표준
   필드·가격 비교(PR3)·소스 헬스(PR4)·프리셋 카탈로그(PR5)·LLM 재판정(PR6)·제외 키워드
   (PR7). 진행 상태·결정 로그는 [plan-external-v2.md](plan-external-v2.md) §6, 이 문서
-  §5 D175~D193 참고. 남은 것은 릴리스(`v1.6.0`)와 재배포뿐이다
+  §5 D175~D193 참고. `v1.6.0` Release와 GHCR 이미지를 게시하고 홈 PC 운영 스택 재배포,
+  `0012_llm_rematch` 마이그레이션, API·웹 헬스체크까지 완료했다
 - **상세 계획**: [plan-external-v2.md](plan-external-v2.md) — PR1~PR7 의 설계·변경 파일·
   API 계약·테스트 케이스·완료 조건
 - **문제**: 외부 조회가 데일리샷 한 곳뿐이고, 그마저도 이름이 정확히 안 잡히면 **엉뚱한
@@ -2169,7 +2170,7 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | Q6 | 지인 공유 시 권한 모델 상세. 읽기 전용 링크만으로 충분한지, 계정 발급이 필요한지 | 미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88) | Task 20 후속 |
 | ~~Q7~~ | ~~Tailscale Serve 를 관리자 콘솔에서 켜기~~ | **✅ 해결(사용자 완료, 2026-08-05)** — `tailscale serve status` 로 `https://main.tail30f401.ts.net` → `http://127.0.0.1:8080` 프록시가 정상 등록·실행 중임을 확인했다. 모바일 접속 코드 작업은 없다(Task 23 남은 항목은 이제 폰에서 실제로 접속해 보는 것뿐) | — |
 | ~~Q8~~ | ~~GHCR 에서 직접 `docker pull` 할지, 지금처럼 로컬 재빌드로 배포할지~~ | **✅ 준비 완료(사용자 완료, 2026-08-05)** — `gh auth status` 로 토큰에 `read:packages` 스코프가 생겼음을 확인했다. **어느 방식을 쓸지는 여전히 사용자 선택**(둘 다 동등한 이미지, 급하지 않음) — pull 로 바꾸려면 다음 배포 때 `docker pull ghcr.io/.../sooljang-*:1.0.0` 을 시도하면 된다 | 다음 배포 시점(선택 사항) |
-| Q9 | Task 19(판매처 시세 이력) 를 지금 시작할지, 계속 미룰지 | **부분 진행(2026-08-05, [PR #56](https://github.com/jihoon22-lee/SoolJang/pull/56))** — 데일리샷을 실제 등록했다(Q3 참조). 등록 과정에서 `adapter_spec` 에 JSON 모드를 새로 추가하고(SPA+API 사이트 대응) 이름 유사도 매칭의 실제 오탐(증류소 접두사 혼동)도 발견해 고쳤다 — 상세는 §5 D147~D148. 나머지 6곳(이마트·트레이더스·코스트코·CU·GS25·emart24)은 아직이고, Task 19 본 사양(시세 이력 차트·목표가 알림)은 여전히 미착수다. `search` 전략(Q2)은 D167 에서 폐기로 결정됐다. **2026-08-19 사용자 보고로 Task 34 착수** — 정확도 개선(매칭 고정·점수 재작성)과 소스 등록 개선(프리셋)을 PR 7개로 나눠 진행한다([실행 계획](plan-external-v2.md)). 나머지 6곳 실등록은 Task 34 범위가 아니며 계획서 §7 에 향후 고려로 기록했다 | Task 34 로 진행 중 |
+| Q9 | Task 19(판매처 시세 이력) 를 지금 시작할지, 계속 미룰지 | **정확도·등록 기반은 완료(2026-08-20, Task 34·`v1.6.0`)** — 데일리샷 JSON adapter를 바탕으로 후보·점수·확인 상태, 사용자 고정, 표준 필드, 소스 헬스, 프리셋, opt-in LLM 재판정, 제외 키워드까지 구현·배포했다. 나머지 사이트 실등록과 Task 19 본 사양(시세 이력 차트·목표가 알림)은 여전히 미착수이며, 실제 응답 샘플과 사용자 착수 결정이 필요하다. 후보와 필요 입력은 [plan-external-v2.md](plan-external-v2.md) §7에 기록했다 | Task 19 착수 여부 사용자 결정 대기 |
 
 ---
 

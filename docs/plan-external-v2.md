@@ -947,6 +947,18 @@ D167 에서 폐기한 `search` 전략은 **검색엔진 결과를 스크래핑**
 이유가 없어졌다 — 재배포는 홈 PC 에서 수동으로 하는 작업이라, 한 번의 조율된 마무리가
 두 번보다 낫다. 그래서 PR1~PR7 전체를 `v1.6.0` 하나로 묶는다.
 
+### 릴리스·배포 결과 (2026-08-20)
+
+- [릴리스 PR #108](https://github.com/jihoon22-lee/SoolJang/pull/108) 병합 후 commit
+  `64315c6`에 `v1.6.0` 태그를 푸시했다
+- [Release workflow](https://github.com/jihoon22-lee/SoolJang/actions/runs/32348383391)가 전체
+  테스트, API·웹 이미지 빌드, GHCR 게시, GitHub Release 생성을 모두 통과했다
+- 운영 DB 백업에서 테이블 데이터 22개 항목을 검증한 뒤 API·웹 이미지를 `1.6.0`으로
+  교체했다. DB는 `757982c7b323`에서 `0012_llm_rematch`까지 마이그레이션했다
+- API 직접 호출과 웹 프록시 경유 헬스체크 모두 `version: 1.6.0`, DB 연결 정상,
+  `migration_revision: 0012_llm_rematch`를 반환했고 웹 루트는 HTTP 200, 컨테이너 3개는
+  모두 healthy였다
+
 ## 6. 진행 상태
 
 | PR | 상태 | 차단 | 비고 |
