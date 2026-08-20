@@ -665,6 +665,11 @@ export interface SourceLookupResult {
   /** 사용자가 고정해 둔 매칭으로 조회한 결과인지. */
   pinned: boolean;
   candidates: LookupCandidate[];
+  /** 표준 키가 아닌 값(기존 소스의 한글 키 등). 비교 표에 안 잡힐 뿐 값은 보인다. */
+  extra: Record<string, unknown>;
+  /** 서버가 응답 조립 시점에 계산한 파생값 — DB 에 저장하지 않는다(절대 규칙 6). */
+  rating_normalized: number | null;
+  price_per_100ml: number | null;
 }
 
 export interface ExternalMatchInput {

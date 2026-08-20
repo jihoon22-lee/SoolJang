@@ -21,6 +21,9 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
     needs_confirmation: false,
     pinned: false,
     candidates: [],
+    extra: {},
+    rating_normalized: null,
+    price_per_100ml: null,
     ...overrides,
   };
 }
@@ -49,7 +52,8 @@ describe("ExternalInfoCard", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
-    expect(await screen.findByText("데일리샷")).toBeInTheDocument();
+    // 소스명은 비교 표와 카드 양쪽에 나온다(Task 34 PR3) — 둘 다 있는 것이 정상이다.
+    expect(await screen.findAllByText("데일리샷")).toHaveLength(2);
     expect(await screen.findByText("45,000원")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute(
       "href",
@@ -216,5 +220,102 @@ describe("ExternalInfoCard", () => {
     rerender(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
 
     expect(screen.getByRole("button", { name: "이걸로 고정" })).toBeDisabled();
+  });
+  it("가격이 여럿이면 최저가 행에만 최저 배지를 붙인다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            source_id: "s1",
+            source_name: "데일리샷",
+            fields: { price_krw: 89000, volume_ml: 700 },
+            price_per_100ml: 12714.29,
+          }),
+          result({
+            source_id: "s2",
+            source_name: "이마트몰",
+            fields: { price_krw: 95000, volume_ml: 700 },
+            price_per_100ml: 13571.43,
+          }),
+        ],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+    const lowest = await screen.findAllByText("최저");
+    expect(lowest).toHaveLength(1);
+    expect(screen.getByText("89,000원").closest("td")).toContainElement(lowest[0] ?? null);
+  });
+
+  it("가격이 하나뿐이면 최저 배지를 붙이지 않는다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [result({ fields: { price_krw: 89000 }, price_per_100ml: null })],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+    expect(await screen.findByText("89,000원")).toBeInTheDocument();
+    expect(screen.queryByText("최저")).not.toBeInTheDocument();
+  });
+
+  it("내 단가를 주면 차이를 퍼센트로 보여주고, 없으면 비워 둔다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [result({ fields: { price_krw: 89000 }, price_per_100ml: 11000 })],
+      },
+    ]);
+    const { unmount } = renderWithQuery(
+      <ExternalInfoCard
+        productId="p1"
+        productName="글렌알라키 12년"
+        offline={false}
+        myPricePer100ml="10000"
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    expect(await screen.findByText("+10%")).toBeInTheDocument();
+    unmount();
+
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    // 실평단가가 없는 제품이면 칸이 비어 있을 뿐 깨지지 않는다.
+    expect(await screen.findByText("89,000원")).toBeInTheDocument();
+    expect(screen.queryByText("+10%")).not.toBeInTheDocument();
+  });
+
+  it("표준 키가 아닌 값도 목록에 그대로 보인다", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [result({ fields: {}, extra: { 가격: "89,000원", 평점: "4.9" } })],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+
+    // 표준 키가 아니라 비교 표에는 안 잡히지만, 값 자체는 사라지지 않아야 한다.
+    expect(await screen.findByText("89,000원")).toBeInTheDocument();
+    expect(screen.getByText("4.9")).toBeInTheDocument();
   });
 });

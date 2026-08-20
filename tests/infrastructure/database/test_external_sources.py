@@ -42,7 +42,7 @@ ADAPTER_SPEC = {
     },
     "detail": {
         "fields": {
-            "price": {
+            "price_krw": {
                 "selector": ".price",
                 "attr": "text",
                 "transform": ["strip_currency", "to_number"],
@@ -319,7 +319,7 @@ class TestLookup:
 
         assert len(results) == 1
         assert results[0].source_url == "https://example.com/product/1"
-        assert results[0].fields == {"price": 35000.0}
+        assert results[0].fields == {"price_krw": 35000}
         assert results[0].degraded is False
         assert results[0].cached is False
 
@@ -348,7 +348,7 @@ class TestLookup:
 
         assert second[0].cached is True
         assert second[0].source_url == "https://example.com/product/1"
-        assert second[0].fields == {"price": 35000.0}
+        assert second[0].fields == {"price_krw": 35000}
         # 캐시가 재사용됐으니 두 번째 호출에서 네트워크 요청이 추가되지 않는다.
         assert len(call_log) == calls_after_first
 

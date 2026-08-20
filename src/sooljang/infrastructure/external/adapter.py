@@ -38,6 +38,7 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from sooljang.infrastructure.external.fields import split_fields
 from sooljang.infrastructure.external.matching import ProductIdentity, build_queries
 from sooljang.infrastructure.external.matching import score as score_name
 
@@ -97,6 +98,7 @@ class AdapterResult:
     """`FetchedSnapshot`(§7.1)에 대응하는 조회 결과 하나."""
 
     source_url: str | None
+    #: 표준 키(`fields.py`)로 정규화된 값. 소스가 여럿일 때 비교 가능한 형태다.
     fields: dict[str, Any]
     raw_excerpt: str | None
     degraded: bool
@@ -105,6 +107,8 @@ class AdapterResult:
     #: 이 값이 `False` 면(예: 상세 페이지 조회 자체가 실패) 호출자는 결과를 캐시하면 안
     #: 된다 — 실패를 성공처럼 TTL 동안 붙잡아 두게 된다.
     ok: bool = False
+    #: 표준 키가 아닌 값. 버리지 않고 그대로 담아 기존 소스가 깨지지 않게 한다.
+    extra: dict[str, Any] = field(default_factory=dict)
     #: 실제로 고른 후보의 이름. 화면이 "무엇에 매칭됐는지" 를 보여줄 수 있게 한다 —
     #: 지금까지는 이 값이 없어 엉뚱한 술이 매칭돼도 사용자가 알아챌 방법이 없었다.
     matched_name: str | None = None
@@ -287,16 +291,19 @@ def _missing_warning(missing: list[str]) -> str | None:
     return f"일부 항목을 확인하지 못했습니다: {', '.join(missing)}" if missing else None
 
 
-def _extract_named_fields(extract: Any, spec: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """필드 스펙 dict 를 돌며 값을 뽑고, 못 뽑은 이름을 함께 돌려준다."""
-    fields: dict[str, Any] = {}
+def _extract_named_fields(
+    extract: Any, spec: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """필드 스펙 dict 를 돌며 값을 뽑아 표준/`extra` 로 가르고, 못 뽑은 이름을 함께 준다."""
+    raw: dict[str, Any] = {}
     missing: list[str] = []
     for field_name, field_spec in spec.items():
         value = extract(field_spec)
-        fields[field_name] = value
+        raw[field_name] = value
         if value is None:
             missing.append(field_name)
-    return fields, missing
+    standard, extra = split_fields(raw)
+    return standard, extra, missing
 
 
 #: 점수를 매긴 후보 하나와, JSON 모드에서 값을 뽑을 원본 아이템.
@@ -494,7 +501,7 @@ async def _fetch_detail(
     detail_fields_spec = detail_section.get("fields") if isinstance(detail_section, dict) else None
     if not isinstance(detail_fields_spec, dict):
         detail_fields_spec = {}
-    fields, missing = _extract_named_fields(
+    fields, extra, missing = _extract_named_fields(
         lambda spec: _extract_field(detail_soup, spec, base_url=base_url), detail_fields_spec
     )
     excerpt = detail_soup.get_text(" ", strip=True)[:500] or None
@@ -505,6 +512,7 @@ async def _fetch_detail(
         bool(missing),
         _missing_warning(missing),
         ok=True,
+        extra=extra,
         matched_name=matched_name,
         match_score=match_score,
         matched_key=matched_key,
@@ -652,7 +660,7 @@ async def _fetch_snapshot_unsafe(
         if _uses_result_fields(adapter_spec, search_spec) and best_item is not None:
             # 검색 응답 자체에 이미 상세 정보가 있는 사이트다 — 상세 페이지를 또 조회하지
             # 않는다(불필요한 왕복 + robots.txt 재확인을 피한다).
-            fields, missing = _extract_named_fields(
+            fields, extra, missing = _extract_named_fields(
                 lambda spec: _extract_field_json(best_item, spec), result_fields_spec
             )
             excerpt = json.dumps(best_item, ensure_ascii=False)[:500] or None
@@ -663,6 +671,7 @@ async def _fetch_snapshot_unsafe(
                 bool(missing),
                 _missing_warning(missing),
                 ok=True,
+                extra=extra,
                 matched_name=best.name,
                 match_score=best.score,
                 matched_key=best.key,

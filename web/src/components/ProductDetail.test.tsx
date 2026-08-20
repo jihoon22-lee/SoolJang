@@ -418,6 +418,9 @@ describe("ProductDetail", () => {
               needs_confirmation: false,
               pinned: false,
               candidates: [],
+              extra: {},
+              rating_normalized: null,
+              price_per_100ml: null,
             },
           ],
         },
@@ -426,7 +429,8 @@ describe("ProductDetail", () => {
       setup();
       await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
 
-      expect(await screen.findByText("데일리샷")).toBeInTheDocument();
+      // 소스명은 비교 표와 카드 양쪽에 나온다(Task 34 PR3).
+      expect(await screen.findAllByText("데일리샷")).toHaveLength(2);
       expect(screen.getByText("35000")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute(
         "href",
@@ -455,6 +459,9 @@ describe("ProductDetail", () => {
               needs_confirmation: false,
               pinned: false,
               candidates: [],
+              extra: {},
+              rating_normalized: null,
+              price_per_100ml: null,
             },
           ],
         },

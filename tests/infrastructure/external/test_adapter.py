@@ -44,13 +44,13 @@ ADAPTER_SPEC: dict[str, Any] = {
     },
     "detail": {
         "fields": {
-            "price": {
+            "price_krw": {
                 "selector": ".price",
                 "attr": "text",
                 "transform": ["strip_currency", "to_number"],
             },
             "rating": {"selector": ".rating", "attr": "text", "transform": ["to_number"]},
-            "scale": {"const": 5},
+            "rating_scale": {"const": 5},
         }
     },
 }
@@ -96,7 +96,7 @@ async def test_검색과_상세를_통해_필드를_뽑는다() -> None:
     )
 
     assert result.source_url == "https://example.com/product/1"
-    assert result.fields == {"price": 35000.0, "rating": 4.5, "scale": 5}
+    assert result.fields == {"price_krw": 35000, "rating": 4.5, "rating_scale": 5.0}
     assert result.degraded is False
     assert result.warning is None
 
@@ -114,7 +114,7 @@ async def test_셀렉터가_깨지면_부분_결과와_degraded를_반환한다(
     )
 
     assert result.source_url == "https://example.com/product/1"
-    assert result.fields["price"] == 35000.0
+    assert result.fields["price_krw"] == 35000
     assert result.fields["rating"] is None
     assert result.degraded is True
     assert result.warning is not None
@@ -357,7 +357,7 @@ async def test_알_수_없는_transform은_해당_필드만_건너뛴다() -> No
         "detail": {
             "fields": {
                 **ADAPTER_SPEC["detail"]["fields"],
-                "price": {"selector": ".price", "attr": "text", "transform": ["nonexistent"]},
+                "price_krw": {"selector": ".price", "attr": "text", "transform": ["nonexistent"]},
             }
         },
     }
@@ -371,7 +371,7 @@ async def test_알_수_없는_transform은_해당_필드만_건너뛴다() -> No
     )
 
     assert result.source_url == "https://example.com/product/1"
-    assert result.fields["price"] is None
+    assert result.fields["price_krw"] is None
     assert result.fields["rating"] == 4.5
     assert result.degraded is True
 
@@ -379,7 +379,7 @@ async def test_알_수_없는_transform은_해당_필드만_건너뛴다() -> No
 async def test_필드_스펙이_dict가_아니면_그_필드만_건너뛴다() -> None:
     spec = {
         **ADAPTER_SPEC,
-        "detail": {"fields": {**ADAPTER_SPEC["detail"]["fields"], "price": "그냥 문자열"}},
+        "detail": {"fields": {**ADAPTER_SPEC["detail"]["fields"], "price_krw": "그냥 문자열"}},
     }
     transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
 
@@ -390,7 +390,7 @@ async def test_필드_스펙이_dict가_아니면_그_필드만_건너뛴다() -
         transport=transport,
     )
 
-    assert result.fields["price"] is None
+    assert result.fields["price_krw"] is None
     assert result.degraded is True
 
 
@@ -461,9 +461,9 @@ JSON_ADAPTER_SPEC: dict[str, Any] = {
             "url": {"url_template": "https://example.com/item/{id}"},
         },
         "result_fields": {
-            "price": {"path": "price"},
+            "price_krw": {"path": "price"},
             "rating": {"path": "review_rate"},
-            "scale": {"const": 5},
+            "rating_scale": {"const": 5},
         },
     },
 }
@@ -491,7 +491,7 @@ async def test_JSON_모드에서_검색_결과로_바로_필드를_뽑는다() -
     )
 
     assert result.source_url == "https://example.com/item/1"
-    assert result.fields == {"price": 35000, "rating": 4.5, "scale": 5}
+    assert result.fields == {"price_krw": 35000, "rating": 4.5, "rating_scale": 5.0}
     assert result.degraded is False
     assert result.warning is None
     assert result.ok is True
@@ -508,7 +508,7 @@ async def test_JSON_결과_필드가_없으면_degraded와_경고를_반환한�
         transport=transport,
     )
 
-    assert result.fields["price"] == 35000
+    assert result.fields["price_krw"] == 35000
     assert result.fields["rating"] is None
     assert result.degraded is True
     assert result.warning is not None
@@ -654,7 +654,7 @@ async def test_확인_필요_구간이면_값은_주되_needs_confirmation을_�
         transport=transport,
     )
 
-    assert result.fields["price"] == 35000.0
+    assert result.fields["price_krw"] == 35000
     assert result.matched_name == "글렌피딕 15년 솔레라"
     assert MIN_CANDIDATE <= (result.match_score or 0) < AUTO_ACCEPT
     assert result.needs_confirmation is True
@@ -711,7 +711,7 @@ async def test_고정되어_있으면_검색을_아예_건너뛴다() -> None:
     )
 
     assert result.source_url == "https://example.com/product/2"
-    assert result.fields["price"] == 35000.0
+    assert result.fields["price_krw"] == 35000
     assert result.pinned is True
     assert result.needs_confirmation is False
 
@@ -745,7 +745,7 @@ async def test_result_fields_모드는_고정돼도_검색하되_키로_고른�
     )
 
     assert result.source_url == "https://example.com/item/2"
-    assert result.fields["price"] == 45000
+    assert result.fields["price_krw"] == 45000
     assert result.pinned is True
 
 
@@ -823,7 +823,7 @@ async def test_첫_질의가_실패하면_영문명으로_다시_시도한다() 
     )
 
     assert result.source_url == "https://example.com/product/1"
-    assert result.fields["price"] == 35000.0
+    assert result.fields["price_krw"] == 35000
     assert len(calls) == 2
 
 
@@ -847,3 +847,34 @@ async def test_고정된_소스는_질의를_확장하지_않는다() -> None:
 
     assert result.pinned is True
     assert calls == ["/product/1"]
+
+
+# --- 표준 필드와 extra 폴백(Task 34 PR3) --------------------------------------
+async def test_표준_키가_아닌_필드는_extra로_보존된다() -> None:
+    """데일리샷처럼 한글 키를 쓰는 기존 소스가 이 PR 로 깨지면 안 된다.
+
+    비교 표에 안 잡힐 뿐 값은 그대로 남아야 한다.
+    """
+    spec: dict[str, Any] = {
+        **ADAPTER_SPEC,
+        "detail": {
+            "fields": {
+                "price_krw": {"selector": ".price", "attr": "text"},
+                "가격": {"selector": ".price", "attr": "text"},
+                "평점": {"selector": ".rating", "attr": "text"},
+            }
+        },
+    }
+    transport = _transport({"/search": (200, _SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)})
+
+    result = await fetch_snapshot(
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=transport,
+    )
+
+    # 표준 키는 타입까지 맞춰 정규화된다("35,000원" → 35000).
+    assert result.fields == {"price_krw": 35000}
+    # 나머지는 원문 그대로 보존된다.
+    assert result.extra == {"가격": "35,000원", "평점": "4.5"}

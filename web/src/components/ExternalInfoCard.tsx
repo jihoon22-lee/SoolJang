@@ -21,10 +21,13 @@ export function ExternalInfoCard({
   productId,
   productName,
   offline,
+  myPricePer100ml = null,
 }: {
   productId: string;
   productName: string;
   offline: boolean;
+  /** 내 실평단가 기준 100ml당 가격. 있으면 소스 가격과의 차이를 함께 보여준다. */
+  myPricePer100ml?: string | null;
 }) {
   const lookup = useMutation({
     mutationFn: () => externalSourcesApi.lookup(productId),
@@ -67,19 +70,109 @@ export function ExternalInfoCard({
       )}
 
       {lookup.isSuccess && lookup.data.length > 0 && (
-        <ul className="external-info-list">
-          {lookup.data.map((result) => (
-            <ExternalInfoResult
-              key={result.source_id}
-              result={result}
-              productId={productId}
-              offline={offline}
-              onChanged={() => lookup.mutate()}
-            />
-          ))}
-        </ul>
+        <>
+          <ComparisonTable results={lookup.data} myPricePer100ml={myPricePer100ml} />
+          <ul className="external-info-list">
+            {lookup.data.map((result) => (
+              <ExternalInfoResult
+                key={result.source_id}
+                result={result}
+                productId={productId}
+                offline={offline}
+                onChanged={() => lookup.mutate()}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </>
+  );
+}
+
+const DASH = "—";
+
+function formatWon(value: number | null): string {
+  return value === null ? DASH : `${Math.round(value).toLocaleString("ko-KR")}원`;
+}
+
+/**
+ * 소스별 값을 나란히 놓는 비교 표(Task 34 PR3).
+ *
+ * 소스가 여럿이 되면 카드를 훑어서는 어디가 싼지 알 수 없다. 100ml당 가격으로 환산해
+ * 용량이 다른 상품끼리도 비교되게 하고, 내 실평단가와의 차이를 함께 보여준다 —
+ * "내가 산 가격보다 12% 비쌈" 이 이 기능의 실질 가치다.
+ */
+function ComparisonTable({
+  results,
+  myPricePer100ml,
+}: {
+  results: SourceLookupResult[];
+  myPricePer100ml: string | null;
+}) {
+  const priced = results.filter((result) => typeof result.fields.price_krw === "number");
+  // 가격이 하나뿐이면 "최저가" 배지가 아무 정보도 주지 않는다.
+  const lowest =
+    priced.length > 1
+      ? Math.min(...priced.map((result) => result.fields.price_krw as number))
+      : null;
+  const mine = myPricePer100ml === null ? null : Number(myPricePer100ml);
+
+  return (
+    <div className="table-scroll">
+      <table className="external-compare">
+        <thead>
+          <tr>
+            <th>소스</th>
+            <th>가격</th>
+            <th>100ml당</th>
+            <th>내 단가 대비</th>
+            <th>평점</th>
+            <th>재고</th>
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((result) => {
+            const price =
+              typeof result.fields.price_krw === "number" ? result.fields.price_krw : null;
+            const per100 = result.price_per_100ml;
+            const delta =
+              mine !== null && per100 !== null && mine > 0
+                ? Math.round(((per100 - mine) / mine) * 100)
+                : null;
+            return (
+              <tr key={result.source_id}>
+                <td>
+                  {result.source_name}
+                  {result.degraded && (
+                    <span className="badge" title={result.warning ?? "일부 정보만 확인됨"}>
+                      !
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {formatWon(price)}
+                  {lowest !== null && price === lowest && <span className="badge">최저</span>}
+                </td>
+                <td>{formatWon(per100)}</td>
+                <td>{delta === null ? DASH : `${delta > 0 ? "+" : ""}${delta}%`}</td>
+                <td>
+                  {result.rating_normalized === null
+                    ? DASH
+                    : `${result.rating_normalized.toFixed(1)}/5`}
+                </td>
+                <td>
+                  {result.fields.in_stock === true
+                    ? "있음"
+                    : result.fields.in_stock === false
+                      ? "없음"
+                      : DASH}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -94,7 +187,9 @@ function ExternalInfoResult({
   offline: boolean;
   onChanged: () => void;
 }) {
-  const fieldEntries = Object.entries(result.fields).filter(([, value]) => value !== null);
+  const fieldEntries = [...Object.entries(result.fields), ...Object.entries(result.extra)].filter(
+    ([, value]) => value !== null && value !== undefined,
+  );
   // 확신이 낮을 때만 후보를 펼쳐 둔다. 자동 채택된 결과까지 펼치면 카드가 길어지기만 한다.
   const [candidatesOpen, setCandidatesOpen] = useState(result.needs_confirmation);
 

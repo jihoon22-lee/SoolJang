@@ -1701,6 +1701,31 @@ button:disabled {
   margin: 0;
 }
 
+/* 소스 비교 표(Task 34 PR3). 소스가 여럿이면 카드를 훑어서는 어디가 싼지 알 수 없다. */
+.external-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  margin-bottom: 0.75rem;
+}
+
+.external-compare th,
+.external-compare td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.external-compare th {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.external-compare .badge {
+  margin-left: 0.35rem;
+}
+
 /* 매칭 후보 목록(Task 34 PR1). 확신이 낮을 때만 펼쳐 두고, 자동 채택된 결과는
    "다른 후보 보기" 로 접어 둔다 — 늘 펼치면 카드가 길어지기만 한다. */
 .external-candidate-list {

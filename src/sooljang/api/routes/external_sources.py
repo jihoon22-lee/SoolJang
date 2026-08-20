@@ -32,6 +32,7 @@ from sooljang.application.external_sources import (
     update_source,
 )
 from sooljang.application.products import load_product
+from sooljang.infrastructure.external.fields import price_per_100ml, rating_normalized
 
 router = APIRouter(prefix="/external-sources", tags=["external-sources"])
 lookup_router = APIRouter(prefix="/products", tags=["external-sources"])
@@ -117,6 +118,13 @@ async def lookup_external_sources(
             match_score=result.match_score,
             needs_confirmation=result.needs_confirmation,
             pinned=result.pinned,
+            extra=result.extra,
+            rating_normalized=rating_normalized(
+                result.fields.get("rating"), result.fields.get("rating_scale")
+            ),
+            price_per_100ml=price_per_100ml(
+                result.fields.get("price_krw"), result.fields.get("volume_ml")
+            ),
             candidates=[
                 LookupCandidateOut(
                     name=candidate.name,

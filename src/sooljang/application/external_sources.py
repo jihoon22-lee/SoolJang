@@ -36,6 +36,7 @@ from sooljang.infrastructure.external.adapter import (
     fetch_snapshot,
     is_same_host,
 )
+from sooljang.infrastructure.external.fields import SNAPSHOT_VERSION
 from sooljang.infrastructure.external.matching import ProductIdentity
 
 #: 소스별 최근 요청 시각(초, `time.monotonic()`). 슬라이딩 60초 윈도로 rate limit 을 본다.
@@ -239,6 +240,8 @@ class SourceLookupResult:
     fetched_at: datetime | None
     #: 실제로 어떤 상품에 매칭됐는지와 그 확신도(Task 34 PR1). 화면이 "엉뚱한 술이
     #: 잡혔다" 를 사용자가 알아챌 수 있게 하는 값이다.
+    #: 표준 키가 아닌 값. 비교 표에 안 잡힐 뿐 화면에는 그대로 보인다.
+    extra: dict[str, Any] = field(default_factory=dict)
     matched_name: str | None = None
     match_score: float | None = None
     needs_confirmation: bool = False
@@ -260,6 +263,10 @@ async def _fresh_cache(
         .limit(1)
     )
     if cached is None or cached.fetched_at < cutoff:
+        return None
+    # 스냅샷 구조가 바뀌면 옛 행은 TTL 과 무관하게 버린다. 캐시는 정의상 언제든 버려도
+    # 되는 데이터라, 데이터 마이그레이션 없이 다음 조회에서 자연스럽게 교체된다.
+    if cached.snapshot.get("version") != SNAPSHOT_VERSION:
         return None
     return cached
 
@@ -333,6 +340,7 @@ async def lookup_product(
                     source_url=cached.snapshot.get("source_url"),
                     fields=cached.snapshot.get("fields", {}),
                     raw_excerpt=cached.snapshot.get("raw_excerpt"),
+                    extra=cached.snapshot.get("extra", {}),
                     degraded=cached.degraded,
                     warning=cached.warning,
                     fetched_at=cached.fetched_at,
@@ -381,7 +389,9 @@ async def lookup_product(
                     source_id=source.id,
                     product_id=product.id,
                     snapshot={
+                        "version": SNAPSHOT_VERSION,
                         "source_url": adapter_result.source_url,
+                        "extra": adapter_result.extra,
                         "fields": adapter_result.fields,
                         "raw_excerpt": adapter_result.raw_excerpt,
                         "matched_name": adapter_result.matched_name,
@@ -403,6 +413,7 @@ async def lookup_product(
                 source_url=adapter_result.source_url,
                 fields=adapter_result.fields,
                 raw_excerpt=adapter_result.raw_excerpt,
+                extra=adapter_result.extra,
                 degraded=adapter_result.degraded,
                 warning=adapter_result.warning,
                 matched_name=adapter_result.matched_name,

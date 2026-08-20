@@ -79,6 +79,13 @@ class SourceLookupOut(BaseModel):
     #: 사용자가 고정해 둔 매칭으로 조회한 결과인지.
     pinned: bool = False
     candidates: list[LookupCandidateOut] = Field(default_factory=list)
+    #: 표준 키가 아닌 값(기존 소스의 한글 키 등). 비교 표에 안 잡힐 뿐 값은 보인다.
+    extra: dict[str, Any] = Field(default_factory=dict)
+    #: 여기부터는 **응답 조립 시점에 계산한 파생값**이다. DB 에 저장하지 않는다
+    #: (§8 절대 규칙 6). 소스마다 평점 척도가 달라(5점·100점) 그대로는 비교가 안 되고,
+    #: 100ml당 가격은 내 실평단가와 같은 단위로 놓고 보기 위한 값이다.
+    rating_normalized: float | None = None
+    price_per_100ml: float | None = None
 
 
 class ExternalProductMatchCreate(BaseModel):
