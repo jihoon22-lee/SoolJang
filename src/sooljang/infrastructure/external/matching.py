@@ -294,6 +294,25 @@ def score(
     return MatchScore(value=0.0 if conflicts else value, conflicts=conflicts)
 
 
+def is_excluded(candidate_name: str, exclude_keywords: list[str]) -> bool:
+    """후보 이름이 제외 키워드에 걸리는지(Task 34 PR7).
+
+    단순 부분 문자열 매칭은 오작동한다 — `잔`이 `잔티`·`발란자`에도 걸린다. 이 함수는
+    `parse_name`의 토큰 집합을 재사용해 **토큰 단위로** 비교한다: 키워드 자체도 같은
+    파이프라인으로 토큰화해, 키워드의 토큰 전부가 후보의 토큰 집합에 포함될 때만
+    제외한다(`부분 문자열 포함`이 아니라 `부분 집합`). 초안 목록은 전부 한 단어라 결과는
+    같지만, 앞으로 여러 단어짜리 키워드가 추가돼도 그대로 맞는 규칙이다.
+    """
+    if not exclude_keywords:
+        return False
+    candidate_tokens = parse_name(candidate_name).tokens
+    for keyword in exclude_keywords:
+        keyword_tokens = parse_name(keyword).tokens
+        if keyword_tokens and keyword_tokens <= candidate_tokens:
+            return True
+    return False
+
+
 #: 배치·한정판 표기. 축약형 질의를 만들 때 뺀다.
 _BATCH_MARKS = re.compile(r"(#\s*\d+|배치\s*\d+|batch\s*\d+|한정판|limited)", re.IGNORECASE)
 

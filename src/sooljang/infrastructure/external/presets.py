@@ -47,6 +47,10 @@ class SourcePreset:
 #: 호스트가 다른 문제와 그로 인해 robots.txt 가 엉뚱한 호스트에서 확인되던 버그(발견 4)는
 #: `adapter.py::_allowed` 가 매번 **실제 요청 대상 호스트**의 robots.txt 를 보도록 고쳐
 #: 해결했다(D187) — 프리셋에 별도 필드를 두지 않아도 된다.
+#:
+#: `exclude_keywords`(Task 34 PR7, 버전 2)는 데일리샷 실사용으로 확인된 비주류 상품
+#: 초안 목록이다 — 잔·글라스 등은 술 이름 검색에 곧잘 같이 걸리는 굿즈다. 목록은
+#: 소스 편집 화면에서 사용자가 언제든 고칠 수 있다(`plan-external-v2.md` PR7 절 참고).
 _DAILYSHOT = SourcePreset(
     key="dailyshot",
     name="데일리샷",
@@ -54,7 +58,7 @@ _DAILYSHOT = SourcePreset(
     description="국내 주류 커머스. 검색 결과에 가격·평점이 함께 온다.",
     category_hint=None,
     requires_credentials=False,
-    version=1,
+    version=2,
     adapter_spec={
         "version": 1,
         "format": "json",
@@ -65,6 +69,18 @@ _DAILYSHOT = SourcePreset(
                 "name": {"path": "name"},
             },
             "url_template": "https://api.dailyshot.co/items/search/?q={query}",
+            "exclude_keywords": [
+                "잔",
+                "글라스",
+                "디캔터",
+                "미니어처",
+                "공병",
+                "굿즈",
+                "안주",
+                "선물세트",
+                "쇼핑백",
+                "보관함",
+            ],
             "result_fields": {
                 "price_krw": {"path": "price"},
                 "rating": {"path": "review_rate"},

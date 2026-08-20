@@ -1033,3 +1033,110 @@ async def test_JSON_모드에서_strip_tags가_태그를_제거한다() -> None:
     )
 
     assert result.fields["title_clean"] == "글렌피딕 12년"
+
+
+# --- 제외 키워드 (Task 34 PR7) -------------------------------------------------
+
+_EXCLUDE_SEARCH_PAGE = """
+<div class="product-card">
+  <span class="title">글렌피딕 12년</span>
+  <a href="/product/1">보기</a>
+</div>
+<div class="product-card">
+  <span class="title">글렌피딕 위스키 잔</span>
+  <a href="/product/2">보기</a>
+</div>
+"""
+
+_EXCLUDE_ADAPTER_SPEC: dict[str, Any] = {
+    "search": {**ADAPTER_SPEC["search"], "exclude_keywords": ["잔"]},
+    "detail": ADAPTER_SPEC["detail"],
+}
+
+
+async def test_제외_키워드에_걸린_후보는_고르지_않는다() -> None:
+    transport = _transport(
+        {"/search": (200, _EXCLUDE_SEARCH_PAGE), "/product/1": (200, _DETAIL_PAGE_FULL)}
+    )
+
+    result = await fetch_snapshot(
+        _EXCLUDE_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕"),
+        transport=transport,
+    )
+
+    assert result.matched_name == "글렌피딕 12년"
+    # "글렌피딕 위스키 잔" 은 제외 키워드에 걸려 애초에 후보 목록에도 안 남는다.
+    assert [candidate.name for candidate in result.candidates] == ["글렌피딕 12년"]
+
+
+async def test_제외_후_후보가_없으면_후보_없음_경고를_준다() -> None:
+    page = """
+    <div class="product-card">
+      <span class="title">글렌피딕 위스키 잔</span>
+      <a href="/product/1">보기</a>
+    </div>
+    """
+    # "/product/1" 을 transport 에 등록하지 않는다 — 상세를 조회하려 들면 KeyError 로
+    # 실패해, 정말로 검색 단계에서 걸러졌는지를 함께 확인한다.
+    transport = _transport({"/search": (200, page)})
+
+    result = await fetch_snapshot(
+        _EXCLUDE_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕"),
+        transport=transport,
+    )
+
+    assert result.source_url is None
+    assert result.ok is False
+    assert result.degraded is True
+    assert result.warning is not None and "제외" in result.warning
+    assert result.candidates == []
+
+
+async def test_고정된_상품은_제외_키워드의_영향을_받지_않는다() -> None:
+    """`result_fields` 모드는 고정돼도 검색을 한다(§7.4) — 그 경로에서 고정된 항목
+    자체가 제외 키워드에 걸리는 이름이어도, 사용자가 명시적으로 고른 매칭이니 이 필터가
+    방해하면 안 된다."""
+    body = json.dumps(
+        {
+            "results": [
+                {"id": 1, "name": "글렌피딕 12년", "price": 35000, "review_rate": 4.5},
+                {"id": 2, "name": "발베니 12년 미니어처", "price": 8000, "review_rate": 4.2},
+            ]
+        }
+    )
+    spec: dict[str, Any] = {
+        **JSON_ADAPTER_SPEC,
+        "search": {**JSON_ADAPTER_SPEC["search"], "exclude_keywords": ["미니어처"]},
+    }
+    transport = _transport({"/api/search": (200, body)})
+
+    result = await fetch_snapshot(
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="아무 이름이나"),
+        transport=transport,
+        pinned=PinnedMatch(external_url="https://example.com/item/2", external_key="2"),
+    )
+
+    assert result.source_url == "https://example.com/item/2"
+    assert result.fields["price"] == 8000
+    assert result.pinned is True
+
+
+async def test_제외_키워드가_없는_스펙은_동작이_그대로다() -> None:
+    transport = _transport(
+        {"/search": (200, _EXCLUDE_SEARCH_PAGE), "/product/2": (200, _DETAIL_PAGE_FULL)}
+    )
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,  # exclude_keywords 없음(기존 소스와 같은 모양)
+        base_url="https://example.com",
+        identity=ProductIdentity(name="위스키 잔"),
+        transport=transport,
+    )
+
+    assert len(result.candidates) == 2

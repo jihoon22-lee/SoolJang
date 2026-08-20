@@ -199,7 +199,7 @@ def test_프리셋_카탈로그를_조회한다(api_client: TestClient, prefix: 
     dailyshot = next(p for p in body if p["key"] == "dailyshot")
     assert dailyshot["name"] == "데일리샷"
     assert dailyshot["base_url"] == "https://dailyshot.co"
-    assert dailyshot["version"] == 1
+    assert dailyshot["version"] == 2
     # 등록 시점에 서버가 채우는 구현 세부사항이라 응답에 adapter_spec 은 없다.
     assert "adapter_spec" not in dailyshot
 
@@ -218,7 +218,7 @@ def test_프리셋_키로_소스를_등록한다(api_client: TestClient, prefix:
     assert body["name"] == "데일리샷"
     assert body["base_url"] == "https://dailyshot.co"
     assert body["preset_key"] == "dailyshot"
-    assert body["preset_version"] == 1
+    assert body["preset_version"] == 2
     assert body["spec_overridden"] is False
 
 
