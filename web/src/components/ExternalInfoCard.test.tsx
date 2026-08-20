@@ -39,6 +39,7 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
     pinned: false,
     candidates: [],
     normalized: normalized({ price_krw: 45000, volume_ml: 900, price_per_100ml: "5000.00" }),
+    llm_recommended_url: null,
     ...overrides,
   };
 }
@@ -251,6 +252,42 @@ describe("ExternalInfoCard", () => {
 
     expect(await screen.findByText(/이 술이 맞는지 확인해 주세요/)).toBeInTheDocument();
     expect(screen.getByText("글렌알라키 10년 CS")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "이걸로 고정" })).toHaveLength(2);
+  });
+
+  it("LLM이 추천한 후보에 배지를 붙이되 자동으로 고정하지 않는다(Task 34 PR6)", async () => {
+    stubRoutes([
+      {
+        match: "/products/p1/external-lookup",
+        method: "POST",
+        body: [
+          result({
+            matched_name: "글렌알라키 12년 셰리",
+            match_score: 0.62,
+            needs_confirmation: true,
+            candidates: [
+              { name: "글렌알라키 12년 셰리", url: "https://d.co/1", key: "1", score: 0.62 },
+              { name: "글렌알라키 10년 CS", url: "https://d.co/2", key: "2", score: 0.55 },
+            ],
+            llm_recommended_url: "https://d.co/2",
+          }),
+        ],
+      },
+    ]);
+    renderWithQuery(
+      <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await screen.findByText(/이 술이 맞는지 확인해 주세요/);
+
+    const recommendedCandidate = screen.getByText("글렌알라키 10년 CS").closest("li");
+    expect(recommendedCandidate).not.toBeNull();
+    expect(recommendedCandidate).toHaveTextContent("LLM 추천");
+    const otherCandidate = screen.getByText("글렌알라키 12년 셰리").closest("li");
+    expect(otherCandidate).not.toHaveTextContent("LLM 추천");
+    // 배지가 있어도 고정 버튼은 여전히 두 후보 모두에서 사용자 클릭을 요구한다 —
+    // 자동으로 고정되지 않는다는 것이 이 배지의 핵심 제약이다.
     expect(screen.getAllByRole("button", { name: "이걸로 고정" })).toHaveLength(2);
   });
 

@@ -19,12 +19,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError
+from sooljang.application.llm_settings import get_llm_setting
 from sooljang.application.products import ensure_category_exists
 from sooljang.infrastructure.database.models import (
+    ExternalLlmRematchLog,
     ExternalLookupCache,
     ExternalProductMatch,
     ExternalSource,
@@ -40,6 +42,7 @@ from sooljang.infrastructure.external.adapter import (
     is_same_host,
 )
 from sooljang.infrastructure.external.fields import NormalizedFields, split_fields
+from sooljang.infrastructure.external.match_llm import rematch as llm_rematch
 from sooljang.infrastructure.external.matching import ProductIdentity
 from sooljang.infrastructure.external.presets import get_preset
 from sooljang.infrastructure.security.secrets import decrypt_secret, encrypt_secret
@@ -605,6 +608,10 @@ class SourceLookupResult:
     #: `fields` 원본은 위에 그대로 남아 있다 — 이 값은 매 응답마다 다시 계산되고 저장되지
     #: 않는다(절대 규칙 6).
     normalized: NormalizedFields = field(default_factory=NormalizedFields)
+    #: LLM 이 애매 구간에서 추천한 후보의 URL(Task 34 PR6). `candidates` 안의 항목 중
+    #: 하나를 가리킨다 — 화면이 "LLM 추천" 배지를 붙이는 용도일 뿐, 자동으로 고정되지
+    #: 않는다(여전히 사용자가 "이걸로 고정" 을 눌러야 한다).
+    llm_recommended_url: str | None = None
 
 
 async def _fresh_cache(
@@ -651,6 +658,128 @@ async def _build_identity(session: AsyncSession, product: Product) -> ProductIde
     )
 
 
+#: 비용 가드 로그를 이 기간보다 오래 남겨 두지 않는다(Task 34 PR6). 월 집계는 이번 달
+#: 시작 시점부터만 세므로, 그보다 넉넉히 긴 기간이면 안전하다.
+_REMATCH_LOG_RETENTION_DAYS = 35
+
+
+def _month_start(now: datetime) -> datetime:
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def _rematch_recently_called(
+    session: AsyncSession, *, source_id: uuid.UUID, product_id: uuid.UUID, now: datetime
+) -> bool:
+    """같은 (소스, 제품) 조합을 24시간 안에 이미 호출했는지."""
+    cutoff = now - timedelta(hours=24)
+    row = await session.scalar(
+        select(ExternalLlmRematchLog.id)
+        .where(
+            ExternalLlmRematchLog.source_id == source_id,
+            ExternalLlmRematchLog.product_id == product_id,
+            ExternalLlmRematchLog.called_at >= cutoff,
+        )
+        .limit(1)
+    )
+    return row is not None
+
+
+async def _rematch_calls_this_month(
+    session: AsyncSession, *, user_id: uuid.UUID, now: datetime
+) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(ExternalLlmRematchLog)
+        .where(
+            ExternalLlmRematchLog.user_id == user_id,
+            ExternalLlmRematchLog.called_at >= _month_start(now),
+        )
+    )
+    return count or 0
+
+
+async def _trim_rematch_log(session: AsyncSession, *, user_id: uuid.UUID, now: datetime) -> None:
+    cutoff = now - timedelta(days=_REMATCH_LOG_RETENTION_DAYS)
+    await session.execute(
+        delete(ExternalLlmRematchLog).where(
+            ExternalLlmRematchLog.user_id == user_id, ExternalLlmRematchLog.called_at < cutoff
+        )
+    )
+
+
+async def _record_rematch_call(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    source_id: uuid.UUID,
+    product_id: uuid.UUID,
+    called_at: datetime,
+) -> None:
+    """호출을 실제로 시도한 시점에 남긴다(성공/실패 무관) — 실패해도 24시간 안에 같은
+    조합을 계속 재호출하며 비용을 쓰지 않게 하려는 목적이다."""
+    session.add(
+        ExternalLlmRematchLog(
+            user_id=user_id, source_id=source_id, product_id=product_id, called_at=called_at
+        )
+    )
+    await session.flush()
+    await _trim_rematch_log(session, user_id=user_id, now=called_at)
+    await session.flush()
+
+
+async def _maybe_llm_rematch(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    source_id: uuid.UUID,
+    product_id: uuid.UUID,
+    identity: ProductIdentity,
+    candidates: list[LookupCandidate],
+    master_key: str | None,
+    now: datetime,
+) -> str | None:
+    """조건이 전부 맞으면 LLM 에 애매 구간 재판정을 묻는다. 아니면 조용히 `None`(Task 34
+    PR6) — 호출 여부를 정하는 것이 이 함수의 역할이고, 실제 호출·실패 처리는
+    `match_llm.rematch` 의 계약을 그대로 따른다(예외를 내보내지 않는다).
+
+    호출 조건 전부: ① `master_key` 로 설정을 복호화할 수 있음 ② `LlmSetting` 활성
+    ③ 사용자가 "LLM 매칭 보조"를 켬(기본 꺼짐) ④ 같은 (소스, 제품) 조합을 24시간 안에
+    호출하지 않았음 ⑤ 이번 달 호출 수가 상한 미만.
+    """
+    if master_key is None or not candidates:
+        return None
+
+    setting = await get_llm_setting(session, user_id=user_id)
+    if setting is None or not setting.rematch_enabled:
+        return None
+
+    if await _rematch_recently_called(session, source_id=source_id, product_id=product_id, now=now):
+        return None
+    calls_this_month = await _rematch_calls_this_month(session, user_id=user_id, now=now)
+    if calls_this_month >= setting.rematch_monthly_cap:
+        return None
+
+    # 이 시점부터는 "호출을 시도했다" — 실패하더라도 기록해 24시간 dedup 이 걸리게 한다.
+    await _record_rematch_call(
+        session, user_id=user_id, source_id=source_id, product_id=product_id, called_at=now
+    )
+
+    try:
+        api_key = decrypt_secret(setting.api_key_ciphertext, master_key=master_key)
+    except Exception:
+        return None
+
+    outcome = await llm_rematch(
+        identity,
+        [candidate.name for candidate in candidates],
+        api_key=api_key,
+        model=setting.model,
+    )
+    if outcome is None or outcome.index is None:
+        return None
+    return candidates[outcome.index].url
+
+
 async def lookup_product(
     session: AsyncSession,
     *,
@@ -667,6 +796,8 @@ async def lookup_product(
 
     `master_key` 가 있으면 소스별로 저장된 자격 증명을 복호화해 조회에 함께 쓴다(Task 34
     PR5). 캐시 적중 경로는 자격 증명이 필요 없다 — 이미 성공한 값을 그대로 돌려줄 뿐이다.
+    같은 `master_key` 로 `LlmSetting` 의 API 키도 복호화해, 애매 구간에서 사용자가 "LLM
+    매칭 보조"를 켜 뒀으면 재판정을 시도한다(Task 34 PR6, `_maybe_llm_rematch`).
     """
     identity = await _build_identity(session, product)
     sources = await session.scalars(
@@ -785,6 +916,21 @@ async def lookup_product(
             attempted_at=fetched_at,
         )
 
+        # 애매 구간(0.5~0.85)에서만, 그리고 사용자가 "LLM 매칭 보조"를 명시적으로 켰을
+        # 때만 물어본다(Task 34 PR6). 캐시 적중 경로는 후보 목록 자체가 없어 대상이 아니다.
+        llm_recommended_url = None
+        if adapter_result.needs_confirmation:
+            llm_recommended_url = await _maybe_llm_rematch(
+                session,
+                user_id=user_id,
+                source_id=source.id,
+                product_id=product.id,
+                identity=identity,
+                candidates=adapter_result.candidates,
+                master_key=master_key,
+                now=fetched_at,
+            )
+
         results.append(
             SourceLookupResult(
                 source_id=source.id,
@@ -802,6 +948,7 @@ async def lookup_product(
                 candidates=adapter_result.candidates,
                 fetched_at=fetched_at,
                 normalized=split_fields(adapter_result.fields),
+                llm_recommended_url=llm_recommended_url,
             )
         )
 

@@ -14,6 +14,9 @@ def test_설정하기_전에는_configured가_false다(api_client: TestClient, p
     assert body["configured"] is False
     assert body["provider"] is None
     assert body["api_key_masked"] is None
+    # LLM 매칭 보조(Task 34 PR6)는 설정이 아예 없어도 기본값(꺼짐)을 보여준다.
+    assert body["rematch_enabled"] is False
+    assert body["rematch_monthly_cap"] == 200
 
 
 def test_저장하면_마스킹된_키를_돌려준다(api_client: TestClient, prefix: str) -> None:
@@ -29,6 +32,46 @@ def test_저장하면_마스킹된_키를_돌려준다(api_client: TestClient, p
     assert body["model"] == "gpt-4o-mini"
     assert body["api_key_masked"] == "...cdef"
     assert FAKE_API_KEY not in response.text
+    # 요청에 안 넣었으니 기본값(꺼짐)이 저장된다 — 키만 등록했다고 조회 때마다 추가 LLM
+    # 호출이 조용히 시작되면 안 된다는 요구(Task 34 PR6)를 API 레벨에서도 확인한다.
+    assert body["rematch_enabled"] is False
+    assert body["rematch_monthly_cap"] == 200
+
+
+def test_llm_매칭_보조를_켜고_월_상한을_조절한다(api_client: TestClient, prefix: str) -> None:
+    response = api_client.put(
+        f"{prefix}/llm-settings",
+        json={
+            "provider": "openai",
+            "api_key": FAKE_API_KEY,
+            "model": "gpt-4o-mini",
+            "rematch_enabled": True,
+            "rematch_monthly_cap": 50,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["rematch_enabled"] is True
+    assert body["rematch_monthly_cap"] == 50
+
+    read_back = api_client.get(f"{prefix}/llm-settings")
+    assert read_back.json()["rematch_enabled"] is True
+    assert read_back.json()["rematch_monthly_cap"] == 50
+
+
+def test_월_상한은_1_미만이면_거부한다(api_client: TestClient, prefix: str) -> None:
+    response = api_client.put(
+        f"{prefix}/llm-settings",
+        json={
+            "provider": "openai",
+            "api_key": FAKE_API_KEY,
+            "model": "gpt-4o-mini",
+            "rematch_monthly_cap": 0,
+        },
+    )
+
+    assert response.status_code == 422, response.text
 
 
 def test_저장한_뒤_조회하면_마스킹된_값이_남아있다(api_client: TestClient, prefix: str) -> None:

@@ -32,6 +32,8 @@ async def read_llm_setting(session: SessionDep, user_id: UserDep) -> LlmSettingO
         model=setting.model,
         api_key_masked=mask_api_key(setting.api_key_hint),
         updated_at=setting.updated_at,
+        rematch_enabled=setting.rematch_enabled,
+        rematch_monthly_cap=setting.rematch_monthly_cap,
     )
 
 
@@ -47,6 +49,8 @@ async def upsert_llm_setting(
         api_key=payload.api_key,
         model=payload.model,
         master_key=settings.secret_key,
+        rematch_enabled=payload.rematch_enabled,
+        rematch_monthly_cap=payload.rematch_monthly_cap,
     )
     return LlmSettingOut(
         configured=True,
@@ -54,6 +58,8 @@ async def upsert_llm_setting(
         model=setting.model,
         api_key_masked=mask_api_key(setting.api_key_hint),
         updated_at=setting.updated_at,
+        rematch_enabled=setting.rematch_enabled,
+        rematch_monthly_cap=setting.rematch_monthly_cap,
     )
 
 

@@ -239,3 +239,42 @@ class ExternalSourceCredential(Base, EntityMixin):
 
     def __repr__(self) -> str:
         return f"<ExternalSourceCredential source={self.source_id} name={self.name!r}>"
+
+
+class ExternalLlmRematchLog(Base, EntityMixin):
+    """LLM 매칭 재판정(Task 34 PR6)을 실제로 호출한 시각 하나.
+
+    비용 가드 두 가지를 이 테이블 하나로 강제한다: 같은 (소스, 제품) 조합의 24시간 내
+    재호출 억제, 그리고 사용자별 월 호출 상한(`LlmSetting.rematch_monthly_cap`) 집계.
+    `ExternalSourceProbe` 와 같은 롤링 로그다 — 오래된 행은 소프트 삭제 대신 하드
+    삭제한다(`application/external_sources.py::_trim_rematch_log`).
+
+    성공/실패를 가리지 않고 **호출을 시도한 시점**에 남긴다 — 실패해도 같은 조합을 계속
+    재호출하며 비용을 쓰지 않게 하려는 목적이라, 결과와 무관하게 기록해야 한다.
+
+    동기화 대상이 아니다(`SYNC_ENTITIES` 에 넣지 않는다) — 다른 외부 조회 부산물 테이블과
+    같은 이유다.
+    """
+
+    __tablename__ = "external_llm_rematch_log"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=False
+    )
+    called_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_external_llm_rematch_log_source_id_product_id_called_at",
+            "source_id",
+            "product_id",
+            "called_at",
+        ),
+        Index("ix_external_llm_rematch_log_user_id_called_at", "user_id", "called_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExternalLlmRematchLog source={self.source_id} product={self.product_id}>"

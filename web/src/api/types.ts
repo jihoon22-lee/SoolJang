@@ -567,12 +567,18 @@ export interface LlmSettingResponse {
   /** 예: "...ab12". 원문은 절대 내려오지 않는다. */
   api_key_masked: string | null;
   updated_at: string | null;
+  /** "LLM 매칭 보조"(Task 34 PR6) 토글. 기본 꺼짐. */
+  rematch_enabled: boolean;
+  /** 월 호출 상한. 상한에 닿으면 예외 없이 기존 점수 결과로 폴백한다. */
+  rematch_monthly_cap: number;
 }
 
 export interface LlmSettingInput {
   provider: "openai";
   api_key: string;
   model: string;
+  rematch_enabled: boolean;
+  rematch_monthly_cap: number;
 }
 
 export interface LabelExtractionResponse {
@@ -714,6 +720,9 @@ export interface SourceLookupResult {
   pinned: boolean;
   candidates: LookupCandidate[];
   normalized: NormalizedFields;
+  /** LLM 이 애매 구간에서 추천한 후보의 URL(Task 34 PR6). `candidates` 중 하나를 가리킨다
+   * — 화면이 "LLM 추천" 배지만 붙일 뿐 자동으로 고정하지 않는다. */
+  llm_recommended_url: string | null;
 }
 
 export interface ExternalMatchInput {

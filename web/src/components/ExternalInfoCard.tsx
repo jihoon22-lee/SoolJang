@@ -288,6 +288,11 @@ function ExternalInfoRow({
                   <li key={candidate.url} className="external-candidate">
                     <span className="name">{candidate.name}</span>
                     <span className="muted text-sm">{Math.round(candidate.score * 100)}%</span>
+                    {/* LLM 재판정 추천(Task 34 PR6) — 배지만 붙일 뿐 자동으로 고정하지
+                        않는다. "이걸로 고정" 은 다른 후보와 똑같이 사용자가 눌러야 한다. */}
+                    {result.llm_recommended_url === candidate.url && (
+                      <span className="badge">LLM 추천</span>
+                    )}
                     <button type="button" onClick={() => pin.mutate(candidate)} disabled={busy}>
                       이걸로 고정
                     </button>

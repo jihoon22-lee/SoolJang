@@ -155,6 +155,9 @@ class SourceLookupOut(BaseModel):
     candidates: list[LookupCandidateOut] = Field(default_factory=list)
     #: 비교 뷰용 표준 필드(Task 34 PR3).
     normalized: NormalizedFieldsOut
+    #: LLM 이 애매 구간에서 추천한 후보의 URL(Task 34 PR6). `candidates` 안의 항목 중
+    #: 하나를 가리킨다 — 화면이 "LLM 추천" 배지만 붙일 뿐 자동으로 고정하지 않는다.
+    llm_recommended_url: str | None = None
 
 
 class ExternalProductMatchCreate(BaseModel):

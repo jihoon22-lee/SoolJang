@@ -21,6 +21,8 @@ describe("SettingsPage", () => {
           model: null,
           api_key_masked: null,
           updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       },
     ]);
@@ -42,6 +44,8 @@ describe("SettingsPage", () => {
           model: null,
           api_key_masked: null,
           updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       },
       {
@@ -53,6 +57,8 @@ describe("SettingsPage", () => {
           model: "gpt-4o-mini",
           api_key_masked: "...cdef",
           updated_at: "2026-08-01T00:00:00Z",
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       },
     ]);
@@ -88,6 +94,8 @@ describe("SettingsPage", () => {
           model: null,
           api_key_masked: null,
           updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       },
       {
@@ -113,6 +121,112 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("API 키가 너무 짧습니다");
   });
 
+  it("LLM 매칭 보조는 기본으로 꺼져 있고, 켜면 월 상한 입력이 나타난다", async () => {
+    stubRoutes([
+      ...authenticatedRoutes(),
+      {
+        match: "/llm-settings",
+        method: "GET",
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
+        },
+      },
+    ]);
+
+    renderWithQuery(<SettingsPage />);
+    await screen.findByText("설정되지 않음");
+
+    const toggle = screen.getByLabelText("LLM 매칭 보조 사용");
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByLabelText("월 호출 상한")).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+
+    expect(await screen.findByLabelText("월 호출 상한")).toHaveValue(200);
+  });
+
+  it("저장된 LLM 매칭 보조 설정을 폼에 반영한다", async () => {
+    stubRoutes([
+      ...authenticatedRoutes(),
+      {
+        match: "/llm-settings",
+        method: "GET",
+        body: {
+          configured: true,
+          provider: "openai",
+          model: "gpt-4o-mini",
+          api_key_masked: "...cdef",
+          updated_at: "2026-08-01T00:00:00Z",
+          rematch_enabled: true,
+          rematch_monthly_cap: 50,
+        },
+      },
+    ]);
+
+    renderWithQuery(<SettingsPage />);
+
+    // 체크박스는 첫 렌더에서 이미 존재한다(초기값 꺼짐) — 조회가 끝난 뒤 별도 effect 로
+    // 채워지므로, "표시 이름" 필드와 같은 이유로 실제로 반영될 때까지 기다려야 한다.
+    const toggle = await screen.findByLabelText("LLM 매칭 보조 사용");
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(await screen.findByLabelText("월 호출 상한")).toHaveValue(50);
+    expect(screen.getByText(/LLM 매칭 보조 켜짐 \(월 상한 50회\)/)).toBeInTheDocument();
+  });
+
+  it("저장하면 LLM 매칭 보조 값도 함께 보낸다", async () => {
+    const { calls } = stubRoutes([
+      ...authenticatedRoutes(),
+      {
+        match: "/llm-settings",
+        method: "GET",
+        body: {
+          configured: false,
+          provider: null,
+          model: null,
+          api_key_masked: null,
+          updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
+        },
+      },
+      {
+        match: "/llm-settings",
+        method: "PUT",
+        body: {
+          configured: true,
+          provider: "openai",
+          model: "gpt-4o-mini",
+          api_key_masked: "...cdef",
+          updated_at: "2026-08-01T00:00:00Z",
+          rematch_enabled: true,
+          rematch_monthly_cap: 30,
+        },
+      },
+    ]);
+
+    renderWithQuery(<SettingsPage />);
+    await screen.findByText("설정되지 않음");
+
+    await userEvent.type(screen.getByLabelText("OpenAI API 키"), "sk-test-1234567890abcdef"); // scan-secrets-allow
+    await userEvent.click(screen.getByLabelText("LLM 매칭 보조 사용"));
+    const cap = await screen.findByLabelText("월 호출 상한");
+    await userEvent.clear(cap);
+    await userEvent.type(cap, "30");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const put = calls.find((call) => call.method === "PUT" && call.url.includes("/llm-settings"));
+      expect(put).toBeDefined();
+      expect(put?.body).toMatchObject({ rematch_enabled: true, rematch_monthly_cap: 30 });
+    });
+  });
+
   it("설정된 키를 삭제하면 다시 설정되지 않음으로 바뀐다", async () => {
     stubRoutes([
       ...authenticatedRoutes(),
@@ -125,6 +239,8 @@ describe("SettingsPage", () => {
           model: "gpt-4o-mini",
           api_key_masked: "...cdef",
           updated_at: "2026-08-01T00:00:00Z",
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       },
       { match: "/llm-settings", method: "DELETE", status: 204, body: null },
@@ -149,6 +265,8 @@ describe("SettingsPage", () => {
           model: null,
           api_key_masked: null,
           updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       };
     }
@@ -237,6 +355,8 @@ describe("SettingsPage", () => {
           model: null,
           api_key_masked: null,
           updated_at: null,
+          rematch_enabled: false,
+          rematch_monthly_cap: 200,
         },
       };
     }

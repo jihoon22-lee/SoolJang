@@ -5,6 +5,8 @@ import { ApiError, authApi, llmSettingsApi } from "@/api/client";
 //: 백엔드 기본값(`models/llm.py::DEFAULT_OPENAI_MODEL`)과 맞춘다. Vision 입력을 지원하는
 //: 합리적인 기본값 — 사용자가 바꿀 수 있다.
 const DEFAULT_MODEL = "gpt-4o-mini";
+//: 백엔드 기본값(`models/llm.py::DEFAULT_REMATCH_MONTHLY_CAP`)과 맞춘다(Task 34 PR6).
+const DEFAULT_REMATCH_MONTHLY_CAP = 200;
 
 /**
  * 설정 화면. LLM(라벨 OCR, Task 17) API 키를 여기서 관리한다.
@@ -17,6 +19,8 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(DEFAULT_MODEL);
+  const [rematchEnabled, setRematchEnabled] = useState(false);
+  const [rematchMonthlyCap, setRematchMonthlyCap] = useState(DEFAULT_REMATCH_MONTHLY_CAP);
 
   // 헤더의 계정 표시 이름과 같은 캐시 키를 써서, 여기서 바꾸면 재조회 없이 헤더도 즉시
   // 갱신된다(`App.tsx` 가 이미 로그인 단계에서 채워 둔 캐시를 그대로 재사용).
@@ -55,8 +59,23 @@ export function SettingsPage() {
     queryFn: ({ signal }) => llmSettingsApi.get(signal),
   });
 
+  // 저장된 "LLM 매칭 보조" 설정을 폼에 반영한다(Task 34 PR6) — 체크박스가 매번 꺼진
+  // 상태로 보이면 이미 켜 뒀는지 사용자가 헷갈린다.
+  useEffect(() => {
+    if (!setting.data) return;
+    setRematchEnabled(setting.data.rematch_enabled);
+    setRematchMonthlyCap(setting.data.rematch_monthly_cap);
+  }, [setting.data]);
+
   const save = useMutation({
-    mutationFn: () => llmSettingsApi.save({ provider: "openai", api_key: apiKey, model }),
+    mutationFn: () =>
+      llmSettingsApi.save({
+        provider: "openai",
+        api_key: apiKey,
+        model,
+        rematch_enabled: rematchEnabled,
+        rematch_monthly_cap: rematchMonthlyCap,
+      }),
     onSuccess: (result) => {
       queryClient.setQueryData(["llm-settings"], result);
       setApiKey("");
@@ -72,7 +91,11 @@ export function SettingsPage() {
         model: null,
         api_key_masked: null,
         updated_at: null,
+        rematch_enabled: false,
+        rematch_monthly_cap: DEFAULT_REMATCH_MONTHLY_CAP,
       });
+      setRematchEnabled(false);
+      setRematchMonthlyCap(DEFAULT_REMATCH_MONTHLY_CAP);
     },
   });
 
@@ -230,6 +253,12 @@ export function SettingsPage() {
             ) : (
               <strong>설정되지 않음</strong>
             )}
+            {setting.data.rematch_enabled && (
+              <span className="muted text-sm">
+                {" "}
+                · LLM 매칭 보조 켜짐 (월 상한 {setting.data.rematch_monthly_cap}회)
+              </span>
+            )}
           </p>
         )}
 
@@ -265,6 +294,38 @@ export function SettingsPage() {
               onChange={(event) => setModel(event.target.value)}
             />
           </div>
+          <div className="field">
+            <label htmlFor="settings-rematch-enabled">
+              <input
+                id="settings-rematch-enabled"
+                type="checkbox"
+                checked={rematchEnabled}
+                onChange={(event) => setRematchEnabled(event.target.checked)}
+              />
+              LLM 매칭 보조 사용
+            </label>
+            <p className="muted text-sm">
+              외부 소스 조회에서 확신이 낮은 후보(50~85%)가 나오면 LLM 에게 한 번 더 물어 "LLM 추천"
+              배지를 붙입니다. 기본은 꺼짐이며, 켜도 자동으로 고정하지 않고 추천만 합니다 — 고정은
+              항상 직접 눌러야 합니다.
+            </p>
+          </div>
+          {rematchEnabled && (
+            <div className="field">
+              <label htmlFor="settings-rematch-cap">월 호출 상한</label>
+              <input
+                id="settings-rematch-cap"
+                type="number"
+                min={1}
+                step={1}
+                value={rematchMonthlyCap}
+                onChange={(event) => setRematchMonthlyCap(Number(event.target.value))}
+              />
+              <p className="muted text-sm">
+                이번 달 호출이 이 수를 넘으면 예외 없이 기존 점수 결과로 조용히 넘어갑니다.
+              </p>
+            </div>
+          )}
           <div className="button-row">
             <button type="submit" className="primary" disabled={save.isPending || !apiKey.trim()}>
               {save.isPending ? "저장 중…" : "저장"}

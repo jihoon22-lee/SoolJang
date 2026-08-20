@@ -268,6 +268,7 @@ async def lookup_external_sources(
                 price_per_100ml=result.normalized.price_per_100ml,
                 extra=result.normalized.extra,
             ),
+            llm_recommended_url=result.llm_recommended_url,
         )
         for result in results
     ]

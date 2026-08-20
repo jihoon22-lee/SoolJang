@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError
+from sooljang.application import external_sources as external_sources_module
 from sooljang.application.external_sources import (
     FAILING_THRESHOLD,
     PROBE_HISTORY_LIMIT,
@@ -35,13 +36,19 @@ from sooljang.application.external_sources import (
     unpin_match,
     update_source,
 )
+from sooljang.application.llm_settings import save_llm_setting
 from sooljang.infrastructure.database.models import (
     Category,
+    ExternalLlmRematchLog,
     ExternalLookupCache,
+    ExternalProductMatch,
+    ExternalSource,
     ExternalSourceProbe,
+    LlmProvider,
     Product,
 )
 from sooljang.infrastructure.external.adapter import reset_robots_cache
+from sooljang.infrastructure.external.match_llm import RematchOutcome
 from sooljang.infrastructure.external.presets import get_preset
 
 #: 유효한 Fernet 키 형태만 있으면 되므로 테스트마다 새로 만든다.
@@ -129,6 +136,30 @@ def _found_transport(call_log: list[str] | None = None) -> httpx.MockTransport:
             body = (
                 '<div class="product-card">'
                 f'<span class="title">{query}</span>'
+                '<a href="/product/1">보기</a>'
+                "</div>"
+            )
+            return httpx.Response(200, text=body)
+        if request.url.path == "/product/1":
+            return httpx.Response(200, text='<div class="price">35,000원</div>')
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    return httpx.MockTransport(handler)
+
+
+def _ambiguous_transport() -> httpx.MockTransport:
+    """질의와 상관없이 늘 같은 후보 하나만 돌려준다 — "글렌피딕 솔레라 리저브" 로 조회하면
+    PR2 토큰 점수가 확인 필요 구간(0.5~0.85)에 들어가는 조합이다(`test_adapter.py` 의
+    같은 시나리오를 재사용한다). LLM 재판정(Task 34 PR6) 호출 가드를 확인하는 테스트
+    전용이다."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            body = (
+                '<div class="product-card">'
+                '<span class="title">글렌피딕 15년 솔레라</span>'
                 '<a href="/product/1">보기</a>'
                 "</div>"
             )
@@ -1201,3 +1232,292 @@ class TestCredentials:
             )
 
         assert "sk-super-secret-999" not in caplog.text
+
+
+class TestLlmRematch:
+    """애매 구간(0.5~0.85) LLM 재판정(Task 34 PR6).
+
+    실제 OpenAI 왕복은 `tests/infrastructure/external/test_match_llm.py` 가 mock
+    transport 로 확인한다 — 여기서는 `lookup_product` 가 호출 여부를 조건대로 가드하는지만
+    본다. `llm_rematch`(`match_llm.rematch` 를 이 모듈이 가져온 이름)를 몽키패치해 실제
+    네트워크 요청을 만들지 않는다 — `tests/api/test_ocr.py` 가 `llm.extract_label` 을
+    몽키패치하는 것과 같은 패턴이다.
+
+    소스는 늘 `ttl_hours=0` 으로 등록한다 — 그래야 `lookup_product` 를 두 번 불러도
+    `ExternalLookupCache` 적중으로 두 번째 호출이 통째로 스킵되지 않고, 이 PR 이 추가한
+    비용 가드(24시간 dedup·월 상한)를 실제로 검증할 수 있다.
+    """
+
+    async def _source(self, session: AsyncSession) -> ExternalSource:
+        return await create_source(
+            session,
+            user_id=USER_ID,
+            name="애매 소스",
+            base_url="https://example.com",
+            adapter_spec=ADAPTER_SPEC,
+            ttl_hours=0,
+        )
+
+    async def _ambiguous_product(self, session: AsyncSession, category: Category) -> Product:
+        product = Product(
+            user_id=USER_ID,
+            name="글렌피딕 솔레라 리저브",
+            normalized_name="글렌피딕솔레라리저브",
+            category_id=category.id,
+        )
+        session.add(product)
+        await session.flush()
+        return product
+
+    async def _enable_rematch(
+        self,
+        session: AsyncSession,
+        *,
+        rematch_enabled: bool = True,
+        rematch_monthly_cap: int = 200,
+    ) -> None:
+        await save_llm_setting(
+            session,
+            user_id=USER_ID,
+            provider=LlmProvider.OPENAI,
+            api_key="sk-test-1234567890abcdef",  # scan-secrets-allow
+            model="gpt-4o-mini",
+            master_key=MASTER_KEY,
+            rematch_enabled=rematch_enabled,
+            rematch_monthly_cap=rematch_monthly_cap,
+        )
+
+    def _counting_fake(
+        self, monkeypatch: pytest.MonkeyPatch, outcome: RematchOutcome | None
+    ) -> list[int]:
+        calls: list[int] = []
+
+        async def fake_rematch(*args: object, **kwargs: object) -> RematchOutcome | None:
+            calls.append(1)
+            return outcome
+
+        monkeypatch.setattr(external_sources_module, "llm_rematch", fake_rematch)
+        return calls
+
+    async def test_자동_채택_구간이면_호출하지_않는다(
+        self, session: AsyncSession, product: Product, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        await self._enable_rematch(session)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_found_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert results[0].needs_confirmation is False
+        assert results[0].llm_recommended_url is None
+        assert calls == []
+
+    async def test_llm_설정이_없으면_호출하지_않는다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert results[0].needs_confirmation is True
+        assert results[0].llm_recommended_url is None
+        assert calls == []
+
+    async def test_토글이_꺼져있으면_호출하지_않는다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session, rematch_enabled=False)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert results[0].llm_recommended_url is None
+        assert calls == []
+
+    async def test_master_key가_없으면_호출하지_않는다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        results = await lookup_product(
+            session, user_id=USER_ID, product=product, transport=_ambiguous_transport()
+        )
+
+        assert results[0].llm_recommended_url is None
+        assert calls == []
+
+    async def test_확인_필요_구간이면_llm_추천_url을_담는다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert calls == [1]
+        assert results[0].llm_recommended_url == results[0].candidates[0].url
+
+    async def test_index가_null이면_추천이_없다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=None, confidence=0.1))
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert calls == [1]
+        assert results[0].llm_recommended_url is None
+
+    async def test_llm_추천은_자동으로_고정되지_않는다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session)
+        self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert results[0].llm_recommended_url is not None
+        pinned = list(
+            await session.scalars(
+                select(ExternalProductMatch).where(ExternalProductMatch.product_id == product.id)
+            )
+        )
+        assert pinned == []
+
+    async def test_24시간_내_같은_조합_재호출을_억제한다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        first = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+        second = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        assert first[0].llm_recommended_url is not None
+        assert second[0].llm_recommended_url is None
+        assert calls == [1]
+        logs = list(await session.scalars(select(ExternalLlmRematchLog)))
+        assert len(logs) == 1
+
+    async def test_월_상한에_도달하면_호출하지_않는다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product_a = await self._ambiguous_product(session, category)
+        product_b = Product(
+            user_id=USER_ID,
+            name="글렌피딕 솔레라 리저브 2",
+            normalized_name="글렌피딕솔레라리저브2",
+            category_id=category.id,
+        )
+        session.add(product_b)
+        await session.flush()
+        await self._enable_rematch(session, rematch_monthly_cap=1)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+
+        first = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product_a,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+        second = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product_b,
+            transport=_ambiguous_transport(),
+            master_key=MASTER_KEY,
+        )
+
+        # 같은 소스에 다른 제품이라 24시간 dedup 은 안 걸린다 — 그래도 월 상한(1)에 막힌다.
+        assert first[0].llm_recommended_url is not None
+        assert second[0].llm_recommended_url is None
+        assert calls == [1]
+
+    async def test_마스터_키가_틀리면_예외_없이_추천이_없다(
+        self, session: AsyncSession, category: Category, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._source(session)
+        product = await self._ambiguous_product(session, category)
+        await self._enable_rematch(session)
+        calls = self._counting_fake(monkeypatch, RematchOutcome(index=0, confidence=0.9))
+        wrong_key = Fernet.generate_key().decode()
+
+        results = await lookup_product(
+            session,
+            user_id=USER_ID,
+            product=product,
+            transport=_ambiguous_transport(),
+            master_key=wrong_key,
+        )
+
+        assert results[0].llm_recommended_url is None
+        # 복호화에서 이미 실패했으니 LLM 호출까지 가지 않는다 — 그래도 24시간 dedup 은
+        # 걸려야 한다(잘못된 키로 계속 재시도하며 비용을 쓰지 않게).
+        assert calls == []
+        logs = list(await session.scalars(select(ExternalLlmRematchLog)))
+        assert len(logs) == 1

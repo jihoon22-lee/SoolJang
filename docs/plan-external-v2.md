@@ -74,10 +74,10 @@
 | 1 | 후보 노출과 매칭 고정 | A+B | `feat/external-match-pin` | `0009_external_product_match` | D175~D178 |
 | 2 | 매칭 점수 재작성과 질의 확장 | C+D | `feat/external-matching-score` | — | D179~D181 |
 | 3 | 표준 필드 스키마와 가격 비교 뷰 | G | `feat/external-normalized-fields` | — (스냅샷 버전) | D182~D184 |
-| 4 | 소스 헬스 체크 | J | `feat/external-source-health` | `0010_external_source_probe` | D185 |
-| 5 | 소스 프리셋 카탈로그와 `adapter_spec` v2 | H | `feat/external-source-presets` | `0011_source_presets_credentials` | D186~D188 |
-| 6 | 애매 구간 LLM 재판정 | E | `feat/external-llm-rematch` | — | D189~D190 |
-| 7 | 제외 키워드 | F | `feat/external-exclude-keywords` | — | D191 |
+| 4 | 소스 헬스 체크 | J | `feat/external-source-health` | `0010_external_source_probe` | D185~D186 |
+| 5 | 소스 프리셋 카탈로그와 `adapter_spec` v2 | H | `feat/external-source-presets` | `0011_source_presets_credentials` | D187~D190 |
+| 6 | 애매 구간 LLM 재판정 | E | `feat/external-llm-rematch` | `0012_llm_rematch` | D191~D192 |
+| 7 | 제외 키워드 | F | `feat/external-exclude-keywords` | — | D193 |
 
 일곱 PR 모두 **기존 코드·스키마와 이미 등록된 데일리샷 소스만으로 구현·검증이 끝난다.**
 새 외부 사이트도, API 키도 필요 없다. PR5 는 데일리샷 `adapter_spec` 원문이 필요했는데
@@ -793,7 +793,7 @@ credentials:
 
 ## PR6 — 애매 구간 LLM 재판정 (방안 E)
 
-> 브랜치 `feat/external-llm-rematch` · 마이그레이션 없음 · 결정 D191~D192
+> 브랜치 `feat/external-llm-rematch` · 마이그레이션 `0012_llm_rematch` · 결정 D191~D192
 
 ### 목적
 
@@ -835,9 +835,9 @@ D167 에서 폐기한 `search` 전략은 **검색엔진 결과를 스크래핑**
 
 ### 완료 조건
 
-- [ ] 기본값이 꺼짐이고, 켜지 않으면 OpenAI 호출이 0건임을 테스트로 확인
-- [ ] 월 상한이 설정 화면에서 조절 가능하고, 상한 도달 시 조용히 기존 경로로 폴백함을 테스트
-- [ ] 기본값 선택 근거를 결정 로그에 기록
+- [x] 기본값이 꺼짐이고, 켜지 않으면 OpenAI 호출이 0건임을 테스트로 확인
+- [x] 월 상한이 설정 화면에서 조절 가능하고, 상한 도달 시 조용히 기존 경로로 폴백함을 테스트
+- [x] 기본값 선택 근거를 결정 로그에 기록
 
 ---
 
@@ -851,6 +851,27 @@ D167 에서 폐기한 `search` 전략은 **검색엔진 결과를 스크래핑**
 (제품, 소스)는 24시간에 한 번뿐이라, 개인 규모(제품 405종)에서 200회는 넉넉하면서도
 설정을 잘못 켜 뒀을 때의 폭주는 막는 선이다. 상한에 닿으면 예외 없이 기존 점수 경로로
 폴백한다(조회 자체는 계속 동작한다).
+
+### 실제 구현 메모 (계획 대비 차이)
+
+- **마이그레이션이 필요했다.** 계획서 초안은 "마이그레이션 없음"으로 가정했지만, 월 상한을
+  사용자가 조절 가능한 값으로 두려면 `LlmSetting` 에 `rematch_enabled`·
+  `rematch_monthly_cap` 컬럼이 있어야 했다(0011 과 같은 `server_default` 임시 부여 후
+  제거 패턴 재사용). 비용 가드(24시간 dedup·월 집계)도 서버 재시작에도 살아남아야 하고
+  사용자별로 정확히 세야 해서, `ExternalSourceProbe` 와 같은 롤링 로그 테이블
+  `ExternalLlmRematchLog` 를 새로 뒀다 — 인메모리 슬라이딩 윈도(`rate_limit_per_min` 방식)
+  로는 24시간·월 단위 정확한 집계가 어렵고, 재시작으로 카운트가 날아가면 상한이 무의미해진다
+- **비용 가드 순서**: ① 애매 구간(`needs_confirmation`) ② `LlmSetting` 활성 + "LLM 매칭
+  보조" 토글 ③ 같은 (소스, 제품) 24시간 dedup ④ 월 상한. dedup·월 상한 통과 시점에 로그를
+  먼저 남기고(성공/실패 무관), 그 다음 복호화·호출을 시도한다 — 잘못된 마스터 키로 계속
+  재시도하며 비용을 쓰는 것도 막아야 하기 때문이다(`_maybe_llm_rematch`)
+- **LLM 자체의 실패 처리는 두 겹이 아니다.** `match_llm.rematch()` 가 이미 "예외를 내보내지
+  않는다"는 계약을 지키므로(`llm.py::extract_label` 과 같은 패턴), 호출부
+  (`_maybe_llm_rematch`)는 그 반환값을 신뢰하고 추가로 감싸지 않는다 — `fetch_snapshot` 의
+  `ok` 를 호출부가 그대로 믿는 것과 같은 판단이다
+- **입력 최소화는 함수 시그니처로 강제했다.** `match_llm.rematch()` 는 후보 이름
+  문자열 리스트만 받는다 — 가격·URL 을 넘길 방법 자체가 시그니처에 없어, 실수로 더 많은
+  데이터를 보내는 코드 변경이 생기면 타입 오류로 드러난다
 
 ## PR7 — 제외 키워드 (방안 F)
 
@@ -917,7 +938,7 @@ D167 에서 폐기한 `search` 전략은 **검색엔진 결과를 스크래핑**
 | 3 | ✅ 완료 | 없음 | 표준 필드 스키마·가격 비교 뷰. D182~D184 |
 | 4 | ✅ 완료 | 없음 | 소스 헬스 체크. D185~D186 |
 | 5 | ✅ 완료 | 없음 | 프리셋 카탈로그·adapter_spec v2·robots 호스트 수정·자격 증명. D187~D190 |
-| 6 | ⬜ 대기 | 없음 | 월 상한은 설정값, 기본 200회 제안 |
+| 6 | ✅ 완료 | `0012_llm_rematch` | 애매 구간 LLM 재판정. 기본 꺼짐, 자동 고정 없음, 3중 비용 가드. D191~D192 |
 | 7 | ⬜ 대기 | 없음 | 제외어 목록은 설정값, 초안으로 착수 |
 
 ## 7. 향후 고려 — 새 사이트 붙이기 (이번 범위 아님)
