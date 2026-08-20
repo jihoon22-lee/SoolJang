@@ -33,6 +33,10 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
     image: ghcr.io/jihoon22-lee/sooljang-api:${SOOLJANG_VERSION:-local}
+    # uvicorn 이 컨테이너 PID 1 이라 고아 프로세스를 회수하지 못한다. healthcheck 가
+    # 타임아웃으로 죽으면 재부모화된 손자가 좀비로 영구 누적된다(#105). tini(docker
+    # run --init 과 동일)를 PID 1 로 앞세워 회수하게 한다.
+    init: true
     restart: unless-stopped
     depends_on:
       db:
