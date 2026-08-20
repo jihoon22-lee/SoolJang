@@ -14,7 +14,11 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.infrastructure.database.models import LlmProvider, LlmSetting
+from sooljang.infrastructure.database.models import (
+    DEFAULT_REMATCH_MONTHLY_CAP,
+    LlmProvider,
+    LlmSetting,
+)
 from sooljang.infrastructure.security.secrets import decrypt_secret, encrypt_secret
 
 #: 마스킹 시 보여줄 꼬리 글자 수. 키가 맞는지 눈으로 확인할 정도만 노출한다.
@@ -49,8 +53,15 @@ async def save_llm_setting(
     api_key: str,
     model: str,
     master_key: str,
+    rematch_enabled: bool = False,
+    rematch_monthly_cap: int = DEFAULT_REMATCH_MONTHLY_CAP,
 ) -> LlmSetting:
-    """설정을 저장한다. 기존 활성 행이 있으면 갱신하고, 없으면 새로 만든다."""
+    """설정을 저장한다. 기존 활성 행이 있으면 갱신하고, 없으면 새로 만든다.
+
+    `rematch_enabled`(Task 34 PR6, "LLM 매칭 보조" 토글)는 기본값이 반드시 꺼짐이다 —
+    라벨 OCR 을 위해 키를 등록한 사용자에게 조회 때마다 추가 LLM 호출이 조용히 시작되면
+    안 된다는 계획서 요구 때문이다.
+    """
     ciphertext = encrypt_secret(api_key, master_key=master_key)
     hint = hint_of(api_key)
     existing = await get_llm_setting(session, user_id=user_id)
@@ -59,6 +70,8 @@ async def save_llm_setting(
         existing.api_key_ciphertext = ciphertext
         existing.api_key_hint = hint
         existing.model = model
+        existing.rematch_enabled = rematch_enabled
+        existing.rematch_monthly_cap = rematch_monthly_cap
         return existing
 
     created = LlmSetting(
@@ -67,6 +80,8 @@ async def save_llm_setting(
         api_key_ciphertext=ciphertext,
         api_key_hint=hint,
         model=model,
+        rematch_enabled=rematch_enabled,
+        rematch_monthly_cap=rematch_monthly_cap,
     )
     session.add(created)
     await session.flush()

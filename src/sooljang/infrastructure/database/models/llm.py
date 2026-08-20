@@ -11,11 +11,18 @@ API 키는 평문으로 저장하지 않는다. `infrastructure/security/secrets
 **동기화 대상이 아니다.** `application/sync.py::SYNC_ENTITIES` 에 의도적으로 넣지 않는다.
 API 키가 클라이언트 IndexedDB(Dexie)에 평문으로 미러링되면 브라우저 저장소에 그대로
 노출된다 — 이 값은 서버에서만 쓰인다.
+
+`rematch_enabled`·`rematch_monthly_cap`(Task 34 PR6)은 애매 구간(점수 0.5~0.85) 매칭을
+LLM 으로 재판정하는 보조 기능의 설정이다. 이 필드가 있는 이유는 같은 자격 증명(API 키)을
+쓰는 기능이라 `LlmSetting` 에 함께 두는 것이 자연스럽고, 별도 테이블을 만들면 "설정이
+꺼져 있다" 상태를 두 테이블에서 따로 확인해야 하기 때문이다. 기본값은 반드시 꺼짐이다 —
+사용자가 라벨 OCR 을 위해 키를 등록했다고 해서 조회 때마다 추가 LLM 호출(비용)이 조용히
+시작되면 안 된다.
 """
 
 import enum
 
-from sqlalchemy import LargeBinary, String
+from sqlalchemy import Boolean, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sooljang.infrastructure.database.base import Base, EntityMixin, str_enum_column
@@ -29,6 +36,10 @@ class LlmProvider(enum.StrEnum):
 
 #: Vision 입력을 지원하는 합리적인 기본 모델. 사용자가 설정 화면에서 바꿀 수 있다.
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+#: LLM 재판정(PR6) 월 호출 상한 기본값. 근거는 `docs/plan-external-v2.md` PR6 절
+#: "비용 상한을 설정값으로 두는 이유" 참고 — 개인 규모 조회량에서 넉넉하되 설정을
+#: 잘못 켜 뒀을 때의 폭주를 막는 선.
+DEFAULT_REMATCH_MONTHLY_CAP = 200
 
 
 class LlmSetting(Base, EntityMixin):
@@ -51,6 +62,14 @@ class LlmSetting(Base, EntityMixin):
     #: 복호화하지 않고도 조회 응답에 마스킹 값을 실을 수 있다.
     api_key_hint: Mapped[str] = mapped_column(String(4), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False, default=DEFAULT_OPENAI_MODEL)
+    #: "LLM 매칭 보조"(Task 34 PR6) 사용자 토글. 기본 꺼짐 — 켜지 않으면 이 설정이 있어도
+    #: `application/external_sources.py::lookup_product` 는 OpenAI 를 호출하지 않는다.
+    rematch_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: 월 호출 상한. 사용자가 설정 화면에서 조절한다. 상한에 닿으면 예외 없이 기존 점수
+    #: 경로로 조용히 폴백한다(조회 자체는 계속 동작).
+    rematch_monthly_cap: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=DEFAULT_REMATCH_MONTHLY_CAP
+    )
 
     # `user_id` 단일 인덱스는 `EntityMixin` 이 이미 `index=True` 로 만든다. 복합 인덱스가
     # 필요 없다 — 동기화 대상이 아니라 `(user_id, updated_at)` 도 두지 않는다(§2.4 무관).

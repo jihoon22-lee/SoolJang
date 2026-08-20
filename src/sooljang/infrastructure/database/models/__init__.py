@@ -10,6 +10,7 @@ from sooljang.infrastructure.database.models.auth_enums import UserRole
 from sooljang.infrastructure.database.models.category import Category, Producer, Variety
 from sooljang.infrastructure.database.models.category_seed import CategorySeed
 from sooljang.infrastructure.database.models.external_source import (
+    ExternalLlmRematchLog,
     ExternalLookupCache,
     ExternalProductMatch,
     ExternalSource,
@@ -26,6 +27,7 @@ from sooljang.infrastructure.database.models.inventory import (
 )
 from sooljang.infrastructure.database.models.llm import (
     DEFAULT_OPENAI_MODEL,
+    DEFAULT_REMATCH_MONTHLY_CAP,
     LlmProvider,
     LlmSetting,
 )
@@ -48,6 +50,7 @@ from sooljang.infrastructure.database.models.tasting import (
 
 __all__ = [
     "DEFAULT_OPENAI_MODEL",
+    "DEFAULT_REMATCH_MONTHLY_CAP",
     "MAX_RATING",
     "RATING_STEP",
     "Attachment",
@@ -60,6 +63,7 @@ __all__ = [
     "Category",
     "CategorySeed",
     "ConflictLog",
+    "ExternalLlmRematchLog",
     "ExternalLookupCache",
     "ExternalProductMatch",
     "ExternalSource",
