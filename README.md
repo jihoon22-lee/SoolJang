@@ -72,7 +72,8 @@ micromamba 로 홈 디렉토리에 PostgreSQL 17 을 설치해 root 없이 실�
 
 ## 개발 현황
 
-초기 구축 단계. 진행 상황은 [docs/plan.md](docs/plan.md)의 "현재 위치" 절에서 확인한다.
+현재 [`v1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)을 운영 중이다.
+완료된 Task와 향후 선택 사항은 [docs/plan.md](docs/plan.md)의 "현재 위치" 절에서 확인한다.
 
 ## 라이선스
 

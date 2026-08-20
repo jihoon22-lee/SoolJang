@@ -3,7 +3,7 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-20 (Task 34 완료 — 외부 정보 조회 v2, PR1~PR7 전부 머지됨.**
+- 최종 갱신: **2026-08-20 (Task 34와 `v1.6.0` 릴리스·운영 재배포 완료.**
   매칭 정확도(엉뚱한 술을 정답처럼 보여주던 문제)와 소스 등록 편의성을 함께 고쳤다:
   PR1 후보 노출·사용자 명시 고정([#97](https://github.com/jihoon22-lee/SoolJang/pull/97)),
   PR2 토큰 집합 기반 점수 재작성·질의 확장([#98](https://github.com/jihoon22-lee/SoolJang/pull/98)),
@@ -17,16 +17,11 @@
   상세 설계·결정 로그는 [plan-external-v2.md](plan-external-v2.md), `plan.md` §5 D175~D193.
   새 사이트를 실제로 붙이는 일(네이버 쇼핑 등)은 이번 범위가 아니다 — §7 향후 고려로만
   기록.
-  **이 세션 중 중복 작업 정리도 했다** — 동시에 떠 있던 다른(오래된/고아) 세션이 이미
-  머지된 PR 을 다시 만든 사고가 두 번 있었다(PR #97/#99, PR #103) — 전부 닫고 정리했다
-  (일부 원격 브랜치는 세션 권한(403)으로 못 지워 남아 있을 수 있다, `feat/external-match-pin`·
-  `feat/external-normalized-fields`).
-  **이 세션은 사용자의 홈 PC가 아니라 격리된 클라우드 샌드박스다** — 아래 §5 의 "이
-  개발 환경 자체가 사용자의 홈 PC다" 항목은 **이전 세션들(Task 1~33)에서만 사실이었다.**
-  Task 34 를 진행한 이 세션은 `claude.ai/code` 원격 실행 환경이라 홈 PC 파일시스템·
-  Docker 소켓에 직접 닿지 않는다 — 실제 재배포는 사용자가 연결해 둔 별도의 WSL/Docker
-  브리지 Remote Control 세션(ici/idk/devbox, 전부 같은 물리 머신)을 통해서만 가능하다.
-  다음 릴리스(`v1.6.0`)·재배포 작업은 그 경로로 진행한다.
+  **중복 작업 정리도 마쳤다** — 동시에 떠 있던 오래된 세션이 이미 머지된 작업을 다시 만든
+  PR #99·#103은 닫혔고, 관련 원격 브랜치는 삭제됐다. 홈 PC WSL 세션에서 `v1.6.0` 태그를
+  푸시해 Release workflow 전체 성공과 GHCR 게시를 확인한 뒤 운영 DB를 백업하고 API·웹을
+  `1.6.0`으로 교체했다. Alembic `0012_llm_rematch`, API·웹 프록시 헬스체크, 컨테이너 3개
+  healthy까지 확인했다.
   직전엔 Task 33 완료 — Task 32 회귀 수정. 재고 우선 정렬 순위가
   사용자 의도와 반대(미개봉 우선)로 구현돼 있던 것을 "개봉 있음 > 미개봉만 있음 >
   재고 없음"으로 뒤집었다(D174, [#95](https://github.com/jihoon22-lee/SoolJang/pull/95)). `queries.ts::stockTier()` 두 분기 순서만
@@ -39,8 +34,8 @@
   7개가 상시 표시, 경계 너머로 옮기면 자동으로 접힘/상시 전환. "필터 순서 편집"
   전용 모드(값 입력과 분리)([#93](https://github.com/jihoon22-lee/SoolJang/pull/93)).
   둘 다 이 목록이 서버 페이지네이션 없이 Dexie 카탈로그 전체를 프론트엔드에서
-  정렬하는 구조라 서버 변경 없이 완결됐다. 버전을 1.4.0 으로 올려 릴리스·재배포
-  진행 중. 직전엔 Task 31(백로그 정리 2차) 5개 PR([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90))로 1.3.0,
+  정렬하는 구조라 서버 변경 없이 완결됐다. 버전을 1.4.0 으로 올려 릴리스·재배포를
+  완료했다. 직전엔 Task 31(백로그 정리 2차) 5개 PR([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90))로 1.3.0,
   Task 30(백로그 정리)로 1.2.0 릴리스([#82](https://github.com/jihoon22-lee/SoolJang/pull/82)~[#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 완료.
   이 작업 중 `README.md`/`docs/handoff.md` §1·§1-1 의 로컬 개발 안내가 `v1.0.0` 이전
   기준으로 남아 있던 것(`docker compose up -d db` 가 지금은 운영 DB를 가리킴, `DELETE
@@ -64,7 +59,7 @@
   이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어 `sg` 가 그룹 전환 대신 `ast-grep` 으로
   해석될 수 있다 — 그럴 땐 절대 경로 `/usr/bin/sg docker -c "..."` 를 쓴다(`scripts/backup.sh`
   도 한동안 이 함정에 걸려 있었다 — 2026-08-06 수정, [#59](https://github.com/jihoon22-lee/SoolJang/pull/59))
-- 현재 브랜치: `main`. Task 1~17·20~28 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로
+- 현재 브랜치: `main`. Task 1~17·20~34 전부 완료(Task 18 은 `adapter` 전략 + JSON 모드로
   확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록).
   **`v1.0.0` 이후 Task 24(실사용 피드백 개선) 7개 PR 을 전부 머지하고([#47](https://github.com/jihoon22-lee/SoolJang/pull/47)~[#53](https://github.com/jihoon22-lee/SoolJang/pull/53)),
   데일리샷 등록 과정에서 발견한 어댑터 개선([#56](https://github.com/jihoon22-lee/SoolJang/pull/56))까지
@@ -83,12 +78,14 @@
   개선인 Task 32([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93)) 를 담아 `v1.4.0` 을, 그 회귀 수정인
   Task 33([#95](https://github.com/jihoon22-lee/SoolJang/pull/95)) 를 담아 `v1.4.1` 을 릴리스·재배포했다(2026-08-20 헬스체크로 재확인).
   이어서 Task 34(외부 정보 조회 v2, PR1~PR7, [#97](https://github.com/jihoon22-lee/SoolJang/pull/97)~[#107](https://github.com/jihoon22-lee/SoolJang/pull/107))
-  전부 완료했다 — `v1.6.0` 하나로 릴리스 예정(§1 상단 참조).**
+  전부 완료하고 [릴리스 PR #108](https://github.com/jihoon22-lee/SoolJang/pull/108)로
+  `v1.6.0`을 릴리스·재배포했다.**
   Task 34 완료로 계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는
   시점에 결정할 선택 사항(외부 소스 나머지 6곳 실등록, Task 19 본 착수)뿐이다 — 상세는
   `plan.md` §1
-- 버전: **[`1.4.1`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.1)** 배포 중(2026-08-20 헬스체크로 재확인) → **`v1.6.0`**(Task 34 PR1~PR7)
-  릴리스·재배포 진행 예정 — 이 문서 최상단 "최종 갱신" 참조
+- 버전: **[`1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)** 배포 중.
+  API·웹 이미지 `1.6.0`, migration revision `0012_llm_rematch`, 컨테이너 3개 healthy를
+  2026-08-20에 확인했다
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
