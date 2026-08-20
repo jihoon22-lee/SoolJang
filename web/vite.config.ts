@@ -70,6 +70,11 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
+    // 상한 없이 두면 워커가 코어 수(-1)만큼 뜬다 — 12코어 개발 머신에서 워커 11개 ×
+    // 약 120MB로 한 번 돌 때 1.6GB에 육박한 사례가 있었다(#106). 퍼센트로 지정해야
+    // 코어 수로 클램프된다 — 정수(예: 4)는 클램프되지 않아 코어가 적은 CI 러너에서는
+    // 오히려 기본값(코어-1)보다 워커가 늘어날 수 있다.
+    maxWorkers: "33%",
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
