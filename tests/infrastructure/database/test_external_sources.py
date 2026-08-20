@@ -916,7 +916,7 @@ class TestPresets:
         assert source.name == "데일리샷"
         assert source.base_url == "https://dailyshot.co"
         assert source.preset_key == "dailyshot"
-        assert source.preset_version == 1
+        assert source.preset_version == 2
         assert source.spec_overridden is False
 
     async def test_없는_프리셋_키는_거부한다(self, session: AsyncSession) -> None:

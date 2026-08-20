@@ -38,7 +38,7 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from sooljang.infrastructure.external.matching import ProductIdentity, build_queries
+from sooljang.infrastructure.external.matching import ProductIdentity, build_queries, is_excluded
 from sooljang.infrastructure.external.matching import score as score_name
 
 logger = logging.getLogger(__name__)
@@ -677,6 +677,24 @@ async def _fetch_snapshot_unsafe(
                 url = _extract_field(item, fields_spec.get("url"), base_url=base_url)
                 if isinstance(name, str) and isinstance(url, str):
                     raw.append((name, url, None))
+
+        # 제외 키워드(Task 34 PR7)는 자동 후보 선택에서만 적용한다 — 고정된 상품은
+        # 사용자가 명시적으로 골라 뒀으므로, 검색 결과에서 그 항목을 다시 찾아야 하는
+        # `_match_pinned` 경로를 이 필터가 방해하면 안 된다.
+        if pinned is None and raw:
+            exclude_keywords = search_spec.get("exclude_keywords")
+            keywords = (
+                [word for word in exclude_keywords if isinstance(word, str)]
+                if isinstance(exclude_keywords, list)
+                else []
+            )
+            if keywords:
+                filtered = [entry for entry in raw if not is_excluded(entry[0], keywords)]
+                if not filtered:
+                    return AdapterResult(
+                        None, {}, None, True, "제외 키워드에 걸려 후보가 모두 걸러졌습니다"
+                    )
+                raw = filtered
 
         if not raw:
             return AdapterResult(

@@ -14,6 +14,7 @@ import pytest
 from sooljang.infrastructure.external.matching import (
     ProductIdentity,
     build_queries,
+    is_excluded,
     parse_name,
     score,
 )
@@ -194,3 +195,32 @@ def test_질의는_최대_세개다() -> None:
     queries = build_queries(_identity("글렌알라키 10년 배치 5", name_en="GlenAllachie 10 Batch 5"))
 
     assert len(queries) <= 3
+
+
+# --- 제외 키워드 (Task 34 PR7) ------------------------------------------------
+
+
+def test_제외_키워드가_토큰으로_있으면_제외된다() -> None:
+    assert is_excluded("위스키 잔 세트", ["잔"]) is True
+
+
+def test_부분_문자열로는_걸리지_않는다() -> None:
+    """`잔`이 `잔티`·`발란자`처럼 다른 단어에 포함된 부분 문자열로 걸리면 안 된다 —
+    토큰 단위 비교라는 이 기능의 핵심 요구사항이다."""
+    assert is_excluded("잔티 12년", ["잔"]) is False
+    assert is_excluded("발란타인 17년", ["잔"]) is False
+
+
+def test_제외_키워드가_없는_후보는_그대로_남는다() -> None:
+    assert is_excluded("글렌피딕 12년", ["잔", "글라스"]) is False
+
+
+def test_빈_제외_목록은_아무것도_거르지_않는다() -> None:
+    assert is_excluded("위스키 잔", []) is False
+
+
+def test_여러_단어짜리_키워드는_모든_토큰이_있어야_걸린다() -> None:
+    """초안 목록은 전부 한 단어지만, 나중에 여러 단어짜리 키워드가 추가될 수 있다 —
+    그때는 후보가 그 키워드의 토큰을 전부 포함해야만(부분 집합) 제외된다."""
+    assert is_excluded("위스키 미니어처 세트 5종", ["미니어처 세트"]) is True
+    assert is_excluded("위스키 미니어처 5종", ["미니어처 세트"]) is False
