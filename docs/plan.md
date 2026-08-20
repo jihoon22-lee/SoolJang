@@ -617,10 +617,10 @@ Task 21 → 22 는 **반복 루프**다. 분석에서 도출된 개선안을 실
   [handoff.md](handoff.md)
 - **범위 제외**: 감사 로그(미구현, [handoff.md](handoff.md) §6 참조), 이미지 게시·릴리스
   노트·버전 태그(Task 23)
-- **Tailscale 실접속**: Task 14 세션에서 확인됨. 설치·로그인 완료, tailnet
-  `tail30f401.ts.net`, 접속 주소 `https://main.tail30f401.ts.net`. Docker 이미지를
-  재빌드(`docker compose up -d --build`)한 뒤 `scripts/serve-https.sh` 로 공개한다 —
-  현재 컨테이너는 Task 12 이전 빌드다
+- **Tailscale 실접속**: Task 14 세션에서 설치·로그인을 확인했다. 당시에는
+  `https://main.tail30f401.ts.net`의 443 포트를 썼지만, 여러 서비스를 함께 운영하는 현재
+  구성에서 술장 주소는 **`https://main.tail30f401.ts.net:8080`**이다(2026-08-20 재검증,
+  최신 상태는 Q7 참고). 아래의 당시 배포 기록은 역사적 맥락으로 남긴다
 
 ### ✅ Task 13 — 개별 병 관리와 시음 세션
 
@@ -2165,10 +2165,10 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
 | ~~Q2~~ | ~~검색·LLM API 제공자와 예산~~ | **✅ 해결** — LLM 쪽은 Task 17(OpenAI, "테스트 몇 차례만" 제한). `adapter` 전략은 LLM 을 안 쓴다(D91). **`search` 전략(구글 스크래핑 + 검색 API)은 포기로 결정(2026-08-13, D167)** — ToS·신뢰성·예산 위험이 커 제거하고, 대신 "웹에서 검색" 링크(제품명으로 브라우저 검색 열기)로 대체했다. 상시 LLM 예산 상한은 여전히 미정 | — |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | **7곳 중 1곳(데일리샷) 실제 등록 완료(2026-08-05)** — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24 중 데일리샷을 JSON 모드 `adapter_spec` 으로 등록하고 실제 조회까지 확인했다(D147~D148). 나머지 6곳은 각 사이트가 HTML 서버 렌더링인지 데일리샷처럼 SPA+JSON API 인지부터 조사해야 한다 — 사용자가 원하는 시점에 하나씩 진행 | Task 19 착수 전(나머지 6곳) |
-| ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결 (Task 14 세션, 2026-08-03 재확인)** — 설치·로그인 완료. tailnet `tail30f401.ts.net`, 이 개발 환경 자체가 이 tailnet 의 `main` 노드(홈 PC)다. `docker compose`(web/api/db, 2026-07-31 빌드 — Task 22 배치 이전) 가 이미 떠 있으나 `tailscale serve` 는 아직 설정 안 돼 있어 폰에서 아직 접속 불가. 폰에 Tailscale 앱 설치 + 같은 계정 로그인 + `tailscale serve` 실행 + 최신 이미지 재배포가 남았다(Task 23 진행 중) | — |
+| ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결·재검증(2026-08-20)** — tailnet `tail30f401.ts.net`, 홈 PC는 `main` 노드다. 술장은 `https://main.tail30f401.ts.net:8080`에서 API health `1.6.0`과 웹 HTTP 200을 반환한다 | — |
 | ~~Q5~~ | ~~웹 푸시 알림 채널~~ | **✅ 해결(사용자 결정, 2026-08-03)** — 웹 푸시로 간다. 단 Task 19 는 목표가를 비교할 시세 데이터(Q3 의 스크래핑) 가 있어야 값이 있어, 그 조사·등록을 미루기로 한 결정과 함께 Task 19 실행도 자연히 미뤄진다 | Task 19 |
 | Q6 | 지인 공유 시 권한 모델 상세. 읽기 전용 링크만으로 충분한지, 계정 발급이 필요한지 | 미해결 — Task 20 이 "읽기 전용 공유 링크"를 이 질문 때문에 이연했다(D88) | Task 20 후속 |
-| ~~Q7~~ | ~~Tailscale Serve 를 관리자 콘솔에서 켜기~~ | **✅ 해결(사용자 완료, 2026-08-05)** — `tailscale serve status` 로 `https://main.tail30f401.ts.net` → `http://127.0.0.1:8080` 프록시가 정상 등록·실행 중임을 확인했다. 모바일 접속 코드 작업은 없다(Task 23 남은 항목은 이제 폰에서 실제로 접속해 보는 것뿐) | — |
+| ~~Q7~~ | ~~Tailscale Serve 를 관리자 콘솔에서 켜기~~ | **✅ 해결·재검증(2026-08-20)** — 현재 `https://main.tail30f401.ts.net:8080` → `http://127.0.0.1:8080` 프록시가 정상이다. 무포트 443 URL은 다른 서비스가 사용하므로 술장 접속에는 반드시 `:8080`을 붙인다 | — |
 | ~~Q8~~ | ~~GHCR 에서 직접 `docker pull` 할지, 지금처럼 로컬 재빌드로 배포할지~~ | **✅ 준비 완료(사용자 완료, 2026-08-05)** — `gh auth status` 로 토큰에 `read:packages` 스코프가 생겼음을 확인했다. **어느 방식을 쓸지는 여전히 사용자 선택**(둘 다 동등한 이미지, 급하지 않음) — pull 로 바꾸려면 다음 배포 때 `docker pull ghcr.io/.../sooljang-*:1.0.0` 을 시도하면 된다 | 다음 배포 시점(선택 사항) |
 | Q9 | Task 19(판매처 시세 이력) 를 지금 시작할지, 계속 미룰지 | **정확도·등록 기반은 완료(2026-08-20, Task 34·`v1.6.0`)** — 데일리샷 JSON adapter를 바탕으로 후보·점수·확인 상태, 사용자 고정, 표준 필드, 소스 헬스, 프리셋, opt-in LLM 재판정, 제외 키워드까지 구현·배포했다. 나머지 사이트 실등록과 Task 19 본 사양(시세 이력 차트·목표가 알림)은 여전히 미착수이며, 실제 응답 샘플과 사용자 착수 결정이 필요하다. 후보와 필요 입력은 [plan-external-v2.md](plan-external-v2.md) §7에 기록했다 | Task 19 착수 여부 사용자 결정 대기 |
 
