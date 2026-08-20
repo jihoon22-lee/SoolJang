@@ -3,11 +3,35 @@
 **다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
 [plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
 
-- 최종 갱신: **2026-08-16 (Task 33 완료 — Task 32 회귀 수정. 재고 우선 정렬 순위가
+- 최종 갱신: **2026-08-20 (Task 34 완료 — 외부 정보 조회 v2, PR1~PR7 전부 머지됨.**
+  매칭 정확도(엉뚱한 술을 정답처럼 보여주던 문제)와 소스 등록 편의성을 함께 고쳤다:
+  PR1 후보 노출·사용자 명시 고정([#97](https://github.com/jihoon22-lee/SoolJang/pull/97)),
+  PR2 토큰 집합 기반 점수 재작성·질의 확장([#98](https://github.com/jihoon22-lee/SoolJang/pull/98)),
+  PR3 표준 필드 스키마·가격 비교 표([#100](https://github.com/jihoon22-lee/SoolJang/pull/100)),
+  PR4 소스 헬스 체크([#101](https://github.com/jihoon22-lee/SoolJang/pull/101)),
+  PR5 소스 프리셋 카탈로그·`adapter_spec` v2 + robots.txt 다중 호스트 버그 수정
+  ([#102](https://github.com/jihoon22-lee/SoolJang/pull/102)),
+  PR6 애매 구간(0.5~0.85) LLM 재판정 — 기본 꺼짐, 자동 고정 없음, 3중 비용 가드
+  ([#104](https://github.com/jihoon22-lee/SoolJang/pull/104)),
+  PR7 제외 키워드(토큰 단위, 부분 문자열 오탐 없음)([#107](https://github.com/jihoon22-lee/SoolJang/pull/107)).
+  상세 설계·결정 로그는 [plan-external-v2.md](plan-external-v2.md), `plan.md` §5 D175~D193.
+  새 사이트를 실제로 붙이는 일(네이버 쇼핑 등)은 이번 범위가 아니다 — §7 향후 고려로만
+  기록.
+  **이 세션 중 중복 작업 정리도 했다** — 동시에 떠 있던 다른(오래된/고아) 세션이 이미
+  머지된 PR 을 다시 만든 사고가 두 번 있었다(PR #97/#99, PR #103) — 전부 닫고 정리했다
+  (일부 원격 브랜치는 세션 권한(403)으로 못 지워 남아 있을 수 있다, `feat/external-match-pin`·
+  `feat/external-normalized-fields`).
+  **이 세션은 사용자의 홈 PC가 아니라 격리된 클라우드 샌드박스다** — 아래 §5 의 "이
+  개발 환경 자체가 사용자의 홈 PC다" 항목은 **이전 세션들(Task 1~33)에서만 사실이었다.**
+  Task 34 를 진행한 이 세션은 `claude.ai/code` 원격 실행 환경이라 홈 PC 파일시스템·
+  Docker 소켓에 직접 닿지 않는다 — 실제 재배포는 사용자가 연결해 둔 별도의 WSL/Docker
+  브리지 Remote Control 세션(ici/idk/devbox, 전부 같은 물리 머신)을 통해서만 가능하다.
+  다음 릴리스(`v1.6.0`)·재배포 작업은 그 경로로 진행한다.
+  직전엔 Task 33 완료 — Task 32 회귀 수정. 재고 우선 정렬 순위가
   사용자 의도와 반대(미개봉 우선)로 구현돼 있던 것을 "개봉 있음 > 미개봉만 있음 >
   재고 없음"으로 뒤집었다(D174, [#95](https://github.com/jihoon22-lee/SoolJang/pull/95)). `queries.ts::stockTier()` 두 분기 순서만
-  교체하고 체크박스 라벨·테스트를 맞췄다. 버전을 1.4.1 로 올려 릴리스·재배포 진행 중.
-  직전엔 Task 32 완료 — "내 술" 재고 표시·정렬 개선 2개 PR. ①
+  교체하고 체크박스 라벨·테스트를 맞췄다. 버전을 1.4.1 로 올려 릴리스·재배포 완료.
+  그 전엔 Task 32 완료 — "내 술" 재고 표시·정렬 개선 2개 PR. ①
   재고 배지에 개봉/미개봉 내역 상시 표시(호버 아님) + 재고 우선 정렬(미개봉 있음 >
   개봉만 있음 > 재고 없음, `order` 는 각 티어 안에서만 방향 반전) + "재고 있는 술
   먼저" 토글(기본 켬, `localStorage`)([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)).
@@ -57,12 +81,14 @@
   Task 30([#82](https://github.com/jihoon22-lee/SoolJang/pull/82)·[#83](https://github.com/jihoon22-lee/SoolJang/pull/83)·[#84](https://github.com/jihoon22-lee/SoolJang/pull/84)) 를 담아 `v1.2.0` 을, 백로그 정리 2차인
   Task 31([#86](https://github.com/jihoon22-lee/SoolJang/pull/86)~[#90](https://github.com/jihoon22-lee/SoolJang/pull/90)) 를 담아 `v1.3.0` 을, "내 술" 재고 표시·정렬
   개선인 Task 32([#92](https://github.com/jihoon22-lee/SoolJang/pull/92)·[#93](https://github.com/jihoon22-lee/SoolJang/pull/93)) 를 담아 `v1.4.0` 을, 그 회귀 수정인
-  Task 33([#95](https://github.com/jihoon22-lee/SoolJang/pull/95)) 를 담아 `v1.4.1` 을 릴리스·재배포했다.**
-  계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는 시점에 결정할
-  선택 사항(GHCR pull 전환 여부는 이미 확정, 외부 소스 나머지 6곳 등록, Task 19 본
-  착수)뿐이다 — 상세는
+  Task 33([#95](https://github.com/jihoon22-lee/SoolJang/pull/95)) 를 담아 `v1.4.1` 을 릴리스·재배포했다(2026-08-20 헬스체크로 재확인).
+  이어서 Task 34(외부 정보 조회 v2, PR1~PR7, [#97](https://github.com/jihoon22-lee/SoolJang/pull/97)~[#107](https://github.com/jihoon22-lee/SoolJang/pull/107))
+  전부 완료했다 — `v1.6.0` 하나로 릴리스 예정(§1 상단 참조).**
+  Task 34 완료로 계획된 Task 중 새로 착수할 게 없다 — 남은 건 전부 사용자가 원하는
+  시점에 결정할 선택 사항(외부 소스 나머지 6곳 실등록, Task 19 본 착수)뿐이다 — 상세는
   `plan.md` §1
-- 버전: **[`1.4.1`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.1)** (재배포 진행 중 — 배포 완료 후 헬스체크로 확인)
+- 버전: **[`1.4.1`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.4.1)** 배포 중(2026-08-20 헬스체크로 재확인) → **`v1.6.0`**(Task 34 PR1~PR7)
+  릴리스·재배포 진행 예정 — 이 문서 최상단 "최종 갱신" 참조
 
 > 이 문서보다 최신 세션의 상세 기록이 필요하면 `docs/archive/session-handoff-*.md` (날짜 스탬프
 > 파일)를 확인한다. 이 문서는 프로젝트 전체를 아우르는 상시 갱신 문서이고, 날짜 스탬프
