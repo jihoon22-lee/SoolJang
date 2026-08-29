@@ -34,8 +34,9 @@ directory가 아니라 기존 Docker named volume을 계속 사용한다.
 - `uv run ruff check .`, `uv run ruff format --check .`, `uv run ty check`: PASS
 - Web check/test/coverage/build: PASS(41 files, 514 tests)
 - secret scan: PASS
-- Python DB integration suite는 PostgreSQL을 유지보수 목적으로 정지한 상태에서 연결 거부가
-  확인되어 중단했다. 기존 named volume을 새 source path에서 복구한 뒤 전체 suite를 재실행한다.
+- 격리 PostgreSQL 17(`127.0.0.1:54329/sooljang_test`) Python DB suite: PASS
+  (860 passed, 29 expected skips, coverage 91.83%). 운영 DB는 테스트에 사용하지 않았다.
+- 운영 Compose DB 재생성 및 `pg_isready`·`SELECT 1`: PASS(named volume 보존)
 
 ## Files Modified
 
