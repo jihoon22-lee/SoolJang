@@ -16,6 +16,8 @@ directory가 아니라 기존 Docker named volume을 계속 사용한다.
 - `.env`는 값을 출력하지 않고 byte-for-byte 복사했으며 target mode는 `0600`이다.
 - 기존 stash 1개(`e880a30215d3984ab01c91adca99b07e84ccac39`)와 reflog entry를 target에 복원했다.
 - `.githooks`를 계속 쓰도록 local `core.hooksPath`와 `core.autocrlf=false`를 보존했다.
+- `install-hooks.sh`의 계약대로 Git hook 2개와 tracked shell script 7개의 mode를 `100755`로
+  고정해 ext4 clone에서도 commit/pre-push guard가 실제 실행되게 했다.
 - `.venv`, root/Web `node_modules`와 검사 cache는 target lockfile에서 재생성한다.
 
 ### 2. Runtime and documentation
@@ -34,6 +36,7 @@ directory가 아니라 기존 Docker named volume을 계속 사용한다.
 - `uv run ruff check .`, `uv run ruff format --check .`, `uv run ty check`: PASS
 - Web check/test/coverage/build: PASS(41 files, 514 tests)
 - secret scan: PASS
+- hook/shell executable mode, `bash -n`, `bash scripts/install-hooks.sh`: PASS
 - 격리 PostgreSQL 17(`127.0.0.1:54329/sooljang_test`) Python DB suite: PASS
   (860 passed, 29 expected skips, coverage 91.83%). 운영 DB는 테스트에 사용하지 않았다.
 - 운영 Compose DB 재생성 및 `pg_isready`·`SELECT 1`: PASS(named volume 보존)
@@ -42,6 +45,7 @@ directory가 아니라 기존 Docker named volume을 계속 사용한다.
 
 - `docs/handoff.md` — 현재 local repository와 재개 경로
 - `docs/plan.md` — 현재 위치·재개 명령·D194 이관 결정
+- `.githooks/*`, `scripts/*.sh` — ext4 executable mode
 - `workthrough/2026-08-29-wsl-project-migration.md` — 이관 경계와 검증 기록
 
 ## Notes
