@@ -52,7 +52,7 @@
 - 저장소: `https://github.com/jihoon22-lee/SoolJang` (**public**, 소유자 `jihoon22-lee`. 협업자는
   본인뿐이라 남이 `main`에 push/머지할 방법은 원래도 없었지만, 2026-08-09 부터는 ruleset 으로
   명시적으로 강제한다 — 본인도 PR 없이 직접 push 불가)
-- 로컬 경로: `/mnt/e/projects/SoolJang`
+- 로컬 경로: `/home/jihoon/projects/SoolJang`
 - **이 개발 환경 자체가 사용자의 홈 PC다** — hostname `Main` = tailnet 노드 `main`(2026-08-03
   확인). Docker 소켓 접근은 `sg docker -c "..."` 로 가능(현재 셸 세션엔 `docker` 그룹이
   반영 안 돼 있을 뿐 시스템상 멤버는 맞다). **주의**: 이 환경에 `ast-grep` 이 `sg` 라는
@@ -97,7 +97,7 @@
 ## 1. 5분 안에 작업 재개하기
 
 ```bash
-cd /mnt/e/projects/SoolJang
+cd /home/jihoon/projects/SoolJang
 
 # 1) 상태 확인
 git status -sb && git log --oneline -5

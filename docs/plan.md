@@ -16,10 +16,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-20 (**Task 34와 `v1.6.0` 릴리스·운영 재배포 완료**. PR1~PR7 전체 구현·병합 후 [릴리스 PR #108](https://github.com/jihoon22-lee/SoolJang/pull/108)과 [`v1.6.0` Release](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)를 게시했다. 홈 PC의 API·웹 이미지를 `1.6.0`으로 교체하고 DB를 `0012_llm_rematch`까지 마이그레이션했다. API·웹 프록시 헬스체크와 컨테이너 3개 healthy를 확인했다) |
+| 최종 갱신 | 2026-08-29 (**WSL-native 작업 경로 이관 완료**. `origin/main`을 `/home/jihoon/projects/SoolJang`에 새로 clone하고, Git 밖 `.env`와 기존 stash를 보존했다. 운영 Compose 재기동·DB 검증은 이 migration PR의 후속 runtime gate에서 수행한다. Task 34와 `v1.6.0` 릴리스·운영 재배포 완료 상태는 유지한다) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
 | 다음 착수 Task | **없음 — Task 34 PR1~PR7과 `v1.6.0` 릴리스·재배포까지 완료.** §9 백로그와 §6의 열린 질문은 사용자가 원하는 시점에 결정할 선택 사항이다 |
-| 현재 브랜치 | `main`(Task 34 PR7, 머지 완료) |
+| 현재 브랜치 | `main`(WSL project migration PR merge 기준) |
 | 진행 중 잔여 항목 | 없음(Task 34 완료). §9 백로그·§6 Q6 뿐이며 급하지 않은 선택 사항이다 |
 | 최신 버전 | **[`v1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)**(2026-08-20) — Task 34 PR1~PR7 전체 반영. GHCR의 `sooljang-api:1.6.0`·`sooljang-web:1.6.0`을 홈 PC에 배포했고 API 버전 `1.6.0`, DB 연결 정상, migration revision `0012_llm_rematch`, 웹 HTTP 200을 확인했다 |
 
@@ -174,7 +174,7 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 ## 2. 재개 절차
 
 ```bash
-cd /mnt/e/projects/SoolJang
+cd /home/jihoon/projects/SoolJang
 
 # 1) 위치 확인
 git status -sb
@@ -2155,6 +2155,14 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | # | 결정 | 근거 |
 |---|---|---|
 | D193 | 제외 키워드(`adapter_spec.search.exclude_keywords`)는 후보 이름과 키워드 양쪽을 `matching.py::parse_name` 으로 토큰화해, **키워드의 토큰 전부가 후보의 토큰 집합에 포함될 때**(부분 집합) 제외한다. 부분 문자열 매칭은 쓰지 않는다. 고정된 상품(`pinned is not None`)은 이 필터를 적용하지 않는다 | 부분 문자열 매칭은 `잔`이 `잔티`·`발란자`에도 걸리는 오탐을 낸다 — PR2 가 이미 검증한 토큰 집합을 재사용하면 이 문제가 원천적으로 없다. 키워드 자체도 같은 파이프라인으로 토큰화해 여러 단어짜리 키워드가 나중에 추가돼도 규칙이 그대로 맞다. 고정을 예외로 두는 이유는 PR1 원칙("고정은 사용자 명시 조작으로만")과 같다 — 사용자가 명시적으로 고른 매칭을 자동 필터가 걷어내면 안 된다 |
+
+---
+
+### WSL-native project path migration 결정 (D194)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D194 | tracked source는 `origin/main`에서 `/home/jihoon/projects/SoolJang`으로 새로 clone하고, `.env`와 stash만 별도 보존한다. `.venv`, `node_modules`, cache는 복사하지 않고 lockfile로 재생성한다. Compose project name `sooljang`과 named volume `pgdata`·`uploads`는 유지한다 | Windows mount의 작업 I/O 병목을 제거하면서도 Git history와 운영 DB/upload volume identity를 유지한다. 원본 `/mnt/e/projects/SoolJang`은 target runtime과 DB 검증 및 사용자 승인 전까지 삭제하지 않는다 |
 
 ---
 
