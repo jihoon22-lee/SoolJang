@@ -177,6 +177,28 @@ curl http://127.0.0.1:8000/api/v1/health
 /usr/bin/sg docker -c "docker compose ps"   # 3개 컨테이너 다 healthy 인지
 ```
 
+### 4.7 Windows 로그온 뒤 WSL 자동 복구
+
+이 홈 PC의 자동 복구 원본은 `E:\recovery`(`/mnt/e/recovery`)에 있고, Windows 작업
+스케줄러가 로그온 시 WSL을 시작한 뒤 systemd recovery unit을 실행한다. SoolJang 단계는
+다음 명령으로 기존 컨테이너를 시작하고 health만 기다린다.
+
+```bash
+docker compose up -d --no-recreate --wait --wait-timeout 120
+```
+
+이 경로는 **배포가 아니다**. `--no-recreate` 때문에 Compose·image·`.env`가 달라져도
+기존 컨테이너를 자동으로 교체하지 않는다. 누락된 컨테이너 생성과 중지된 컨테이너 시작은
+가능하지만, 새 릴리스 반영은 반드시 §4.3~4.6의 백업·pull·migration·검증 절차로 한다.
+
+복구 상태는 다음처럼 확인한다.
+
+```bash
+systemctl status devbox-wsl-service-recovery.service
+tail -40 /var/log/devbox-wsl-service-recovery.log
+docker compose ps
+```
+
 ## 5. 자주 겪는 문제
 
 | 증상 | 원인/대응 |
