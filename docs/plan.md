@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-29 (**WSL-native 작업 경로 이관 완료**. `origin/main`을 `/home/jihoon/projects/SoolJang`에 새로 clone하고, Git 밖 `.env`와 기존 stash를 보존했다. 운영 Compose 재기동·DB 검증은 이 migration PR의 후속 runtime gate에서 수행한다. Task 34와 `v1.6.0` 릴리스·운영 재배포 완료 상태는 유지한다) |
+| 최종 갱신 | 2026-08-30 (**WSL 자동 복구와 배포 경계 고정**. `/mnt/e/recovery`의 SoolJang 단계가 `--no-recreate`로 기존 컨테이너를 시작하고 health만 기다리도록 FamilyCard와 같은 정책으로 통일됐다. DB·API·web container ID, `pgdata`·`uploads` mount, health가 명령 전후 그대로임을 확인했다. 다음 자연스러운 Windows 로그온/WSL cold start의 전체 경로 확인만 남았다) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
 | 다음 착수 Task | **없음 — Task 34 PR1~PR7과 `v1.6.0` 릴리스·재배포까지 완료.** §9 백로그와 §6의 열린 질문은 사용자가 원하는 시점에 결정할 선택 사항이다 |
-| 현재 브랜치 | `main`(WSL project migration PR merge 기준) |
-| 진행 중 잔여 항목 | 없음(Task 34 완료). §9 백로그·§6 Q6 뿐이며 급하지 않은 선택 사항이다 |
+| 현재 브랜치 | `main`(WSL no-recreate 자동 복구 정책 PR merge 기준) |
+| 진행 중 잔여 항목 | 제품 기능 잔여 없음(Task 34 완료). 운영 확인은 다음 자연스러운 WSL cold start 1회이며, §9 백로그·§6 Q6은 급하지 않은 선택 사항이다 |
 | 최신 버전 | **[`v1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)**(2026-08-20) — Task 34 PR1~PR7 전체 반영. GHCR의 `sooljang-api:1.6.0`·`sooljang-web:1.6.0`을 홈 PC에 배포했고 API 버전 `1.6.0`, DB 연결 정상, migration revision `0012_llm_rematch`, 웹 HTTP 200을 확인했다 |
 
 > 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
@@ -2163,6 +2163,14 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | # | 결정 | 근거 |
 |---|---|---|
 | D194 | tracked source는 `origin/main`에서 `/home/jihoon/projects/SoolJang`으로 새로 clone하고, `.env`와 stash만 별도 보존한다. `.venv`, `node_modules`, cache는 복사하지 않고 lockfile로 재생성한다. Compose project name `sooljang`과 named volume `pgdata`·`uploads`는 유지한다 | Windows mount의 작업 I/O 병목을 제거하면서도 Git history와 운영 DB/upload volume identity를 유지한다. 원본 `/mnt/e/projects/SoolJang`은 target runtime과 DB 검증 및 사용자 승인 전까지 삭제하지 않는다 |
+
+---
+
+### WSL Compose 자동 복구 결정 (D195)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D195 | Windows 로그온 뒤 WSL recovery의 SoolJang 단계는 `docker compose up -d --no-recreate --wait --wait-timeout 120`으로 기존 컨테이너 시작과 health 대기만 수행한다. Compose·image·`.env` 변경 반영은 자동 복구가 아니라 §4의 정식 배포 절차에서만 한다 | 기존 plain `compose up`은 설정 차이가 있으면 부팅 중 컨테이너를 교체할 수 있다. SoolJang은 새 이미지 반영 뒤 Alembic migration을 별도로 실행해야 하므로, 자동 복구가 교체까지 하면 migration 없는 암묵적 배포가 된다. 실제 운영 스택에서 no-recreate 명령 전후 DB·API·web container identity와 `pgdata`·`uploads` mount가 보존되고 health가 모두 정상임을 확인했다 |
 
 ---
 
