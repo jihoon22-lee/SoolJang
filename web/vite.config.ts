@@ -11,7 +11,7 @@ export default defineConfig({
       // `docker/nginx.conf` 가 `/sw.js` 를 캐시 안 되게 별도 규칙으로 잡아 뒀다 — 파일명을
       // 맞춰야 한다.
       filename: "sw.js",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       // `main.tsx` 에서 `virtual:pwa-register` 로 직접 등록한다 — 플러그인이 자동으로
       // 스크립트 태그를 주입하면 등록이 두 번 일어난다.
       injectRegister: false,

@@ -58,3 +58,7 @@ B03 통합 후 전체 Python **1117 passed/30 opt-in skipped**, branch 포함 co
 
 ![복수 판매 모바일](assets/v170-b04-mobile.png)
 ![복수 판매 데스크톱](assets/v170-b04-desktop.png)
+
+PR #137 첫 전체 CI를 통과했다. B06 #135 머지 후 동기화/입력 보호를 통합했으며 현재 위치/결정 로그의 문서 충돌을 보존 해결했다. 새 SHA의 관련 가격·혼합 동시성 검사와 전체 웹 검사 및 CI를 다시 실행한다.
+
+B06 통합 후 가격 API/DB·온라인/동기화 동시 수정 집중 검사 **95 passed**, 전체 웹 **582 passed**, branch **80.95%**와 build 통과. 첫 실행의 95 setup 오류는 이전 B05 실험의 `interest` FK가 폐기용 `sooljang_test`에 남아 생겼다. 대상 DB를 확인하고 public schema만 초기화한 뒤 동일 검사를 통과했다. 운영 DB에는 접근하지 않았다.

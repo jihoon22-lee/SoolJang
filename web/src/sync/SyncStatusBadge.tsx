@@ -10,7 +10,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { syncApi } from "@/api/client";
 import { db, type OutboxEntry } from "@/sync/db";
-import { discardFailedEntry } from "@/sync/outbox";
+import { dependentEntries, discardFailedEntry, replaceFailedEntry } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { useModalDialog } from "@/useModalDialog";
 
@@ -27,8 +27,24 @@ const ENTITY_LABELS: Record<string, string> = {
   attachment: "첨부파일",
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  name: "이름",
+  quantity: "병수",
+  volume_ml: "용량(ml)",
+  unit_list_price: "병당 정가",
+  unit_paid_price: "병당 실구매가",
+  note: "메모",
+  tasted_on: "마신 날",
+  purchased_on: "구매일",
+  rating: "평점",
+  poured_ml: "시음량(ml)",
+  abv: "도수",
+  personal_rating: "개인 평점",
+};
+
 export function SyncStatusBadge() {
-  const { state, pendingCount, failedCount, conflictCount, triggerSync } = useSyncStatus();
+  const { state, pendingCount, failedCount, conflictCount, triggerSync, lastError } =
+    useSyncStatus();
   const [panelOpen, setPanelOpen] = useState(false);
   const statusRef = useRef<HTMLDivElement | null>(null);
   const badgeRef = useRef<HTMLButtonElement | null>(null);
@@ -60,16 +76,19 @@ export function SyncStatusBadge() {
   // `flushOutbox` 자체가 조용히 실패했을 수 있다. 이 경우를 따로 구분하지 않으면
   // "최신 상태" 라고 잘못 표시해 사용자가 반영됐다고 오해한다.
   const stuck = state === "idle" && pendingCount > 0;
-  const label = describeStatus({ state, pendingCount, failedCount, conflictCount });
+  const label =
+    lastError && !hasFailed
+      ? "동기화 확인 필요"
+      : describeStatus({ state, pendingCount, failedCount, conflictCount });
   const tone =
     failedCount > 0
       ? "danger"
-      : hasConflicts || stuck
+      : hasConflicts || stuck || lastError
         ? "warn"
         : state === "offline"
           ? "muted"
           : "ok";
-  const opensPanel = hasConflicts || hasFailed;
+  const opensPanel = hasConflicts || hasFailed || Boolean(lastError);
 
   return (
     <div className="sync-status" ref={statusRef}>
@@ -92,6 +111,7 @@ export function SyncStatusBadge() {
       </button>
       {/* 마지막 항목을 확인/건너뛴 직후에도 "확인할 게 없습니다" 를 보여줘야 하므로
           opensPanel 이 아니라 panelOpen 에만 걸어 둔다. */}
+      {panelOpen && lastError && <p role="alert">{lastError}</p>}
       {panelOpen && (
         <SyncIssuesPanel onClose={() => setPanelOpen(false)} returnFocusRef={badgeRef} />
       )}
@@ -144,6 +164,8 @@ function SyncIssuesPanel({
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [discardingKey, setDiscardingKey] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<OutboxEntry | null>(null);
+  const [editFields, setEditFields] = useState<Record<string, unknown>>({});
 
   async function resolve(id: string) {
     setResolvingId(id);
@@ -162,13 +184,30 @@ function SyncIssuesPanel({
   }
 
   async function discard(entry: OutboxEntry) {
-    // 되돌릴 수 없는 조작이다(이 변경 자체를 포기하는 것) — 확인을 받는다.
-    if (!window.confirm(`"${describeEntry(entry)}" 항목을 포기하고 건너뛸까요?`)) return;
+    const dependents = dependentEntries(entry, await db.outbox.toArray());
+    const message = dependents.length
+      ? `"${describeEntry(entry)}"와 연결된 대기 명령 ${dependents.length}건을 함께 폐기할까요?`
+      : `"${describeEntry(entry)}" 항목을 포기하고 건너뛸까요?`;
+    if (!window.confirm(message)) return;
     setDiscardingKey(entry.idempotency_key);
+    setResolveError(null);
     try {
-      await discardFailedEntry(entry.idempotency_key);
+      await discardFailedEntry(entry.idempotency_key, true);
+    } catch (error) {
+      setResolveError(error instanceof Error ? error.message : "명령을 폐기하지 못했습니다");
     } finally {
       setDiscardingKey(null);
+    }
+  }
+
+  async function saveCorrection() {
+    if (!editingEntry) return;
+    try {
+      await replaceFailedEntry(editingEntry.idempotency_key, editFields);
+      setEditingEntry(null);
+      setResolveError(null);
+    } catch (error) {
+      setResolveError(error instanceof Error ? error.message : "명령을 수정하지 못했습니다");
     }
   }
 
@@ -192,6 +231,42 @@ function SyncIssuesPanel({
         </button>
       </div>
 
+      {resolveError && <p role="alert">{resolveError}</p>}
+      {editingEntry && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveCorrection();
+          }}
+        >
+          <h4>실패한 입력 수정</h4>
+          <p>수정한 값은 새 명령으로 다시 전송하며 뒤의 연결된 입력은 보존합니다.</p>
+          {Object.entries(editFields)
+            .filter(
+              ([, value]) =>
+                value === null || typeof value === "string" || typeof value === "number",
+            )
+            .map(([field, value]) => (
+              <label key={field}>
+                {FIELD_LABELS[field] ?? field}
+                <input
+                  value={String(value ?? "")}
+                  onChange={(event) =>
+                    setEditFields((previous) => ({
+                      ...previous,
+                      [field]:
+                        typeof value === "number" ? Number(event.target.value) : event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          <button type="submit">수정 후 다시 시도</button>
+          <button type="button" onClick={() => setEditingEntry(null)}>
+            취소
+          </button>
+        </form>
+      )}
       {nothingToShow && <p className="muted">확인할 문제가 없습니다.</p>}
 
       {failedEntries && failedEntries.length > 0 && (
@@ -205,6 +280,15 @@ function SyncIssuesPanel({
               <li key={entry.idempotency_key}>
                 <span>{describeEntry(entry)}</span>
                 <span className="muted">{entry.error ?? "원인을 알 수 없는 오류입니다."}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingEntry(entry);
+                    setEditFields({ ...entry.fields });
+                  }}
+                >
+                  입력 수정
+                </button>
                 <button
                   type="button"
                   className="danger"
@@ -222,11 +306,6 @@ function SyncIssuesPanel({
       {conflicts && conflicts.length > 0 && (
         <section aria-labelledby="sync-conflicts-heading">
           <h4 id="sync-conflicts-heading">동기화 충돌</h4>
-          {resolveError && (
-            <p className="alert" role="alert">
-              {resolveError}
-            </p>
-          )}
           <ul>
             {conflicts.map((conflict) => {
               const snapshot = conflict.client_snapshot as Record<string, unknown> | null;
