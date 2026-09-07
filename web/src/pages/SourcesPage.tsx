@@ -22,6 +22,7 @@ interface SourceFormState {
   categoryId: string;
   priority: string;
   isActive: boolean;
+  priceHistoryAllowed: boolean;
   rateLimitPerMin: string;
   requestLimitPerDay: string;
   ttlHours: string;
@@ -52,6 +53,7 @@ const EMPTY_FORM: SourceFormState = {
   categoryId: "",
   priority: "0",
   isActive: true,
+  priceHistoryAllowed: false,
   rateLimitPerMin: "6",
   requestLimitPerDay: "1000",
   ttlHours: "24",
@@ -73,6 +75,7 @@ function formToInput(form: SourceFormState): ExternalSourceInput | { error: stri
     category_id: form.categoryId || null,
     priority: Number(form.priority) || 0,
     is_active: form.isActive,
+    price_history_allowed: form.priceHistoryAllowed,
     rate_limit_per_min: Number(form.rateLimitPerMin) || 6,
     request_limit_per_day: Number(form.requestLimitPerDay) || 1000,
     ttl_hours: Number(form.ttlHours) || 24,
@@ -87,6 +90,7 @@ function sourceToForm(source: ExternalSource): SourceFormState {
     categoryId: source.category_id ?? "",
     priority: String(source.priority),
     isActive: source.is_active,
+    priceHistoryAllowed: source.price_history_allowed ?? false,
     rateLimitPerMin: String(source.rate_limit_per_min),
     requestLimitPerDay: String(source.request_limit_per_day ?? 1000),
     ttlHours: String(source.ttl_hours),
@@ -344,6 +348,21 @@ export function SourcesPage({ connectionsManaged = false }: { connectionsManaged
           </label>
         </div>
 
+        <div className="field checkbox-field">
+          <label htmlFor="source-price-history">
+            <input
+              id="source-price-history"
+              type="checkbox"
+              checked={form.priceHistoryAllowed}
+              onChange={(event) => setForm({ ...form, priceHistoryAllowed: event.target.checked })}
+            />
+            이 소스의 가격 이력 저장
+          </label>
+          <p className="muted text-sm">
+            제공자가 가격 자료의 보관을 허용하는 경우에만 켜세요. 꺼져 있으면 새 복수 가격은 조회
+            응답에서만 표시합니다.
+          </p>
+        </div>
         <div className="field">
           <label htmlFor="source-note">메모</label>
           <input

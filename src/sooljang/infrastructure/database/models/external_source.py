@@ -76,6 +76,7 @@ class ExternalSource(Base, EntityMixin):
     #: 사용자가 `adapter_spec` 을 직접 편집했는지. 참이면 프리셋 자동 갱신 대상에서 빠진다.
     spec_overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: 설정/자격증명이 바뀌면 과거 정상 판정을 현재 검증으로 재사용하지 않는다.
+    price_history_allowed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     config_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     request_limit_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
 
@@ -154,6 +155,8 @@ class ExternalProductMatch(Base, EntityMixin):
     #: JSON API 아이템 식별자. `search.result_fields` 모드는 상세 페이지를 조회하지 않아
     #: 검색 결과에서 고정된 항목을 되찾아야 하는데, 그때 이 값으로 찾는다.
     external_key: Mapped[str | None] = mapped_column(String(200), default=None)
+    external_product_key: Mapped[str | None] = mapped_column(Text, default=None)
+    preferred_seller_key: Mapped[str | None] = mapped_column(Text, default=None)
     confirmed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (

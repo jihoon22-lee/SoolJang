@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { NormalizedFields, SourceLookupResult } from "@/api/types";
+import type { ExternalOffer, NormalizedFields, SourceLookupResult } from "@/api/types";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -77,7 +77,7 @@ describe("ExternalInfoCard", () => {
     );
   });
 
-  it("100ml당 가격이 가장 낮은 소스에 최저 배지를 붙인다", async () => {
+  it("판매 조건이 없는 기존 단일 가격에는 최저 배지를 붙이지 않는다", async () => {
     stubRoutes([
       {
         match: "/products/p1/external-lookup",
@@ -114,7 +114,7 @@ describe("ExternalInfoCard", () => {
     const rows = screen.getAllByRole("row");
     const dailyshotRow = rows.find((row) => row.textContent?.includes("데일리샷"));
     const emartRow = rows.find((row) => row.textContent?.includes("이마트몰"));
-    expect(dailyshotRow?.textContent).toContain("최저");
+    expect(dailyshotRow?.textContent).not.toContain("최저");
     expect(emartRow?.textContent).not.toContain("최저");
   });
 
@@ -371,4 +371,104 @@ describe("ExternalInfoCard", () => {
 
     expect(screen.getByRole("button", { name: "이걸로 고정" })).toBeDisabled();
   });
+});
+
+function offer(overrides: Partial<ExternalOffer> = {}): ExternalOffer {
+  return {
+    product_key: "harbor",
+    offer_key: "a",
+    condition_key: "a",
+    source_url: "https://example.com/a",
+    name: "Harbor 700ml",
+    amount: "60000",
+    currency: "KRW",
+    volume_ml: 700,
+    units: 1,
+    is_set: false,
+    seller_key: "a",
+    seller_name: "합성 매장 A",
+    branch: null,
+    price_kind: "listed",
+    membership: "none",
+    coupon: "none",
+    fulfillment: "pickup",
+    region: "서울",
+    shipping: "none",
+    tax: "included",
+    in_stock: null,
+    fetched_at: "2026-09-07T00:00:00Z",
+    source_observed_at: null,
+    comparison_group: "same",
+    needs_confirmation: false,
+    relationship: "same_sku",
+    collection_scope: "검색 응답",
+    ...overrides,
+  };
+}
+
+it("고정 상품의 판매처 세 곳과 별도 규격을 보존하고 동일 조건 가격만 비교한다", async () => {
+  stubRoutes([
+    {
+      match: "/products/p1/external-lookup",
+      method: "POST",
+      body: [
+        result({
+          pinned: true,
+          cached: true,
+          offers: [
+            offer(),
+            offer({ condition_key: "b", seller_name: "합성 매장 B", amount: "59000" }),
+            offer({ condition_key: "c", seller_name: "합성 매장 C", amount: "58000" }),
+            offer({
+              condition_key: "small",
+              seller_name: null,
+              amount: "10000",
+              volume_ml: 200,
+              comparison_group: null,
+              membership: null,
+            }),
+          ],
+        }),
+      ],
+    },
+  ]);
+  renderWithQuery(<ExternalInfoCard productId="p1" productName="Harbor" offline={false} />);
+  await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+  expect(await screen.findByText("확인한 판매 조건 4건")).toBeInTheDocument();
+  const badge = screen.getByText("확인한 판매처 중 동일 조건 최저가");
+  expect(badge.closest("tr")).toHaveTextContent("합성 매장 C");
+  expect(screen.getAllByText("캐시 · 새 관측 아님")).toHaveLength(4);
+  expect(screen.getByText("판매자 미확인")).toBeInTheDocument();
+  expect(screen.getByText(/회원 조건: 미확인/)).toBeInTheDocument();
+});
+
+it("실패 후 마지막 관측과 미확인 판매 조건을 별도로 표시한다", async () => {
+  stubRoutes([
+    {
+      match: "/products/p1/external-lookup",
+      method: "POST",
+      body: [
+        result({
+          degraded: true,
+          offers: [
+            offer({
+              last_good: true,
+              comparison_group: null,
+              needs_confirmation: true,
+              is_set: true,
+              units: 2,
+              in_stock: false,
+              price_kind: "member",
+              source_observed_at: "2026-09-06T00:00:00Z",
+            }),
+          ],
+        }),
+      ],
+    },
+  ]);
+  renderWithQuery(<ExternalInfoCard productId="p1" productName="Harbor" offline={false} />);
+  await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+  expect(await screen.findByText("최근 조회 실패 · 마지막 확인 가격")).toBeInTheDocument();
+  expect(screen.getByText("제품·규격 확인 필요")).toBeInTheDocument();
+  expect(screen.queryByText("확인한 판매처 중 동일 조건 최저가")).not.toBeInTheDocument();
 });

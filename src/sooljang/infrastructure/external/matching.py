@@ -21,12 +21,13 @@ Task 18 이 쓰던 `difflib` 전체 문자열 유사도 하나로는 실측에�
 
 import difflib
 import re
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal
 
 #: 상품명 앞뒤에 붙는 판매 문구. 술 이름의 일부가 아니라 노이즈다.
-#: 대괄호·괄호 블록은 통째로 지우고, 나머지는 토큰 단위로 뺀다.
-_PROMO_BLOCK = re.compile(r"[\[\(【][^\]\)】]*[\]\)】]")
+#: 괄호 속 식별 정보를 보존하고 판촉 단어만 토큰 단위로 뺀다.
 _PROMO_TOKENS = frozenset(
     {
         "단독",
@@ -70,14 +71,34 @@ _VOLUME_ML = re.compile(r"(\d+(?:\.\d+)?)\s*(ml|밀리|cl|l|리터)\b", re.IGNOR
 #: 숙성 연수. `10년` `10y` `10yo` `10 years` `aged 10`.
 #: `aged 10` 은 뒤에 단위가 없으므로 별도 분기로 둔다 — 하나의 정규식에 optional 단위로
 #: 합치면 "글렌피딕 12" 같은 단위 없는 숫자까지 연수로 읽어 버린다.
-_AGE = re.compile(r"aged\s*(\d{1,2})\b|(\d{1,2})\s*(?:년|yo|yrs|yr|years|year|y)\b", re.IGNORECASE)
+_AGE = re.compile(
+    r"aged\s*(\d{1,2})\b|(?<!\d)(\d{1,2})\s*(?:년|yo|yrs|yr|years|year|y)\b", re.IGNORECASE
+)
 #: 도수. `46.3%` `46.3도` `abv 46.3`.
 #: `%` 는 비단어 문자라 뒤에 `\b` 를 붙이면 절대 매치되지 않는다(실측으로 확인).
 _ABV = re.compile(r"(?:abv\s*)?(\d{1,2}(?:\.\d)?)\s*(?:%|도(?![수]))", re.IGNORECASE)
 #: 빈티지. 단독 4자리. 용량·도수·연수로 이미 소비된 숫자는 앞 단계에서 지워져 남지 않는다.
-_VINTAGE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+_VINTAGE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)(?:년)?")
 
-_TOKEN_SPLIT = re.compile(r"[^0-9a-z가-힣]+")
+_TOKEN_SPLIT = re.compile(r"[\W_]+", re.UNICODE)
+_BATCH = re.compile(r"(?:batch|배치|#)\s*([a-z0-9-]+)", re.IGNORECASE)
+_CASK = re.compile(r"(?:cask|캐스크)\s*(?:no\.?\s*)?(\d+[a-z0-9-]*)", re.IGNORECASE)
+_PACK = re.compile(r"(\d+)\s*(?:병|bottles?|팩|pack)\b", re.IGNORECASE)
+_SET = re.compile(r"(?:세트|선물세트|글라스|gift\s*set|glass|\bset\b)", re.IGNORECASE)
+
+
+def _unicode_name(text: str) -> str:
+    # NFKC로 전각/호환 문자를 합치고 Latin 악센트만 제거한다. 일본어 탁점은 보존한다.
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    return "".join(
+        "".join(
+            part for part in unicodedata.normalize("NFD", char) if not unicodedata.combining(part)
+        )
+        if "LATIN" in unicodedata.name(char, "")
+        else char
+        for char in folded
+    )
+
 
 #: 토큰 집합에 주는 가중치. 어순·수식어가 사이트마다 달라 문자열 비율만으로는 흔들린다.
 _TOKEN_WEIGHT = 0.6
@@ -113,6 +134,10 @@ class NameFacts:
     age_years: float | None = None
     abv: float | None = None
     vintage: int | None = None
+    batch: str | None = None
+    cask: str | None = None
+    pack_count: int = 1
+    is_set: bool = False
 
 
 @dataclass(frozen=True)
@@ -121,6 +146,10 @@ class MatchScore:
 
     value: float
     conflicts: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
+    relationship: Literal[
+        "same_sku", "same_product", "related", "needs_confirmation", "mismatch"
+    ] = "needs_confirmation"
 
     @property
     def rejected(self) -> bool:
@@ -163,7 +192,11 @@ def parse_name(text: str) -> NameFacts:
     속성으로 소비된 숫자는 토큰에서 빠진다 — 그래야 `700` 이 빈티지로 잘못 읽히거나
     용량 숫자가 이름 유사도에 노이즈로 섞이지 않는다.
     """
-    lowered = _PROMO_BLOCK.sub(" ", text.lower())
+    # 괄호는 구두점일 뿐이다. 판촉 토큰만 아래에서 제거하고 판본 정보는 유지한다.
+    lowered = _unicode_name(text)
+    batch_match = _BATCH.search(lowered)
+    cask_match = _CASK.search(lowered)
+    pack_match = _PACK.search(lowered)
 
     volume_ml: int | None = None
     age_years: float | None = None
@@ -194,10 +227,11 @@ def parse_name(text: str) -> NameFacts:
     stripped = _ABV.sub(take_abv, stripped)
     stripped = _AGE.sub(take_age, stripped)
 
+    stripped = _BATCH.sub(" ", _CASK.sub(" ", stripped))
     vintage_match = _VINTAGE.search(stripped)
     if vintage_match is not None:
         vintage = int(vintage_match.group(1))
-        stripped = stripped.replace(vintage_match.group(1), " ", 1)
+        stripped = stripped[: vintage_match.start()] + " " + stripped[vintage_match.end() :]
 
     raw_tokens = [
         token for token in _TOKEN_SPLIT.split(stripped) if token and token not in _PROMO_TOKENS
@@ -212,6 +246,10 @@ def parse_name(text: str) -> NameFacts:
         age_years=age_years,
         abv=abv,
         vintage=vintage,
+        batch=batch_match.group(1) if batch_match else None,
+        cask=cask_match.group(1) if cask_match else None,
+        pack_count=int(pack_match.group(1)) if pack_match else 1,
+        is_set=bool(_SET.search(lowered)),
     )
 
 
@@ -269,6 +307,13 @@ def _conflicts(
     ):
         conflicts.append("abv")
 
+    for name in ("batch", "cask"):
+        expected = getattr(query, name)
+        actual = getattr(candidate, name)
+        if expected is not None and actual is not None and expected != actual:
+            conflicts.append(name)
+    if query.pack_count != candidate.pack_count or query.is_set != candidate.is_set:
+        conflicts.append("packaging")
     return tuple(conflicts)
 
 
@@ -277,21 +322,57 @@ def score(
 ) -> MatchScore:
     """내 제품과 후보 상품명의 일치도.
 
-    `query` 는 실제로 검색에 쓴 문자열이다(질의 확장 때 `name` 이 아닐 수 있다).
-    생략하면 `identity.name` 을 쓴다.
+    `query`는 호출 호환성을 위해 받으며 최종 판정은 원래 identity를 사용한다.
+    점수는 문자열/속성 일치 지표이며 통계적 확률이 아니다.
     """
-    query_facts = parse_name(query if query is not None else identity.name)
+    # 검색 질의가 축약되더라도 최종 식별 근거는 원본/등록된 원어명에서만 얻는다.
+    originals = [parse_name(identity.name)]
+    if identity.name_en:
+        originals.append(parse_name(identity.name_en))
     candidate_facts = parse_name(candidate_name)
-
-    conflicts = _conflicts(identity, query_facts, candidate_facts)
-    token_score = _jaccard(query_facts.tokens, candidate_facts.tokens)
-    string_score = difflib.SequenceMatcher(
-        None, query_facts.normalized, candidate_facts.normalized
-    ).ratio()
-    value = _TOKEN_WEIGHT * token_score + _STRING_WEIGHT * string_score
-
-    # 탈락한 후보도 점수는 계산해 둔다 — 화면에 "가장 가까웠던 것" 을 보여줄 때 쓴다.
-    return MatchScore(value=0.0 if conflicts else value, conflicts=conflicts)
+    conflicts = tuple(
+        dict.fromkeys(
+            conflict
+            for original in originals
+            for conflict in _conflicts(identity, original, candidate_facts)
+        )
+    )
+    similarities = [
+        _TOKEN_WEIGHT * _jaccard(original.tokens, candidate_facts.tokens)
+        + _STRING_WEIGHT
+        * difflib.SequenceMatcher(None, original.normalized, candidate_facts.normalized).ratio()
+        if original.tokens and candidate_facts.tokens
+        else 0.0
+        for original in originals
+    ]
+    value = max(similarities)
+    missing: list[str] = []
+    for name in ("age_years", "vintage", "abv", "batch", "cask", "volume_ml"):
+        expected = any(getattr(original, name) is not None for original in originals)
+        expected = (
+            expected or bool(identity.volumes_ml)
+            if name == "volume_ml"
+            else expected or getattr(identity, name, None) is not None
+        )
+        if expected and getattr(candidate_facts, name) is None:
+            missing.append(name)
+    if conflicts:
+        relationship = "same_product" if conflicts == ("volume_ml",) else "mismatch"
+        return MatchScore(0.0, conflicts, tuple(missing), relationship)
+    if missing:
+        value = min(value, 0.84)
+    relationship = (
+        "needs_confirmation"
+        if missing
+        else "same_sku"
+        if value >= 0.85 and candidate_facts.volume_ml is not None
+        else "same_product"
+        if value >= 0.85
+        else "related"
+        if value >= 0.5
+        else "mismatch"
+    )
+    return MatchScore(value, (), tuple(missing), relationship)
 
 
 def is_excluded(candidate_name: str, exclude_keywords: list[str]) -> bool:
@@ -347,3 +428,45 @@ def build_queries(identity: ProductIdentity) -> list[str]:
             seen.add(key)
             unique.append(candidate)
     return unique[:3]
+
+
+def detail_name(name: str, fields: dict[str, object]) -> str:
+    """허용된 상세 필드에서 명시한 속성만 이름 판정 근거에 보탠다."""
+    facts = parse_name(name)
+    pieces = [name]
+    for key, unit in (("volume_ml", "ml"), ("age_years", "y"), ("abv", "%"), ("vintage", "")):
+        value = fields.get(key)
+        if (
+            getattr(facts, key) is None
+            and isinstance(value, (int, float, Decimal))
+            and not isinstance(value, bool)
+        ):
+            pieces.append(f"{value}{unit}")
+    return " ".join(pieces)
+
+
+def score_details(identity: ProductIdentity, name: str, fields: dict[str, object]) -> MatchScore:
+    """이름·상세 속성 상충은 확정하지 않는다. 결측 상세는 동일 판정의 근거가 아니다."""
+    original = parse_name(name)
+    contradictions = []
+    for key in ("volume_ml", "age_years", "abv", "vintage"):
+        value = fields.get(key)
+        parsed = getattr(original, key)
+        if (
+            parsed is not None
+            and isinstance(value, (int, float, Decimal))
+            and not isinstance(value, bool)
+            and Decimal(str(value)) != Decimal(str(parsed))
+        ):
+            contradictions.append(f"detail_{key}")
+    candidate_producer = fields.get("producer")
+    if (
+        identity.producer
+        and isinstance(candidate_producer, str)
+        and parse_name(identity.producer).tokens != parse_name(candidate_producer).tokens
+    ):
+        contradictions.append("producer")
+    judgment = score(identity, detail_name(name, fields))
+    if contradictions:
+        return MatchScore(0.0, (*judgment.conflicts, *contradictions), judgment.missing, "mismatch")
+    return judgment

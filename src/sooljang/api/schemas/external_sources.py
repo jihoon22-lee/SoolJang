@@ -24,6 +24,7 @@ class ExternalSourceCreate(BaseModel):
     category_id: uuid.UUID | None = None
     priority: int = 0
     is_active: bool = True
+    price_history_allowed: bool = False
     rate_limit_per_min: int = Field(default=6, ge=1, le=60)
     request_limit_per_day: int = Field(default=1000, ge=1, le=100000)
     ttl_hours: int = Field(default=24, ge=1, le=24 * 30)
@@ -51,6 +52,7 @@ class ExternalSourceUpdate(BaseModel):
     category_id: uuid.UUID | None = None
     priority: int | None = None
     is_active: bool | None = None
+    price_history_allowed: bool | None = None
     rate_limit_per_min: int | None = Field(default=None, ge=1, le=60)
     request_limit_per_day: int | None = Field(default=None, ge=1, le=100000)
     ttl_hours: int | None = Field(default=None, ge=1, le=24 * 30)
@@ -75,6 +77,7 @@ class ExternalSourceOut(BaseModel):
     category_id: uuid.UUID | None
     priority: int
     is_active: bool
+    price_history_allowed: bool = False
     rate_limit_per_min: int
     request_limit_per_day: int = 1000
     config_revision: int = 1
@@ -121,6 +124,10 @@ class LookupCandidateOut(BaseModel):
     url: str
     key: str | None
     score: float
+    product_key: str | None = None
+    relationship: str = "needs_confirmation"
+    conflicts: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
 
 
 class NormalizedFieldsOut(BaseModel):
@@ -173,6 +180,9 @@ class SourceLookupOut(BaseModel):
     #: 하나를 가리킨다 — 화면이 "LLM 추천" 배지만 붙일 뿐 자동으로 고정하지 않는다.
     llm_recommended_url: str | None = None
     outcome: SourceOutcome = SourceOutcome.UNKNOWN
+    offers: list[dict[str, Any]] = Field(default_factory=list)
+    product_key: str | None = None
+    preferred_seller_key: str | None = None
 
 
 class ExternalProductMatchCreate(BaseModel):
@@ -182,6 +192,8 @@ class ExternalProductMatchCreate(BaseModel):
     external_url: str = Field(min_length=1)
     external_name: str = Field(min_length=1)
     external_key: str | None = Field(default=None, max_length=200)
+    external_product_key: str | None = Field(default=None, max_length=500)
+    preferred_seller_key: str | None = Field(default=None, max_length=500)
 
 
 class ExternalProductMatchOut(BaseModel):
@@ -193,6 +205,8 @@ class ExternalProductMatchOut(BaseModel):
     external_name: str
     external_key: str | None
     confirmed_at: datetime
+    external_product_key: str | None = None
+    preferred_seller_key: str | None = None
 
 
 class SourceHealthOut(BaseModel):
