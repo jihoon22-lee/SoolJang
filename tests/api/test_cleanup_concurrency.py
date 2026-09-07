@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -90,6 +91,7 @@ def test_vendor_merge_and_purchase_update_finish_without_deadlock(
         if via_sync:
             assert updated["results"][0]["status"] == "applied"
         else:
+            assert isinstance(updated, httpx.Response)
             assert updated.status_code == 200
     actual = api_client.get(f"{prefix}/purchases", params={"vendor_id": target["id"]}).json()
     row = next(row for row in actual if row["id"] == purchase["id"])
