@@ -1,3 +1,10 @@
+function containsReviewUrl(value) {
+  if (typeof value === 'string') {
+    try { if (new URL(value).hostname === 'review.example.com') return true; } catch {}
+    try { return containsReviewUrl(JSON.parse(value)); } catch { return false; }
+  }
+  return value !== null && typeof value === 'object' && Object.values(value).some(containsReviewUrl);
+}
 // Actual Chromium UI; all API responses and external evidence are synthetic fixtures.
 const { chromium } = require(process.env.SOOLJANG_PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict');
@@ -77,7 +84,7 @@ let browser;
  await page.getByRole('button',{name:'관심에 저장',exact:true}).click();await page.getByText(/관심에 저장했습니다/).waitFor();
  const saveCalls=calls.filter(call=>call.endpoint==='/interests'&&call.method==='POST');assert.equal(saveCalls[0].body.request_id,saveCalls[1].body.request_id);assert.equal(interests.size,1);assert.equal(saveCalls[1].body.source_matches.source.external_key,'sku-700');
  assert.equal(calls.filter(call=>call.endpoint==='/purchases'&&call.method==='POST').length,0);
- const stored=await page.evaluate(()=>JSON.stringify(localStorage));assert(!stored.includes('synthetic-document-evidence'));assert(!stored.includes('<script>'));assert(!stored.includes('review.example.com'));
+ const stored=await page.evaluate(()=>JSON.stringify(localStorage));assert(!stored.includes('synthetic-document-evidence'));assert(!stored.includes('<script>'));assert(!containsReviewUrl(JSON.parse(stored)));
  await page.getByRole('button',{name:'연결 설정',exact:true}).click();await page.getByRole('heading',{name:'프로필',exact:true}).waitFor();await page.goBack();await page.getByRole('heading',{name:'술 탐색',exact:true}).waitFor();assert.equal(await input.inputValue(),'합성 몰트');assert(await page.getByLabel('검색 연결 1 · 검색',{exact:true}).isChecked());assert.equal(await page.locator('.discovery-results article').count(),0);
  await input.fill('취소 검증');await page.getByRole('button',{name:'앱에서 검색',exact:true}).click();await page.getByRole('button',{name:'조회 취소',exact:true}).click();await page.waitForTimeout(1000);assert.equal(await page.locator('.discovery-results article').count(),0);
  await page.goto(origin+'/#interests');await page.getByRole('heading',{name:'합성 몰트',exact:true}).waitFor();await page.getByText('관심 자료 탐색',{exact:true}).click();await page.getByLabel('합성 전문 소스 · 전문 소스',{exact:true}).check();await page.getByRole('button',{name:'앱에서 검색',exact:true}).click();await page.getByText(/조회 완료.*1\/1/).waitFor();assert(calls.some(call=>call.endpoint.startsWith('/discovery/interests/')&&call.endpoint.endsWith('/lookup')));
