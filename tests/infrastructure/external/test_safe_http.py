@@ -665,3 +665,57 @@ async def test_separate_clients_share_worker_outbound_concurrency_limit() -> Non
     await asyncio.gather(*(fetch_one() for _ in range(12)))
     assert maximum == 4
     assert active == 0
+
+
+async def test_waiting_request_rechecks_cancellation_without_repeating_reservation() -> None:
+    from sooljang.infrastructure.external.request_guard import outbound_guard
+
+    all_busy = asyncio.Event()
+    release = asyncio.Event()
+    reserved = asyncio.Event()
+    sent: list[str] = []
+    reservations = 0
+    disconnected = False
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        if request.url.path == "/busy":
+            if sent.count("/busy") == 4:
+                all_busy.set()
+            await release.wait()
+        return httpx.Response(200, text="ok")
+
+    async def occupy() -> None:
+        async with SafeHttpClient([HOST], transport=httpx.MockTransport(respond)) as client:
+            await client.get(f"https://{HOST}/busy")
+
+    async def check_connection(_request: httpx.Request) -> None:
+        if disconnected:
+            raise asyncio.CancelledError
+
+    async def reserve(_request: httpx.Request) -> None:
+        nonlocal reservations
+        reservations += 1
+        reserved.set()
+
+    busy = [asyncio.create_task(occupy()) for _ in range(4)]
+    try:
+        await asyncio.wait_for(all_busy.wait(), 2)
+        async with SafeHttpClient(
+            [HOST], transport=httpx.MockTransport(respond), before_request=reserve
+        ) as client:
+            with outbound_guard(check_connection):
+                waiting = asyncio.create_task(client.get(f"https://{HOST}/paid"))
+                await asyncio.wait_for(reserved.wait(), 2)
+                disconnected = True
+                release.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await waiting
+            assert reservations == 1
+            assert sent == ["/busy"] * 4
+            # 취소된 작업의 가드는 다음 독립 요청에 남지 않는다.
+            assert (await client.get(f"https://{HOST}/next")).status_code == 200
+            assert reservations == 2
+    finally:
+        release.set()
+        await asyncio.gather(*busy)
