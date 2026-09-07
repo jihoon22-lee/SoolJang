@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "source": "c50888a",
+  "stack": "isolated Docker actual nginx/API/PG and new named volume",
+  "flow": "actual browser login with production cookies, product and PNG after explicit image upgrade and no-recreate restart",
+  "page_errors": []
+}

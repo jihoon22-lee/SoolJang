@@ -1,0 +1,9 @@
+{
+  "subscribed": false,
+  "reason": "browser returned no subscription",
+  "alerts": [
+    "Registration failed - permission denied"
+  ],
+  "notification_permission": "denied",
+  "scope": "disposable Playwright Chromium; no physical device or production settings"
+}
