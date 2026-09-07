@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "api": "actual authenticated API/PostgreSQL schema0017",
+  "retail": "synthetic MockTransport",
+  "priceOffers": 4,
+  "independentComparableSellers": 3,
+  "interestDoesNotChangePurchases": true,
+  "stableInterestObservation": true,
+  "productPinAndPreferredSellerPreserved": true,
+  "viewports": [
+    390,
+    1280
+  ],
+  "actualExaRequests": 1,
+  "actualExaDocuments": 10,
+  "actualExaDomains": 10,
+  "browserDirectProviderRequests": 0,
+  "legacyGenerativeLookupRequests": 0,
+  "pageErrors": 0,
+  "rawExaTextStored": false
+}
