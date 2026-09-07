@@ -78,7 +78,7 @@ describe("ConnectionsPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "연결 저장" }));
     await waitFor(() => expect(screen.queryByLabelText("OpenAI API 키")).not.toBeInTheDocument());
     expect(calls.find((call) => call.method === "POST")?.body).toMatchObject({
-      credentials: { api_key: "test-secret-value" },
+      credentials: { api_key: "test-secret-value" }, // scan-secrets-allow: synthetic test credential
     });
     expect(calls.some((call) => call.url.includes("/probe"))).toBe(false);
   });

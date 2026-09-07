@@ -195,7 +195,7 @@ class TestProtectedEndpoints:
 
     def test_health_는_인증_없이_열려_있다(self, anon_client: TestClient, prefix: str) -> None:
         # 컨테이너 헬스체크가 인증 없이 호출한다.
-        assert anon_client.get(f"{prefix}/health").status_code == 200
+        assert anon_client.get(f"{prefix}/health/live").status_code == 200
 
     def test_만료된_세션은_거부된다(self, api_client: TestClient, prefix: str) -> None:
         import asyncio
