@@ -45,6 +45,20 @@ AGENTS를 참조하도록 바꾸고 운영 중지·운영 비밀번호 재사용
 않았다. 전체 pytest·migration·실연결·실브라우저·운영 복구/배포는 로컬에서 미실행이다.
 필수 CI와 커버리지 기준은 그대로 유지한다.
 
+## CI 결과와 기존 차단 요인
+
+[PR #132](https://github.com/jihoon22-lee/SoolJang/pull/132)의 `fc720b4`에 대한
+[첫 CI](https://github.com/jihoon22-lee/SoolJang/actions/runs/34081405556)에서 Python은
+859 passed / 30 skipped, branch 포함 총 coverage 91.83%로 통과했다. Python 의존성 감사,
+마이그레이션 왕복/드리프트, 컨테이너 빌드, CodeQL도 통과했다.
+
+웹 lint·typecheck·514테스트·build는 통과했지만 기존 `web/package-lock.json`의
+`fast-uri 3.1.5` 보안 권고로 npm audit과 최종 quality gate가 실패했다. 이번 PR은
+lockfile/앱 코드를 변경하지 않았다. 수정은 열린 Dependabot
+[PR #116](https://github.com/jihoon22-lee/SoolJang/pull/116)에 있으며, 반영 뒤 최신 main
+기준 재검증이 필요하다. 검사 면제·의존성 변경·다른 PR 머지는 수행하지 않았다.
+이 결과를 추가한 후속 커밋은 작업 기록/상태 문서만 변경하며 새 실행 결과는 PR checks에서 확인한다.
+
 ## 후속 확인
 
 실제 스킬 자동 선택률이나 시간/토큰 개선은 측정하지 않았다. B01에서 질문 반복·검증 중복·

@@ -192,7 +192,7 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 
 | 범위 | 상태 | 근거 |
 |---|---|---|
-| Codex 지침·스킬 준비 | ✅ 로컬 적용·검증 완료, PR 검토 대상으로 준비 | `feature/codex-workflow-optimization`, [기록](../workthrough/2026-09-07-codex-workflow-optimization.md) |
+| Codex 지침·스킬 준비 | ✅ 적용·로컬 검증 완료. 첫 CI의 기존 fast-uri 감사 실패로 머지 차단(#116 반영 후 재검증) | [PR #132](https://github.com/jihoon22-lee/SoolJang/pull/132), [기록](../workthrough/2026-09-07-codex-workflow-optimization.md) |
 | WP01~WP13 / B01~B09 | ⬜ 기능 구현·실검증 미착수 | [로드맵](roadmap/v1.7.0.md), 실제 PR/상태는 [#117](https://github.com/jihoon22-lee/SoolJang/issues/117) |
 
 ### 기존 Task 이력
