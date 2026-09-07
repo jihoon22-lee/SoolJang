@@ -8,11 +8,18 @@ export interface InterestIdentity {
   age_years?: string | null;
   volumes_ml?: number[];
 }
+export interface InterestSourceMatch {
+  external_url: string;
+  external_name: string;
+  external_key: string | null;
+  product_key: string | null;
+  preferred_seller_key?: string | null;
+}
 export interface Interest {
   id: string;
   name: string;
   identity: InterestIdentity;
-  source_matches: Record<string, unknown>;
+  source_matches: Record<string, InterestSourceMatch>;
   note: string | null;
   archived: boolean;
   product_id: string | null;
@@ -43,7 +50,12 @@ export const interestsApi = {
     request<Interest>("/interests", { method: "POST", body: { identity, note, request_id } }),
   update: (
     id: string,
-    input: { note?: string | null; archived?: boolean; expected_updated_at: string },
+    input: {
+      note?: string | null;
+      archived?: boolean;
+      expected_updated_at: string;
+      source_matches?: Record<string, InterestSourceMatch>;
+    },
   ) => request<Interest>(`/interests/${id}`, { method: "PATCH", body: input }),
   purchase: (id: string, input: InterestPurchase) =>
     request<{ interest_id: string; purchase_id: string; product_id: string }>(

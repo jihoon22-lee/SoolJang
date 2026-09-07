@@ -64,20 +64,30 @@ describe("App", () => {
     stubAll();
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "주종 관리" }));
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "주종 관리" })).toHaveAttribute("aria-current", "page");
+    await userEvent.click(screen.getByRole("button", { name: "설정" }));
+    expect(screen.getByRole("menuitem", { name: "주종 관리" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it("구매처 관리로 전환한다", async () => {
     stubAll();
     renderWithQuery(<App />);
 
-    await userEvent.click(await screen.findByRole("link", { name: "구매처" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "구매처" }));
 
     expect(await screen.findByRole("heading", { name: "구매처 관리" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "구매처" })).toHaveAttribute("aria-current", "page");
+    await userEvent.click(screen.getByRole("button", { name: "설정" }));
+    expect(screen.getByRole("menuitem", { name: "구매처" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it("설정 메뉴를 열어 API·외부 연결을 관리한다", async () => {
@@ -187,7 +197,8 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
 
     // 탭을 바꿔도 배지는 그대로 보인다.
-    await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
+    await userEvent.click(await screen.findByRole("button", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "주종 관리" }));
     expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
   });
 

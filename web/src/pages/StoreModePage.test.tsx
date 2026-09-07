@@ -166,7 +166,7 @@ describe("StoreModePage", () => {
     await userEvent.type(screen.getByLabelText("이름으로 찾기"), "외부 정보 테스트 술");
     await selectResult("외부 정보 테스트 술");
 
-    expect(await screen.findByRole("button", { name: "외부 정보 조회" })).toBeInTheDocument();
+    expect(await screen.findByText("외부 정보 조회", { selector: "summary" })).toBeInTheDocument();
   });
 
   it("새로 등록하면 서버 응답을 로컬 미러에 반영하고 요약으로 넘어간다", async () => {

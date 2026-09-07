@@ -15,6 +15,7 @@
  */
 
 export type View =
+  | "discover"
   | "interests"
   | "inventory"
   | "quality"
@@ -30,6 +31,7 @@ export type View =
   | "status";
 
 const VIEW_IDS: readonly View[] = [
+  "discover",
   "interests",
   "inventory",
   "quality",

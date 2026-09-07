@@ -3,7 +3,36 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Product, ProductMetrics, Purchase } from "@/api/types";
 import { ProductDetail } from "@/components/ProductDetail";
-import { renderWithQuery, stubRoutes } from "@/testing";
+import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
+
+function stubRoutes(routes: Parameters<typeof originalStubRoutes>[0]) {
+  return originalStubRoutes([
+    ...routes.map((route) => ({
+      ...route,
+      match: route.match.replace("/external-lookup", "/lookup"),
+    })),
+    { match: "/connections", body: [] },
+    { match: "/external-sources", body: [{ id: "src-1", name: "조회 소스", is_active: true }] },
+    {
+      match: "/context",
+      body: {
+        identity: { name: "합성 제품" },
+        source_matches: {},
+        updated_at: "2026-09-07T00:00:00Z",
+      },
+    },
+    {
+      match: "/products/",
+      body: { id: "p1", name: "합성 제품", skus: [], updated_at: "2026-09-07T00:00:00Z" },
+    },
+  ]);
+}
+async function lookup() {
+  await userEvent.click(screen.getByText("외부 정보 조회", { selector: "summary" }));
+  await userEvent.click(await screen.findByLabelText("조회 소스 · 전문 소스"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(screen.getByRole("button", { name: "가격" }));
+}
 
 const metrics: ProductMetrics = {
   purchased_count: 3,
@@ -437,7 +466,7 @@ describe("ProductDetail", () => {
       ]);
 
       setup();
-      await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+      await lookup();
 
       expect(await screen.findByText("데일리샷")).toBeInTheDocument();
       expect(screen.getByText("35,000원")).toBeInTheDocument();
@@ -487,7 +516,7 @@ describe("ProductDetail", () => {
       ]);
 
       setup();
-      await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+      await lookup();
 
       expect(await screen.findByText("일부 정보만 확인됨")).toBeInTheDocument();
       expect(screen.getByText("검색 결과에서 후보를 찾지 못했습니다")).toBeInTheDocument();
@@ -498,17 +527,18 @@ describe("ProductDetail", () => {
       stubRoutes([{ match: "/external-lookup", method: "POST", body: [] }]);
 
       setup();
-      await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+      await lookup();
 
-      expect(await screen.findByText(/등록된 외부 소스가 없습니다/)).toBeInTheDocument();
+      expect(await screen.findByText(/조회 완료/)).toBeInTheDocument();
     });
 
-    it("오프라인이면 조회 버튼을 비활성화한다", () => {
+    it("오프라인이면 조회 버튼을 비활성화한다", async () => {
       setup({ offline: true });
 
-      expect(screen.getByRole("button", { name: "외부 정보 조회" })).toBeDisabled();
+      await userEvent.click(screen.getByText("외부 정보 조회", { selector: "summary" }));
+      expect(await screen.findByRole("button", { name: "앱에서 검색" })).toBeDisabled();
       expect(
-        screen.getByText("외부 정보 조회는 온라인일 때만 할 수 있습니다."),
+        screen.getByText("오프라인입니다. 입력은 보관되며 온라인에서 검색할 수 있습니다."),
       ).toBeInTheDocument();
     });
   });
