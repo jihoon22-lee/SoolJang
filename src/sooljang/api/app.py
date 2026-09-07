@@ -14,8 +14,11 @@ from sooljang.api.routes import (
     auth,
     barcodes,
     categories,
+    collection_management,
     external_sources,
     health,
+    interest_purchase,
+    interests,
     legacy_import,
     llm_settings,
     ocr,
@@ -81,8 +84,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     protected = Depends(active_session)
     for router in (
+        interests.router,
         provider_connections.router,
+        interest_purchase.router,
         categories.router,
+        collection_management.router,
         products.router,
         products.skus_router,
         purchases.vendors_router,

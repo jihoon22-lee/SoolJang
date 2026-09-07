@@ -26,9 +26,12 @@ from sooljang.api.schemas.product import (
     VendorOut,
     VendorUpdate,
 )
+from sooljang.application.collection_cleanup import confirm_cleanup
+from sooljang.application.collection_inventory import owned
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
+    CleanupPreview,
     Purchase,
     Sku,
     Vendor,
@@ -121,7 +124,12 @@ async def delete_vendor(vendor_id: uuid.UUID, session: SessionDep, user_id: User
 
 
 async def _owned_vendor(session: SessionDep, user_id: uuid.UUID, vendor_id: uuid.UUID) -> Vendor:
-    vendor = await session.get(Vendor, vendor_id)
+    vendor = await session.scalar(
+        select(Vendor)
+        .where(Vendor.id == vendor_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if vendor is None or vendor.deleted_at is not None or vendor.user_id != user_id:
         raise NotFoundError(f"구매처를 찾을 수 없습니다: {vendor_id}")
     return vendor
@@ -140,16 +148,15 @@ async def merge_vendor(
     """
     if payload.target_id == vendor_id:
         raise ConflictError("자기 자신과 병합할 수 없습니다")
-    source = await _owned_vendor(session, user_id, vendor_id)
-    await _owned_vendor(session, user_id, payload.target_id)
-
-    purchases = await session.scalars(
-        select(Purchase).where(Purchase.vendor_id == vendor_id, Purchase.deleted_at.is_(None))
-    )
-    for purchase in purchases:
-        purchase.vendor_id = payload.target_id
-    source.deleted_at = datetime.datetime.now(datetime.UTC)
-    await session.flush()
+    if payload.preview_id is None:
+        raise ConflictError("병합 영향 미리보기를 먼저 확인하세요")
+    preview = await owned(session, CleanupPreview, user_id, payload.preview_id)
+    if preview.kind != "vendor_merge" or preview.selection != {
+        "ids": [str(vendor_id)],
+        "target_id": str(payload.target_id),
+    }:
+        raise ConflictError("병합 미리보기의 선택과 일치하지 않습니다")
+    await confirm_cleanup(session, user_id, payload.preview_id)
 
 
 # --- 구매 건 ----------------------------------------------------------------
@@ -266,10 +273,11 @@ async def create_purchase(
 async def update_purchase(
     purchase_id: uuid.UUID, payload: PurchaseUpdate, session: SessionDep, user_id: UserDep
 ) -> PurchaseOut:
-    purchase = await _owned_purchase(session, user_id, purchase_id)
     fields = payload.model_dump(exclude_unset=True)
+    # 병합/일괄 수정과 같은 Vendor → Purchase 순서로 잠근다.
     if "vendor_id" in fields and fields["vendor_id"] is not None:
         await _owned_vendor(session, user_id, fields["vendor_id"])
+    purchase = await _owned_purchase(session, user_id, purchase_id)
     if "currency" in fields and fields["currency"]:
         fields["currency"] = fields["currency"].upper()
     for key, value in fields.items():

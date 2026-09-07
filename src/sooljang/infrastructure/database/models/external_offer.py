@@ -19,8 +19,11 @@ class ExternalOffer(Base, EntityMixin):
     source_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE")
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE")
+    )
+    interest_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("interest.id", ondelete="CASCADE"), default=None
     )
     external_product_key: Mapped[str] = mapped_column(Text)
     external_offer_key: Mapped[str] = mapped_column(Text)
@@ -28,6 +31,14 @@ class ExternalOffer(Base, EntityMixin):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
+        CheckConstraint("(product_id IS NULL) <> (interest_id IS NULL)", name="one_lookup_target"),
+        Index(
+            "uq_external_offer_interest_condition",
+            "source_id",
+            "interest_id",
+            "condition_key",
+            unique=True,
+        ),
         Index(
             "uq_external_offer_condition", "source_id", "product_id", "condition_key", unique=True
         ),

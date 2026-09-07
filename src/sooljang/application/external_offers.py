@@ -19,11 +19,15 @@ async def record_offers(
     *,
     user_id: uuid.UUID,
     source_id: uuid.UUID,
-    product_id: uuid.UUID,
+    product_id: uuid.UUID | None,
     fetched_at: datetime,
     offers: list[dict[str, Any]],
+    interest_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     """동일 acquisition 재처리는 멱등. 미발견 offer의 마지막 관측은 보존한다."""
+    if (product_id is None) == (interest_id is None):
+        raise ValueError("제품 또는 관심 대상 하나가 필요합니다")
+    target_column = "interest_id" if interest_id is not None else "product_id"
     result = []
     for offer in offers:
         row = insert(ExternalOffer).values(
@@ -31,13 +35,14 @@ async def record_offers(
             user_id=user_id,
             source_id=source_id,
             product_id=product_id,
+            interest_id=interest_id,
             external_product_key=offer["product_key"],
             external_offer_key=offer["offer_key"],
             condition_key=offer["condition_key"],
             last_seen_at=fetched_at,
         )
         row = row.on_conflict_do_update(
-            index_elements=["source_id", "product_id", "condition_key"],
+            index_elements=["source_id", target_column, "condition_key"],
             set_={"last_seen_at": func.greatest(ExternalOffer.last_seen_at, fetched_at)},
         ).returning(ExternalOffer.id)
         offer_id = (await session.execute(row)).scalar_one()
@@ -67,9 +72,10 @@ async def last_observed_offers(
     *,
     user_id: uuid.UUID,
     source_id: uuid.UUID,
-    product_id: uuid.UUID,
+    product_id: uuid.UUID | None,
     identity: ProductIdentity,
     pinned_product_key: str | None,
+    interest_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     """조회 실패 때 최신 관측을 원래 시각과 함께 제공한다. 품절·새 관측으로 바꾸지 않는다."""
     observations = await session.scalars(
@@ -80,6 +86,7 @@ async def last_observed_offers(
             ExternalOffer.user_id == user_id,
             ExternalOffer.source_id == source_id,
             ExternalOffer.product_id == product_id,
+            ExternalOffer.interest_id == interest_id,
         )
         .distinct(ExternalPriceObservation.offer_id)
         .order_by(ExternalPriceObservation.offer_id, ExternalPriceObservation.fetched_at.desc())

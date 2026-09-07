@@ -185,6 +185,7 @@ class VendorMerge(BaseModel):
     """구매처 병합 요청. 원본의 구매 건을 `target_id` 로 옮기고 원본을 soft delete 한다."""
 
     target_id: uuid.UUID
+    preview_id: uuid.UUID | None = None
 
 
 # --- 구매 건 ----------------------------------------------------------------

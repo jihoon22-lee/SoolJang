@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "environment": "Chromium production preview, isolated PostgreSQL and API",
+  "scenarios": [
+    "location move and QR image decoded to exact bottle code",
+    "duplicate scan",
+    "pause/reload/resume",
+    "unregistered finding",
+    "completion preserves stock/spend",
+    "vendor merge preview then confirm",
+    "interest save excludes stock/spend",
+    "new purchase conversion with free price",
+    "mobile quality",
+    "offline write disabled"
+  ],
+  "screenshots": 3
+}

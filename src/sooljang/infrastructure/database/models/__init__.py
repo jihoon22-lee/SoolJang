@@ -9,6 +9,14 @@ from sooljang.infrastructure.database.models.auth import Session, User
 from sooljang.infrastructure.database.models.auth_enums import UserRole
 from sooljang.infrastructure.database.models.category import Category, Producer, Variety
 from sooljang.infrastructure.database.models.category_seed import CategorySeed
+from sooljang.infrastructure.database.models.collection_management import (
+    BottleMovement,
+    BottlePlacement,
+    CleanupPreview,
+    InterestConversion,
+    Stocktake,
+    StorageLocation,
+)
 from sooljang.infrastructure.database.models.external_source import (
     ExternalLlmRematchLog,
     ExternalLookupCache,
@@ -18,6 +26,7 @@ from sooljang.infrastructure.database.models.external_source import (
     ExternalSourceProbe,
 )
 from sooljang.infrastructure.database.models.external_usage import ExternalRequestUsage
+from sooljang.infrastructure.database.models.interest import Interest
 from sooljang.infrastructure.database.models.inventory import (
     IN_STOCK_STATUSES,
     Bottle,
@@ -65,10 +74,17 @@ __all__ = [
     "Attachment",
     "AttachmentKind",
     "IN_STOCK_STATUSES",
+    "Interest",
+    "InterestConversion",
     "MAX_PERSONAL_RATING",
     "BarcodeType",
     "Bottle",
     "BottleStatus",
+    "BottleMovement",
+    "BottlePlacement",
+    "CleanupPreview",
+    "Stocktake",
+    "StorageLocation",
     "Category",
     "CategorySeed",
     "ConflictLog",

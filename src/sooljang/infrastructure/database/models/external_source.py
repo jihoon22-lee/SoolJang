@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -102,8 +103,11 @@ class ExternalLookupCache(Base, EntityMixin):
     source_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=False
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=True
+    )
+    interest_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("interest.id", ondelete="CASCADE"), default=None
     )
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     #: 셀렉터 일부가 깨져 부분 결과만 얻었는지. 참이면 UI 가 "일부 정보만 확인됨"을 보여준다.
@@ -112,6 +116,8 @@ class ExternalLookupCache(Base, EntityMixin):
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
+        CheckConstraint("(product_id IS NULL) <> (interest_id IS NULL)", name="one_lookup_target"),
+        Index("ix_external_lookup_cache_interest", "source_id", "interest_id", "fetched_at"),
         Index(
             "ix_external_lookup_cache_source_id_product_id", "source_id", "product_id", "fetched_at"
         ),

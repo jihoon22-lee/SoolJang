@@ -135,7 +135,7 @@ function buildQuery(params: RequestOptions["params"]): string {
   return query ? `?${query}` : "";
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, params, signal, acceptStatuses = [] } = options;
 
   const csrfToken = readCsrfToken();
@@ -288,8 +288,11 @@ export const vendorsApi = {
   create: (input: { name: string; kind?: string }) =>
     request<Vendor>("/vendors", { method: "POST", body: input }),
 
-  merge: (sourceId: string, targetId: string) =>
-    request<void>(`/vendors/${sourceId}:merge`, { method: "POST", body: { target_id: targetId } }),
+  merge: (sourceId: string, targetId: string, previewId: string) =>
+    request<void>(`/vendors/${sourceId}:merge`, {
+      method: "POST",
+      body: { target_id: targetId, preview_id: previewId },
+    }),
 };
 
 export const purchasesApi = {
