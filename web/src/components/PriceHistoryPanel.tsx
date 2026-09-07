@@ -85,7 +85,12 @@ export function PriceHistoryPanel({
             <p className="muted text-sm">{conditionText(row.facts)}</p>
             <p className="muted text-sm">관측 {new Date(row.fetched_at).toLocaleString("ko-KR")}</p>
             {/^(https?:)\/\//.test(row.source_url) && (
-              <a href={row.source_url} target="_blank" rel="noopener noreferrer">
+              <a
+                className="source-link"
+                href={row.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 가격 출처 열기
               </a>
             )}

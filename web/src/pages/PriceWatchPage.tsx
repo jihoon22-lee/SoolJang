@@ -474,7 +474,12 @@ function NotificationCard({
           : "앱 내 알림"}
       </p>
       {notice.source_url && /^(https?:)\/\//.test(notice.source_url) && (
-        <a href={notice.source_url} target="_blank" rel="noopener noreferrer">
+        <a
+          className="source-link"
+          href={notice.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           판매 조건 원문 열기
         </a>
       )}

@@ -98,6 +98,7 @@ export function ProductDetail({
 }: ProductDetailProps) {
   const { metrics } = product;
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [externalInfoOpen, setExternalInfoOpen] = useState(false);
 
   return (
     <article aria-labelledby="detail-heading">
@@ -202,9 +203,17 @@ export function ProductDetail({
         onToggle={(event) => setPriceHistoryOpen(event.currentTarget.open)}
       >
         <summary>가격 이력 보기</summary>
-        {priceHistoryOpen && <PriceHistoryPanel key={product.id} productId={product.id} />}
+        {priceHistoryOpen && (
+          <PriceHistoryPanel
+            key={product.id}
+            productId={product.id}
+            onSaveInterest={() => setExternalInfoOpen(true)}
+          />
+        )}
       </details>
       <ExternalInfoCard
+        open={externalInfoOpen}
+        onOpenChange={setExternalInfoOpen}
         productId={product.id}
         productName={product.name}
         offline={offline}
