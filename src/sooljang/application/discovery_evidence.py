@@ -13,6 +13,7 @@ from sooljang.api.errors import ConflictError, ValidationFailedError
 from sooljang.api.schemas.product import ProductUpdate
 from sooljang.application.products import load_product
 from sooljang.infrastructure.database.models import ExternalSource, ProviderConnection
+from sooljang.infrastructure.external.matching import parse_name
 
 APPLICABLE_FIELDS = frozenset({"name_en", "country", "region", "abv", "vintage", "age_years"})
 
@@ -76,25 +77,27 @@ async def apply_evidence(
         raise ValidationFailedError(
             "적용할 외부 자료가 만료되었거나 올바르지 않습니다. 다시 조회하세요"
         ) from None
-    source = await session.scalar(
-        select(ExternalSource)
-        .where(
-            ExternalSource.id == uuid.UUID(evidence["source_id"]),
-            ExternalSource.user_id == user_id,
-            ExternalSource.deleted_at.is_(None),
+    if evidence.get("source_id"):
+        source = await session.scalar(
+            select(ExternalSource)
+            .where(
+                ExternalSource.id == uuid.UUID(evidence["source_id"]),
+                ExternalSource.user_id == user_id,
+                ExternalSource.deleted_at.is_(None),
+            )
+            .with_for_update()
         )
-        .with_for_update()
-    )
-    if (
-        source is None
-        or source.config_revision != evidence["source_revision"]
-        or not source.is_active
-    ):
-        raise ConflictError("외부 소스 설정이 바뀌었습니다. 다시 조회하세요")
+        if (
+            source is None
+            or source.config_revision != evidence["source_revision"]
+            or not source.is_active
+        ):
+            raise ConflictError("외부 소스 설정이 바뀌었습니다. 다시 조회하세요")
     if evidence["connection_id"]:
         connection = await session.get(ProviderConnection, uuid.UUID(evidence["connection_id"]))
         if (
             connection is None
+            or connection.user_id != user_id
             or connection.deleted_at
             or not connection.is_active
             or connection.config_revision != evidence["connection_revision"]
@@ -114,3 +117,30 @@ async def apply_evidence(
         "applied_fields": selected_fields,
         "source_url": evidence["source_url"],
     }
+
+
+def title_fields(title: str) -> dict[str, Any]:
+    """검색 결과 제목에 명시된 도수·숙성 연수만 제안한다. 본문의 다른 술/작성연도는 배제한다."""
+    facts = parse_name(title)
+    return applicable_fields({"abv": facts.abv, "age_years": facts.age_years})
+
+
+def issue_search_evidence(
+    *,
+    user_id: uuid.UUID,
+    connection: ProviderConnection,
+    title: str,
+    source_url: str,
+    master_key: str,
+) -> str:
+    content = {
+        "purpose": "discovery-apply",
+        "user_id": str(user_id),
+        "source_id": None,
+        "source_revision": None,
+        "source_url": source_url,
+        "connection_id": str(connection.id),
+        "connection_revision": connection.config_revision,
+        "fields": title_fields(title),
+    }
+    return Fernet(master_key.encode()).encrypt(json.dumps(content).encode()).decode()

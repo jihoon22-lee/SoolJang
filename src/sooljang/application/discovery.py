@@ -20,7 +20,7 @@ from sooljang.application.provider_connections import (
     reserve_connection_request,
 )
 from sooljang.domain.discovery import SourceOutcome
-from sooljang.infrastructure.database.models import ExternalSource
+from sooljang.infrastructure.database.models import ExternalSource, ProviderConnection
 from sooljang.infrastructure.database.models.interest import Interest
 from sooljang.infrastructure.external.adapter import PinnedMatch
 from sooljang.infrastructure.external.fields import split_fields
@@ -153,6 +153,15 @@ async def lookup_identity(
                 )
             )
             continue
+        connection_revision = (
+            await session.scalar(
+                select(ProviderConnection.config_revision).where(
+                    ProviderConnection.id == source.connection_id
+                )
+            )
+            if source.connection_id
+            else None
+        )
         raw_match = (matches or {}).get(str(source_id))
         pinned = PinnedMatch(**raw_match) if raw_match else None
         adapter = await _fetch_source(
@@ -164,6 +173,55 @@ async def lookup_identity(
             pinned=pinned,
         )
         fetched_at = datetime.now(UTC)
+        state = (
+            await session.execute(
+                select(
+                    ExternalSource.config_revision,
+                    ExternalSource.is_active,
+                    ExternalSource.deleted_at,
+                ).where(ExternalSource.id == source_id)
+            )
+        ).one()
+        connection_current = (
+            (
+                await session.execute(
+                    select(
+                        ProviderConnection.config_revision,
+                        ProviderConnection.is_active,
+                        ProviderConnection.deleted_at,
+                    ).where(ProviderConnection.id == source.connection_id)
+                )
+            ).first()
+            if source.connection_id
+            else None
+        )
+        connection_changed = source.connection_id and (
+            connection_current is None
+            or connection_current[0] != connection_revision
+            or not connection_current[1]
+            or connection_current[2] is not None
+        )
+        if (
+            state[0] != source.config_revision
+            or not state[1]
+            or state[2] is not None
+            or connection_changed
+        ):
+            results.append(
+                SourceLookupResult(
+                    source.id,
+                    source.name,
+                    False,
+                    None,
+                    {},
+                    None,
+                    True,
+                    "조회 중 소스 설정이 바뀌어 이전 결과를 폐기했습니다",
+                    fetched_at,
+                    outcome=SourceOutcome.INVALID_CONFIGURATION,
+                )
+            )
+            continue
         await _record_probe(
             session,
             user_id=user_id,
@@ -194,6 +252,7 @@ async def lookup_identity(
                 normalized=split_fields(adapter.fields),
                 outcome=adapter.outcome,
                 product_key=adapter.product_key,
+                configuration_revision=source.config_revision,
                 offers=[{**offer, "fetched_at": fetched_at.isoformat()} for offer in adapter.offers]
                 if adapter.ok
                 else [],
@@ -252,8 +311,21 @@ async def lookup_interest(
     ):
         raise ConflictError("조회 중 관심 기록이 변경되었습니다. 최신 대상으로 다시 조회하세요")
     for result in results:
-        source = await session.get(ExternalSource, result.source_id, populate_existing=True)
+        source = await session.scalar(
+            select(ExternalSource)
+            .where(ExternalSource.id == result.source_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if source is None or not source.price_history_allowed:
+            continue
+        if (
+            not source.is_active
+            or source.deleted_at
+            or source.config_revision != result.configuration_revision
+        ):
+            if result.offers:
+                raise ConflictError("조회 중 소스 설정이 변경되었습니다. 다시 조회하세요")
             continue
         if result.offers and result.fetched_at is not None:
             result.offers = await record_offers(

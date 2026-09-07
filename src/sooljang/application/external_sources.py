@@ -788,6 +788,7 @@ class SourceLookupResult:
     offers: list[dict[str, Any]] = field(default_factory=list)
     product_key: str | None = None
     preferred_seller_key: str | None = None
+    configuration_revision: int | None = None
 
 
 async def _fresh_cache(
