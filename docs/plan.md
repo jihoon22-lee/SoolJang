@@ -1,7 +1,7 @@
 # 작업 계획과 진행 현황
 
-**작업을 재개할 때 이 문서부터 읽는다.** §1에서 현재 위치를 확인하고, §2 절차로 환경을 되살린
-다음, §4의 해당 Task 항목을 펼쳐 작업을 이어간다.
+**작업을 재개할 때 §1부터 읽는다.** 현재 마일스톤의 메인 계획·수용 명세·담당 WP를
+확인하고 필요한 경우에만 §2로 환경을 준비한다. 과거 Task/결정은 관련 항목만 읽는다.
 
 - 설계 근거: [architecture.md](architecture.md)
 - 레거시 데이터 사양: [legacy-schema.md](legacy-schema.md)
@@ -16,15 +16,20 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-08-30 (**WSL 자동 복구와 배포 경계 고정**. `/mnt/e/recovery`의 SoolJang 단계가 `--no-recreate`로 기존 컨테이너를 시작하고 health만 기다리도록 FamilyCard와 같은 정책으로 통일됐다. DB·API·web container ID, `pgdata`·`uploads` mount, health가 명령 전후 그대로임을 확인했다. 다음 자연스러운 Windows 로그온/WSL cold start의 전체 경로 확인만 남았다) |
+| 최종 갱신 | 2026-09-07 — v1.7.0 착수 전 Codex 지침·스킬 준비 작업. 기능 구현·실연결·운영 검증과 분리한다 |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
-| 다음 착수 Task | **없음 — Task 34 PR1~PR7과 `v1.6.0` 릴리스·재배포까지 완료.** §9 백로그와 §6의 열린 질문은 사용자가 원하는 시점에 결정할 선택 사항이다 |
-| 현재 브랜치 | `main`(WSL no-recreate 자동 복구 정책 PR merge 기준) |
-| 진행 중 잔여 항목 | 제품 기능 잔여 없음(Task 34 완료). 운영 확인은 다음 자연스러운 WSL cold start 1회이며, §9 백로그·§6 Q6은 급하지 않은 선택 사항이다 |
-| 최신 버전 | **[`v1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)**(2026-08-20) — Task 34 PR1~PR7 전체 반영. GHCR의 `sooljang-api:1.6.0`·`sooljang-web:1.6.0`을 홈 PC에 배포했고 API 버전 `1.6.0`, DB 연결 정상, migration revision `0012_llm_rematch`, 웹 HTTP 200을 확인했다 |
+| 다음 착수 Task | **v1.7.0 B01: WP01 #119 + WP04 #122**. 최소 계약·소스 조사/평가와 외부 요청 경계. 선행 계약에 맞춰 B02/B06 병행 |
+| 현재 브랜치 | `feature/codex-workflow-optimization` — 지침 준비 변경. 실제 재개 시 Git/열린 PR 상태를 다시 확인 |
+| 진행 중 잔여 항목 | v1.7.0 WP01~WP13은 계획 등록 상태. 이번 변경은 WP01의 지침 정합성 준비만 수행하며 B01을 완료 처리하지 않는다. 기존 WSL cold start 확인도 이번 작업에서 수행하지 않음 |
+| 버전 상태 | 패키지 `1.6.1`. 마지막 문서상 확인 배포는 `v1.6.0`(2026-08-20, migration `0012_llm_rematch`). 이번 작업에서 운영 상태를 재조회하지 않음 |
 
-> 세션이 바뀌어 이어받는 경우 [handoff.md](handoff.md) 를 먼저 읽는다. 환경 함정과 재개
-> 절차를 5분 안에 파악할 수 있게 정리해 두었다.
+- 현재 마일스톤: [v1.7.0](https://github.com/jihoon22-lee/SoolJang/milestone/1).
+  [메인 #117](https://github.com/jihoon22-lee/SoolJang/issues/117)은 범위·PR 진행,
+  [명세 #118](https://github.com/jihoon22-lee/SoolJang/issues/118)은 R/S 수용 기준의 원장이다.
+- [로드맵](roadmap/v1.7.0.md)에 기존 Task/WP 대응과 9개 기본 PR 묶음을 연결한다.
+  지침 준비 결과는 [workthrough](../workthrough/2026-09-07-codex-workflow-optimization.md)에 기록한다.
+- 환경을 준비할 때만 [handoff.md](handoff.md) §1과 [development.md](development.md)를 읽는다.
+  아래 과거 실행 요약·네트워크 제한·승인 기록은 그 날짜의 사실이며 현재 제약으로 자동 적용하지 않는다.
 
 ### Task 22 실행 요약 (2026-08-03)
 
@@ -129,25 +134,17 @@ LLM 을 쓰지 않아 이 제한과 무관하다 — LLM 이 필요한 건 `sear
 ### 로컬 환경 기동
 
 ```bash
-make install      # 의존성 설치 + git 훅 활성화
-make db-up        # PostgreSQL 기동 (Docker, 운영과 같은 postgres:17-alpine)
-make migrate
-make api          # 다른 터미널에서 make web
-make check        # CI 와 동일한 전체 검증
+make install        # 최초 준비: 의존성 + git 훅
+make db-local-setup # 최초 1회: 격리 PostgreSQL 준비
+make db-local-start # 이후 재개
+make migrate        # 격리 개발 DB인지 확인 후
+make api            # 포트/비밀 설정은 handoff.md §1, 다른 터미널에서 make web
+make check          # lint·typecheck·test·secret scan; 전체 CI 범위는 development.md
 ```
 
-Docker 를 쓸 수 없는 상황에서는 폴백을 쓴다. `scripts/dev-db.sh` 가 micromamba 로 홈
-디렉토리에 PostgreSQL 17 을 설치해 root 없이 실행한다.
-
-```bash
-make db-local-setup   # 최초 1회
-make db-local-start
-export SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev
-```
-
-> Docker 를 설치한 직후에는 `docker` 그룹 추가가 기존 셸 세션에 반영되지 않아
-> `permission denied ... /var/run/docker.sock` 가 발생한다. 새 셸을 열거나
-> `sg docker -c "docker ..."` 로 감싼다.
+이 기기의 Compose는 운영 스택이므로 개발 준비에 `make db-up/db-down`을 사용하지 않는다.
+이미 준비된 환경은 재설치하지 않는다. 대상 DB·포트·검증 구분은
+[development.md](development.md), 운영 절차는 [operations.md](operations.md)를 따른다.
 
 ---
 
@@ -173,43 +170,32 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 
 ## 2. 재개 절차
 
-```bash
-cd /home/jihoon/projects/SoolJang
-
-# 1) 위치 확인
-git status -sb
-git log --oneline -5
-gh pr list --state all --limit 5
-
-# 2) main 최신화
-git switch main && git pull --ff-only
-
-# 3) git 훅 활성화 (클론 직후 1회. main 직접 푸시·버전 태그 푸시를 차단한다)
-bash scripts/install-hooks.sh
-
-# 4) 개발 환경 (Task 5 이후 유효)
-uv sync                       # Python 의존성
-npm ci --prefix web           # 프론트엔드 의존성
-cp .env.example .env          # 최초 1회, 값 채우기
-
-# 5) 검증
-uv run ruff check . && uv run ruff format --check .
-uv run ty check
-uv run pytest                 # 브랜치 커버리지 85% 강제
-npm --prefix web run check    # 포맷·린트·타입·테스트·빌드
-bash scripts/scan-secrets.sh  # 시크릿·개인 데이터 커밋 여부
-
-# 6) 새 Task 시작
-git switch -c feature/<task-slug>
-```
-
-Task 5 이전에는 `uv`·`npm` 프로젝트가 아직 없어 4~5단계 일부를 건너뛴다.
+1. `git status -sb`, `git log --oneline -5`, 열린 PR과 최신 원격 main을 확인한다.
+   미커밋 변경과 진행 중인 PR을 보존한다. 새 작업은 최신 main에서 `feature/<task-slug>`를
+   만들고, 재개 작업은 기존 브랜치를 사용한다. 자동으로 main으로 전환하지 않는다.
+2. §1 → 마일스톤 메인/명세 → 담당 WP → 관련 설계·코드·하위 `AGENTS.md` 순서로 읽는다.
+   PR 묶음과 선행 계약, 이번 요구사항/비범위를 확인한다.
+3. 클론 직후에만 `bash scripts/install-hooks.sh`를 실행한다. 의존성 설치가 필요한 경우
+   `uv sync --frozen`, `npm ci --prefix web`를 사용한다. 기존 `.env`는 덮어쓰지 않는다.
+4. DB가 필요하면 격리 개발 환경을 준비한다. 문서 검토만으로 DB·앱을 기동하지 않는다.
+   Python 테스트는 반드시 격리 테스트 DB를 사용한다.
+5. [development.md](development.md)의 변경별 검증을 수행하고 계획/구현/실검증 상태와
+   다음 행동을 기록한다. 같은 작업의 workthrough를 재사용한다.
 
 ---
 
 ## 3. Task 체크리스트
 
 상태: ⬜ 대기 · 🟡 진행중 · ✅ 완료
+
+### v1.7.0 준비·실행
+
+| 범위 | 상태 | 근거 |
+|---|---|---|
+| Codex 지침·스킬 준비 | ✅ 적용·로컬 검증 완료. #116 머지 및 main 통합 후 CI 재검증 중 | [PR #132](https://github.com/jihoon22-lee/SoolJang/pull/132), [기록](../workthrough/2026-09-07-codex-workflow-optimization.md) |
+| WP01~WP13 / B01~B09 | ⬜ 기능 구현·실검증 미착수 | [로드맵](roadmap/v1.7.0.md), 실제 PR/상태는 [#117](https://github.com/jihoon22-lee/SoolJang/issues/117) |
+
+### 기존 Task 이력
 
 | # | Task | 상태 | 브랜치 | PR |
 |---|---|---|---|---|
@@ -2174,11 +2160,25 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 
 ---
 
+### Codex 지침·스킬 준비 결정 (D196, 2026-09-07)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D196 | 공통/영역별 AGENTS와 저장소 스킬 3개로 작업 진입·검증·소스 조사를 분리한다. 이슈↔PR N:M, 현재 1.x 및 암호화 자격증명 정책을 반영하고 개발 DB/검증 안내를 통일한다. 개인 모델·컨텍스트 윈도우·자동 압축 한계는 변경하지 않는다 | 사용자 요청과 OpenAI 공식 문서에 따라 적용. [개발 절차](development.md)에 근거, [workthrough](../workthrough/2026-09-07-codex-workflow-optimization.md)에 실제 검증을 기록. 이번 준비는 WP01 전체나 B01 기능 수용을 대신하지 않는다 |
+
+---
+
 ## 6. 열린 질문
+
+v1.7.0의 현재 범위/선택형 제공자는 [#117](https://github.com/jihoon22-lee/SoolJang/issues/117)과
+[#118](https://github.com/jihoon22-lee/SoolJang/issues/118)을 따른다. 아래 Q2/Q3/Q9는 과거
+결정의 이력이며 새 탐색·가격 관측을 계속 미루라는 지침이 아니다. 실제 소스 계약·키·비용
+권한과 실검증의 제약은 담당 WP에서 확인한다. 지침 준비 자체에 남은 사용자 결정은 없다.
+
 
 | # | 질문 | 상태 | 필요 시점 |
 |---|---|---|---|
-| ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결 (Task 5)** — Docker Compose `postgres:17-alpine` 을 기본 경로로, `scripts/dev-db.sh`(micromamba, root 불필요) 를 폴백으로 확정. CI 는 Actions `services: postgres`. 세 환경 모두 PostgreSQL 17 | — |
+| ~~Q1~~ | ~~데이터베이스 실행 방식~~ | **✅ 해결** — Task 5 당시 Compose 기본/로컬 폴백을 채택. 운영 상주 이후 개발 기본은 격리된 `scripts/dev-db.sh`(2026-09-07 안내 정합성 반영), 운영은 Compose, CI는 Actions `services: postgres` | — |
 | ~~Q2~~ | ~~검색·LLM API 제공자와 예산~~ | **✅ 해결** — LLM 쪽은 Task 17(OpenAI, "테스트 몇 차례만" 제한). `adapter` 전략은 LLM 을 안 쓴다(D91). **`search` 전략(구글 스크래핑 + 검색 API)은 포기로 결정(2026-08-13, D167)** — ToS·신뢰성·예산 위험이 커 제거하고, 대신 "웹에서 검색" 링크(제품명으로 브라우저 검색 열기)로 대체했다. 상시 LLM 예산 상한은 여전히 미정 | — |
 | Q3 | 초기 등록할 외부 소스 사이트 목록 | **7곳 중 1곳(데일리샷) 실제 등록 완료(2026-08-05)** — 데일리샷·이마트·트레이더스·코스트코·CU·GS25·emart24 중 데일리샷을 JSON 모드 `adapter_spec` 으로 등록하고 실제 조회까지 확인했다(D147~D148). 나머지 6곳은 각 사이트가 HTML 서버 렌더링인지 데일리샷처럼 SPA+JSON API 인지부터 조사해야 한다 — 사용자가 원하는 시점에 하나씩 진행 | Task 19 착수 전(나머지 6곳) |
 | ~~Q4~~ | ~~Tailscale 설치·로그인 여부와 tailnet 이름~~ | **✅ 해결·재검증(2026-08-20)** — tailnet `tail30f401.ts.net`, 홈 PC는 `main` 노드다. 술장은 `https://main.tail30f401.ts.net:8080`에서 API health `1.6.0`과 웹 HTTP 200을 반환한다 | — |
@@ -2212,17 +2212,9 @@ PR마다 아래를 모두 통과해야 머지한다.
 
 ---
 
-## 8. 절대 규칙
+## 8. 공통 규칙의 원장
 
-1. `main`에 직접 푸시하지 않는다 (저장소 부트스트랩 커밋만 예외)
-2. 개발 기간 중 `v*.*.*` 태그를 푸시하지 않는다 (Task 23 전용)
-3. 실제 음주 기록(`alcohol.csv`·`alcohol.xlsx`), `.env`, 백업 덤프, 업로드 이미지를 커밋하지 않는다
-4. 테스트에는 익명화·축약 fixture만 사용한다
-5. 모든 API는 인증을 요구한다 (`/health` 예외)
-6. 파생값을 DB에 저장하지 않는다
-7. 외부 데이터는 출처 URL 없이 저장하지 않는다
-8. 모든 Task PR에 이 문서 갱신을 포함한다
-9. **PR은 계층별로 쪼개지 않는다.** 한 Task 의 백엔드·프론트엔드·테스트·문서 갱신을
-   전부 같은 PR 에 담는다. 문서만 고치는 후속 PR 을 따로 만들지 않는다 — Task 13 에서
-   백엔드/프론트엔드 PR 2개 + 문서 전용 PR 5개로 쪼개졌던 것은 반례다(사용자 피드백,
-   2026-08-01)
+공통 불변 조건·인증/비밀·PR/릴리스 정책은 [AGENTS.md](../AGENTS.md)를 따른다.
+이 문서에는 현재 상태와 과거 결정을 남기고 같은 명령형 규칙을 중복 관리하지 않는다.
+2026-09-07 D196에서 최초 릴리스 전제와 Task=PR 1:1 규칙을 현재 마일스톤 운영에 맞췄다.
+기능의 코드·테스트·문서는 같은 검토 묶음에 포함하며 실제 분할/결합 근거는 메인 계획에 기록한다.

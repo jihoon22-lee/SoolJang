@@ -19,43 +19,42 @@ help: ## 사용 가능한 명령 목록
 # ---------------------------------------------------------------------------
 .PHONY: install
 install: ## 의존성 설치와 git 훅 활성화
-	uv sync
+	uv sync --frozen
 	npm ci --prefix web
 	bash scripts/install-hooks.sh
 
 # ---------------------------------------------------------------------------
 # 데이터베이스
 #
-# 기본 경로는 Docker Compose 다. 운영과 같은 postgres:17-alpine 이미지를 쓰므로
-# 동작 차이가 없다. Docker 를 쓸 수 없는 상황(그룹 반영 전, 데몬 미기동)에서는
-# db-local-* 폴백을 쓴다. scripts/dev-db.sh 가 micromamba 로 홈 디렉토리에
-# PostgreSQL 17 을 설치해 root 없이 실행한다.
+# 개발 기본 경로는 db-local-* 이다. scripts/dev-db.sh 가 사용자 영역에서
+# PostgreSQL 17 을 운영 스택과 분리한다. 아래 db-up/down 은 기존 Compose 관리
+# 명령이며, 이 기기에서는 운영 DB를 조작하므로 개발 준비에 사용하지 않는다.
 # ---------------------------------------------------------------------------
 .PHONY: db-up
-db-up: ## PostgreSQL 기동 (Docker, 기본 경로)
+db-up: ## Compose DB 조작 (운영 영향 있음, 개발 준비에 사용 금지)
 	docker compose up -d db
 	docker compose exec -T db bash -c 'until pg_isready -U $${POSTGRES_USER:-sooljang}; do sleep 1; done'
 	docker compose exec -T db psql -U $${POSTGRES_USER:-sooljang} -d postgres \
 		-c "SELECT 'CREATE DATABASE sooljang_test' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sooljang_test')\gexec"
 
 .PHONY: db-down
-db-down: ## PostgreSQL 정지 (Docker)
+db-down: ## Compose DB 정지 (운영 영향 있음, 개발 준비에 사용 금지)
 	docker compose stop db
 
 .PHONY: db-local-setup
-db-local-setup: ## 폴백: 사용자 영역 PostgreSQL 설치 (Docker 없이, 최초 1회)
+db-local-setup: ## 격리 개발 PostgreSQL 설치·기동 (최초 1회)
 	bash scripts/dev-db.sh setup
 
 .PHONY: db-local-start
-db-local-start: ## 폴백: 사용자 영역 PostgreSQL 기동
+db-local-start: ## 격리 개발 PostgreSQL 기동
 	bash scripts/dev-db.sh start
 
 .PHONY: db-local-stop
-db-local-stop: ## 폴백: 사용자 영역 PostgreSQL 정지
+db-local-stop: ## 격리 개발 PostgreSQL 정지
 	bash scripts/dev-db.sh stop
 
 .PHONY: db-psql
-db-psql: ## psql 셸 열기 (폴백 인스턴스)
+db-psql: ## psql 셸 열기 (격리 개발 인스턴스)
 	bash scripts/dev-db.sh psql
 
 # ---------------------------------------------------------------------------
@@ -103,7 +102,7 @@ test: ## 테스트 실행 (브랜치 커버리지 85% / 80% 강제)
 	npm --prefix web run test:coverage
 
 .PHONY: migration-check
-migration-check: ## 마이그레이션 up/down 왕복과 모델 드리프트 검사
+migration-check: ## 테스트 DB 마이그레이션 up/down 왕복 (드리프트 검사는 별도)
 	SOOLJANG_DATABASE_URL=$(TEST_DB_URL) uv run alembic upgrade head
 	SOOLJANG_DATABASE_URL=$(TEST_DB_URL) uv run alembic downgrade base
 	SOOLJANG_DATABASE_URL=$(TEST_DB_URL) uv run alembic upgrade head
@@ -113,7 +112,7 @@ scan: ## 시크릿·개인 데이터 커밋 여부 확인
 	bash scripts/scan-secrets.sh
 
 .PHONY: check
-check: lint typecheck test scan ## CI 와 동일한 전체 검증
+check: lint typecheck test scan ## lint·typecheck·test·secret scan (전체 CI 범위는 docs/development.md)
 
 # ---------------------------------------------------------------------------
 # 배포 (Task 21 이후 사용)

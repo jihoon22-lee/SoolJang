@@ -1,7 +1,16 @@
 # 세션 인계 문서
 
-**다른 세션에서 이 작업을 이어받는 사람을 위한 문서다.** 이것을 먼저 읽고,
-[plan.md](plan.md) §1(현재 위치)로 넘어가면 된다.
+**현재 작업은 [plan.md](plan.md) §1부터 확인한다.** 이 문서는 환경 준비와 과거 운영 기록을
+필요할 때 찾는 용도다. 현재 범위는 [v1.7.0 로드맵](roadmap/v1.7.0.md), 검증 명령은
+[development.md](development.md)를 따른다.
+
+- 2026-09-07: v1.7.0 착수 전 지침·스킬 준비. WP01~WP13 기능 구현/실검증은 별도이며
+  아래 "다음 작업 없음"과 배포·테스트 수치는 과거 스냅샷이다.
+- 개인 Codex 설정의 컨텍스트 윈도우·자동 압축 한계는 사용자가 지정한 값을 유지한다.
+
+## 이전 운영·개발 스냅샷 (2026-08-20)
+
+이 절은 당시 완료 상태와 운영 확인의 이력이다. 현재 브랜치·열린 PR·버전은 재개 시 다시 확인한다.
 
 - 최종 갱신: **2026-08-20 (Task 34와 `v1.6.0` 릴리스·운영 재배포 완료.**
   매칭 정확도(엉뚱한 술을 정답처럼 보여주던 문제)와 소스 등록 편의성을 함께 고쳤다:
@@ -106,8 +115,8 @@ gh pr list --state all --limit 5
 # 2) 훅 활성화 (클론 직후 1회)
 bash scripts/install-hooks.sh
 
-# 3) 의존성
-uv sync
+# 3) 의존성 (설치가 필요할 때만)
+uv sync --frozen
 npm ci --prefix web
 
 # 4) 데이터베이스 — **격리된 개발용 DB를 쓴다. `docker compose up -d db` 는 절대 쓰지
@@ -119,20 +128,25 @@ export SOOLJANG_DATABASE_URL="postgresql+psycopg://sooljang@127.0.0.1:54329/sool
 uv run alembic upgrade head
 
 # 5) 검증
-uv run pytest                  # 612 passed, 28 skipped 가 정상 (skip 전부 opt-in 실측 테스트,
-                                #   live_llm 마커 포함 — 실제 OpenAI 키가 없으면 건너뛴다)
-npm --prefix web run check     # 254 passed, 커버리지 임계값(branch 80%) 통과
+SOOLJANG_ENV_FILE='' SOOLJANG_ENVIRONMENT=test \
+SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_test \
+uv run --frozen pytest         # 개수는 고정하지 않고 실제 통과/실패/skip을 기록
+npm --prefix web run check     # Vitest coverage 80% + build 포함
 
 # 6) 이어서 작업
-#    plan.md §1 의 "다음 착수 Task" 를 확인하고 해당 브랜치를 만든다
+#    plan.md §1 의 현재 PR/브랜치를 확인하고 기존 작업이면 재사용한다
 ```
+
+앱 실행은 운영 8000 포트와 분리한다. API는 `SOOLJANG_API_PORT=8210 make api`, 웹은
+다른 터미널에서 `SOOLJANG_API_URL=http://127.0.0.1:8210 make web`으로 띄운다.
+새 환경의 부팅용 비밀은 [operations.md](operations.md) §1을 따른다.
 
 `.env` 가 없으면 `.env.example` 을 복사하고 `POSTGRES_PASSWORD` 를 채운다. Task 17 부터
 `SOOLJANG_SECRET_KEY` 도 필수다(LLM API 키 암호화용 Fernet 마스터 키) —
 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 로 생성한다. 없으면 앱이 아예 기동하지 않는다(기본값 없음, 의도적).
-Docker 를 쓸 수 없으면 `make db-local-setup` → `make db-local-start` 폴백을 쓴다
-(micromamba 로 홈 디렉토리에 PostgreSQL 17 설치, root 불필요, 포트 54329).
+개발에는 `make db-local-setup` → `make db-local-start`를 기본으로 쓴다
+(micromamba PostgreSQL 17, root 불필요, 포트 54329). 운영 Compose와 분리한다.
 
 ---
 
@@ -430,14 +444,14 @@ scripts/serve-https.sh
 | **SQLAlchemy Enum 이 이름을 저장** | `status <> 'unopened'` CHECK 제약이 조용히 무력화 | `base.str_enum_column` 헬퍼를 쓴다 (값으로 저장) |
 | **재귀 CTE 타입 불일치** | `recursive query ... column has type character varying(120)` | 비재귀 항의 경로 컬럼을 `text` 로 캐스팅한다 |
 | **모델 import 누락** | `create_all` 이 아무 테이블도 만들지 않고 조용히 통과 | conftest·alembic env 가 `database.models` 를 import 해야 한다 |
-| **마이그레이션 파일 삭제 순서** | DB 가 없는 리비전을 가리켜 `Can't locate revision` | 파일을 지우기 **전에** `alembic downgrade` 를 먼저 한다 |
-| **Compose `api` 컨테이너가 8000 포트 점유** | 로컬 서버가 `Address already in use`, 또는 구버전 코드가 응답 | `docker compose stop api` 하거나 `SOOLJANG_API_PORT` 로 다른 포트를 쓴다 |
+| **마이그레이션 파일 삭제 순서** | DB가 없는 revision을 가리켜 `Can't locate revision` | 이미 배포한 migration 파일은 임의 삭제하지 않는다. 미배포 개발 migration 재작성은 폐기 가능한 DB에서 revision을 맞춘 뒤 수행한다 |
+| **Compose `api` 컨테이너가 8000 포트 점유** | 로컬 서버가 `Address already in use`, 또는 구버전 코드가 응답 | 운영 API를 중지하지 않고 `SOOLJANG_API_PORT=8210` 등 별도 개발 포트와 웹 프록시 대상을 맞춘다 |
 | **관계 컬렉션이 낡은 값 유지** | 품종을 교체했는데 응답에 이전 값이 남음 | 수정 후 `session.expire(obj, ["관계명"])` 로 만료시킨다 |
 | **flush 직후 Decimal 정밀도** | 생성 응답은 `85000`, 재조회는 `85000.00` | 응답 전에 `session.refresh()` 로 저장된 값을 읽는다 |
 | **FastAPI 파일 업로드** | `Form data requires "python-multipart"` | `python-multipart` 의존성이 필요하다 (추가됨) |
 | **테스트 fetch 스텁과 FormData** | `[object FormData] is not valid JSON` | `testing.tsx` 의 `readBody` 가 FormData 를 파일 이름으로 변환한다 |
-| **합성 픽스처로 못 잡는 결함** | 실제 데이터에서만 터지는 형식 변형 | 실측 파일 opt-in 테스트를 반드시 돌린다: `SOOLJANG_LEGACY_SHEET=/mnt/e/alcohol.csv uv run pytest -m requires_legacy_sheet` |
-| **새 셸에서 `pytest` 가 전부 `password authentication failed`** | `conftest.py` 의 `TEST_DATABASE_URL` 하드코딩 기본값 비밀번호(`sooljang`)가 `.env`/컨테이너의 실제 비밀번호(`localdevonly`)와 다르다 | `export SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang:<`.env`의 POSTGRES_PASSWORD`>@127.0.0.1:5432/sooljang_test` 를 먼저 설정한다 |
+| **합성 픽스처로 못 잡는 결함** | 실제 데이터에서만 터지는 형식 변형 | 먼저 익명화/합성 회귀 fixture로 재현한다. 실제 파일 검증이 필요한 경우에만 승인된 opt-in 범위와 격리 테스트 DB를 확인하고 실행하며 원본·상세 로그를 커밋하지 않는다 |
+| **새 셸에서 pytest DB 인증 실패** | 과거 기본 테스트 URL과 로컬 DB의 인증 설정이 달랐음 | 운영 `.env`의 비밀번호를 재사용하지 않는다. [development.md](development.md)의 격리 테스트 URL·환경을 명시하고 연결 대상만 확인한다 |
 | **`useLiveQuery` 컴포넌트를 마운트 직후 동기 `getByText` 로 단언** | 플레이키 실패(첫 계산은 비동기라 로딩 중 빈 상태를 잡을 수 있다) | `findByText`/`findByRole` 로 기다린다. `SyncStatusBadge` 충돌 패널에서 실제로 겪음(Task 15) |
 | **`web.Dockerfile` 은 `web/` 디렉터리만 이미지에 복사한다** | 저장소 루트의 다른 디렉터리(`tests/fixtures/` 등)를 상대 경로로 참조하는 프론트엔드 파일이 있으면 `Container build` 잡에서만 `tsc` 가 모듈을 못 찾는다(로컬 `npm run check` 는 통과) | 그 경로도 `COPY <경로>/ <컨테이너 내 같은 상대 위치>/` 로 명시적으로 추가한다. Task 15 의 `metrics.test.ts`(공유 골든값 픽스처) 에서 실제로 터졌다 |
 | **버튼이 `disabled` 면 그 안의 유효성 검사 분기는 테스트로 못 만난다** | `userEvent.click(disabled 버튼)` 은 조용히 아무 일도 안 한다 — 콘솔 경고도 없다 | disabled 조건과 함수 내부 가드가 같은 값을 검사한다면 함수 내부 가드는 죽은 코드다. 지우거나(권장), 정말 다른 경로로 호출될 수 있다면 그 경로로 테스트한다. `BarcodeScanPanel` 에서 실제로 발견(Task 16) |
@@ -447,7 +461,7 @@ scripts/serve-https.sh
 | **의존성 상한을 너무 느슨하게 잡으면 CI `pip-audit` 이 나중에 실패한다** | `cryptography>=46,<47` 로 고정했는데 46.x 에 이미 알려진 취약점(GHSA)이 있어 `pip-audit --strict` 가 실패 | 새 의존성을 추가할 때 `pip-audit` 를 로컬에서도 한 번 돌려 본다: `uv export --frozen --no-dev --no-emit-project --format requirements.txt -o /tmp/req.txt && uv run --with pip-audit pip-audit --strict -r /tmp/req.txt`. Task 17 에서 발견 |
 | **`vi.stubGlobal("URL", {...URL, 메서드})` 로 전체 URL 을 바꿔치기하면 생성자가 사라진다** | `URL.createObjectURL` 을 목킹하려다 `{...URL}` 스프레드로 교체하면, `URL` 이 더 이상 `new URL(...)` 로 생성자 호출이 안 되는 평범한 객체가 된다 — 다른 코드가 조용히 깨진다 | 전체를 바꿔치기하지 않는다. `URL.createObjectURL = vi.fn()` 처럼 필요한 정적 메서드만 직접 얹고, 테스트 끝에 `undefined` 로 되돌린다. `PivotExplorer.test.tsx`(Task 20) CSV 내보내기 테스트에서 실제로 겪음 — 실패 증상이 "표가 안 뜬다"로 나타나 원인 파악에 시간이 걸렸다 |
 | **이 개발 환경 자체가 사용자의 홈 PC(WSL2)다 — "샌드박스라 인터넷이 안 된다"는 도구별 얘기지 이 기기 얘기가 아니다** | `WebFetch`/Playwright 브라우저는 임의 외부 도메인 DNS 조회가 막히지만, `curl`/`ping`/`tailscale` 같은 원시 셸 명령은 실제로 외부 인터넷·tailnet(`main.tail30f401.ts.net`, 이 기기 자신)에 닿는다. `docker ps` 도 `permission denied` 지만 `sg docker -c "..."` 로 우회 가능(§5 위 행 참조) — 실제로 `docker compose` 스택(web/api/db)이 이미 떠 있었다(단, 이전 빌드라 최신 코드가 아닐 수 있다) | 배포·외부 사이트 조사처럼 "이 샌드박스는 못 한다"고 넘겨짚기 전에, Bash 로 직접 `curl`/`tailscale status`/`sg docker -c "docker ps"` 를 먼저 확인한다. `tailscale serve status` 로 현재 폰에 실제로 뭐가 노출돼 있는지도 확인할 것 — 2026-08-03 시점엔 "No serve config"였다(아무것도 안 뜬 상태) |
-| **이 개발 환경에 로컬 Postgres 인스턴스가 두 개 떠 있다** | `#scan`(매장 모드) 실클릭 검증 중 `/external-lookup` 이 500 을 반환. 원인은 코드가 아니라 프론트 dev 서버(5173)가 프록시하는 API(포트 8000/8001, `postgresql://…@127.0.0.1:5432/sooljang`, 실데이터 406종)가 `alembic upgrade`(포트 54329, `sooljang_dev`/`sooljang_test`, `scripts/dev-db.sh` 관리)와 **다른 DB** 라 새 마이그레이션(`0008_external_sources`)이 안 들어가 있었다 | `SOOLJANG_DATABASE_URL` 을 바꿔 가며 작업했다면, 실클릭 검증 전에 **실제로 요청이 가는 서버가 어느 DB 를 보는지**(`ps`/`/proc/<pid>/environ` 로 확인) 를 먼저 맞춘다. 두 DB 모두에 `alembic upgrade head` 를 돌려야 할 수 있다. Task 22 PR9/10 세션에서 실제로 겪음 |
+| **이 개발 환경에 로컬 Postgres 인스턴스가 두 개 떠 있다** | `#scan`(매장 모드) 실클릭 검증 중 `/external-lookup` 이 500 을 반환. 원인은 코드가 아니라 프론트 dev 서버(5173)가 프록시하는 API(포트 8000/8001, `postgresql://…@127.0.0.1:5432/sooljang`, 실데이터 406종)가 `alembic upgrade`(포트 54329, `sooljang_dev`/`sooljang_test`, `scripts/dev-db.sh` 관리)와 **다른 DB** 라 새 마이그레이션(`0008_external_sources`)이 안 들어가 있었다 | 웹 프록시→개발 API→격리 DB의 host·port·DB 이름과 revision을 맞춘다. 프로세스 환경 전체나 비밀값을 출력하지 않는다. 개발 DB만 명시적으로 migration하고 운영 DB 변경은 별도 승인된 배포 절차를 따른다. Task 22 PR9/10 당시의 대상 혼동 사례 |
 | **Dexie 로 `deleted_at IS NULL` 을 인덱스 range query 로 못 한다** | `db.table(t).where("deleted_at").equals(null)` 이 `Invalid key provided` 로 즉시 실패한다 | IndexedDB 스펙에서 `null` 은 유효한 키 타입이 아니다(숫자·문자열·Date·ArrayBuffer·Array 만 가능) — 값이 `null` 인 레코드는 그 인덱스에 아예 없는 취급을 받는다. "살아있는 행" 을 빠르게 거르고 싶으면 **소유 관계(FK) 로 범위를 좁히는 쪽**(`sku.product_id`, `purchase.sku_id` 처럼 항상 값이 있는 필드)을 인덱스로 쓰고, `deleted_at` 필터는 그 좁혀진 소수의 결과에만 JS 로 적용한다. `fake-indexeddb` 로 30초면 재현 확인 가능(`web/src/sync/queries.ts::loadProductScope` 가 이 패턴의 실제 예). Task 24 PR7 에서 실제로 겪음 |
 | **`gh auth refresh -s <스코프>` 로 GitHub CLI 토큰 스코프를 늘려도 `docker login ghcr.io` 는 자동 갱신되지 않는다** | `read:packages` 스코프를 추가한 뒤에도 `docker pull ghcr.io/...` 가 `denied` 로 계속 실패 | `gh` CLI 의 OAuth 토큰과 Docker 데몬이 `~/.docker/config.json` 에 저장해 둔 `ghcr.io` 자격 증명은 별개다 — `gh` 쪽 스코프가 늘어도 Docker 는 예전에 로그인해 둔(또는 스코프가 부족했던) 토큰을 계속 쓴다. `gh auth token | docker login ghcr.io -u <사용자명> --password-stdin` 으로 다시 로그인해야 새 스코프가 반영된다. `v1.1.0` 배포 때 실제로 겪음(2026-08-06) |
 | **`scripts/backup.sh` 도 `sg` shadowing 함정에 걸려 있었다** | `SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh` 가 `db` 컨테이너가 실제로 떠 있는데도 "db 컨테이너가 실행 중이 아닙니다" 로 실패 | 위 "docker 그룹 미반영" 함정과 같은 원인 — 스크립트 내부의 `compose()` 헬퍼가 절대 경로 없이 `sg docker -c ...` 를 호출해 `ast-grep` 이 대신 실행됐다. `/usr/bin/sg` 로 고정해 수정([PR #59](https://github.com/jihoon22-lee/SoolJang/pull/59), 2026-08-06). 이 저장소에서 `SOOLJANG_DOCKER_SG=1` 을 쓰는 스크립트를 새로 만들거나 고칠 때는 항상 절대 경로를 쓴다 |
@@ -456,28 +470,19 @@ scripts/serve-https.sh
 
 ---
 
-## 6. 절대 규칙 (위반 시 사용자 요구사항 위반)
+## 6. 공통 규칙
 
-1. `main` 에 직접 푸시하지 않는다 (저장소 부트스트랩 커밋만 예외)
-2. 개발 기간 중 `v*.*.*` 태그를 푸시하지 않는다 (Task 23 전용)
-3. 실제 음주 기록(`alcohol.csv`·`alcohol.xlsx`), `.env`, 백업 덤프, 업로드 이미지를
-   커밋하지 않는다. 테스트는 `scripts/generate_legacy_fixture.py` 가 만드는 합성 픽스처만 쓴다
-4. 모든 Task PR 에 `docs/plan.md` 와 이 문서의 갱신을 포함한다
-5. 커밋 메시지는 Conventional Commits 를 지킨다. 사용자가 읽는 텍스트는 한글 우선
-6. Task 1개 = `feature/<slug>` 브랜치 1개 = PR 1개. 머지는 `gh pr merge --merge`
-   (커밋 단위를 히스토리에 남기기 위해 squash 를 쓰지 않는다). **PR을 계층별(백엔드/
-   프론트엔드)로 쪼개거나 문서만 고치는 후속 PR을 따로 만들지 않는다** — 한 Task 의
-   모든 변경(코드·테스트·문서)을 같은 PR 에 담는다(사용자 피드백, 2026-08-01. Task 13
-   이 PR 7개로 쪼개졌던 것은 반례다)
-7. 모든 API 는 인증을 요구한다 (`/health` 예외)
-8. 파생값을 DB 에 저장하지 않는다
-9. 외부 데이터는 출처 URL 없이 저장하지 않는다
+[AGENTS.md](../AGENTS.md)를 정책 원장으로 사용한다. 현재 마일스톤의 N:M PR 매핑과
+명시적 릴리스 경계, 데이터 보호, merge commit 방식을 적용한다. 모든 작업 PR은
+`docs/plan.md`를 갱신하고 이 인계 문서는 환경/재개 절차가 바뀔 때 갱신한다.
+과거 문서의 Task 23 전용 태그·Task=PR 1:1 지침을 새 작업에 적용하지 않는다.
 
 ---
 
 ## 7. 사용자와 확인이 필요한 열린 질문
 
-`docs/plan.md` §6 에 표로 관리한다. 필요 시점이 가까운 것부터:
+`docs/plan.md` §6과 현재 마일스톤을 따른다. 아래 표는 과거 질문 이력이며, 선택형 검색
+제공자·웹 푸시 등 이미 결정된 사항을 다시 묻거나 v1.7.0 착수를 차단하는 근거로 쓰지 않는다:
 
 | # | 질문 | 필요 시점 |
 |---|---|---|
