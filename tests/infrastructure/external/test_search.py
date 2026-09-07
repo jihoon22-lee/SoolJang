@@ -256,3 +256,23 @@ async def test_cancelled_request_has_no_send_or_reservation_and_guard_does_not_l
     )
     assert result.outcome == SourceOutcome.EMPTY
     assert len(calls) == len(reservations) == 1
+
+
+@pytest.mark.parametrize("encoded_prefix", ["%73", "%2573", "%252573"])
+def test_percent_encoded_credential_reflection_is_discarded(encoded_prefix: str) -> None:
+    secret = "synthetic-exa-secret-123456"  # scan-secrets-allow: synthetic reflection fixture
+    documents = parse_search_response(
+        "exa",
+        {
+            "results": [
+                {
+                    "title": "합성 몰트",
+                    "url": "https://example.com/" + encoded_prefix + secret[1:],
+                    "text": "합성 발췌",
+                }
+            ]
+        },
+        fetched_at=datetime.now(UTC),
+        secrets=(secret,),
+    )
+    assert documents == []

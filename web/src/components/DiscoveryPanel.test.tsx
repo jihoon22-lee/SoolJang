@@ -23,7 +23,7 @@ const document: DiscoveryDocument = {
   rating_scale: 100,
   rating_count: 0,
   applicable_fields: { abv: "46", age_years: "12" },
-  evidence_token: "synthetic-evidence",
+  evidence_token: "synthetic-evidence", // scan-secrets-allow: synthetic signed-evidence fixture
 };
 const source: DiscoverySource = {
   source_id: "source",

@@ -610,6 +610,7 @@ async def reserve_connection_request(
     require_active: bool = True,
     source_id: uuid.UUID | None = None,
     source_revision: int | None = None,
+    reserve: bool = True,
 ) -> None:
     """모든 실제 송신 직전에 최신 상태를 확인하고 source/connection을 함께 예약한다."""
     row = (
@@ -653,7 +654,8 @@ async def reserve_connection_request(
         ):
             raise ConnectionChanged("요청 중 소스 설정이 바뀌었습니다")
         budgets.append(RequestBudget("source", source_id, source[2], source[3]))
-    await reserve_request(user_id=user_id, budgets=budgets)
+    if reserve:
+        await reserve_request(user_id=user_id, budgets=budgets)
 
 
 async def probe_connection(
