@@ -8,15 +8,26 @@ export function ExternalInfoCard({
   productName,
   offline,
   myPricePer100ml,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   productId: string;
   productName: string;
   offline: boolean;
   myPricePer100ml?: Money;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
   return (
-    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+        onOpenChange?.(event.currentTarget.open);
+      }}
+    >
       <summary>외부 정보 조회</summary>
       {open && (
         <DiscoveryPanel

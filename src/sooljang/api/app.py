@@ -1,5 +1,8 @@
 """FastAPI 애플리케이션 팩토리."""
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI
@@ -23,6 +26,7 @@ from sooljang.api.routes import (
     legacy_import,
     llm_settings,
     ocr,
+    price_watch,
     products,
     provider_connections,
     purchases,
@@ -51,7 +55,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """애플리케이션을 조립한다. 테스트가 설정을 주입할 수 있도록 인자를 받는다."""
     settings = settings or get_settings()
 
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        from sooljang.application.price_watch_worker import worker_loop
+
+        worker_status: dict[str, Any] = {"state": "disabled", "last_tick_at": None}
+        application.state.price_watch_worker = worker_status
+        task: asyncio.Task[None] | None = None
+        if settings.price_watch_worker_enabled and settings.environment != "test":
+            worker_status["state"] = "starting"
+            task = asyncio.create_task(worker_loop(settings, worker_status))
+        application.state.price_watch_task = task
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
     app = FastAPI(
+        lifespan=lifespan,
         title="술장 (SoolJang) API",
         description=(
             "개인 주류 컬렉션 기록·관리·분석 API.\n\n"
@@ -87,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for router in (
         discovery.router,
         interests.router,
+        price_watch.router,
         provider_connections.router,
         interest_purchase.router,
         categories.router,

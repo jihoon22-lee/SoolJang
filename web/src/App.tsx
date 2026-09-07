@@ -12,11 +12,13 @@ import { HomePage } from "@/pages/HomePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { InterestsPage } from "@/pages/InterestsPage";
 import { InventoryPage } from "@/pages/InventoryPage";
+import { PriceWatchPage } from "@/pages/PriceWatchPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StatsPage } from "@/pages/StatsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
 import { VendorsPage } from "@/pages/VendorsPage";
+import { clearBrowserPush } from "@/push/browserPush";
 import { parseHash, type Route, routeToHash, type View } from "@/router";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { syncEngine } from "@/sync/engine";
@@ -47,6 +49,7 @@ const SETTINGS_VIEWS: { id: View; label: string }[] = [
   { id: "inventory", label: "보관·실사" },
   { id: "quality", label: "데이터 품질" },
   { id: "import", label: "가져오기" },
+  { id: "price-watch", label: "가격 감시·알림" },
   { id: "settings", label: "설정" },
   { id: "status", label: "서비스 상태" },
 ];
@@ -281,6 +284,7 @@ export function App() {
                     onClick={() => {
                       setSettingsOpen(false);
                       handleUnauthorized();
+                      void clearBrowserPush().catch(() => undefined);
                       void authApi.logout().finally(() => {
                         queryClient.setQueryData(["auth", "me"], null);
                         queryClient.removeQueries({
@@ -298,6 +302,7 @@ export function App() {
         </header>
 
         <main className="app-main" id="main">
+          {route.view === "price-watch" && <PriceWatchPage key={user?.id} />}
           {route.view === "discover" && <DiscoverPage key={user?.id} />}
           {route.view === "home" && (
             <HomePage

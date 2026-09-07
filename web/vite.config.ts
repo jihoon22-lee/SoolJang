@@ -18,6 +18,7 @@ export default defineConfig({
       // 읽기는 이제 Dexie 가 우선이라(§ Task 15) API 응답에 대한 런타임 캐싱 전략은
       // 필요 없다 — 여기 역할은 설치 가능성 + 앱 셸(JS/CSS/HTML) 캐싱으로 좁힌다.
       workbox: {
+        importScripts: ["/price-push.js"],
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
       },

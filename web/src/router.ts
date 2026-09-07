@@ -27,6 +27,7 @@ export type View =
   | "scan"
   | "stats"
   | "import"
+  | "price-watch"
   | "settings"
   | "status";
 
@@ -43,6 +44,7 @@ const VIEW_IDS: readonly View[] = [
   "scan",
   "stats",
   "import",
+  "price-watch",
   "settings",
   "status",
 ];

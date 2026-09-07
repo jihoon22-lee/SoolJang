@@ -3,9 +3,10 @@
 공개 운영 엔드포인트다. 프로세스 생존과 DB·스키마 준비 상태를 분리한다.
 """
 
+from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel
 
 from sooljang import __version__
@@ -30,6 +31,7 @@ class HealthResponse(BaseModel):
     schema_ready: bool
     supported_revisions: tuple[str, ...]
     migration_revisions: tuple[str, ...]
+    price_watch_worker_ready: bool = True
 
 
 class LivenessResponse(BaseModel):
@@ -56,13 +58,23 @@ async def liveness() -> LivenessResponse:
     summary="서비스 준비 상태 확인",
     responses={503: {"description": "DB 또는 스키마가 준비되지 않음"}},
 )
-async def health(response: Response) -> HealthResponse:
+async def health(response: Response, request: Request) -> HealthResponse:
     """서비스와 의존 구성 요소의 상태를 보고한다."""
     connected = await check_connection()
     revisions = await get_migration_revisions() if connected else ()
     supported = get_supported_revisions()
     schema_ready = bool(supported) and revisions == supported
-    ready = connected and schema_ready
+    worker = getattr(request.app.state, "price_watch_worker", {"state": "disabled"})
+    worker_ready = worker["state"] == "disabled"
+    if worker["state"] == "running":
+        task = getattr(request.app.state, "price_watch_task", None)
+        try:
+            tick = datetime.fromisoformat(worker.get("last_tick_at") or "")
+            age = (datetime.now(UTC) - tick).total_seconds()
+            worker_ready = 0 <= age <= 120 and task is not None and not task.done()
+        except ValueError, TypeError:
+            worker_ready = False
+    ready = connected and schema_ready and worker_ready
 
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -76,4 +88,5 @@ async def health(response: Response) -> HealthResponse:
         schema_ready=schema_ready,
         supported_revisions=supported,
         migration_revisions=revisions,
+        price_watch_worker_ready=worker_ready,
     )

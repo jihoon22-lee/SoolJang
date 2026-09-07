@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # `docker-compose.yml` 은 `/app` 을 작업 디렉터리로 잡고 `uploads` 볼륨을 그 아래 마운트한다.
     upload_dir: str = "uploads"
 
+    # 가격 감시는 대상별 명시 opt-in 뒤에만 실행한다. VAPID는 운영 비밀 설정으로 주입한다.
+    price_watch_worker_enabled: bool = True
+    push_vapid_private_key: str = Field(default="", repr=False)
+    push_vapid_subject: str = ""
+    push_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = (
+        "fcm.googleapis.com",
+        "updates.push.services.mozilla.com",
+        "web.push.apple.com",
+    )
+
     # Task 12(인증) 이전에 쓰는 고정 사용자 식별자. 인증이 붙으면 세션에서 읽는다.
     # 지금부터 모든 쿼리를 user_id 로 스코프하게 강제하려고 자리를 만들어 둔다.
 
@@ -51,7 +61,7 @@ class Settings(BaseSettings):
     # 환경 변수로 리스트를 표현할 때 JSON 을 요구하면 실수하기 쉽다.
     cors_origins: Annotated[tuple[str, ...], NoDecode] = ()
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "push_allowed_hosts", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
         """쉼표로 구분한 문자열도 허용한다. 환경 변수는 리스트를 표현하기 어렵다."""
