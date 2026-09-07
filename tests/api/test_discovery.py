@@ -347,3 +347,55 @@ def test_edit_during_lookup_cannot_persist_stale_prices(
             and response.json()[0]["outcome"] == "invalid_configuration"
         )
     assert observation_count(api_client) == 0
+
+
+def test_product_discovery_keeps_existing_pin_and_never_uses_opt_in_llm(
+    api_client: TestClient, prefix: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = setup_lookup(api_client, prefix, monkeypatch)
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "Harbor 12y 700ml", "skus": [{"volume_ml": 700}]}
+    ).json()
+    pinned = api_client.post(
+        f"{prefix}/products/{product['id']}/external-matches",
+        json={
+            "source_id": source["id"],
+            "external_url": "https://example.com/item/1",
+            "external_name": "Harbor 12y 700ml",
+            "external_key": "1",
+            "external_product_key": "harbor-12",
+            "preferred_seller_key": "Shop 2",
+        },
+    )
+    assert pinned.status_code == 201, pinned.text
+    path = f"{prefix}/discovery/products/{product['id']}/lookup"
+    first = api_client.post(path, json={"source_ids": [source["id"]]})
+    assert first.status_code == 200, first.text
+    result = first.json()[0]
+    assert result["pinned"] and result["preferred_seller_key"] == "Shop 2"
+    assert len(result["offers"]) == 3 and observation_count(api_client) == 3
+    second = api_client.post(path, json={"source_ids": [source["id"]]})
+    assert second.json()[0]["cached"] and second.json()[0]["pinned"]
+    assert observation_count(api_client) == 3
+    assert api_client.post(path, json={"source_ids": [str(uuid.uuid4())]}).status_code == 404
+
+    # 애매한 새 결과여도 기존 선택형 LLM helper를 호출하면 fixture가 실패한다.
+    from sqlalchemy import delete
+
+    from sooljang.infrastructure.database.models import ExternalLookupCache
+    from sooljang.infrastructure.external.adapter import AdapterResult
+
+    async def clear_cache() -> None:
+        async with get_session_factory()() as session, session.begin():
+            await session.execute(delete(ExternalLookupCache))
+
+    assert api_client.portal is not None
+    api_client.portal.call(clear_cache)
+
+    async def ambiguous(*args: Any, **kwargs: Any) -> AdapterResult:
+        return AdapterResult(None, {}, None, False, None, needs_confirmation=True)
+
+    monkeypatch.setattr(external_sources, "_fetch_source", ambiguous)
+    ambiguous_response = api_client.post(path, json={"source_ids": [source["id"]]})
+    assert ambiguous_response.status_code == 200
+    assert ambiguous_response.json()[0]["llm_recommended_url"] is None

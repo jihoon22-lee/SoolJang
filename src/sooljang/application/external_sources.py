@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError, ValidationFailedError
@@ -971,6 +971,8 @@ async def lookup_product(
     product: Product,
     transport: httpx.AsyncBaseTransport | None = None,
     master_key: str | None = None,
+    allow_llm: bool = True,
+    source_ids: list[uuid.UUID] | None = None,
 ) -> list[SourceLookupResult]:
     """제품 이름으로 등록된 소스들을 조회한다. 사용자 조작(버튼 클릭)에서만 호출해야 한다.
 
@@ -990,6 +992,7 @@ async def lookup_product(
             ExternalSource.user_id == user_id,
             ExternalSource.deleted_at.is_(None),
             ExternalSource.is_active.is_(True),
+            ExternalSource.id.in_(source_ids) if source_ids is not None else true(),
         )
         .where(
             (ExternalSource.category_id.is_(None))
@@ -1142,7 +1145,7 @@ async def lookup_product(
         # 애매 구간(0.5~0.85)에서만, 그리고 사용자가 "LLM 매칭 보조"를 명시적으로 켰을
         # 때만 물어본다(Task 34 PR6). 캐시 적중 경로는 후보 목록 자체가 없어 대상이 아니다.
         llm_recommended_url = None
-        if adapter_result.needs_confirmation:
+        if allow_llm and adapter_result.needs_confirmation:
             llm_recommended_url = await _maybe_llm_rematch(
                 session,
                 user_id=user_id,

@@ -10,6 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, Request, Response
 
 from sooljang.api.deps import SessionDep, SettingsDep, UserDep
+from sooljang.api.errors import NotFoundError
 from sooljang.api.schemas.discovery import (
     ApplyEvidenceInput,
     IdentityLookupInput,
@@ -25,8 +26,13 @@ from sooljang.application.discovery_evidence import (
     issue_search_evidence,
     title_fields,
 )
-from sooljang.application.external_sources import SourceLookupResult
+from sooljang.application.external_sources import (
+    SourceLookupResult,
+    get_owned_source,
+    lookup_product,
+)
 from sooljang.application.interests import validate_source_matches
+from sooljang.application.products import load_product
 from sooljang.infrastructure.database.models import ExternalSource, ProviderConnection
 from sooljang.infrastructure.external.request_guard import outbound_guard
 
@@ -171,3 +177,28 @@ async def apply(
         selected_fields=list(payload.selected_fields),
         master_key=settings.secret_key,
     )
+
+
+@router.post("/products/{product_id}/lookup")
+async def product_lookup(
+    product_id: uuid.UUID,
+    payload: InterestLookupInput,
+    session: SessionDep,
+    user_id: UserDep,
+    settings: SettingsDep,
+    response: Response,
+) -> list[dict[str, Any]]:
+    response.headers["Cache-Control"] = "no-store"
+    product = await load_product(session, user_id=user_id, product_id=product_id)
+    for source_id in payload.source_ids:
+        if await get_owned_source(session, user_id=user_id, source_id=source_id) is None:
+            raise NotFoundError("선택한 소스를 찾을 수 없습니다")
+    results = await lookup_product(
+        session,
+        user_id=user_id,
+        product=product,
+        source_ids=payload.source_ids,
+        allow_llm=False,
+        master_key=settings.secret_key,
+    )
+    return await _outputs(results, session, user_id, settings.secret_key)
