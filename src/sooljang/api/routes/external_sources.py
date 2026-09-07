@@ -98,6 +98,7 @@ async def create_external_source(
             category_id=payload.category_id,
             priority=payload.priority,
             is_active=payload.is_active,
+            price_history_allowed=payload.price_history_allowed,
             rate_limit_per_min=payload.rate_limit_per_min,
             request_limit_per_day=payload.request_limit_per_day,
             ttl_hours=payload.ttl_hours,
@@ -118,6 +119,7 @@ async def create_external_source(
             category_id=payload.category_id,
             priority=payload.priority,
             is_active=payload.is_active,
+            price_history_allowed=payload.price_history_allowed,
             rate_limit_per_min=payload.rate_limit_per_min,
             request_limit_per_day=payload.request_limit_per_day,
             ttl_hours=payload.ttl_hours,
@@ -241,6 +243,9 @@ async def lookup_external_sources(
     )
     return [
         SourceLookupOut(
+            offers=result.offers,
+            preferred_seller_key=result.preferred_seller_key,
+            product_key=result.product_key,
             source_id=result.source_id,
             source_name=result.source_name,
             cached=result.cached,
@@ -261,6 +266,10 @@ async def lookup_external_sources(
                     url=candidate.url,
                     key=candidate.key,
                     score=candidate.score,
+                    product_key=candidate.product_key,
+                    relationship=candidate.relationship,
+                    conflicts=candidate.conflicts,
+                    missing=candidate.missing,
                 )
                 for candidate in result.candidates
             ],
@@ -315,6 +324,8 @@ async def create_external_match(
             external_url=payload.external_url.strip(),
             external_name=payload.external_name.strip(),
             external_key=payload.external_key,
+            external_product_key=payload.external_product_key,
+            preferred_seller_key=payload.preferred_seller_key,
         )
     except PinHostMismatchError as error:
         raise HTTPException(

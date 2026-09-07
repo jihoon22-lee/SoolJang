@@ -53,7 +53,11 @@ from sooljang.infrastructure.database.models.tasting import (
     TastingSession,
 )
 
+from .external_offer import ExternalOffer, ExternalPriceObservation
+
 __all__ = [
+    "ExternalOffer",
+    "ExternalPriceObservation",
     "DEFAULT_OPENAI_MODEL",
     "DEFAULT_REMATCH_MONTHLY_CAP",
     "MAX_RATING",

@@ -58,15 +58,17 @@ _DAILYSHOT = SourcePreset(
     description="국내 주류 커머스. 검색 결과에 가격·평점이 함께 온다.",
     category_hint=None,
     requires_credentials=False,
-    version=2,
+    version=3,
     adapter_spec={
         "version": 1,
         "format": "json",
         "search": {
             "item": "results",
+            "pagination": {"next_path": "next"},
             "fields": {
                 "url": {"url_template": "https://dailyshot.co/m/item/{top_product_id}?item={id}"},
                 "name": {"path": "name"},
+                "product_key": {"path": "top_product_id"},
             },
             "url_template": "https://api.dailyshot.co/items/search/?q={query}",
             "exclude_keywords": [
@@ -81,6 +83,10 @@ _DAILYSHOT = SourcePreset(
                 "쇼핑백",
                 "보관함",
             ],
+            "offer_fields": {
+                "price_kind": {"const": "listed"},
+                "seller_key": {"path": "seller_id"},
+            },
             "result_fields": {
                 "price_krw": {"path": "price"},
                 "rating": {"path": "review_rate"},
