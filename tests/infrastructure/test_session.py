@@ -16,6 +16,9 @@ class _StubResult:
     def __init__(self, row: tuple[Any, ...] | None) -> None:
         self._row = row
 
+    def all(self) -> list[tuple[Any, ...]]:
+        return [] if self._row is None else [self._row]
+
     def first(self) -> tuple[Any, ...] | None:
         return self._row
 
@@ -108,3 +111,25 @@ async def test_get_session_yields_a_session() -> None:
         assert session.is_active
     finally:
         await generator.aclose()
+
+
+async def test_migration_revisions_preserves_current_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_engine(monkeypatch, _StubEngine(row=("a_revision",)))
+    assert await session_module.get_migration_revisions() == ("a_revision",)
+
+
+async def test_migration_revisions_is_empty_on_failed_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_engine(monkeypatch, _StubEngine(fail=True))
+    assert await session_module.get_migration_revisions() == ()
+
+
+def test_supported_schema_is_discovered_from_package_outside_repository(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_module.get_supported_revisions.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    heads = session_module.get_supported_revisions()
+    assert heads
+    assert all(isinstance(head, str) for head in heads)

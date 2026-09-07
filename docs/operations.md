@@ -74,15 +74,90 @@ curl -c /tmp/j -X POST http://127.0.0.1:8210/api/v1/auth/setup \
 `ast-grep` 이 `sg` 라는 이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어, 절대 경로 없이
 `sg` 만 쓰면 그룹 전환 대신 `ast-grep` 이 대신 실행된다.
 
-## 3. 백업
+## 3. 백업과 격리 복구
 
-배포 전에는 항상 먼저 백업한다.
+`scripts/backup.sh`는 `scripts/recovery.py`의 진입점이다. 새 백업은 DB 덤프와 uploads를
+같은 디렉터리에 묶는다. **모든 쓰기를 중지한 뒤** 실행한다. 앱 정지 외에도 CLI·일괄 작업·
+외부 DB 세션을 중지해야 한다. Compose 모드는 실행 중인 `api` 및 해당 DB의 다른 client
+세션을 발견하면 거절한다. `--writes-stopped`는 다른 쓰기 경로도 중지했다는 운영자의 확인이다.
+DB의 MVCC snapshot과 파일 복사는 별도이므로 한 OS 트랜잭션처럼 보장하지 않는다.
 
 ```bash
-SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh          # 생성 + 검증까지
+# 명시적인 배포/백업 창에서만 실행한다. 중지 전 health의 실제 앱 버전을 기록한다.
+curl --fail http://127.0.0.1:8000/api/v1/health
+# DB 컨테이너는 계속 실행한다.
+/usr/bin/sg docker -c "docker compose stop api"
+# uv가 .env를 읽어 자식 프로세스의 환경으로만 전달한다. source .env 또는 키 출력 금지.
+SOOLJANG_DOCKER_SG=1 uv run --env-file .env bash scripts/backup.sh \
+  --writes-stopped --app-version <실제_배포_버전>
 SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh --list
-SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh --restore <파일>   # 확인을 묻는다. 기존 데이터를 덮어쓴다
+SOOLJANG_DOCKER_SG=1 uv run --env-file .env bash scripts/backup.sh --verify <백업_디렉터리>
 ```
+
+백업만 수행한 경우에는 검증 후 `docker compose start api`로 기존 API 컨테이너를 재개하고
+health를 확인한다. 스크립트는 서비스를 자동 시작하지 않는다.
+
+백업은 기본 `$HOME/sooljang-backups`에 `.partial-*`로 생성하고 검증 후
+`sooljang-<UTC 시각>-<식별자>`로 게시한다. 완료 디렉터리는 다음을 포함한다.
+
+- `database.dump`: PostgreSQL custom dump.
+- `uploads/`: 첨부파일 원본. symlink/특수파일은 거절한다.
+- `manifest.json`: 형식·앱·스키마 버전, 원본 DB 이름, 획득 시작/완료 시각, 쓰기 중지 경계,
+  테이블 행 수·첨부 참조, 파일 크기/SHA-256, DB 디스크 크기 및 암호화된 키 확인 문장.
+  `app_version`은 운영자가 중지 전 확인한 배포 버전이며 `backup_tool_version`과 구분한다.
+- `COMPLETE`: manifest SHA-256. **목차/체크섬 통과는 실제 복원 성공이 아니다.**
+
+디렉터리 권한은 0700, 파일은 0600이다. 기본 보존 개수는 14이며
+`SOOLJANG_BACKUP_KEEP` 또는 `--keep`로 1 이상을 지정한다. 검증된 완료 묶음만 개수에
+포함하고 이전 `.dump`, 다른 이름, symlink, 손상·부분 묶음은 자동 삭제하지 않는다.
+동시 백업은 파일 잠금으로 거절한다. 중단되면 성공 메시지를 출력하지 않으며 SIGKILL/전원
+중단으로 남은 `.partial-*`는 완료 백업이 아니다. 자동 정리 대신 내용을 확인한 뒤 처리한다.
+생성과 복원은 작업 공간의 여유 용량을, 복원은 DB 파일시스템의 용량도 사전 확인한다.
+소스 크기 기반 추정과 여유분은 디스크 고갈을 완전히 예측하지 않으므로 실제 쓰기 오류 역시
+비정상 종료하며, `pg_restore`는 `--exit-on-error --single-transaction`으로 실패 시 롤백한다.
+
+### 3.1 키의 별도 복구 경로
+
+`SOOLJANG_SECRET_KEY`는 일반 백업·export·manifest에 평문으로 넣지 않는다. 운영자는 기존
+마스터 키를 접근이 제한된 암호화 비밀 보관소/암호화 복구 매체에 **별도로** 보관하고 복구
+환경에만 주입한다. 이 스크립트는 키를 발급·변경하거나 비밀 보관소로 전송하지 않는다.
+새 키로 대체하면 기존 DB 암호문을 복호화할 수 없다. 키가 없거나 다르면 작업을 중단하고,
+복구 키 확인/사용자 재연결이 필요한 상태로 남긴다. 기존 암호문과 설정을 지우지 않는다.
+복구 전 확인 문장과 복구 후 DB의 `*ciphertext` bytea 필드를 실제 복호화해 일치를 확인한다.
+별도 비밀 보관소의 복구 가능성은 운영자가 확인해야 하며 백업 파일 존재만으로 충족되지 않는다.
+
+### 3.2 빈 격리 대상에 실제 복원
+
+활성 DB에 `--clean`으로 덮어쓰는 복원은 지원하지 않는다. 운영자가 **별도 빈 DB**를 준비하고
+원본과 다른 DB 이름, 존재하지 않는 새 uploads 경로를 지정한다. 파일은 임시 위치에서
+검증한 뒤 게시한다. DB와 파일 전환은 서로 다른 작업이다. DB 복원이 끝난 뒤 파일 게시나
+대조가 실패할 수 있으며 그때도 성공으로 표시하지 않는다. 해당 격리 대상은 사용하지 않고
+실패 원인을 확인한 뒤 새 빈 대상에 재시도한다. 운영 데이터/볼륨/컨테이너를 자동 전환하지 않는다.
+
+```bash
+# PGHOST/PGPORT/PGUSER/PGPASSFILE 및 SOOLJANG_SECRET_KEY는 격리 환경에만 주입한다.
+# pg_dump/pg_restore/psql은 PATH 또는 SOOLJANG_PG_BIN에서 찾는다.
+bash scripts/backup.sh --local --restore <백업_디렉터리> \
+  --target-db <새_격리_DB> --uploads <존재하지_않는_새_경로>
+```
+
+`--local`은 DB 서버의 `data_directory`를 이 호스트에서 검사할 수 있는 로컬 PostgreSQL용이다.
+원격 DB를 가리켜 파일시스템 확인이 불가능하면 복원을 중단한다. Compose 모드는 DB 컨테이너
+안에서 디스크 공간을 확인한다.
+
+복원 뒤 manifest의 전체 행 수·스키마·첨부 참조·파일 내용과 암호문 복호화를 대조한다.
+FK 설치/검증도 `pg_restore` 트랜잭션에 포함된다. 그 다음 **격리 API**를 복원 DB와 uploads에
+연결하고 로그인·제품/구매/병/시음 합계·대표 첨부 열람을 검증한 후 전환 여부를 결정한다.
+신규 사용자 데이터가 생긴 뒤 이전 백업으로 돌아가면 그 이후 변경이 사라진다. 최신 데이터
+백업 및 데이터 병합/이전 계획 없이 구 스키마로 downgrade하거나 이전 이미지로 되돌리지 않는다.
+
+개발용 opt-in 실제 복구 검증은 `tests/scripts/test_recovery_live.py`다. 환경 변수
+`SOOLJANG_RUN_RECOVERY_TESTS`, `SOOLJANG_RECOVERY_TEST_SOURCE`, `PGHOST`, `PGPORT`, `PGUSER`,
+`SOOLJANG_PG_BIN`을 명시한다. source 이름은 `_recovery_test`로 끝나야 하며 source 스키마를
+초기화하고 별도 `<source>_restored` DB를 생성·제거한다. 운영 DB나 공유 테스트 DB에 연결하지 않는다.
+테스트는 합성 제품·구매·병·시음·PNG·암호화 설정을 생성하고 실제 dump/restore, 손상 데이터
+복원 실패/트랜잭션 롤백, 복원 후 인증된 앱 조회·합계·파일 바이트를 확인한다.
+Windows cold start와 운영 백업/이미지 전환은 이 격리 테스트에 포함되지 않는다.
 
 ## 4. 프로덕션에 새 버전 배포하기
 
@@ -122,7 +197,7 @@ gh pr merge <번호> --merge --delete-branch
 ### 4.3 백업 → 태그 push
 
 ```bash
-SOOLJANG_DOCKER_SG=1 bash scripts/backup.sh
+# §3의 쓰기 중지·전체 백업과 격리 복구 결과를 확인한 뒤 태그를 게시한다.
 
 SOOLJANG_ALLOW_TAG_PUSH=1 git tag v1.x.x
 SOOLJANG_ALLOW_TAG_PUSH=1 git push origin v1.x.x
@@ -136,46 +211,57 @@ gh run list --repo jihoon22-lee/SoolJang --workflow=release.yml --limit 1
 gh run watch <run id> --repo jihoon22-lee/SoolJang --exit-status
 ```
 
-### 4.4 재배포
+### 4.4 이미지 준비와 쓰기 중지
+
+릴리스 CI와 마일스톤 수용이 끝난 정확한 버전 태그/이미지 digest를 사용한다. 현재 컨테이너
+ID·이미지 digest·앱/스키마 버전을 비밀 없이 기록하고 이전 이미지는 유지한다. `.env`의
+`SOOLJANG_VERSION`을 목표 버전으로 맞춘 뒤 **api/web만** pull한다. 이 단계는 실행 중인
+컨테이너나 DB를 바꾸지 않는다. GHCR 인증 실패일 때만 Docker 자격증명을 갱신한다.
 
 ```bash
-# GHCR 인증이 만료됐으면(오래간만에 배포할 때 자주 그렇다) 다시 로그인
+# GHCR 인증이 실제 실패했을 때만 실행한다.
 gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
-
-# .env 의 SOOLJANG_VERSION 을 새 버전으로 수정한 뒤
-/usr/bin/sg docker -c "docker compose pull"
-/usr/bin/sg docker -c "docker compose up -d"
+/usr/bin/sg docker -c "docker compose pull api web"
 ```
 
-`gh auth refresh` 로 `gh` CLI 토큰 스코프를 늘려도 Docker 데몬의 `ghcr.io` 로그인은
-자동으로 안 바뀐다 — 별개의 자격 증명이다. 매번 `docker login` 이 필요한 건 아니고,
-`denied` 로 pull 이 실패할 때만 다시 하면 된다.
+그 다음 §3에 따라 모든 쓰기를 중지하고 현재 DB+uploads를 백업한다. 복구 키·완료 묶음·
+격리 복구 가능성을 확인할 수 없으면 migration과 이미지 전환을 진행하지 않는다.
+배포 창이 길면 태그 게시 전 백업에만 의존하지 않고 실제 전환 직전 새 백업을 만든다.
 
-`db` 서비스는 이미지가 안 바뀌므로 재시작되지 않는다(데이터 위험 없음) — `api`/`web`
-만 새 이미지로 교체된다.
-
-### 4.5 스키마 변경(새 Alembic 마이그레이션)이 있었다면 — 절대 빼먹으면 안 되는 단계
+### 4.5 migration → 서비스 전환
 
 ```bash
-/usr/bin/sg docker -c "docker compose exec api alembic upgrade head"
+# 새 이미지의 migration만 일회성 실행. 기존 API는 정지 상태이며 DB는 교체하지 않는다.
+/usr/bin/sg docker -c "docker compose run --rm --no-deps api alembic upgrade head"
+# migration이 성공한 경우에만 새 API를 시작하고 readiness를 기다린다.
+/usr/bin/sg docker -c "docker compose up -d --no-deps --wait --wait-timeout 120 api"
+/usr/bin/sg docker -c "docker compose up -d --no-deps web"
 ```
 
-`docker compose up -d` 만으로는 마이그레이션이 자동 적용되지 **않는다** —
-`docker/api.Dockerfile` 의 시작 명령이 `uvicorn` 만 바로 실행하고 `alembic upgrade` 를
-부르는 단계가 없다. 새 테이블/컬럼이 없어도 컨테이너 자체는 healthy 로 뜨기 때문에,
-그 스키마를 실제로 쓰는 요청이 오기 전까지 증상이 안 보인다 — 반드시 헬스체크의
-`migration_revision` 이 방금 만든 리비전 id 와 일치하는지 확인한다(아래 4.6).
+`uvicorn` 시작은 migration을 자동 수행하지 않는다. migration 실패 시 다음 명령으로
+넘어가지 않는다. PostgreSQL 트랜잭션 밖에서 실행되는 변경이 있으면 해당 migration의
+별도 복구 절차가 필요하다. 이전 앱은 **그 앱에 포함된 schema head와 DB가 정확히 같은
+경우에만** 재개한다. 현재는 구·미래·복수 불일치 리비전의 호환성을 가정하지 않는다.
+새 데이터가 생기기 전 검증 실패도 DB+uploads를 격리 복원해 확인한 뒤 명시적으로 전환한다.
+`docker compose down -v`, 운영 DB 테스트 초기화, 자동 downgrade는 복구 절차가 아니다.
 
-새 마이그레이션이 없는 릴리스(버그 수정만 있는 경우 등)면 이 단계는 생략한다.
-
-### 4.6 검증
+### 4.6 생존·준비 상태와 실제 기능 검증
 
 ```bash
-curl http://127.0.0.1:8000/api/v1/health
-# {"status":"ok","version":"1.x.x","database_connected":true,"migration_revision":"..."}
-
-/usr/bin/sg docker -c "docker compose ps"   # 3개 컨테이너 다 healthy 인지
+curl --fail http://127.0.0.1:8000/api/v1/health/live
+curl --fail http://127.0.0.1:8000/api/v1/health/ready
+/usr/bin/sg docker -c "docker compose ps"
 ```
+
+`/health/live`는 DB에 접근하지 않고 프로세스 생존만 보고한다. `/health/ready`와 기존
+`/health`는 DB 연결 및 **실제 전체 Alembic revision == 설치된 패키지의 head**일 때만
+200/`schema_ready=true`를 반환한다. version 테이블 누락·구/미래 리비전·실패한 migration은
+503이며 데이터나 키를 초기화하지 않는다. Docker의 기존 `/health` 검사도 이 계약을 따른다.
+
+응답의 앱 버전·supported/actual revision을 목표 릴리스와 대조한다. 이어 실제 로그인,
+제품·구매·병·시음 조회와 합계, 첨부·외부 설정 상태, 웹 입력/동기화의 담당 WP 시나리오를
+검증한 후 쓰기를 재개한다. health 200만으로 마일스톤 수용·배포 완료를 선언하지 않는다.
+관측한 SHA·이미지·스키마·기능 결과와 미실행 항목을 해당 workthrough에 기록한다.
 
 ### 4.7 Windows 로그온 뒤 WSL 자동 복구
 
@@ -217,3 +303,12 @@ docker compose ps
   없어서), 대신 쓰기 권한(=소유자만) 으로 실질 통제한다. 본인도 예외 없이 우회 불가.
 - Secret scanning + push protection, CodeQL(Default setup) 활성화됨.
 - 변경하려면 `https://github.com/jihoon22-lee/SoolJang/settings` → `Rules`/`Code security`.
+
+## 6. 개발 감시와 운영 복구 검증 범위
+
+WSL ext4 저장소에서는 기본 파일 감시를 쓴다. Windows 마운트에서 이벤트 누락이 실제로
+확인됐을 때만 해당 프로세스의 polling을 선택한다. 저장소 전체에 polling을 강제하지 않는다.
+기존 Vite/Vitest 워커·Docker init 설정은 유지하고 중복 worker 확장을 하지 않는다.
+WSL 자동 복구는 §4.7의 `--no-recreate`·health 대기이며 이미지 pull·migration을 넣지 않는다.
+이 명령 구성 검토와 Windows 로그온/cold start 실기 확인은 별도 증거다. 실기 확인을 하지
+않았으면 미실행으로 남기며 운영 컨테이너 ID·volume 보존까지 확인한 뒤 완료 처리한다.

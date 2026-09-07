@@ -5,7 +5,9 @@
 
 from collections.abc import AsyncGenerator
 from functools import lru_cache
+from pathlib import Path
 
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -60,6 +62,23 @@ async def get_migration_revision() -> str | None:
     except Exception:  # noqa: BLE001 - 테이블이 아직 없을 수 있다
         return None
     return None if row is None else str(row[0])
+
+
+@lru_cache
+def get_supported_revisions() -> tuple[str, ...]:
+    """설치된 앱에 포함된 migration head. 작업 디렉터리나 운영 설정에 의존하지 않는다."""
+    scripts = ScriptDirectory(str(Path(__file__).with_name("migrations")))
+    return tuple(sorted(scripts.get_heads()))
+
+
+async def get_migration_revisions() -> tuple[str, ...]:
+    """복수 head를 포함한 실제 리비전. 누락·조회 실패는 준비되지 않은 상태다."""
+    try:
+        async with get_engine().connect() as connection:
+            result = await connection.execute(text("SELECT version_num FROM alembic_version"))
+            return tuple(sorted(str(row[0]) for row in result.all()))
+    except Exception:  # noqa: BLE001 - readiness 응답에 연결 정보나 SQL을 노출하지 않는다
+        return ()
 
 
 def reset_database_state() -> None:
