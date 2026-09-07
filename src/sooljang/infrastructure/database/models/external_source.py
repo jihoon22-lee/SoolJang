@@ -47,6 +47,11 @@ class ExternalSource(Base, EntityMixin):
 
     __tablename__ = "external_source"
 
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("provider_connection.id", ondelete="SET NULL"),
+        default=None,
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     #: robots.txt 확인과 상대 URL 절대화에 쓰는 사이트 루트(예: `https://example.com`).
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
