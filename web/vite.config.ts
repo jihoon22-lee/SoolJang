@@ -59,11 +59,10 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
-    // 저장소가 WSL2 에서 Windows 드라이브(`/mnt/*`, DrvFs)에 있으면 inotify 이벤트가
-    // 전달되지 않아 파일을 고쳐도 HMR 이 반응하지 않는다(개발 서버 재시작 없이는 계속
-    // 옛 내용을 서빙한다) — 폴링으로 우회한다.
+    // ext4에서는 기본 파일 감시를 사용한다. Windows 마운트에서 이벤트 누락이 확인된
+    // 개발 프로세스만 SOOLJANG_WATCH_POLLING=1로 polling을 선택한다.
     watch: {
-      usePolling: true,
+      usePolling: process.env.SOOLJANG_WATCH_POLLING === "1",
       interval: 300,
     },
   },

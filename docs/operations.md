@@ -310,7 +310,7 @@ docker compose ps
 ## 6. 개발 감시와 운영 복구 검증 범위
 
 WSL ext4 저장소에서는 기본 파일 감시를 쓴다. Windows 마운트에서 이벤트 누락이 실제로
-확인됐을 때만 해당 프로세스의 polling을 선택한다. 저장소 전체에 polling을 강제하지 않는다.
+확인됐을 때만 `SOOLJANG_WATCH_POLLING=1 npm --prefix web run dev`로 해당 프로세스의 polling을 선택한다. 저장소 전체에 polling을 강제하지 않는다.
 기존 Vite/Vitest 워커·Docker init 설정은 유지하고 중복 worker 확장을 하지 않는다.
 WSL 자동 복구는 §4.7의 `--no-recreate`·health 대기이며 이미지 pull·migration을 넣지 않는다.
 이 명령 구성 검토와 Windows 로그온/cold start 실기 확인은 별도 증거다. 실기 확인을 하지
