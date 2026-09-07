@@ -1,0 +1,27 @@
+{
+  "environment": "isolated PostgreSQL + authenticated app API + actual Exa",
+  "credential_encrypted": true,
+  "credential_absent_from_responses": true,
+  "probe_outcome": "success",
+  "search_outcome": "success",
+  "documents": 10,
+  "domains": [
+    "caviste.co.uk",
+    "geordiedrams.blogspot.com",
+    "whiskyboys.com",
+    "whiskyconsidered.com",
+    "www.dramface.com",
+    "www.livetsgoda.se",
+    "www.nicks.com.au",
+    "www.thewhiskyexchange.com",
+    "www.whiskynotes.be",
+    "www.youtube.com"
+  ],
+  "usage": {
+    "minute": 2,
+    "day": 2
+  },
+  "no_store": "no-store",
+  "generative_requests": 0,
+  "raw_text_stored": false
+}

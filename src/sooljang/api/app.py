@@ -15,6 +15,7 @@ from sooljang.api.routes import (
     barcodes,
     categories,
     collection_management,
+    discovery,
     external_sources,
     health,
     interest_purchase,
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     protected = Depends(active_session)
     for router in (
+        discovery.router,
         interests.router,
         provider_connections.router,
         interest_purchase.router,
