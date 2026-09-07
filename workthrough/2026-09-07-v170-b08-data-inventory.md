@@ -66,3 +66,5 @@ B05/B07 화면 통합 때 관리 항목을 보조 메뉴로 묶을 필요가 있
 `0017_data_inventory`의 선행은 `0016_discovery_interest`이며 Interest 테이블을 중복 생성하지 않는다.
 `docs/plan.md`·PR·원격 push는 주 담당자가 통합한다. 기반 B06의 합성 키 fixture에
 이미 `f33c94c`에 반영된 스캔 허용 주석을 동일하게 반영해 기존 false positive를 해소했다.
+
+주 담당 검토에서 구매처 병합(Vendor→Purchase)과 온라인/동기화 구매 수정(Purchase→Vendor)의 잠금 순서 역전을 확인해 같은 순서로 통일했다. 반대 방향 병합은 두 구매처를 UUID 순서로 잠그고 일괄 구매처 수정도 대상 구매처를 먼저 잠근다. 서로 다른 로그인 세션을 사용한 실제 DB 동시 병합/수정 2개와 정리·관심 전환·구매 회귀를 합쳐 **32 passed**. Ruff·ty 통과.
