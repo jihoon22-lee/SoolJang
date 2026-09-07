@@ -50,10 +50,11 @@ PC와 안드로이드에서 같은 데이터를 보며, 오프라인에서도 �
 
 ```bash
 make install      # 의존성 설치 + git 훅 활성화
-make db-up        # PostgreSQL 기동 (Docker, 이 저장소 전용 새 환경일 때만 — 아래 경고 참조)
+make db-local-setup # 격리 PostgreSQL 설치·기동 (최초 1회)
+make db-local-start # 이후 작업 재개
 make migrate
 make api          # 다른 터미널에서 make web
-make check        # CI 와 동일한 전체 검증
+make check        # lint·typecheck·test·secret scan
 make help         # 전체 명령 목록
 ```
 
@@ -64,16 +65,18 @@ make help         # 전체 명령 목록
 를 쓴다. 그 외 항목(`.env` 변수 의미, 프로덕션 재배포 절차, 백업, 트러블슈팅)도 전부
 그 문서에 있다.
 
-Docker 를 쓸 수 없는 환경에서는 `make db-local-setup` → `make db-local-start` 로 폴백한다.
-micromamba 로 홈 디렉토리에 PostgreSQL 17 을 설치해 root 없이 실행한다.
+개발 기본 경로는 micromamba 기반의 격리 PostgreSQL 17이다. `make check`에 포함되지 않는
+웹 build·migration·추가 CI 검사와 대상 DB 확인은 [docs/development.md](docs/development.md)를
+따른다. 운영과 겹치지 않는 API 포트 설정은 [docs/handoff.md](docs/handoff.md) §1을 참조한다.
 
-전체 스택을 컨테이너로 띄우려면 `.env` 에 `POSTGRES_PASSWORD` 를 채운 뒤
-`docker compose up -d --build` 를 실행하고 `http://127.0.0.1:8080` 으로 접속한다.
+전체 스택의 Compose 기동·재배포는 [운영 절차](docs/operations.md)를 따른다.
 
 ## 개발 현황
 
-현재 [`v1.6.0`](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.6.0)을 운영 중이다.
-완료된 Task와 향후 선택 사항은 [docs/plan.md](docs/plan.md)의 "현재 위치" 절에서 확인한다.
+다음 개발 범위는 [v1.7.0 마일스톤](https://github.com/jihoon22-lee/SoolJang/milestone/1)이다.
+현재 위치와 기존 Task/WP 대응은 [docs/plan.md](docs/plan.md),
+작업 진입점은 [v1.7.0 로드맵](docs/roadmap/v1.7.0.md)에서 확인한다.
+패키지 버전과 마지막 확인한 배포 버전은 계획 문서에서 구분한다.
 
 ## 라이선스
 
