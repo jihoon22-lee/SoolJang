@@ -1,0 +1,45 @@
+{
+  "scope": "v1.7.0 B06 / WP02 #120",
+  "source_base_sha": "30b573f8b71c34c285389ce277dc060f6cb02fba",
+  "source_state": "uncommitted implementation",
+  "date": "2026-09-07",
+  "environment": {
+    "browser": "Chromium 1243 / Playwright",
+    "frontend": "Vite production preview 127.0.0.1:5178",
+    "api": "FastAPI 127.0.0.1:8218",
+    "database": "isolated PostgreSQL 127.0.0.1:54329/sooljang_sync_browser_test"
+  },
+  "passed": [
+    "actual SW waiting/activation with dirty form and another tab",
+    "browser process restart offline and explicit draft restoration",
+    "offline product/sku/purchase/two-bottle create and online flush",
+    "201 queued commands in two tabs: 200 + 1, maximum one in-flight batch",
+    "changed cookie account: prior user queue retained, zero mutations for new user",
+    "failed parent blocks child; edit creates new idempotency key then both apply",
+    "explicit discard includes dependent child",
+    "purchase price/quantity and tasting amount/note survive reload",
+    "late v1.6 outbox command imported in active v1.7 sync; one delivery across two cycles; original retained"
+  ],
+  "limits": [
+    "synthetic local data only; no production deployment",
+    "live external discovery/apply form is outside this work package; shared draft hook available",
+    "initial v1.6 open page must save inputs before first upgrade; new code cannot persist old in-memory form state retroactively"
+  ],
+  "screenshots": [
+    "v170-b06-draft-update-mobile.png",
+    "v170-b06-offline-cold-start-mobile.png",
+    "v170-b06-synced-desktop.png",
+    "v170-b06-failed-queue-desktop.png"
+  ],
+  "automated_checks": {
+    "python_targeted_tests": 99,
+    "web_tests": 577,
+    "web_branch_coverage_percent": 81.24,
+    "ruff": "passed",
+    "ty": "passed",
+    "web_check": "passed",
+    "migration_upgrade_and_check": "passed",
+    "mixed_online_sync_concurrency_regressions": 4,
+    "review_product_tasting_api_tests": 64
+  }
+}

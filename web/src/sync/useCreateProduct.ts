@@ -4,7 +4,9 @@ import type { Product, User } from "@/api/types";
 import type { ProductFormValues } from "@/components/ProductForm";
 import { setLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching } from "@/search";
-import { db } from "@/sync/db";
+import { databaseIdentity, db } from "@/sync/db";
+import { clearFormDraft } from "@/sync/drafts";
+import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { newId } from "@/sync/uuid7";
@@ -57,6 +59,28 @@ export function useCreateProduct() {
       existingProduct,
       purchaseAlreadyCreated,
     }: CreateProductInput) => {
+      for (const [field, value] of [
+        ["quantity", values.quantity],
+        ["volume_ml", values.volumeMl],
+        ["abv", values.abv],
+        ["price", values.unitListPrice],
+        ["price", values.unitPaidPrice],
+        ["personal_rating", values.personalRating],
+      ] as const) {
+        if (value && !validNumericInput(field, value))
+          throw new Error("입력한 수치가 허용 범위를 벗어났습니다");
+      }
+      if (values.quantity && !values.volumeMl)
+        throw new Error("구매 정보를 입력하려면 용량이 필요합니다");
+      const owner = queryClient.getQueryData<User>(["auth", "me"])?.id ?? "";
+      const generation = databaseIdentity().generation;
+      const checkSession = () => {
+        if (
+          databaseIdentity().generation !== generation ||
+          (queryClient.getQueryData<User>(["auth", "me"])?.id ?? "") !== owner
+        )
+          throw new Error("계정이 변경되었습니다. 이전 계정의 저장 결과를 확인하세요");
+      };
       if (!offline) {
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
@@ -79,6 +103,7 @@ export function useCreateProduct() {
             skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
           }));
 
+        checkSession();
         if (!existingProduct) {
           // 서버 응답을 로컬 미러에 낙관적으로 반영한다. 아래 구매·첨부 호출이 실패해도
           // 제품 자체는 이미 서버에 만들어졌으므로, 미러링을 여기서 바로 해 둬야 그 실패가
@@ -88,10 +113,7 @@ export function useCreateProduct() {
           // "제품을 찾을 수 없습니다" 가 보이고, 재시도 시 중복 생성으로 이어질 수 있다.
           // 구매·병 행까지는 여기서 만들지 않는다(서버가 만드는 병 id 를 알 수 없다) —
           // 그 부분은 곧 sync 가 채운다.
-          await mirrorProductOptimistically(
-            product,
-            queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
-          );
+          await mirrorProductOptimistically(product, owner);
           triggerSync();
         }
 
@@ -103,6 +125,7 @@ export function useCreateProduct() {
             const vendorId = values.vendorName.trim()
               ? await resolveVendorId(values.vendorName.trim())
               : null;
+            checkSession();
             await purchasesApi.create({
               sku_id: skuId,
               quantity,
@@ -113,6 +136,7 @@ export function useCreateProduct() {
             });
             purchaseCreated = true;
           }
+          checkSession();
           if (labelFile) {
             // `attachmentsApi.create` 는 (user_id, sha256, kind, 소유 대상) 으로 서버가
             // 중복 제거하므로(B1) 재시도로 같은 파일을 다시 보내도 새 첨부가 안 생긴다 —
@@ -136,6 +160,7 @@ export function useCreateProduct() {
       );
     },
     onSuccess: (_result, { values }) => {
+      clearFormDraft("product:create");
       if (values.vendorName.trim()) setLastVendorName(values.vendorName);
     },
   });
@@ -194,7 +219,7 @@ async function mirrorProductOptimistically(product: Product, userId: string): Pr
 function parseQuantity(raw: string): number {
   if (!raw.trim()) return 0;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!validNumericInput("quantity", value)) {
     throw new Error("병수는 1 이상의 정수를 입력하세요");
   }
   return value;
@@ -229,7 +254,24 @@ export async function resolveVendorId(name: string): Promise<string> {
  * 반환값은 낙관적으로 만든 로컬 id다 — 서버가 outbox 를 처리하기 전까지는 서버 id 와
  * 다를 수 있지만(동기화가 화해한다), 즉시 그 제품 상세로 이동하는 데는 이걸로 충분하다.
  */
-async function createProductOffline(values: ProductFormValues, userId: string): Promise<string> {
+export async function createProductOffline(
+  values: ProductFormValues,
+  userId: string,
+): Promise<string> {
+  const store = db;
+  const generation = databaseIdentity().generation;
+  return await store.transaction("rw", store.tables, async () => {
+    const id = await createProductOfflineChain(values, userId);
+    if (databaseIdentity().generation !== generation || db !== store)
+      throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
+    return id;
+  });
+}
+
+async function createProductOfflineChain(
+  values: ProductFormValues,
+  userId: string,
+): Promise<string> {
   const now = new Date().toISOString();
 
   const productId = newId();

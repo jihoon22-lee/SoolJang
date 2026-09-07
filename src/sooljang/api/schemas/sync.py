@@ -27,6 +27,7 @@ class SyncOperationIn(BaseModel):
 
 
 class SyncBatchIn(BaseModel):
+    expected_user_id: uuid.UUID = Field(description="로컬 대기열 소유자. 현재 세션과 일치해야 한다")
     operations: list[SyncOperationIn] = Field(min_length=1, max_length=200)
 
 

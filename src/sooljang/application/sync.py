@@ -25,14 +25,14 @@ action)·`tasting_session`(record_tasting action)만 오프라인 쓰기를 지�
 경우(구매 직후 병 목록에 바로 표시)에 쓴다.
 """
 
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import Select, and_, func, or_, select
-from sqlalchemy import delete as sa_delete
+from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +48,7 @@ from sooljang.application.tastings import (
     TastingInput,
     finish_bottle,
     hand_over_bottle,
+    load_bottle_for_write,
     open_bottle,
     record_tasting,
     reopen_bottle,
@@ -301,6 +302,15 @@ async def apply_batch(
     session: AsyncSession, *, user_id: uuid.UUID, operations: list[SyncOperation]
 ) -> BatchResult:
     """작업을 순서대로 적용한다. 실패하면 그 지점에서 멈춘다."""
+    user_lock = int.from_bytes(
+        hashlib.blake2b(b"sync-user" + user_id.bytes, digest_size=8).digest(), signed=True
+    )
+    await session.execute(select(func.pg_advisory_xact_lock(user_lock)))
+    # Receipt key locks serialize concurrent redelivery before any domain side effects.
+    # Sorted global order also avoids deadlocks when two batches contain the same keys.
+    for key in sorted({op.idempotency_key for op in operations}):
+        lock_key = int.from_bytes(hashlib.blake2b(key.bytes, digest_size=8).digest(), signed=True)
+        await session.execute(select(func.pg_advisory_xact_lock(lock_key)))
     await _sweep_expired_receipts(session, user_id=user_id)
 
     results: list[OperationResult] = []
@@ -308,6 +318,30 @@ async def apply_batch(
     for op in operations:
         existing = await session.get(OutboxReceipt, op.idempotency_key)
         if existing is not None:
+            if existing.user_id != user_id or (
+                existing.entity != op.entity
+                or existing.operation != op.op
+                or existing.entity_id != op.entity_id
+            ):
+                results.append(
+                    OperationResult(
+                        idempotency_key=op.idempotency_key,
+                        status="failed",
+                        detail="다른 명령에 사용된 재전송 키입니다. 새 명령으로 저장하세요",
+                    )
+                )
+                stopped = True
+                break
+            if existing.response_snapshot.get("receipt_expired"):
+                results.append(
+                    OperationResult(
+                        idempotency_key=op.idempotency_key,
+                        status="failed",
+                        detail="재전송 확인 기간이 지났습니다. 서버 기록을 먼저 확인하세요",
+                    )
+                )
+                stopped = True
+                break
             if existing.status == "failed":
                 # 실패도 성공·충돌과 마찬가지로 재전송을 멱등하게 만든다 — 그러지 않으면
                 # 클라이언트가 같은 항목을 다시 보낼 때마다 도메인 검증을 다시 돌려 같은
@@ -356,6 +390,7 @@ async def apply_batch(
             # 500 으로 죽이는 대신 해당 작업만 실패로 기록한다. 클라이언트 버그로 생긴
             # 배치 하나가 서버 예외를 일으키면 안 된다.
             KeyError,
+            TypeError,
             ValueError,
             InvalidOperation,
         ) as error:
@@ -405,12 +440,16 @@ async def apply_batch(
 
 
 async def _sweep_expired_receipts(session: AsyncSession, *, user_id: uuid.UUID) -> None:
-    """30일 지난 재전송 기록을 정리한다. 배치 요청마다 lazy 하게 실행한다."""
+    """30일 후 원문 snapshot을 제거하되 멱등 키 tombstone은 남겨 재실행을 막는다."""
     cutoff = datetime.now(UTC) - timedelta(days=OUTBOX_RECEIPT_RETENTION_DAYS)
     await session.execute(
-        sa_delete(OutboxReceipt).where(
-            OutboxReceipt.user_id == user_id, OutboxReceipt.created_at < cutoff
+        update(OutboxReceipt)
+        .where(
+            OutboxReceipt.user_id == user_id,
+            OutboxReceipt.created_at < cutoff,
+            OutboxReceipt.response_snapshot != {"receipt_expired": True},
         )
+        .values(response_snapshot={"receipt_expired": True})
     )
 
 
@@ -432,7 +471,9 @@ async def _load_writable(
     session: AsyncSession, model: type[Any], *, user_id: uuid.UUID, entity_id: uuid.UUID, op: str
 ) -> Any:
     """수정 대상을 로드한다. `delete` 는 이미 지워진 행도 멱등 통과시키고, 그 외는 404."""
-    row = await session.get(model, entity_id)
+    row = await session.scalar(
+        select(model).where(model.id == entity_id, model.user_id == user_id).with_for_update()
+    )
     if row is None or row.user_id != user_id:
         raise NotFoundError(f"레코드를 찾을 수 없습니다: {entity_id}")
     if row.deleted_at is not None and op != "delete":
@@ -849,7 +890,7 @@ def _create_bottles(
 async def _load_bottle(
     session: AsyncSession, *, user_id: uuid.UUID, bottle_id: uuid.UUID
 ) -> Bottle:
-    bottle = await session.get(Bottle, bottle_id)
+    bottle = await load_bottle_for_write(session, user_id=user_id, bottle_id=bottle_id)
     if bottle is None or bottle.deleted_at is not None or bottle.user_id != user_id:
         raise NotFoundError(f"병을 찾을 수 없습니다: {bottle_id}")
     return bottle
@@ -932,7 +973,9 @@ async def _dispatch_tasting_action(
             id=op.entity_id,
             data=TastingInput(
                 tasted_on=_date(fields["tasted_on"]),
-                poured_ml=fields.get("poured_ml"),
+                poured_ml=_bounded_int(fields["poured_ml"], field_name="poured_ml", le=2**31 - 1)
+                if fields.get("poured_ml") is not None
+                else None,
                 rating=_decimal(fields.get("rating")),
                 nose=fields.get("nose"),
                 palate=fields.get("palate"),
