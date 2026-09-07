@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
-import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { DiscoveryPanel } from "@/components/DiscoveryPanel";
+import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
