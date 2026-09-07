@@ -171,7 +171,24 @@ describe("VendorsPage", () => {
       row({ id: "v2", name: "남길 곳", kind: "mart", url: null, note: null }),
     ]);
     const { calls } = stubRoutes([
-      { match: "/vendors/v1:merge", method: "POST", status: 204, body: null },
+      {
+        match: "/collection/cleanup/preview",
+        method: "POST",
+        body: {
+          id: "preview-1",
+          kind: "vendor_merge",
+          confirmed: false,
+          snapshot: {
+            rows: [{ id: "v1", name: "합칠 곳" }],
+            target: { name: "남길 곳" },
+            affected_count: 1,
+            bottle_count: 2,
+            known_paid_total: "2000.00",
+            unknown_price_count: 0,
+          },
+        },
+      },
+      { match: "/collection/cleanup/preview-1/confirm", method: "POST", body: { confirmed: true } },
       { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
       { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
     ]);
@@ -181,10 +198,15 @@ describe("VendorsPage", () => {
     expect(sourceRow).not.toBeNull();
     await userEvent.click(within(sourceRow as HTMLElement).getByRole("button", { name: "병합" }));
     await userEvent.selectOptions(screen.getByLabelText('"합칠 곳" 병합 대상'), "v2");
-    await userEvent.click(screen.getByRole("button", { name: "병합 확인" }));
+    await userEvent.click(screen.getByRole("button", { name: "병합 영향 미리보기" }));
+    expect(await screen.findByText(/변경 대상 1건/)).toBeInTheDocument();
+    expect(calls.some((call) => call.url.includes("/confirm"))).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "확인하고 정리" }));
 
     await waitFor(() => {
-      expect(calls.some((call) => call.url.includes("/vendors/v1:merge"))).toBe(true);
+      expect(calls.some((call) => call.url.includes("/collection/cleanup/preview-1/confirm"))).toBe(
+        true,
+      );
     });
   });
 });

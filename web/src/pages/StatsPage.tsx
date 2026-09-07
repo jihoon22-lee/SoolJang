@@ -127,9 +127,10 @@ const CATEGORY_MEASURES: CategoryMeasureDef[] = [
 interface StatsPageProps {
   onSelectProduct: (productId: string) => void;
   onSelectCategory: (categoryId: string) => void;
+  onOpenQuality?: () => void;
 }
 
-export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps) {
+export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: StatsPageProps) {
   const { state } = useSyncStatus();
   const offline = state === "offline";
   // 랭킹·주종별 집계·전체 합계·카테고리 트리를 한 쿼리로 묶는다 — 예전엔 넷이 각자
@@ -175,6 +176,46 @@ export function StatsPage({ onSelectProduct, onSelectCategory }: StatsPageProps)
   return (
     <div className="stats-page">
       <h2>통계</h2>
+      <details className="card">
+        <summary>통계에 포함된 기록과 가격 누락 확인</summary>
+        <p>
+          구매 합계는 가격을 아는 기록만 더합니다. 0원은 포함하며 미상은 0원으로 바꾸지 않습니다.
+          재고는 미개봉·개봉 병만 포함합니다.
+        </p>
+        <p>
+          전체 평단가는 확인된 합계를 전체 구매 병수로 나누며, 제품별 평단가는 해당 가격이 있는
+          병수로 나눕니다. 평균 100ml가는 정가 합계와 총 용량 기준입니다.
+        </p>
+        <p>
+          실구매가 확인 {dashboard?.coverage.paidPurchaseCount}/{dashboard?.coverage.purchaseCount}
+          건 · 정가 확인 {dashboard?.coverage.pricedPurchaseCount}/
+          {dashboard?.coverage.purchaseCount}건 · 규격 미등록 제품{" "}
+          {dashboard?.coverage.missingVolumeProducts.length}개
+        </p>
+        <ul>
+          {dashboard?.coverage.missingPriceProducts.map((product) => (
+            <li key={product.id}>
+              <button type="button" onClick={() => onSelectProduct(product.id)}>
+                {product.name} · 가격 미상 구매 확인
+              </button>
+            </li>
+          ))}
+        </ul>
+        <ul>
+          {dashboard?.coverage.missingVolumeProducts.map((product) => (
+            <li key={product.id}>
+              <button type="button" onClick={() => onSelectProduct(product.id)}>
+                {product.name} · 규격 등록 확인
+              </button>
+            </li>
+          ))}
+        </ul>
+        {onOpenQuality && (
+          <button type="button" onClick={onOpenQuality}>
+            데이터 품질에서 정리
+          </button>
+        )}
+      </details>
 
       <section aria-labelledby="stats-summary-heading">
         <h3 id="stats-summary-heading">전체 합계</h3>
