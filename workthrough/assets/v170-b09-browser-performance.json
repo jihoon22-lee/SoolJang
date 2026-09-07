@@ -1,0 +1,61 @@
+{
+  "source": "8ab59ee",
+  "seed": 42,
+  "browser": "actual Chromium production preview; actual isolated API/PG",
+  "samples_per_scale": 1,
+  "scope": "browser page JS heap, not process RSS; single runs are not p95 or SLA",
+  "runs": [
+    {
+      "scale": 1,
+      "products": 429,
+      "bottles": 1078,
+      "initial_first_rows_ms": 2081,
+      "initial_full_sync_ms": 2090,
+      "cached_reload_first_rows_ms": 288,
+      "search_input_to_single_row_ms": [
+        36,
+        9,
+        10
+      ],
+      "sync_to_recomputed_row_ms": 77,
+      "js_heap_ready_bytes": 18208644,
+      "js_heap_end_bytes": 27195756,
+      "js_heap_after_gc_bytes": 6531712,
+      "documents": 6,
+      "nodes": 6548,
+      "http_requests": 22,
+      "external_http_requests": 7,
+      "external_http_by_host": {
+        "fonts.googleapis.com": 2,
+        "fonts.gstatic.com": 5
+      },
+      "page_errors": []
+    },
+    {
+      "scale": 10,
+      "products": 4290,
+      "bottles": 10780,
+      "initial_first_rows_ms": 21654,
+      "initial_full_sync_ms": 21663,
+      "cached_reload_first_rows_ms": 369,
+      "search_input_to_single_row_ms": [
+        31,
+        10,
+        10
+      ],
+      "sync_to_recomputed_row_ms": 244,
+      "js_heap_ready_bytes": 27568812,
+      "js_heap_end_bytes": 54701372,
+      "js_heap_after_gc_bytes": 18533608,
+      "documents": 3,
+      "nodes": 6493,
+      "http_requests": 46,
+      "external_http_requests": 12,
+      "external_http_by_host": {
+        "fonts.googleapis.com": 2,
+        "fonts.gstatic.com": 10
+      },
+      "page_errors": []
+    }
+  ]
+}

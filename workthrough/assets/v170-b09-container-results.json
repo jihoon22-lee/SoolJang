@@ -1,0 +1,43 @@
+{
+  "no_recreate_preserved": true,
+  "state": {
+    "db": {
+      "id": "f55ee85c3cfcfb8422f3f71e0cf003f77b9bab72494db64081a16013d4a6adf0",
+      "image": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+      "volumes": [
+        {
+          "Type": "volume",
+          "Name": "sooljang-v170-acceptance_pgdata",
+          "Destination": "/var/lib/postgresql/data"
+        }
+      ]
+    },
+    "api": {
+      "id": "6418b95cbe6a5af3271113d48aa00f531588a6b42d6c04a2eee742e586cb94f6",
+      "image": "sha256:e7007e0af0a0485a127abc6fb686e346e9c86a6fb77c9d35cfbf1d2783d45458",
+      "volumes": [
+        {
+          "Type": "volume",
+          "Name": "sooljang-v170-acceptance_uploads_verified",
+          "Destination": "/app/uploads"
+        }
+      ],
+      "worker_enabled": "true",
+      "source_revision_label": "c50888a3a78692175ae5967f11d8918713b093b9"
+    },
+    "web": {
+      "id": "f231910870cd797415594b4a0a35dd88637717cf205798c2ac5effde0284f0f6",
+      "image": "sha256:6717fff016a66e8cc1970e266c66d56b8aa504155dea6ded494707dfb0ccd51e",
+      "volumes": [],
+      "source_revision_label": "c50888a3a78692175ae5967f11d8918713b093b9"
+    }
+  },
+  "source": "c50888a3a78692175ae5967f11d8918713b093b9",
+  "scope": "isolated Compose project; no Windows/WSL restart or production change",
+  "old_schema_readiness": 503,
+  "final_schema_readiness": 200,
+  "supported_schema": "0018_price_watch",
+  "upload_before_restart": true,
+  "upload_after_restart": true,
+  "new_volume_writable_as_uid": 1001
+}

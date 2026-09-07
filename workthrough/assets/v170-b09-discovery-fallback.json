@@ -1,0 +1,22 @@
+{
+  "query": "Ganevat Les Chalasses Vieilles Vignes 2019",
+  "dailyshot": {
+    "outcome": "empty",
+    "confirmedTarget": false,
+    "needsConfirmation": false,
+    "offerCount": 0,
+    "matchScore": null,
+    "priceHistoryAllowed": false
+  },
+  "exa": {
+    "outcome": "success",
+    "documents": 10,
+    "domains": 9,
+    "reviewDocuments": 2
+  },
+  "interestSaved": true,
+  "purchaseTotalsUnchanged": true,
+  "actualApiAndBrowser": true,
+  "rawSourceTextOrPricesStored": false,
+  "scope": "Current bounded Dailyshot query match availability; no assertion about the entire catalog"
+}

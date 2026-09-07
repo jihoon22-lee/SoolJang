@@ -50,6 +50,10 @@ COPY --from=builder --chown=sooljang:sooljang /app/.venv ./.venv
 COPY --from=builder --chown=sooljang:sooljang /app/src ./src
 COPY --from=builder --chown=sooljang:sooljang /app/alembic.ini ./alembic.ini
 
+# 새 named volume은 이미지의 디렉터리 소유권을 복사한다. 경로가 없으면 Docker가
+# root 소유로 만들어 비루트 앱의 첫 첨부 업로드가 실패한다.
+RUN install -d -o sooljang -g sooljang /app/uploads
+
 USER sooljang
 
 EXPOSE 8000

@@ -1,0 +1,15 @@
+{
+  "source": "8ab59ee",
+  "api": "real isolated PostgreSQL schema0018",
+  "external_http": 0,
+  "scenarios": [
+    "both new forms block SW update",
+    "activation from clean third tab preserves both drafts",
+    "new browser process offline shell and discovery draft recovery",
+    "target draft bytes preserved offline",
+    "target form recovery after reconnect and authenticated history read"
+  ],
+  "target_offline_limit": "price history requires reconnect; no offline history cache",
+  "page_errors": [],
+  "passed": true
+}
