@@ -12,7 +12,7 @@
  *
  * **핵심 규칙 세 가지** (Python 원본과 동일):
  * 1. 100ml당 가격은 정가 기준이다
- * 2. 가격이 없는 구매 건(선물)은 금액 집계에서 제외하되 병수 집계에는 포함한다
+ * 2. 구매 가격 공란은 0원이며 선물·포인트 구매도 평균의 분모에 포함한다
  * 3. 여러 용량이 섞인 제품은 가중 평균으로 계산한다
  *
  * `consumption_rate_per_month`·`krw_from_foreign` 은 포팅하지 않았다 — 오프라인 화면
@@ -83,12 +83,12 @@ export function purchaseLot(
   return { quantity, volumeMl, unitListPrice, unitPaidPrice };
 }
 
-function lotListTotal(lot: PurchaseLot): Decimal | null {
-  return lot.unitListPrice === null ? null : lot.unitListPrice.times(lot.quantity);
+function lotListTotal(lot: PurchaseLot): Decimal {
+  return (lot.unitListPrice ?? new Decimal(0)).times(lot.quantity);
 }
 
-function lotPaidTotal(lot: PurchaseLot): Decimal | null {
-  return lot.unitPaidPrice === null ? null : lot.unitPaidPrice.times(lot.quantity);
+function lotPaidTotal(lot: PurchaseLot): Decimal {
+  return (lot.unitPaidPrice ?? new Decimal(0)).times(lot.quantity);
 }
 
 function lotTotalVolumeMl(lot: PurchaseLot): number {
@@ -169,7 +169,7 @@ interface WeightedTotal {
   volume: number;
 }
 
-/** 가격이 있는 구매 건만 합산한다. 금액이 있는 건이 없으면 `amount` 는 null 이다. */
+/** 구매 가격 공란도 0원으로 합산한다. 구매 자체가 없을 때만 amount가 null이다. */
 function weightedTotal(lots: readonly PurchaseLot[], paid: boolean): WeightedTotal {
   let amount = new Decimal(0);
   let quantity = 0;
@@ -177,7 +177,6 @@ function weightedTotal(lots: readonly PurchaseLot[], paid: boolean): WeightedTot
   let found = false;
   for (const lot of lots) {
     const total = paid ? lotPaidTotal(lot) : lotListTotal(lot);
-    if (total === null) continue;
     found = true;
     amount = amount.plus(total);
     quantity += lot.quantity;
@@ -191,21 +190,20 @@ interface DiscountTotals {
   paidAmount: Decimal | null;
 }
 
-/** 정가와 실구매가가 모두 있는 구매 건만의 금액 합계. 할인율 분자·분모다. */
+/** 가격 공란도 0원으로 포함하는 전체 구매의 정가·실구매가 합계. */
 function discountTotalsOf(lots: readonly PurchaseLot[]): DiscountTotals {
   let listAmount = new Decimal(0);
   let paidAmount = new Decimal(0);
   let found = false;
   for (const lot of lots) {
-    if (lot.unitListPrice === null || lot.unitPaidPrice === null) continue;
     found = true;
-    listAmount = listAmount.plus(lot.unitListPrice.times(lot.quantity));
-    paidAmount = paidAmount.plus(lot.unitPaidPrice.times(lot.quantity));
+    listAmount = listAmount.plus(lotListTotal(lot));
+    paidAmount = paidAmount.plus(lotPaidTotal(lot));
   }
   return found ? { listAmount, paidAmount } : { listAmount: null, paidAmount: null };
 }
 
-/** 할인율. 정가와 실구매가가 모두 있는 구매 건만으로 계산한다. */
+/** 할인율. 선물·포인트 구매의 공란을 0원으로 포함한다. */
 function discountRateOf(totals: DiscountTotals): Decimal | null {
   if (totals.listAmount === null || totals.paidAmount === null || totals.listAmount.isZero()) {
     return null;

@@ -5,7 +5,7 @@ import { CollectionQualityPage } from "@/pages/CollectionQualityPage";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
-it("가격 누락의 제품으로 이동하며 미리보기만으로 기록을 바꾸지 않는다", async () => {
+it("분류 누락의 제품으로 이동하며 미리보기만으로 기록을 바꾸지 않는다", async () => {
   const { calls } = stubRoutes([
     {
       match: "/collection/quality",
@@ -16,14 +16,14 @@ it("가격 누락의 제품으로 이동하며 미리보기만으로 기록을 �
         duplicate_candidates: [],
         coverage: {
           purchases: 2,
-          known_price_purchases: 1,
-          unknown_price_purchases: 1,
+          known_price_purchases: 2,
+          unknown_price_purchases: 2,
           known_paid_total: "0.00",
           skus: 1,
           unknown_volume_skus: 0,
           unassigned_stock_bottles: 2,
         },
-        rules: "0원과 가격 미상을 구분합니다.",
+        rules: "구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다.",
       },
     },
     { match: "/categories/tree", body: { items: [], max_depth: 1, depth_limit: 5 } },
@@ -54,6 +54,7 @@ it("가격 누락의 제품으로 이동하며 미리보기만으로 기록을 �
   );
   await userEvent.click(await screen.findByRole("button", { name: "해당 제품 확인" }));
   expect(onSelectProduct).toHaveBeenCalledWith("p1");
+  expect(screen.queryByText(/가격 미상/)).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("checkbox", { name: "합성 술" }));
   await userEvent.click(screen.getByRole("button", { name: "영향 미리보기 (1건)" }));
   expect(await screen.findByRole("button", { name: "확인하고 정리" })).toBeInTheDocument();

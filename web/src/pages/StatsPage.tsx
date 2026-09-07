@@ -177,14 +177,14 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
     <div className="stats-page">
       <h2>통계</h2>
       <details className="card">
-        <summary>통계에 포함된 기록과 가격 누락 확인</summary>
+        <summary>통계에 포함된 기록과 계산 기준</summary>
         <p>
-          구매 합계는 가격을 아는 기록만 더합니다. 0원은 포함하며 미상은 0원으로 바꾸지 않습니다.
-          재고는 미개봉·개봉 병만 포함합니다.
+          구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다. 재고는 미개봉·개봉 병만
+          포함합니다.
         </p>
         <p>
-          전체 평단가는 확인된 합계를 전체 구매 병수로 나누며, 제품별 평단가는 해당 가격이 있는
-          병수로 나눕니다. 평균 100ml가는 정가 합계와 총 용량 기준입니다.
+          전체·제품별 평단가는 0원 구매를 포함한 구매 병수로 나눕니다. 평균 100ml가는 정가 합계와 총
+          용량 기준입니다.
         </p>
         <p>
           실구매가 확인 {dashboard?.coverage.paidPurchaseCount}/{dashboard?.coverage.purchaseCount}
@@ -192,15 +192,6 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
           {dashboard?.coverage.purchaseCount}건 · 규격 미등록 제품{" "}
           {dashboard?.coverage.missingVolumeProducts.length}개
         </p>
-        <ul>
-          {dashboard?.coverage.missingPriceProducts.map((product) => (
-            <li key={product.id}>
-              <button type="button" onClick={() => onSelectProduct(product.id)}>
-                {product.name} · 가격 미상 구매 확인
-              </button>
-            </li>
-          ))}
-        </ul>
         <ul>
           {dashboard?.coverage.missingVolumeProducts.map((product) => (
             <li key={product.id}>

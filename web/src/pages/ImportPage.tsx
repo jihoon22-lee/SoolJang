@@ -183,7 +183,9 @@ function AnalysisView({ analysis }: { analysis: ImportAnalysis }) {
                 <td>{row.category_path.join(" › ") || "미분류"}</td>
                 <td className="numeric">{row.vintage ?? "—"}</td>
                 <td className="numeric">{formatVolume(row.volume_ml)}</td>
-                <td className="numeric">{formatMoney(row.unit_list_price, { short: true })}</td>
+                <td className="numeric">
+                  {formatMoney(row.unit_list_price ?? "0", { short: true })}
+                </td>
                 <td className="numeric">{row.quantity}</td>
               </tr>
             ))}

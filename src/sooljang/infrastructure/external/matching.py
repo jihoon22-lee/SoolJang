@@ -289,7 +289,8 @@ def _conflicts(
     ):
         conflicts.append("age_years")
 
-    query_vintage = query.vintage if query.vintage is not None else identity.vintage
+    # 사용자가 별도 필드에 등록한 빈티지를 이름의 오래된/모호한 표기보다 우선한다.
+    query_vintage = identity.vintage if identity.vintage is not None else query.vintage
     if (
         candidate.vintage is not None
         and query_vintage is not None

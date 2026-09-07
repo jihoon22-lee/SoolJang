@@ -474,3 +474,40 @@ describe("통계", () => {
     });
   });
 });
+
+it("가격 공란인 선물·포인트 구매도 0원으로 상세·평단가·구매처 지출에 포함한다", async () => {
+  const { getPurchasesForProduct, getVendors, getStatsDashboard } = await import("@/sync/queries");
+  await db.product.put(row({ id: "p1", name: "선물과 포인트 구매", vintage: 2021 }));
+  await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 750 }));
+  await db.vendor.put(row({ id: "v1", name: "포인트 구매처" }));
+  await db.purchase.bulkPut([
+    row({ id: "gift", sku_id: "s1", quantity: 2, unit_list_price: null, unit_paid_price: null }),
+    row({
+      id: "paid",
+      sku_id: "s1",
+      vendor_id: "v1",
+      quantity: 1,
+      unit_list_price: "90000",
+      unit_paid_price: "60000",
+    }),
+    row({
+      id: "points",
+      sku_id: "s1",
+      vendor_id: "v1",
+      quantity: 1,
+      unit_list_price: "30000",
+      unit_paid_price: null,
+    }),
+  ]);
+  const purchases = await getPurchasesForProduct("p1");
+  expect(purchases.find((p) => p.id === "gift")?.paid_total).toBe("0.00");
+  expect(purchases.find((p) => p.id === "points")?.unit_paid_price).toBe("0.00");
+  const summary = await getStatsSummary();
+  expect(summary.avg_list_price).toBe("30000.00");
+  expect(summary.avg_paid_price).toBe("15000.00");
+  const vendors = await getVendors();
+  expect(vendors[0]?.total_spend).toBe("60000.00");
+  const dashboard = await getStatsDashboard();
+  expect(dashboard.coverage.paidPurchaseCount).toBe(3);
+  expect(dashboard.coverage.missingPriceProducts).toEqual([]);
+});

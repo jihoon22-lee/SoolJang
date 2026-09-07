@@ -414,3 +414,61 @@ def test_product_discovery_keeps_existing_pin_and_never_uses_opt_in_llm(
     ambiguous_response = api_client.post(path, json={"source_ids": [source["id"]]})
     assert ambiguous_response.status_code == 200
     assert ambiguous_response.json()[0]["llm_recommended_url"] is None
+
+
+def test_registered_vintage_survives_price_observation_storage_and_fallback(
+    api_client: TestClient, prefix: str, api_user_id: uuid.UUID
+) -> None:
+    from datetime import UTC
+
+    from sooljang.application.external_offers import last_observed_offers, record_offers
+    from sooljang.infrastructure.external.matching import ProductIdentity
+    from sooljang.infrastructure.external.offers import prepare_offer
+    from tests.infrastructure.external.test_offers import CONDITIONS
+
+    source = _create_source(api_client, prefix, name="빈티지 합성 소스")
+    product = api_client.post(
+        f"{prefix}/products",
+        json={"name": "Lumiere", "vintage": 2021, "skus": [{"volume_ml": 750}]},
+    ).json()
+    identity = ProductIdentity(name=product["name"], vintage=product["vintage"], volumes_ml=(750,))
+    offer = prepare_offer(
+        product_key="wine",
+        offer_key="shop",
+        name="Lumiere",
+        url="https://example.com/wine",
+        fields={**CONDITIONS, "price_krw": 50000, "vintage": 2021, "volume_ml": 750},
+        identity=identity,
+        confirmed=True,
+    )
+    assert offer is not None and not offer["needs_confirmation"]
+
+    async def round_trip() -> list[dict[str, Any]]:
+        async with get_session_factory().begin() as session:
+            await record_offers(
+                session,
+                user_id=api_user_id,
+                source_id=uuid.UUID(source["id"]),
+                product_id=uuid.UUID(product["id"]),
+                fetched_at=datetime.now(UTC),
+                offers=[offer],
+            )
+        async with get_session_factory().begin() as session:
+            return await last_observed_offers(
+                session,
+                user_id=api_user_id,
+                source_id=uuid.UUID(source["id"]),
+                product_id=uuid.UUID(product["id"]),
+                identity=identity,
+                pinned_product_key="wine",
+            )
+
+    assert api_client.portal is not None
+    restored = api_client.portal.call(round_trip)
+    assert len(restored) == 1
+    assert restored[0]["vintage"] == 2021
+    assert restored[0]["needs_confirmation"] is False
+    assert restored[0]["comparison_group"] == offer["comparison_group"]
+    assert restored[0]["last_good"] is True
+    assert observation_count(api_client) == 1
+    assert api_client.get(f"{prefix}/products/{product['id']}").json()["vintage"] == 2021

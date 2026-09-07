@@ -279,3 +279,10 @@ def test_detail_properties_complete_missing_evidence_but_conflicts_remain() -> N
     assert score_details(identity, "Harbor", {"volume_ml": 700}).value == 1
     conflict = score_details(identity, "Harbor 700ml", {"volume_ml": 1000})
     assert conflict.rejected and "detail_volume_ml" in conflict.conflicts
+
+
+def test_registered_vintage_overrides_stale_year_in_product_name() -> None:
+    identity = ProductIdentity(name="Lumiere 2019", name_en="Lumiere 2019", vintage=2021)
+    assert score(identity, "Lumiere 2021").value >= 0.85
+    assert "vintage" in score(identity, "Lumiere 2019").conflicts
+    assert "vintage" in score(identity, "Lumiere").missing

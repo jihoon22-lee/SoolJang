@@ -93,7 +93,7 @@ it("관심의 규격·도수·빈티지·노트를 저장하고 두 관심을 �
     }),
   );
 });
-it("새 제품 구매는 확인 전에는 생성하지 않고 0원·미상 가격을 구분한다", async () => {
+it("새 제품 구매는 확인 전에는 생성하지 않고 선물·포인트 구매의 가격 공란을 허용한다", async () => {
   const onSelectProduct = renderPage();
   const row = (await screen.findByRole("heading", { name: "합성 몰트" })).closest("li");
   await userEvent.click(within(row as HTMLElement).getByRole("button", { name: "구매 전환" }));

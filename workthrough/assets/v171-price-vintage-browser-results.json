@@ -1,0 +1,17 @@
+{
+  "version": "1.7.1",
+  "passed": true,
+  "environment": "isolated PostgreSQL / API8231 / production preview5191 / Chromium",
+  "checks": [
+    "blank gift prices display zero",
+    "free bottles included in weighted average",
+    "registered vintage displayed",
+    "offline reload preserves averages and vintage",
+    "points purchase displays zero paid price",
+    "quality has no missing-price classification",
+    "390px no horizontal overflow"
+  ],
+  "page_errors": [],
+  "screenshots": 2,
+  "external_provider_requests": 0
+}

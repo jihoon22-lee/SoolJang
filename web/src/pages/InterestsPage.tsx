@@ -569,7 +569,7 @@ function InterestConversionForm({
               onChange={(event) => update("paid", event.target.value)}
             />
           </label>
-          <p>가격 공란은 미상, 0은 무료 구매입니다.</p>
+          <p>가격 공란은 선물·포인트 구매 등의 0원으로 기록합니다.</p>
           <label>
             <input
               type="checkbox"

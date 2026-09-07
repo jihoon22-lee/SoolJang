@@ -67,6 +67,10 @@ def prepare_offer(
         "amount": str(amount),
         "currency": currency.upper(),
         "volume_ml": volume,
+        "vintage": facts.vintage,
+        "age_years": facts.age_years,
+        "abv": facts.abv,
+        "producer": None,
         "units": units,
         "is_set": facts.is_set,
         "seller_key": None,
@@ -97,6 +101,8 @@ def prepare_offer(
         "comparison_group",
     }:
         value = fields[key]
+        if isinstance(value, Decimal) and key in {"vintage", "age_years", "abv"}:
+            value = float(value)
         if isinstance(value, float) and not math.isfinite(value):
             continue
         if value is None or isinstance(value, (str, bool, int, float)):

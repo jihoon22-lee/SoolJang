@@ -257,13 +257,9 @@ async def _vendor_count(session: AsyncSession, user_id: uuid.UUID) -> int:
 
 
 async def get_summary(session: AsyncSession, *, user_id: uuid.UUID) -> StatsSummary:
-    """전체 합계. `docs/legacy-schema.md` §5 대조 기준값과 1:1 대응한다.
+    """전체 합계. 제품별 평균과 같이 선물·포인트 구매를 0원으로 포함한다.
 
-    **평균값의 분모는 전체 병수·전체 용량이다** (가격이 있는 구매 건만이 아니다). 제품별
-    지표(`avg_list_price` 등, 분모가 가격이 있는 병수)와 다른 기준이다. 실측 대조로 확정했다:
-    ₩39,333(정가 평균) = 정가 총액 42,401,108 ÷ **전체** 1,078병, ₩6,015(100ml당 평균) =
-    정가 총액 × 100 ÷ **전체** 704,970ml. 가격이 없는 선물 병도 "컬렉션 전체의 평균"에는
-    한 병으로 들어가야 하기 때문이다.
+    평균값의 분모는 전체 구매 병수·전체 용량이다. 구매 자체가 없는 경우만 미정의다.
     """
     rows = await _rows(session, user_id)
     vendor_count = await _vendor_count(session, user_id)

@@ -3,7 +3,14 @@
   "price_metrics_cases": [
     {
       "name": "single_lot_matches_legacy_formula",
-      "lots": [{ "quantity": 1, "volume_ml": 750, "unit_list_price": "23980", "unit_paid_price": "23980" }],
+      "lots": [
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": "23980",
+          "unit_paid_price": "23980"
+        }
+      ],
       "expected": {
         "purchased_count": 1,
         "list_total": "23980",
@@ -15,7 +22,14 @@
     },
     {
       "name": "multiple_bottles_divide_total_by_quantity",
-      "lots": [{ "quantity": 2, "volume_ml": 500, "unit_list_price": "16000", "unit_paid_price": "16000" }],
+      "lots": [
+        {
+          "quantity": 2,
+          "volume_ml": 500,
+          "unit_list_price": "16000",
+          "unit_paid_price": "16000"
+        }
+      ],
       "expected": {
         "avg_list_price": "16000.00",
         "price_per_100ml": "3200.00"
@@ -23,7 +37,14 @@
     },
     {
       "name": "price_per_100ml_uses_list_price_not_paid_price",
-      "lots": [{ "quantity": 1, "volume_ml": 750, "unit_list_price": "219900", "unit_paid_price": "179900" }],
+      "lots": [
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": "219900",
+          "unit_paid_price": "179900"
+        }
+      ],
       "expected": {
         "price_per_100ml": "29320.00",
         "price_per_100ml_paid": "23986.67"
@@ -32,8 +53,18 @@
     {
       "name": "multiple_lots_produce_weighted_average",
       "lots": [
-        { "quantity": 2, "volume_ml": 700, "unit_list_price": "100000", "unit_paid_price": "90000" },
-        { "quantity": 1, "volume_ml": 700, "unit_list_price": "130000", "unit_paid_price": "128000" }
+        {
+          "quantity": 2,
+          "volume_ml": 700,
+          "unit_list_price": "100000",
+          "unit_paid_price": "90000"
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 700,
+          "unit_list_price": "130000",
+          "unit_paid_price": "128000"
+        }
       ],
       "expected": {
         "avg_list_price": "110000.00",
@@ -44,8 +75,18 @@
     {
       "name": "mixed_volumes_use_weighted_per_100ml",
       "lots": [
-        { "quantity": 1, "volume_ml": 700, "unit_list_price": "70000", "unit_paid_price": "70000" },
-        { "quantity": 1, "volume_ml": 1000, "unit_list_price": "80000", "unit_paid_price": "80000" }
+        {
+          "quantity": 1,
+          "volume_ml": 700,
+          "unit_list_price": "70000",
+          "unit_paid_price": "70000"
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 1000,
+          "unit_list_price": "80000",
+          "unit_paid_price": "80000"
+        }
       ],
       "expected": {
         "price_per_100ml": "8823.53",
@@ -53,47 +94,87 @@
       }
     },
     {
-      "name": "gift_lot_excluded_from_money_but_counted_in_bottles",
+      "name": "gift_lot_counts_as_zero_in_weighted_average",
       "lots": [
-        { "quantity": 2, "volume_ml": 900, "unit_list_price": null, "unit_paid_price": null },
-        { "quantity": 1, "volume_ml": 900, "unit_list_price": "30000", "unit_paid_price": "30000" }
+        {
+          "quantity": 2,
+          "volume_ml": 900,
+          "unit_list_price": null,
+          "unit_paid_price": null
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 900,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        }
       ],
       "expected": {
         "purchased_count": 3,
-        "priced_quantity": 1,
+        "priced_quantity": 3,
         "list_total": "30000",
-        "avg_list_price": "30000.00"
+        "avg_list_price": "10000.00",
+        "paid_quantity": 3,
+        "avg_paid_price": "10000.00",
+        "price_per_100ml": "1111.11"
       }
     },
     {
-      "name": "all_gift_lots_yield_null_not_zero",
-      "lots": [{ "quantity": 2, "volume_ml": 900, "unit_list_price": null, "unit_paid_price": null }],
-      "expected": {
-        "purchased_count": 2,
-        "list_total": null,
-        "avg_list_price": null,
-        "price_per_100ml": null,
-        "discount_rate": null
-      }
-    },
-    {
-      "name": "list_price_only_lot_has_no_paid_metrics",
-      "lots": [{ "quantity": 1, "volume_ml": 700, "unit_list_price": "50000", "unit_paid_price": null }],
-      "expected": {
-        "avg_list_price": "50000.00",
-        "avg_paid_price": null,
-        "price_per_100ml_paid": null,
-        "discount_rate": null
-      }
-    },
-    {
-      "name": "discount_rate_only_uses_lots_with_both_prices",
+      "name": "all_gift_lots_yield_zero",
       "lots": [
-        { "quantity": 1, "volume_ml": 700, "unit_list_price": "100000", "unit_paid_price": "80000" },
-        { "quantity": 1, "volume_ml": 700, "unit_list_price": "100000", "unit_paid_price": null }
+        {
+          "quantity": 2,
+          "volume_ml": 900,
+          "unit_list_price": null,
+          "unit_paid_price": null
+        }
       ],
       "expected": {
-        "discount_rate": "0.2000"
+        "purchased_count": 2,
+        "list_total": "0",
+        "avg_list_price": "0.00",
+        "price_per_100ml": "0.00",
+        "discount_rate": null,
+        "paid_total": "0",
+        "avg_paid_price": "0.00",
+        "price_per_100ml_paid": "0.00"
+      }
+    },
+    {
+      "name": "points_purchase_with_list_price_has_zero_paid_price",
+      "lots": [
+        {
+          "quantity": 1,
+          "volume_ml": 700,
+          "unit_list_price": "50000",
+          "unit_paid_price": null
+        }
+      ],
+      "expected": {
+        "avg_list_price": "50000.00",
+        "avg_paid_price": "0.00",
+        "price_per_100ml_paid": "0.00",
+        "discount_rate": "1.0000"
+      }
+    },
+    {
+      "name": "discount_rate_includes_points_purchase",
+      "lots": [
+        {
+          "quantity": 1,
+          "volume_ml": 700,
+          "unit_list_price": "100000",
+          "unit_paid_price": "80000"
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 700,
+          "unit_list_price": "100000",
+          "unit_paid_price": null
+        }
+      ],
+      "expected": {
+        "discount_rate": "0.6000"
       }
     },
     {
@@ -104,10 +185,49 @@
         "avg_list_price": null,
         "total_volume_ml": 0
       }
+    },
+    {
+      "name": "explicit_zero_and_blank_gifts_have_identical_weight",
+      "lots": [
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": "0",
+          "unit_paid_price": "0"
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": null,
+          "unit_paid_price": null
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": "90000",
+          "unit_paid_price": "60000"
+        }
+      ],
+      "expected": {
+        "purchased_count": 3,
+        "priced_quantity": 3,
+        "paid_quantity": 3,
+        "avg_list_price": "30000.00",
+        "avg_paid_price": "20000.00",
+        "price_per_100ml": "4000.00",
+        "price_per_100ml_paid": "2666.67"
+      }
     }
   ],
   "bottle_tally_case": {
-    "statuses": ["unopened", "unopened", "open", "finished", "gifted", "sold"],
+    "statuses": [
+      "unopened",
+      "unopened",
+      "open",
+      "finished",
+      "gifted",
+      "sold"
+    ],
     "expected": {
       "unopened": 2,
       "open": 1,

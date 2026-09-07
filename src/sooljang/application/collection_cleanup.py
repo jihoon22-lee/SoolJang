@@ -125,7 +125,7 @@ async def snapshot(
                 Decimal(0),
             )
         ),
-        "unknown_price_count": sum(p.unit_paid_price is None for p in affected),
+        "unknown_price_count": 0,
     }
 
 
@@ -239,8 +239,6 @@ async def quality_report(session: AsyncSession, user_id: uuid.UUID) -> dict[str,
     for purchase in purchases:
         if purchase.vendor_id is None:
             add("purchase", purchase, "vendor", sku_products.get(purchase.sku_id))
-        if purchase.unit_paid_price is None:
-            add("purchase", purchase, "price", sku_products.get(purchase.sku_id))
     duplicates: list[dict[str, Any]] = []
     for kind, candidates in (("product", products), ("vendor", vendors)):
         groups: dict[str, list[Any]] = defaultdict(list)
@@ -263,8 +261,8 @@ async def quality_report(session: AsyncSession, user_id: uuid.UUID) -> dict[str,
         "duplicate_candidates": duplicates,
         "coverage": {
             "purchases": len(purchases),
-            "known_price_purchases": sum(p.unit_paid_price is not None for p in purchases),
-            "unknown_price_purchases": sum(p.unit_paid_price is None for p in purchases),
+            "known_price_purchases": len(purchases),
+            "unknown_price_purchases": 0,
             "known_paid_total": str(
                 sum(
                     (
@@ -282,7 +280,7 @@ async def quality_report(session: AsyncSession, user_id: uuid.UUID) -> dict[str,
             ),
         },
         "rules": (
-            "지출은 가격을 아는 구매만 합산합니다. 0원은 포함하고 미상은 제외합니다. "
+            "구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다. "
             "관심 저장과 실사 관찰은 지출·재고 상태를 변경하지 않습니다."
         ),
     }

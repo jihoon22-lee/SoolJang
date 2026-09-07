@@ -75,9 +75,7 @@ export function CollectionQualityPage({
             <h2>통계 포함 근거</h2>
             <p>{report.data.rules}</p>
             <p>
-              가격 확인 {report.data.coverage.known_price_purchases}/
-              {report.data.coverage.purchases}건 · 미상{" "}
-              {report.data.coverage.unknown_price_purchases}건 · 확인된 지출{" "}
+              구매 {report.data.coverage.purchases}건 · 지출 합계{" "}
               {formatMoney(report.data.coverage.known_paid_total)}
             </p>
             <p>
