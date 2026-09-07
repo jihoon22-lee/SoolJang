@@ -273,10 +273,11 @@ async def create_purchase(
 async def update_purchase(
     purchase_id: uuid.UUID, payload: PurchaseUpdate, session: SessionDep, user_id: UserDep
 ) -> PurchaseOut:
-    purchase = await _owned_purchase(session, user_id, purchase_id)
     fields = payload.model_dump(exclude_unset=True)
+    # 병합/일괄 수정과 같은 Vendor → Purchase 순서로 잠근다.
     if "vendor_id" in fields and fields["vendor_id"] is not None:
         await _owned_vendor(session, user_id, fields["vendor_id"])
+    purchase = await _owned_purchase(session, user_id, purchase_id)
     if "currency" in fields and fields["currency"]:
         fields["currency"] = fields["currency"].upper()
     for key, value in fields.items():
