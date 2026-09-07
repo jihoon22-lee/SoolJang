@@ -18,6 +18,7 @@ from sooljang.infrastructure.database.models.external_source import (
     ExternalSourceProbe,
 )
 from sooljang.infrastructure.database.models.external_usage import ExternalRequestUsage
+from sooljang.infrastructure.database.models.interest import Interest
 from sooljang.infrastructure.database.models.inventory import (
     IN_STOCK_STATUSES,
     Bottle,
@@ -56,6 +57,7 @@ from sooljang.infrastructure.database.models.tasting import (
 from .external_offer import ExternalOffer, ExternalPriceObservation
 
 __all__ = [
+    "Interest",
     "ExternalOffer",
     "ExternalPriceObservation",
     "DEFAULT_OPENAI_MODEL",

@@ -16,6 +16,7 @@ from sooljang.api.routes import (
     categories,
     external_sources,
     health,
+    interests,
     legacy_import,
     llm_settings,
     ocr,
@@ -81,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     protected = Depends(active_session)
     for router in (
+        interests.router,
         provider_connections.router,
         categories.router,
         products.router,
