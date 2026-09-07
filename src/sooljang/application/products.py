@@ -205,10 +205,10 @@ def sort_column_for(key: SortKey, metrics: Any) -> Any:
 
 
 async def load_product(
-    session: AsyncSession, *, user_id: uuid.UUID, product_id: uuid.UUID
+    session: AsyncSession, *, user_id: uuid.UUID, product_id: uuid.UUID, for_update: bool = False
 ) -> Product:
-    """제품 하나를 규격·품종과 함께 읽는다. 없으면 404 로 알린다."""
-    product = await session.scalar(
+    """제품 하나를 읽는다. 수정용 호출은 for_update로 현재 행을 잠그고 다시 읽는다."""
+    query = (
         select(Product)
         .where(
             Product.id == product_id,
@@ -220,20 +220,26 @@ async def load_product(
             selectinload(Product.varieties).selectinload(ProductVariety.variety),
         )
     )
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    product = await session.scalar(query)
     if product is None:
         raise NotFoundError(f"제품을 찾을 수 없습니다: {product_id}")
     return product
 
 
-async def load_sku(session: AsyncSession, *, user_id: uuid.UUID, sku_id: uuid.UUID) -> Sku:
-    """규격 하나를 읽는다. 없으면 404 로 알린다."""
-    sku = await session.scalar(
-        select(Sku).where(
-            Sku.id == sku_id,
-            Sku.user_id == user_id,
-            Sku.deleted_at.is_(None),
-        )
+async def load_sku(
+    session: AsyncSession, *, user_id: uuid.UUID, sku_id: uuid.UUID, for_update: bool = False
+) -> Sku:
+    """규격 하나를 읽는다. 수정용 호출은 for_update로 현재 행을 잠그고 다시 읽는다."""
+    query = select(Sku).where(
+        Sku.id == sku_id,
+        Sku.user_id == user_id,
+        Sku.deleted_at.is_(None),
     )
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    sku = await session.scalar(query)
     if sku is None:
         raise NotFoundError(f"규격을 찾을 수 없습니다: {sku_id}")
     return sku

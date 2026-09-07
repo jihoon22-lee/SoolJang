@@ -12,6 +12,7 @@ import { ProductList } from "@/components/ProductList";
 import { setLastVendorName } from "@/lastVendor";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { db } from "@/sync/db";
+import { clearFormDraft } from "@/sync/drafts";
 import { enqueue } from "@/sync/outbox";
 import {
   filterAndSortProducts,
@@ -507,7 +508,10 @@ function ProductDetailView({
         },
       });
     },
-    onSuccess: () => setEditing(false),
+    onSuccess: () => {
+      clearFormDraft(`product:edit:${window.location.hash}`);
+      setEditing(false);
+    },
   });
 
   // 구매 추가·삭제·분할·규격 추가는 서버 상태 기준으로 병 라벨을 재배치하므로 온라인
@@ -526,6 +530,7 @@ function ProductDetailView({
       });
     },
     onSuccess: (_result, input) => {
+      clearFormDraft(`purchase:${productId}`);
       if (input.vendorName) setLastVendorName(input.vendorName);
       triggerSync();
     },

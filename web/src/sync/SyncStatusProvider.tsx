@@ -26,13 +26,23 @@ const INITIAL_ENGINE_STATE: SyncEngineState = {
   lastError: null,
 };
 
-export function SyncStatusProvider({ children }: { children: ReactNode }) {
+export function SyncStatusProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId?: string | undefined;
+}) {
   const [engineState, setEngineState] = useState<SyncEngineState>(INITIAL_ENGINE_STATE);
 
   useEffect(() => {
-    syncEngine.start();
-    return syncEngine.onStateChange(setEngineState);
-  }, []);
+    syncEngine.start(userId);
+    const unsubscribe = syncEngine.onStateChange(setEngineState);
+    return () => {
+      unsubscribe();
+      syncEngine.stop();
+    };
+  }, [userId]);
 
   const pendingCount =
     useLiveQuery(() => db.outbox.where("status").equals("pending").count(), []) ?? 0;

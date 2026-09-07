@@ -58,3 +58,5 @@ B03 통합 후 전체 Python **1117 passed/30 opt-in skipped**, branch 포함 co
 
 ![복수 판매 모바일](assets/v170-b04-mobile.png)
 ![복수 판매 데스크톱](assets/v170-b04-desktop.png)
+
+PR #137 첫 전체 CI를 통과했다. B06 #135 머지 후 동기화/입력 보호를 통합했으며 현재 위치/결정 로그의 문서 충돌을 보존 해결했다. 새 SHA의 관련 가격·혼합 동시성 검사와 전체 웹 검사 및 CI를 다시 실행한다.

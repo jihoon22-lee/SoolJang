@@ -51,6 +51,10 @@ export const SYNC_ENTITIES: SyncEntity[] = [
 /** outbox 에 쌓인 오프라인 작업 하나. 서버 `SyncOperation` 과 필드가 대응한다. */
 export interface OutboxEntry {
   idempotency_key: string;
+  /** 실패 명령을 새 키로 수정해도 같은 FIFO 위치를 지킨다. */
+  sequence_key?: string | undefined;
+  /** 대기열 소유자. 구버전 항목은 검증된 로컬 행으로만 복구한다. */
+  user_id?: string | undefined;
   entity: SyncEntity;
   op: "create" | "update" | "delete" | "action";
   entity_id: string;
@@ -71,7 +75,7 @@ export interface OutboxEntry {
   error: string | null;
 }
 
-class SoolJangDB extends Dexie {
+export class SoolJangDB extends Dexie {
   category!: Table<SyncRow, string>;
   producer!: Table<SyncRow, string>;
   variety!: Table<SyncRow, string>;
@@ -88,8 +92,8 @@ class SoolJangDB extends Dexie {
   /** 동기화 커서 등 단일 값 저장. 키는 `"cursor"` 하나뿐이다. */
   sync_meta!: Table<{ key: string; value: string }, string>;
 
-  constructor() {
-    super("sooljang");
+  constructor(name = "sooljang") {
+    super(name);
     this.version(1).stores({
       category: "id, parent_id, updated_at, deleted_at",
       producer: "id, updated_at, deleted_at",
@@ -109,7 +113,99 @@ class SoolJangDB extends Dexie {
   }
 }
 
-export const db = new SoolJangDB();
+export let db = new SoolJangDB();
+let activeUserId: string | null = null;
+let generation = 0;
+
+export function databaseIdentity(): { userId: string | null; generation: number } {
+  return { userId: activeUserId, generation };
+}
+
+/** 로그아웃은 접근을 잠그며 저장소와 미전송 명령을 삭제하지 않는다. */
+export function lockDatabase(): void {
+  activeUserId = null;
+  generation += 1;
+}
+
+/** 인증으로 확인한 사용자 저장소에만 연결한다. 구버전 미러는 소유자별로 보존 이전한다. */
+export async function activateDatabase(userId: string): Promise<void> {
+  const activation = ++generation;
+  activeUserId = null;
+  const target = new SoolJangDB(`sooljang-user-${encodeURIComponent(userId)}`);
+  await target.open();
+  await importLegacyChanges(target, userId);
+  if (generation !== activation) {
+    target.close();
+    return;
+  }
+  db = target;
+  activeUserId = userId;
+}
+
+/**
+ * 아직 열린 구버전 탭이 나중에 만든 명령도 가져온다. 원본은 삭제하지 않는다.
+ * 명령별 영수증은 outbox 성공/폐기 뒤에도 남아 재삽입을 막는다.
+ */
+export async function importLegacyChanges(target: SoolJangDB, userId: string): Promise<void> {
+  if (target.name === "sooljang") return;
+  const legacy = new SoolJangDB();
+  try {
+    await legacy.open();
+    if (await target.sync_meta.get("legacy-imported")) {
+      const keys = (await legacy.outbox.toArray()).map(
+        (entry) => `legacy-command:${entry.idempotency_key}`,
+      );
+      if ((await target.sync_meta.bulkGet(keys)).every(Boolean)) return;
+    }
+    const snapshot = await legacy.transaction("r", legacy.tables, async () => ({
+      entries: await legacy.outbox.toArray(),
+      rows: await Promise.all(
+        SYNC_ENTITIES.map((entity) => legacy.table(entity).toArray() as Promise<SyncRow[]>),
+      ),
+    }));
+    const owners = new Map(
+      snapshot.rows.flatMap((rows, index) =>
+        rows.map((row) => [`${SYNC_ENTITIES[index]}:${row.id}`, row.user_id]),
+      ),
+    );
+    const entries = snapshot.entries.filter((entry) => {
+      const rowOwner = owners.get(`${entry.entity}:${entry.entity_id}`);
+      return (entry.user_id ?? rowOwner) === userId && (!rowOwner || rowOwner === userId);
+    });
+    await target.transaction("rw", target.tables, async () => {
+      const initialImport = !(await target.sync_meta.get("legacy-imported"));
+      const newIds = new Set<string>();
+      for (const entry of entries) {
+        const receiptKey = `legacy-command:${entry.idempotency_key}`;
+        if (await target.sync_meta.get(receiptKey)) continue;
+        if (!(await target.outbox.get(entry.idempotency_key))) {
+          await target.outbox.add({
+            ...entry,
+            user_id: userId,
+            sequence_key: entry.sequence_key ?? entry.idempotency_key,
+          });
+          newIds.add(entry.entity_id);
+          for (const id of entry.touched_ids ?? []) newIds.add(id);
+          for (const id of Array.isArray(entry.fields.bottle_ids) ? entry.fields.bottle_ids : [])
+            if (typeof id === "string") newIds.add(id);
+        }
+        await target.sync_meta.put({ key: receiptKey, value: "1" });
+      }
+      for (let index = 0; index < SYNC_ENTITIES.length; index += 1) {
+        const entity = SYNC_ENTITIES[index];
+        if (!entity) continue;
+        for (const row of snapshot.rows[index] ?? []) {
+          if (row.user_id !== userId || (!initialImport && !newIds.has(row.id))) continue;
+          // Existing target rows may include newer server or local edits: never replace them.
+          if (!(await target.table(entity).get(row.id))) await target.table(entity).add(row);
+        }
+      }
+      await target.sync_meta.put({ key: "legacy-imported", value: "1" });
+    });
+  } finally {
+    legacy.close();
+  }
+}
 
 /** 소프트 삭제되지 않은 행만. 대부분의 화면 조회가 이 필터를 쓴다. */
 export function isLive(row: SyncRow): boolean {
