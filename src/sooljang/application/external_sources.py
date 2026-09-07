@@ -1119,6 +1119,10 @@ async def lookup_product(
     같은 `master_key` 로 `LlmSetting` 의 API 키도 복호화해, 애매 구간에서 사용자가 "LLM
     매칭 보조"를 켜 뒀으면 재판정을 시도한다(Task 34 PR6, `_maybe_llm_rematch`).
     """
+    # 호출자가 같은 트랜잭션에서 제품을 수정했다면 서버 갱신 시각을 비동기로 읽는다.
+    # identity와 revision은 같은 최신 행에서 가져온다.
+    await session.flush()
+    await session.refresh(product)
     product_revision = product.updated_at
     identity = await _build_identity(session, product)
     sources = await session.scalars(
