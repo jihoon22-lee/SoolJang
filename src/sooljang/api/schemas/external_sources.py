@@ -68,6 +68,7 @@ class ExternalSourceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    connection_id: uuid.UUID | None = None
     name: str
     base_url: str
     adapter_spec: dict[str, Any]

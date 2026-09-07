@@ -10,7 +10,6 @@ import { HomePage } from "@/pages/HomePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { SourcesPage } from "@/pages/SourcesPage";
 import { StatsPage } from "@/pages/StatsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
 import { VendorsPage } from "@/pages/VendorsPage";
@@ -31,7 +30,6 @@ const VIEWS: { id: View; label: string }[] = [
 /** 자주 쓰지 않는 환경 설정류. 헤더의 설정 메뉴 안에 접어 둔다(항목 3). */
 const SETTINGS_VIEWS: { id: View; label: string }[] = [
   { id: "import", label: "가져오기" },
-  { id: "sources", label: "외부 소스" },
   { id: "settings", label: "설정" },
   { id: "status", label: "서비스 상태" },
 ];
@@ -237,7 +235,7 @@ export function App() {
           {route.view === "vendors" && (
             <VendorsPage onSelectVendor={(id) => navigate({ view: "products", vendorId: id })} />
           )}
-          {route.view === "sources" && <SourcesPage />}
+          {route.view === "sources" && <SettingsPage key={user?.id} />}
           {route.view === "stats" && (
             <StatsPage
               onSelectProduct={(id) => navigate({ view: "products", productId: id })}
@@ -245,7 +243,7 @@ export function App() {
             />
           )}
           {route.view === "import" && <ImportPage />}
-          {route.view === "settings" && <SettingsPage />}
+          {route.view === "settings" && <SettingsPage key={user?.id} />}
           {route.view === "status" && <HealthPanel />}
         </main>
       </div>

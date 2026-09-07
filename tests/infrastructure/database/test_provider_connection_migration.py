@@ -1,6 +1,7 @@
 """0013 사용자 설정의 opaque 암호문 보존과 결정적인 0014 재적용."""
 
 import uuid
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
@@ -8,6 +9,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from sqlalchemy.sql.dml import Insert
 
 from sooljang.config import get_settings
 from sooljang.infrastructure.database.base import Base
@@ -15,7 +17,9 @@ from sooljang.infrastructure.database.base import Base
 pytestmark = pytest.mark.requires_db
 
 
-def test_upgrade_preserves_distinct_profiles_ciphertexts_and_source_overrides() -> None:
+def test_upgrade_preserves_distinct_profiles_ciphertexts_and_source_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     url = sa.make_url(str(get_settings().database_url))
     assert url.database is not None and url.database.endswith("_test")
     engine = sa.create_engine(url.set(drivername="postgresql+psycopg"))
@@ -78,6 +82,36 @@ def test_upgrade_preserves_distinct_profiles_ciphertexts_and_source_overrides() 
                     rematch_monthly_cap=41,
                 )
             )
+        original_execute = sa.Connection.execute
+        copied_credentials = 0
+
+        def fail_partial_copy(
+            connection: sa.Connection, statement: Any, *args: Any, **kwargs: Any
+        ) -> Any:
+            nonlocal copied_credentials
+            if isinstance(statement, Insert) and statement.table.name == "provider_credential":
+                copied_credentials += 1
+                if copied_credentials == 2:
+                    raise RuntimeError("synthetic interrupted credential migration")
+            return original_execute(connection, statement, *args, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(sa.Connection, "execute", fail_partial_copy)
+            with pytest.raises(RuntimeError, match="synthetic interrupted"):
+                command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert "provider_connection" not in sa.inspect(connection).get_table_names()
+            assert (
+                connection.execute(
+                    sa.text("SELECT count(*) FROM external_source_credential")
+                ).scalar()
+                == 2
+            )
+            assert (
+                connection.execute(sa.text("SELECT api_key_ciphertext FROM llm_setting")).scalar()
+                == b"opaque-ocr"
+            )
+
         expected = {
             uuid.uuid5(uuid.NAMESPACE_URL, f"sooljang:source:{item}") for item in source_ids
         }
@@ -112,7 +146,16 @@ def test_upgrade_preserves_distinct_profiles_ciphertexts_and_source_overrides() 
                     )
                 ).one()
                 assert tuple(llm) == ("preserved-model", True, 41, b"opaque-ocr")
-                assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+                production_metadata = sa.MetaData(naming_convention=Base.metadata.naming_convention)
+                for mapper in Base.registry.mappers:
+                    if mapper.class_.__module__.startswith("sooljang.") and isinstance(
+                        mapper.local_table, sa.Table
+                    ):
+                        mapper.local_table.to_metadata(production_metadata)
+                assert (
+                    compare_metadata(MigrationContext.configure(connection), production_metadata)
+                    == []
+                )
             if roundtrip == 0:
                 command.downgrade(config, "0013_external_request_usage")
     finally:

@@ -79,7 +79,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "구매처" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("설정 메뉴를 열어 외부 소스 관리로 전환한다", async () => {
+  it("설정 메뉴를 열어 API·외부 연결을 관리한다", async () => {
     stubRoutes([
       ...authenticatedRoutes(),
       // "/external-sources/health" 가 "/health" 의 상위 문자열이라, 더 구체적인 이
@@ -94,9 +94,9 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "외부 소스" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "설정" }));
 
-    expect(await screen.findByRole("heading", { name: "외부 소스 관리" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "API·외부 연결" })).toBeInTheDocument();
     // 메뉴 항목을 고르면 패널도 닫힌다.
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
