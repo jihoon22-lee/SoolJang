@@ -240,6 +240,9 @@ def test_full_backup_restores_app_references_secrets_and_attachment(
             data={"kind": "label", "product_id": product["id"]},
         )
         assert attachment.status_code == 201
+        attachment_id = attachment.json()["id"]
+        original_content = client.get(f"{API_PREFIX}/attachments/{attachment_id}/content")
+        assert original_content.status_code == 200 and original_content.content == png
         settings = client.put(
             f"{API_PREFIX}/llm-settings",
             json={
@@ -408,6 +411,15 @@ def test_full_backup_restores_app_references_secrets_and_attachment(
         for table, record in record_digests(target).items():
             if table != "push_delivery":
                 assert record == expected_records[table], table
+        restored_content = client.get(f"{API_PREFIX}/attachments/{attachment_id}/content")
+        assert restored_content.status_code == 200 and restored_content.content == png
+        assert restored_content.headers["content-type"] == "image/png"
+        assert restored_content.headers["cache-control"] == "private, no-store"
+        assert restored_content.headers["x-content-type-options"] == "nosniff"
+        metadata = client.get(
+            f"{API_PREFIX}/attachments", params={"product_id": product["id"]}
+        ).json()
+        assert len(metadata) == 1 and metadata[0]["id"] == attachment_id
         actual_product = client.get(f"{API_PREFIX}/products/{product['id']}").json()
         assert actual_product == expected_product
         assert actual_product["metrics"]["purchased_count"] == 2

@@ -238,3 +238,143 @@ def test_내용이_선언한_형식과_다르면_422(api_client: TestClient, pre
     )
 
     assert response.status_code == 422, response.text
+
+
+def _upload(client: TestClient, prefix: str, **owner: str) -> dict[str, Any]:
+    response = client.post(
+        f"{prefix}/attachments",
+        files={"file": ("합성 라벨.png", _minimal_png(), "image/png")},
+        data={"kind": "label", "caption": "합성 복구 라벨", **owner},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_owner_reads_original_image_and_product_metadata_without_storage_paths(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = _seed_product(api_client, prefix)
+    image = _upload(api_client, prefix, product_id=product["id"])
+    response = api_client.get(f"{prefix}/attachments/{image['id']}/content")
+    assert response.status_code == 200
+    assert response.content == _minimal_png()
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in response.headers["content-security-policy"]
+    assert response.headers["content-disposition"] == f'inline; filename="{image["id"]}.png"'
+    listed = api_client.get(f"{prefix}/attachments", params={"product_id": product["id"]})
+    assert listed.json() == [image]
+    assert "storage_path" not in listed.text and "sha256" not in listed.text
+    assert listed.headers["cache-control"] == "private, no-store"
+
+
+def test_attachment_read_requires_authentication_and_rejects_another_logged_in_user(
+    api_client: TestClient, prefix: str
+) -> None:
+    from sooljang.application.auth import hash_password
+    from sooljang.infrastructure.database.models import User
+    from sooljang.infrastructure.database.session import get_session_factory
+
+    product = _seed_product(api_client, prefix)
+    image = _upload(api_client, prefix, product_id=product["id"])
+
+    async def second_user() -> None:
+        async with get_session_factory().begin() as session:
+            session.add(
+                User(
+                    email="attachment-other@example.com",
+                    display_name="합성 다른 사용자",
+                    password_hash=hash_password("attachment-other-password"),
+                )
+            )
+
+    assert api_client.portal is not None
+    api_client.portal.call(second_user)
+    api_client.cookies.clear()
+    path = f"{prefix}/attachments/{image['id']}/content"
+    assert api_client.get(path).status_code == 401
+    assert (
+        api_client.get(f"{prefix}/attachments", params={"product_id": product["id"]}).status_code
+        == 401
+    )
+    login = api_client.post(
+        f"{prefix}/auth/login",
+        json={"email": "attachment-other@example.com", "password": "attachment-other-password"},
+    )
+    assert login.status_code == 200
+    assert api_client.get(path).status_code == 404
+    assert (
+        api_client.get(f"{prefix}/attachments", params={"product_id": product["id"]}).status_code
+        == 404
+    )
+
+
+def test_deleted_or_missing_attachment_is_not_served(api_client: TestClient, prefix: str) -> None:
+    import uuid
+    from datetime import UTC, datetime
+
+    from sooljang.infrastructure.database.models import Attachment
+    from sooljang.infrastructure.database.session import get_session_factory
+
+    product = _seed_product(api_client, prefix)
+    image = _upload(api_client, prefix, product_id=product["id"])
+
+    async def remove() -> None:
+        async with get_session_factory().begin() as session:
+            attachment = await session.get(Attachment, uuid.UUID(image["id"]))
+            assert attachment is not None
+            attachment.deleted_at = datetime.now(UTC)
+
+    assert api_client.portal is not None
+    api_client.portal.call(remove)
+    for attachment_id in (image["id"], str(uuid.uuid4())):
+        assert api_client.get(f"{prefix}/attachments/{attachment_id}/content").status_code == 404
+    assert (
+        api_client.get(f"{prefix}/attachments", params={"product_id": product["id"]}).json() == []
+    )
+
+
+def test_deleted_product_prevents_reading_its_attachment(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = _seed_product(api_client, prefix)
+    image = _upload(api_client, prefix, product_id=product["id"])
+    assert api_client.delete(f"{prefix}/products/{product['id']}").status_code == 204
+    assert api_client.get(f"{prefix}/attachments/{image['id']}/content").status_code == 404
+    assert (
+        api_client.get(f"{prefix}/attachments", params={"product_id": product["id"]}).status_code
+        == 404
+    )
+
+
+def test_bottle_and_tasting_owners_can_read_their_attachments(
+    api_client: TestClient, prefix: str
+) -> None:
+    owners = [
+        {"bottle_id": _seed_bottle(api_client, prefix)},
+        {"tasting_session_id": _seed_tasting_session(api_client, prefix)},
+    ]
+    for owner in owners:
+        image = _upload(api_client, prefix, **owner)
+        response = api_client.get(f"{prefix}/attachments/{image['id']}/content")
+        assert response.status_code == 200 and response.content == _minimal_png()
+
+
+def test_missing_or_changed_disk_file_returns_generic_not_found(
+    api_client: TestClient, prefix: str
+) -> None:
+    from pathlib import Path
+
+    from sooljang.config import get_settings
+
+    product = _seed_product(api_client, prefix)
+    image = _upload(api_client, prefix, product_id=product["id"])
+    stored = next(Path(get_settings().upload_dir).rglob("*.png"))
+    stored.write_bytes(b"<html>not an image</html>")
+    path = f"{prefix}/attachments/{image['id']}/content"
+    for _ in range(2):
+        response = api_client.get(path)
+        assert response.status_code == 404
+        assert str(stored) not in response.text and "not an image" not in response.text
+        stored.unlink(missing_ok=True)

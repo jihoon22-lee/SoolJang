@@ -4,6 +4,7 @@ import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottlePanel, formatRemaining, STATUS_LABELS } from "@/components/BottlePanel";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
+import { ProductAttachments } from "@/components/ProductAttachments";
 import {
   formatAbv,
   formatCategoryPath,
@@ -196,6 +197,8 @@ export function ProductDetail({
       />
 
       <BottleSection bottles={bottles} offline={offline} />
+
+      <ProductAttachments key={product.id} productId={product.id} offline={offline} />
 
       <details
         className="panel mt-2"
