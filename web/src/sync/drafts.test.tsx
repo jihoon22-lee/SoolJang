@@ -40,7 +40,7 @@ it("계정과 탭이 다른 임시 입력은 덮어쓰거나 보여주지 않는
 });
 it("키나 비밀번호 필드는 draft에 보관하지 않는다", () => {
   const form = renderHook(() => useDraftState("settings", { api_key: "" }));
-  act(() => form.result.current[1]({ api_key: "fixture-do-not-persist" }));
+  act(() => form.result.current[1]({ api_key: "fixture-do-not-persist" })); // scan-secrets-allow: synthetic value verifies secret omission
   expect(Object.values(localStorage).join()).not.toContain("fixture-do-not-persist");
 });
 
