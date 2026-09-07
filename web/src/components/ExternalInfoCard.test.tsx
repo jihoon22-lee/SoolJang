@@ -3,7 +3,36 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ExternalOffer, NormalizedFields, SourceLookupResult } from "@/api/types";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
-import { renderWithQuery, stubRoutes } from "@/testing";
+import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
+
+function stubRoutes(routes: Parameters<typeof originalStubRoutes>[0]) {
+  return originalStubRoutes([
+    ...routes.map((route) => ({
+      ...route,
+      match: route.match.replace("/products/p1/external-lookup", "/discovery/products/p1/lookup"),
+    })),
+    {
+      match: "/discovery/products/p1/context",
+      body: {
+        identity: { name: "합성 제품" },
+        source_matches: {},
+        updated_at: "2026-09-07T00:00:00Z",
+      },
+    },
+    { match: "/connections", body: [] },
+    { match: "/external-sources", body: [{ id: "s1", name: "조회 소스", is_active: true }] },
+    {
+      match: "/products/p1",
+      body: { id: "p1", name: "합성 제품", skus: [], updated_at: "2026-09-07T00:00:00Z" },
+    },
+  ]);
+}
+async function lookup() {
+  await userEvent.click(screen.getByText("외부 정보 조회", { selector: "summary" }));
+  await userEvent.click(await screen.findByLabelText("조회 소스 · 전문 소스"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(screen.getByRole("button", { name: "가격" }));
+}
 
 function normalized(overrides: Partial<NormalizedFields> = {}): NormalizedFields {
   return {
@@ -45,19 +74,16 @@ function result(overrides: Partial<SourceLookupResult> = {}): SourceLookupResult
 }
 
 describe("ExternalInfoCard", () => {
-  it("오프라인이면 조회 버튼을 비활성화하고 안내한다", () => {
+  it("오프라인이면 검색을 비활성화하고 보조 검색 링크를 제공한다", async () => {
     renderWithQuery(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
-
-    expect(screen.getByRole("button", { name: "외부 정보 조회" })).toBeDisabled();
-    expect(screen.getByText(/온라인일 때만/)).toBeInTheDocument();
-  });
-
-  it("웹에서 검색 링크가 제품명으로 브라우저 검색을 새 탭으로 연다", () => {
-    renderWithQuery(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
-
-    const link = screen.getByRole("link", { name: "웹에서 검색" });
-    expect(link).toHaveAttribute("href", expect.stringContaining("google.com/search"));
-    expect(link).toHaveAttribute("target", "_blank");
+    await userEvent.click(screen.getByText("외부 정보 조회", { selector: "summary" }));
+    expect(screen.getByRole("button", { name: "앱에서 검색" })).toBeDisabled();
+    expect(screen.getByText(/오프라인입니다/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText("외부 브라우저에서 보조 검색"));
+    expect(screen.getByRole("link", { name: "Google에서 검색" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
   });
 
   it("조회 버튼을 누르면 표준 필드를 표로 보여준다", async () => {
@@ -66,7 +92,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
     expect(await screen.findByText("데일리샷")).toBeInTheDocument();
     expect(screen.getByText("45,000원")).toBeInTheDocument();
@@ -108,7 +134,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
     await screen.findByText("데일리샷");
 
     const rows = screen.getAllByRole("row");
@@ -143,7 +169,7 @@ describe("ExternalInfoCard", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
     expect(await screen.findByText(/내 가격 대비 \+10%/)).toBeInTheDocument();
   });
@@ -167,7 +193,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
     await userEvent.click(await screen.findByRole("button", { name: "상세" }));
 
     expect(screen.getByText("메모")).toBeInTheDocument();
@@ -186,7 +212,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
     expect(await screen.findByText("일부 정보만 확인됨")).toBeInTheDocument();
     expect(screen.getByText("평점을 찾지 못했습니다")).toBeInTheDocument();
@@ -198,9 +224,9 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
-    expect(await screen.findByText(/등록된 외부 소스가 없습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/조회 완료/)).toBeInTheDocument();
   });
 
   it("조회가 실패하면 경고를 보여준다", async () => {
@@ -221,9 +247,9 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByText(/조회 소스: 서버 오류/)).toBeInTheDocument();
   });
 
   it("확신이 낮으면 확인 문구와 후보 목록을 펼쳐 보여준다", async () => {
@@ -248,7 +274,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
     expect(await screen.findByText(/이 술이 맞는지 확인해 주세요/)).toBeInTheDocument();
     expect(screen.getByText("글렌알라키 10년 CS")).toBeInTheDocument();
@@ -278,7 +304,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
     await screen.findByText(/이 술이 맞는지 확인해 주세요/);
 
     const recommendedCandidate = screen.getByText("글렌알라키 10년 CS").closest("li");
@@ -311,7 +337,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
     await userEvent.click(await screen.findByRole("button", { name: "이걸로 고정" }));
 
     const pinCall = await vi.waitFor(() => {
@@ -339,7 +365,7 @@ describe("ExternalInfoCard", () => {
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
 
     expect(await screen.findByText("고정됨")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "고정 해제" })).toBeEnabled();
@@ -364,7 +390,7 @@ describe("ExternalInfoCard", () => {
     const { rerender } = renderWithQuery(
       <ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline={false} />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+    await lookup();
     await screen.findByRole("button", { name: "이걸로 고정" });
 
     rerender(<ExternalInfoCard productId="p1" productName="글렌알라키 12년" offline />);
@@ -433,7 +459,7 @@ it("고정 상품의 판매처 세 곳과 별도 규격을 보존하고 동일 �
     },
   ]);
   renderWithQuery(<ExternalInfoCard productId="p1" productName="Harbor" offline={false} />);
-  await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+  await lookup();
   expect(await screen.findByText("확인한 판매 조건 4건")).toBeInTheDocument();
   const badge = screen.getByText("확인한 판매처 중 동일 조건 최저가");
   expect(badge.closest("tr")).toHaveTextContent("합성 매장 C");
@@ -467,7 +493,7 @@ it("실패 후 마지막 관측과 미확인 판매 조건을 별도로 표시�
     },
   ]);
   renderWithQuery(<ExternalInfoCard productId="p1" productName="Harbor" offline={false} />);
-  await userEvent.click(screen.getByRole("button", { name: "외부 정보 조회" }));
+  await lookup();
   expect(await screen.findByText("최근 조회 실패 · 마지막 확인 가격")).toBeInTheDocument();
   expect(screen.getByText("제품·규격 확인 필요")).toBeInTheDocument();
   expect(screen.queryByText("확인한 판매처 중 동일 조건 최저가")).not.toBeInTheDocument();
