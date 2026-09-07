@@ -30,6 +30,7 @@ from sooljang.application.tastings import (
     finish_bottle,
     hand_over_bottle,
     list_tastings,
+    load_bottle_for_write,
     open_bottle,
     record_tasting,
     reopen_bottle,
@@ -42,14 +43,19 @@ bottles_router = APIRouter(prefix="/bottles", tags=["bottles"])
 tastings_router = APIRouter(prefix="/tastings", tags=["tastings"])
 
 
-async def _get_bottle(session: SessionDep, user_id: uuid.UUID, bottle_id: uuid.UUID) -> Bottle:
-    record = await session.scalar(
-        select(Bottle).where(
-            Bottle.id == bottle_id,
-            Bottle.user_id == user_id,
-            Bottle.deleted_at.is_(None),
+async def _get_bottle(
+    session: SessionDep, user_id: uuid.UUID, bottle_id: uuid.UUID, *, for_update: bool = False
+) -> Bottle:
+    if for_update:
+        record = await load_bottle_for_write(session, user_id=user_id, bottle_id=bottle_id)
+    else:
+        record = await session.scalar(
+            select(Bottle).where(
+                Bottle.id == bottle_id,
+                Bottle.user_id == user_id,
+                Bottle.deleted_at.is_(None),
+            )
         )
-    )
     if record is None:
         raise NotFoundError("병을 찾을 수 없습니다")
     return record
@@ -87,7 +93,7 @@ async def get_bottle(session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
 async def open_bottle_endpoint(
     session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID, payload: OpenBottleRequest
 ) -> BottleOut:
-    record = await _get_bottle(session, user_id, bottle_id)
+    record = await _get_bottle(session, user_id, bottle_id, for_update=True)
     try:
         await open_bottle(
             session,
@@ -105,7 +111,7 @@ async def open_bottle_endpoint(
 async def finish_bottle_endpoint(
     session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID, payload: FinishBottleRequest
 ) -> BottleOut:
-    record = await _get_bottle(session, user_id, bottle_id)
+    record = await _get_bottle(session, user_id, bottle_id, for_update=True)
     try:
         await finish_bottle(session, record, finished_on=payload.finished_on)
     except BottleTransitionError as error:
@@ -135,7 +141,7 @@ async def _hand_over(
     payload: HandOverRequest,
     new_status: BottleStatus,
 ) -> BottleOut:
-    record = await _get_bottle(session, user_id, bottle_id)
+    record = await _get_bottle(session, user_id, bottle_id, for_update=True)
     try:
         await hand_over_bottle(session, record, status=new_status, note=payload.note, on=payload.on)
     except BottleTransitionError as error:
@@ -149,7 +155,7 @@ async def reopen_bottle_endpoint(
     session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
 ) -> BottleOut:
     """잘못 누른 경우를 위한 되돌리기. 기록을 지우지 않고 상태만 개봉으로 바꾼다."""
-    record = await _get_bottle(session, user_id, bottle_id)
+    record = await _get_bottle(session, user_id, bottle_id, for_update=True)
     try:
         await reopen_bottle(session, record)
     except BottleTransitionError as error:
@@ -163,7 +169,7 @@ async def unopen_bottle_endpoint(
     session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
 ) -> BottleOut:
     """실수로 개봉을 누른 경우를 위한 되돌리기. 개봉 상태만 미개봉으로 되돌릴 수 있다."""
-    record = await _get_bottle(session, user_id, bottle_id)
+    record = await _get_bottle(session, user_id, bottle_id, for_update=True)
     try:
         await unopen_bottle(session, record)
     except BottleTransitionError as error:
@@ -198,7 +204,7 @@ async def create_tasting(
     sku_id = payload.sku_id
 
     if payload.bottle_id is not None:
-        bottle = await _get_bottle(session, user_id, payload.bottle_id)
+        bottle = await _get_bottle(session, user_id, payload.bottle_id, for_update=True)
         purchase = await session.get(Purchase, bottle.purchase_id)
         if purchase is None:
             raise NotFoundError("병에 연결된 구매 건을 찾을 수 없습니다")

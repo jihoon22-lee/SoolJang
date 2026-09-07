@@ -19,6 +19,7 @@ const healthy: HealthStatus = {
 function stubAll() {
   return stubRoutes([
     ...authenticatedRoutes(),
+    { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
     { match: "/health", body: healthy },
     { match: "/categories", body: emptyTree },
     { match: "/products", body: { items: [], next_cursor: null } },
@@ -187,7 +188,7 @@ describe("App", () => {
 
     // 탭을 바꿔도 배지는 그대로 보인다.
     await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
-    expect(screen.getByRole("button", { name: "최신 상태" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
   });
 
   it("탭을 전환하면 URL 해시가 바뀐다", async () => {

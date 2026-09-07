@@ -14,6 +14,8 @@ import {
 } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
 import { rankByQuery } from "@/search";
+import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
+import { useDraftState } from "@/sync/drafts";
 
 //: `ProductForm` 과 같은 값 — 405종 목록에서도 스크롤 없이 훑을 수 있는 후보 수.
 const MAX_SUGGESTIONS = 8;
@@ -394,13 +396,26 @@ function AddPurchaseForm({
   error: unknown;
   vendorNames: string[];
 }) {
-  const [skuId, setSkuId] = useState(product.skus[0]?.id ?? "");
-  const [quantity, setQuantity] = useState("1");
-  const [vendorName, setVendorName] = useState(() => getLastVendorName());
-  const [purchasedOn, setPurchasedOn] = useState(() => new Date().toISOString().slice(0, 10));
-  const [unitListPrice, setUnitListPrice] = useState("");
-  const [unitPaidPrice, setUnitPaidPrice] = useState("");
-  const [newVolumeMl, setNewVolumeMl] = useState("");
+  const [skuId, setSkuId] = useDraftState(
+    `purchase:${product.id}:skuId`,
+    product.skus[0]?.id ?? "",
+  );
+  const [quantity, setQuantity] = useDraftState(`purchase:${product.id}:quantity`, "1");
+  const [vendorName, setVendorName] = useDraftState(`purchase:${product.id}:vendorName`, () =>
+    getLastVendorName(),
+  );
+  const [purchasedOn, setPurchasedOn] = useDraftState(`purchase:${product.id}:purchasedOn`, () =>
+    new Date().toISOString().slice(0, 10),
+  );
+  const [unitListPrice, setUnitListPrice] = useDraftState(
+    `purchase:${product.id}:unitListPrice`,
+    "",
+  );
+  const [unitPaidPrice, setUnitPaidPrice] = useDraftState(
+    `purchase:${product.id}:unitPaidPrice`,
+    "",
+  );
+  const [newVolumeMl, setNewVolumeMl] = useDraftState(`purchase:${product.id}:newVolumeMl`, "");
   const [localError, setLocalError] = useState<string | null>(null);
 
   const vendorSuggestions = useMemo(
@@ -465,6 +480,7 @@ function AddPurchaseForm({
         });
       }}
     >
+      <DraftRecoveryButton form={`purchase:${product.id}`} />
       {errorMessage && (
         <p className="alert" role="alert">
           {errorMessage}

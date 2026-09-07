@@ -29,13 +29,21 @@ def _op(
 
 
 def _batch(client: TestClient, prefix: str, operations: list[dict[str, Any]]) -> dict[str, Any]:
-    response = client.post(f"{prefix}/sync/batch", json={"operations": operations})
+    response = client.post(
+        f"{prefix}/sync/batch",
+        json={
+            "operations": operations,
+            "expected_user_id": client.get(f"{prefix}/auth/me").json()["id"],
+        },
+    )
     assert response.status_code == 200, response.text
     return response.json()
 
 
 def _pull(client: TestClient, prefix: str, since: str | None = None) -> dict[str, Any]:
-    params = {"since": since} if since else {}
+    params = {"expected_user_id": client.get(f"{prefix}/auth/me").json()["id"]}
+    if since:
+        params["since"] = since
     response = client.get(f"{prefix}/sync", params=params)
     assert response.status_code == 200, response.text
     return response.json()
@@ -623,3 +631,130 @@ def test_타입이_안_맞는_값도_DataError로_배치_전체를_안_죽인다
     vendors = api_client.get(f"{prefix}/vendors").json()
     assert any(v["id"] == str(ok_vendor_id) for v in vendors), "앞서 성공한 작업이 롤백되면 안 된다"
     assert not any(v["id"] == str(never_sent_vendor_id) for v in vendors)
+
+
+def test_missing_or_changed_expected_owner_preserves_queue_and_creates_nothing(
+    api_client: TestClient,
+    prefix: str,
+) -> None:
+    command = _op(entity="vendor", op="create", fields={"name": "다른 계정 명령"})
+    assert (
+        api_client.post(f"{prefix}/sync/batch", json={"operations": [command]}).status_code == 422
+    )
+    assert (
+        api_client.post(
+            f"{prefix}/sync/batch",
+            json={"operations": [command], "expected_user_id": str(uuid.uuid4())},
+        ).status_code
+        == 409
+    )
+    assert (
+        api_client.get(f"{prefix}/sync", params={"expected_user_id": str(uuid.uuid4())}).status_code
+        == 409
+    )
+    assert _pull(api_client, prefix)["changes"]["vendor"] == []
+
+
+def test_receipt_owned_by_another_user_never_exposes_snapshot(
+    api_client: TestClient, prefix: str
+) -> None:
+    import os
+
+    import psycopg
+
+    command = _op(entity="vendor", op="create", fields={"name": "비공개 이전 사용자"})
+    _batch(api_client, prefix, [command])
+    # 격리 fixture DB에서 receipt 소유자만 합성 다른 계정으로 바꾼다.
+    with psycopg.connect(
+        os.environ["SOOLJANG_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+    ) as conn:
+        conn.execute(
+            "UPDATE outbox_receipt SET user_id=%s WHERE id=%s",
+            (uuid.uuid4(), command["idempotency_key"]),
+        )
+    result = _batch(api_client, prefix, [command])
+    assert result["stopped"]
+    assert result["results"][0]["status"] == "failed"
+    assert result["results"][0]["snapshot"] is None
+    assert "비공개 이전 사용자" not in str(result)
+
+
+def test_concurrent_duplicate_delivery_applies_domain_change_once(
+    api_client: TestClient, prefix: str
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    command = _op(entity="vendor", op="create", fields={"name": "중복 전송 구매처"})
+    owner = api_client.get(f"{prefix}/auth/me").json()["id"]
+
+    def send() -> dict[str, Any]:
+        response = api_client.post(
+            f"{prefix}/sync/batch", json={"operations": [command], "expected_user_id": owner}
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: send(), range(2)))
+    assert all(result["results"][0]["status"] == "applied" for result in results)
+    assert len(_pull(api_client, prefix)["changes"]["vendor"]) == 1
+
+
+def test_expired_receipt_retains_tombstone_and_does_not_repeat_command(
+    api_client: TestClient, prefix: str
+) -> None:
+    import os
+
+    import psycopg
+
+    command = _op(entity="vendor", op="create", fields={"name": "보관 기간 검증"})
+    _batch(api_client, prefix, [command])
+    db_url = os.environ["SOOLJANG_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(db_url) as conn:
+        conn.execute(
+            "UPDATE outbox_receipt SET created_at=now()-interval '31 days' WHERE id=%s",
+            (command["idempotency_key"],),
+        )
+    result = _batch(api_client, prefix, [command])
+    assert result["stopped"]
+    assert "기간" in result["results"][0]["detail"]
+    with psycopg.connect(db_url) as conn:
+        snapshot = conn.execute(
+            "SELECT response_snapshot FROM outbox_receipt WHERE id=%s",
+            (command["idempotency_key"],),
+        ).fetchone()
+    assert snapshot == ({"receipt_expired": True},)
+    assert len(_pull(api_client, prefix)["changes"]["vendor"]) == 1
+
+
+def test_two_devices_updating_same_base_keep_one_conflict(
+    api_client: TestClient, prefix: str
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    vendor = _op(entity="vendor", op="create", fields={"name": "처음 이름"})
+    first = _batch(api_client, prefix, [vendor])["results"][0]["snapshot"]
+    owner = api_client.get(f"{prefix}/auth/me").json()["id"]
+    commands = [
+        _op(
+            entity="vendor",
+            op="update",
+            entity_id=uuid.UUID(first["id"]),
+            idempotency_key=uuid.uuid4(),
+            base_updated_at=first["updated_at"],
+            fields={"name": name},
+        )
+        for name in ("기기 A", "기기 B")
+    ]
+
+    def send(command: dict[str, Any]) -> str:
+        response = api_client.post(
+            f"{prefix}/sync/batch", json={"operations": [command], "expected_user_id": owner}
+        )
+        assert response.status_code == 200
+        return response.json()["results"][0]["status"]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = list(executor.map(send, commands))
+    assert sorted(statuses) == ["applied", "conflict"]
+    assert len(_pull(api_client, prefix)["changes"]["conflict_log"]) == 1

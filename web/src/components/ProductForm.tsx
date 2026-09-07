@@ -5,6 +5,8 @@ import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { formatCategoryPath } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching, rankByQuery } from "@/search";
+import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
+import { useDraftState } from "@/sync/drafts";
 
 //: 자동완성이 한 번에 보여줄 후보 수. 405종 목록에서도 스크롤 없이 훑을 수 있는 정도.
 const MAX_SUGGESTIONS = 8;
@@ -95,12 +97,15 @@ export function ProductForm({
   onSelectExisting,
   vendorNames = [],
 }: ProductFormProps) {
-  const [values, setValues] = useState<ProductFormValues>({
-    ...EMPTY_PRODUCT_FORM,
-    purchasedOn: new Date().toISOString().slice(0, 10),
-    vendorName: getLastVendorName(),
-    ...initialValues,
-  });
+  const [values, setValues] = useDraftState<ProductFormValues>(
+    mode === "create" ? "product:create" : `product:edit:${window.location.hash}`,
+    {
+      ...EMPTY_PRODUCT_FORM,
+      purchasedOn: new Date().toISOString().slice(0, 10),
+      vendorName: getLastVendorName(),
+      ...initialValues,
+    },
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const apiError = error instanceof ApiError ? error : null;
@@ -163,6 +168,9 @@ export function ProductForm({
       // 톤에 안 맞는 UI 가 튀어나온다. 검증은 전부 `handleSubmit` 의 `.alert` 로 통일한다.
       noValidate
     >
+      <DraftRecoveryButton
+        form={mode === "create" ? "product:create" : `product:edit:${window.location.hash}`}
+      />
       <h2 id="product-form-heading">{mode === "edit" ? "정보 수정" : "새 술 등록"}</h2>
 
       {(localError || apiError || genericError) && (

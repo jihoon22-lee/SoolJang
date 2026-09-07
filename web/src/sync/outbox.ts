@@ -7,7 +7,14 @@
  * 참조할 수 있다(구매 건 → 병 연쇄 생성).
  */
 
-import { db, type OutboxEntry, type SyncEntity, type SyncRow } from "@/sync/db";
+import {
+  databaseIdentity,
+  db,
+  type OutboxEntry,
+  SYNC_ENTITIES,
+  type SyncEntity,
+  type SyncRow,
+} from "@/sync/db";
 import { OUTBOX_CHANGED, syncEvents } from "@/sync/events";
 import { newId } from "@/sync/uuid7";
 
@@ -26,11 +33,15 @@ export interface EnqueueInput {
 
 /** outbox 항목 하나를 적재하고, 있으면 로컬 미러도 낙관적으로 갱신한다. */
 export async function enqueue(input: EnqueueInput): Promise<string> {
+  const store = db;
+  const identity = databaseIdentity();
   const idempotencyKey = newId();
   const now = new Date().toISOString();
 
   const entry: OutboxEntry = {
     idempotency_key: idempotencyKey,
+    sequence_key: idempotencyKey,
+    user_id: input.optimisticRow?.user_id ?? identity.userId ?? undefined,
     entity: input.entity,
     op: input.op,
     entity_id: input.entityId,
@@ -43,52 +54,136 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
     touched_ids: input.touchedIds,
   };
 
-  await db.transaction("rw", db.outbox, db.table(input.entity), async () => {
-    await db.outbox.add(entry);
+  await store.transaction("rw", store.outbox, store.table(input.entity), async () => {
+    if (identity.generation !== databaseIdentity().generation || store !== db)
+      throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
+    const existing = (await store.table(input.entity).get(input.entityId)) as SyncRow | undefined;
+    entry.user_id ??= existing?.user_id;
+    if (identity.userId && entry.user_id !== identity.userId)
+      throw new Error("다른 계정의 입력을 저장할 수 없습니다");
+    await store.outbox.add(entry);
     if (input.op === "delete") {
-      const existing = await db.table(input.entity).get(input.entityId);
+      const existing = await store.table(input.entity).get(input.entityId);
       if (existing) {
-        await db.table(input.entity).update(input.entityId, { deleted_at: now, updated_at: now });
+        await store
+          .table(input.entity)
+          .update(input.entityId, { deleted_at: now, updated_at: now });
       }
     } else if (input.optimisticRow) {
-      await db.table(input.entity).put(input.optimisticRow);
+      await store.table(input.entity).put(input.optimisticRow);
     }
+    if (identity.generation !== databaseIdentity().generation || store !== db)
+      throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
   });
 
   syncEvents.dispatchEvent(new Event(OUTBOX_CHANGED));
   return idempotencyKey;
 }
 
-/**
- * 실패로 확정된 outbox 항목을 사용자가 직접 건너뛴다(삭제).
- *
- * 서버가 이미 이 작업을 영구 실패로 기록했다(§5.2, `OutboxReceipt.status === "failed"`).
- * 그대로 두면 head-of-line blocking(같은 문서 §5.2) 때문에 이 항목 뒤의 모든 오프라인
- * 쓰기가 막힌 채로 남는다 — 사용자가 잘못된 값을 고쳐서 다시 등록하거나, 그냥 포기하고
- * 넘어갈 수 있게 이 함수를 제공한다.
- *
- * `create`(그리고 `tasting_session` 의 `action` — 실제로는 새 시음 기록을 만드는
- * 연산이라 `entity_id` 가 항상 신규 id 다)는 서버에 실제로 만들어진 적이 없는 로컬
- * 낙관적 행을 남긴다 — 이 행도 함께 지운다. 그 외(기존 엔티티를 수정하는 `update`,
- * 병 상태 전이 `action`)는 서버의 실제 값이 다음 풀에서 그대로 돌아오므로 outbox 항목만
- * 지우면 된다. 이 항목이 다른 아직 못 보낸 항목(예: 실패한 제품 생성 뒤에 줄 선
- * 규격·구매 생성)이 참조하던 대상이었다면, 그 뒤 항목들은 다음 시도에서 각자 새로
- * 실패해 이 패널에 차례로 나타난다 — 체인 전체를 한 번에 취소하지는 않는다.
- */
-export async function discardFailedEntry(idempotencyKey: string): Promise<void> {
-  const entry = await db.outbox.get(idempotencyKey);
-  if (!entry) return;
-
-  const isSyntheticCreate = entry.op === "create" || entry.entity === "tasting_session";
-
-  await db.transaction("rw", db.outbox, db.table(entry.entity), async () => {
-    await db.outbox.delete(idempotencyKey);
-    if (isSyntheticCreate) {
-      await db.table(entry.entity).delete(entry.entity_id);
+/** 실패한 부모에 의존하는 명령을 찾는다. 참조 ID와 병 연쇄 생성까지 추적한다. */
+export function dependentEntries(entry: OutboxEntry, queue: OutboxEntry[]): OutboxEntry[] {
+  const affected = new Set([entry.entity_id, ...(entry.touched_ids ?? [])]);
+  for (const id of Array.isArray(entry.fields.bottle_ids) ? entry.fields.bottle_ids : []) {
+    if (typeof id === "string") affected.add(id);
+  }
+  const result: OutboxEntry[] = [];
+  const references = (value: unknown): boolean =>
+    typeof value === "string"
+      ? affected.has(value)
+      : Array.isArray(value)
+        ? value.some(references)
+        : value !== null && typeof value === "object"
+          ? Object.values(value).some(references)
+          : false;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const candidate of queue) {
+      if (candidate.idempotency_key === entry.idempotency_key || result.includes(candidate))
+        continue;
+      if (
+        affected.has(candidate.entity_id) ||
+        references(candidate.fields) ||
+        (candidate.touched_ids ?? []).some((id) => affected.has(id))
+      ) {
+        result.push(candidate);
+        affected.add(candidate.entity_id);
+        for (const id of candidate.touched_ids ?? []) affected.add(id);
+        for (const id of Array.isArray(candidate.fields.bottle_ids)
+          ? candidate.fields.bottle_ids
+          : [])
+          if (typeof id === "string") affected.add(id);
+        changed = true;
+      }
     }
-  });
+  }
+  return result;
+}
 
+/** 명시적으로 실패한 명령만 폐기한다. 의존 명령이 있으면 함께 폐기할 때만 허용한다. */
+export async function discardFailedEntry(
+  idempotencyKey: string,
+  includeDependents = false,
+): Promise<void> {
+  const store = db;
+  await store.transaction("rw", store.tables, async () => {
+    const entry = await store.outbox.get(idempotencyKey);
+    if (!entry) return;
+    if (entry.status !== "failed")
+      throw new Error("처리 결과가 확인되지 않은 명령은 폐기할 수 없습니다");
+    const dependents = dependentEntries(entry, await store.outbox.toArray());
+    if (dependents.length && !includeDependents)
+      throw new Error(`연결된 대기 명령 ${dependents.length}건을 먼저 확인하세요`);
+    const reconcile = new Set<string>(
+      JSON.parse((await store.sync_meta.get("reconcile_ids"))?.value ?? "[]"),
+    );
+    for (const item of [entry, ...dependents]) {
+      await store.outbox.delete(item.idempotency_key);
+      reconcile.add(item.entity_id);
+      for (const id of item.touched_ids ?? []) reconcile.add(id);
+      if (item.op === "create" || item.entity === "tasting_session") {
+        await store.table(item.entity).delete(item.entity_id);
+        if (item.entity === "purchase") {
+          const bottles = await store.bottle.where("purchase_id").equals(item.entity_id).toArray();
+          await store.bottle.bulkDelete(bottles.map((row) => row.id));
+        }
+      }
+    }
+    await store.sync_meta.put({ key: "reconcile_ids", value: JSON.stringify([...reconcile]) });
+    await store.sync_meta.delete("cursor");
+  });
   syncEvents.dispatchEvent(new Event(OUTBOX_CHANGED));
+}
+
+/** 실패 receipt는 다시 실행되지 않는다. 수정은 같은 FIFO 위치의 새 멱등 명령이다. */
+export async function replaceFailedEntry(
+  idempotencyKey: string,
+  fields: Record<string, unknown>,
+): Promise<string> {
+  const store = db;
+  const newKey = newId();
+  await store.transaction(
+    "rw",
+    [store.outbox, ...SYNC_ENTITIES.map((entity) => store.table(entity))],
+    async () => {
+      const entry = await store.outbox.get(idempotencyKey);
+      if (!entry || entry.status !== "failed")
+        throw new Error("수정할 실패 명령을 찾을 수 없습니다");
+      await store.outbox.delete(idempotencyKey);
+      await store.outbox.add({
+        ...entry,
+        idempotency_key: newKey,
+        sequence_key: entry.sequence_key ?? entry.idempotency_key,
+        fields,
+        status: "pending",
+        error: null,
+      });
+      if (entry.op === "create" || entry.op === "update")
+        await store.table(entry.entity).update(entry.entity_id, fields);
+    },
+  );
+  syncEvents.dispatchEvent(new Event(OUTBOX_CHANGED));
+  return newKey;
 }
 
 /**
