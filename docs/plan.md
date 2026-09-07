@@ -16,11 +16,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-09-07 — #116/#132 머지 완료. B01 #133 CI 진행, B02 복구 구현·실제 격리 복원 검증 완료. B03·B06 병행 |
+| 최종 갱신 | 2026-09-07 — #116/#132 머지 완료. B01 #133·B02 #134 머지. B06 #135 CI 진행, B03 연결 관리 구현·전체 검사·실브라우저 검증 완료 |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
 | 다음 착수 Task | **B04/WP06·07 #124/#125 제품 식별·복수 판매 조건**. B03 연결 관리와 B06 동기화 병행 |
-| 현재 브랜치 | `feature/v170-recovery` — B02. 실제 재개 시 Git/열린 PR 및 분리 worktree 상태 확인 |
-| 진행 중 잔여 항목 | B01 #133 CI 진행. B02 코드·합성 실제 복원 검증 완료, 운영 전환 수용은 B09에 남음. 소스별 계약·실연결과 B04 매칭 개선은 별도 수용. B02/B06 및 B03~B09를 이어간다. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
+| 현재 브랜치 | `feature/v170-connections` — B03. 실제 재개 시 Git/열린 PR 및 분리 worktree 상태 확인 |
+| 진행 중 잔여 항목 | B01·B02 머지. B03 구현·실브라우저 검증 완료/PR CI 예정, B06 #135 CI 진행. B04 가격 비교 및 B08 데이터·재고 구현 중. 운영 수용은 B09에 남음. 소스별 계약·실연결과 B04 매칭 개선은 별도 수용. B02/B06 및 B03~B09를 이어간다. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
 | 버전 상태 | 패키지 `1.6.1`. 마지막 문서상 확인 배포는 `v1.6.0`(2026-08-20, migration `0012_llm_rematch`). 이번 작업에서 운영 상태를 재조회하지 않음 |
 
 - 현재 마일스톤: [v1.7.0](https://github.com/jihoon22-lee/SoolJang/milestone/1).
@@ -192,11 +192,12 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 
 | 범위 | 상태 | 근거 |
 |---|---|---|
-| Codex 지침·스킬 준비 | ✅ 적용·로컬 검증 완료. #116 머지 및 main 통합 후 CI 재검증 중 | [PR #132](https://github.com/jihoon22-lee/SoolJang/pull/132), [기록](../workthrough/2026-09-07-codex-workflow-optimization.md) |
-| B01 / WP01·WP04 | 🟡 구현·로컬 검증 완료, #133 CI 진행 | [작업 기록](../workthrough/2026-09-07-v170-b01-foundation.md) |
-| B02 / WP03 | 🟡 구현·실제 격리 복원 검증 완료, 운영 전환은 B09 | [작업 기록](../workthrough/2026-09-07-v170-b02-recovery.md) |
-| B06 / WP02 | 🟡 별도 worktree에서 동기화/PWA 구현 중 | [로드맵](roadmap/v1.7.0.md) |
-| B03~B05 / B07~B09 | ⬜ 구현·실검증 예정 | [로드맵](roadmap/v1.7.0.md), 실제 PR/상태는 [#117](https://github.com/jihoon22-lee/SoolJang/issues/117) |
+| Codex 지침·스킬 준비 | ✅ #116·#132 CI 통과·머지 | [PR #132](https://github.com/jihoon22-lee/SoolJang/pull/132), [기록](../workthrough/2026-09-07-codex-workflow-optimization.md) |
+| B01 / WP01·WP04 | 🟡 #133 CI 통과·머지. 소스별 실연결 수용 남음 | [작업 기록](../workthrough/2026-09-07-v170-b01-foundation.md) |
+| B02 / WP03 | 🟡 #134 CI 통과·머지. 운영 전환은 B09 | [작업 기록](../workthrough/2026-09-07-v170-b02-recovery.md) |
+| B06 / WP02 | 🟡 #135 전체 로컬/실브라우저 검사 통과, CI 진행 | [작업 기록](../workthrough/2026-09-07-v170-sync.md) |
+| B03 / WP05 | 🟡 구현·전체 로컬 검사·실브라우저 통과, PR CI 예정 | [기록](../workthrough/2026-09-07-v170-b03-connections.md) |
+| B04~B05 / B07~B09 | 🟡 B04·B08 구현/검증, B05·B07·B09 후속 | [로드맵](roadmap/v1.7.0.md), 실제 PR/상태는 [#117](https://github.com/jihoon22-lee/SoolJang/issues/117) |
 
 ### 기존 Task 이력
 
@@ -2186,6 +2187,12 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | 번호 | 결정 | 근거 |
 |---|---|---|
 | D200 | 백업을 DB·uploads·manifest 묶음으로 검증 후 게시하고 빈 격리 대상에만 복원한다. 생존과 스키마 readiness를 분리한다 | 실제 pg_dump/pg_restore 후 합성 앱 로그인·제품/구매/병/시음·첨부·키 보존 검증. 운영 전환과 WSL cold start는 B09에서 별도 확인 |
+
+### v1.7.0 B03 결정 (D202, 2026-09-07)
+
+| 번호 | 결정 | 근거 |
+|---|---|---|
+| D202 | 기존 source/LLM마다 별도 UUID 연결을 만들고 암호문을 그대로 보존한다. 등록·검증·사용을 구분하며 blank 키·삭제·중지를 명시한다 | 같은 hint 키를 합치지 않으며 partial migration rollback·재실행·기존 OCR/옵션 보존 검증. 실제 제공자 인증은 별도 수용 |
 
 ## 6. 열린 질문
 

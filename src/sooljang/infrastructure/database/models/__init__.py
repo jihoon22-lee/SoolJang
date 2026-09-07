@@ -39,6 +39,10 @@ from sooljang.infrastructure.database.models.product import (
     ProductVariety,
     Sku,
 )
+from sooljang.infrastructure.database.models.provider_connection import (
+    ProviderConnection,
+    ProviderCredential,
+)
 from sooljang.infrastructure.database.models.saved_view import SavedView
 from sooljang.infrastructure.database.models.sync import ConflictLog, OutboxReceipt, SyncCursor
 from sooljang.infrastructure.database.models.tasting import (
@@ -75,6 +79,8 @@ __all__ = [
     "LlmSetting",
     "OutboxReceipt",
     "Producer",
+    "ProviderConnection",
+    "ProviderCredential",
     "Product",
     "ProductVariety",
     "SavedView",

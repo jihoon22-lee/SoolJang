@@ -20,7 +20,7 @@ import httpx
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.api.errors import NotFoundError
+from sooljang.api.errors import NotFoundError, ValidationFailedError
 from sooljang.application.external_request_usage import (
     RequestBudget,
     current_usage,
@@ -90,9 +90,12 @@ async def list_sources(session: AsyncSession, *, user_id: uuid.UUID) -> list[Ext
             .order_by(ExternalSource.priority, ExternalSource.name)
         )
     )
-    updated = [_sync_preset_if_stale(source) for source in sources]
-    if any(updated):
-        await session.flush()
+    for source in sources:
+        if _sync_preset_if_stale(source):
+            from sooljang.application.provider_connections import source_configuration_changed
+
+            await source_configuration_changed(session, source)
+    await session.flush()
     return sources
 
 
@@ -128,6 +131,9 @@ async def create_source(
     )
     session.add(source)
     await session.flush()
+    from sooljang.application.provider_connections import ensure_source_connection
+
+    await ensure_source_connection(session, source)
     return source
 
 
@@ -173,6 +179,9 @@ async def create_source_from_preset(
     )
     session.add(source)
     await session.flush()
+    from sooljang.application.provider_connections import ensure_source_connection
+
+    await ensure_source_connection(session, source)
     return source
 
 
@@ -204,6 +213,9 @@ async def update_source(
         setattr(source, key, value)
     if changed:
         source.config_revision += 1
+        from sooljang.application.provider_connections import source_configuration_changed
+
+        await source_configuration_changed(session, source)
     await session.flush()
     return source
 
@@ -237,6 +249,9 @@ async def set_credentials(
     반환값은 마스킹된 힌트뿐이다 — 원문은 이 함수를 벗어나지 않는다(`LlmSetting` 과 같은
     Fernet 패턴, `infrastructure/security/secrets.py`).
     """
+    source = await get_owned_source(session, user_id=user_id, source_id=source_id)
+    if source is None:
+        raise NotFoundError("외부 소스를 찾을 수 없습니다")
     hints: dict[str, str] = {}
     for name, value in values.items():
         if not value.strip():
@@ -270,6 +285,9 @@ async def set_credentials(
             raise NotFoundError("외부 소스를 찾을 수 없습니다")
         source.config_revision += 1
     await session.flush()
+    from sooljang.application.provider_connections import sync_legacy_source_credentials
+
+    await sync_legacy_source_credentials(session, source)
     return hints
 
 
@@ -553,12 +571,62 @@ async def _fetch_source(
     transport: httpx.AsyncBaseTransport | None,
     master_key: str | None,
     pinned: PinnedMatch | None = None,
+    allow_paused: bool = False,
 ) -> AdapterResult:
+    from sooljang.application.provider_connections import (
+        ConnectionChanged,
+        get_owned_connection,
+        get_request_credentials,
+        reserve_connection_request,
+        validate_source_connection,
+    )
+
+    connection = None
     try:
-        values = (
-            await _load_credential_values(session, source_id=source.id, master_key=master_key)
-            if master_key is not None
-            else {}
+        if source.connection_id is not None:
+            connection = await get_owned_connection(
+                session, user_id=source.user_id, connection_id=source.connection_id
+            )
+            await validate_source_connection(session, source, connection)
+            values = await get_request_credentials(
+                session,
+                user_id=source.user_id,
+                connection_id=connection.id,
+                master_key=master_key or "",
+                require_active=not allow_paused,
+            )
+        else:
+            values = (
+                await _load_credential_values(session, source_id=source.id, master_key=master_key)
+                if master_key is not None
+                else {}
+            )
+    except ConnectionChanged:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "연결 사용이 일시 중지되었습니다",
+            outcome=SourceOutcome.INVALID_CONFIGURATION,
+        )
+    except NotFoundError:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "소스에 연결된 인증 설정이 해제되었습니다",
+            outcome=SourceOutcome.CREDENTIAL_UNAVAILABLE,
+        )
+    except ValidationFailedError:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "소스와 제공자의 인증 대상이 일치하지 않습니다",
+            outcome=SourceOutcome.INVALID_CONFIGURATION,
         )
     except InvalidToken, ValueError:
         return AdapterResult(
@@ -586,6 +654,17 @@ async def _fetch_source(
         )
 
     async def before_request(_request: httpx.Request) -> None:
+        if connection is not None:
+            await reserve_connection_request(
+                session,
+                user_id=source.user_id,
+                connection_id=connection.id,
+                expected_revision=connection.config_revision,
+                require_active=not allow_paused,
+                source_id=source.id,
+                source_revision=source.config_revision,
+            )
+            return
         await reserve_request(
             user_id=source.user_id,
             budgets=[
@@ -639,6 +718,7 @@ async def probe_source(
         identity=identity,
         transport=transport,
         master_key=master_key,
+        allow_paused=True,
     )
     await _record_probe(
         session,
@@ -842,21 +922,26 @@ async def _maybe_llm_rematch(
     if calls_this_month >= setting.rematch_monthly_cap:
         return None
 
-    # 이 시점부터는 "호출을 시도했다" — 실패하더라도 기록해 24시간 dedup 이 걸리게 한다.
+    from sooljang.application.llm_settings import get_decrypted_api_key
+
+    try:
+        configured = await get_decrypted_api_key(
+            session, user_id=user_id, master_key=master_key, reserve=True
+        )
+    except Exception:
+        return None
+    if configured is None:
+        return None
+    _, api_key, model = configured
     await _record_rematch_call(
         session, user_id=user_id, source_id=source_id, product_id=product_id, called_at=now
     )
-
-    try:
-        api_key = decrypt_secret(setting.api_key_ciphertext, master_key=master_key)
-    except Exception:
-        return None
 
     outcome = await llm_rematch(
         identity,
         [candidate.name for candidate in candidates],
         api_key=api_key,
-        model=setting.model,
+        model=model,
     )
     if outcome is None or outcome.index is None:
         return None

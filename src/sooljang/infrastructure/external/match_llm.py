@@ -91,7 +91,7 @@ async def rematch(
     if not candidate_names:
         return None
 
-    client = AsyncOpenAI(api_key=api_key, http_client=http_client)
+    client = AsyncOpenAI(api_key=api_key, http_client=http_client, max_retries=0)
     prompt = _PROMPT_TEMPLATE.format(
         identity=_describe_identity(identity),
         candidates=_describe_candidates(candidate_names),
@@ -106,7 +106,7 @@ async def rematch(
     except Exception:
         # 인증·요청 형식·네트워크·타임아웃 등 SDK 가 던지는 예외 종류를 호출부가 알 필요
         # 없이 조용한 폴백 하나로 통일한다(`llm.py::extract_label` 과 같은 판단).
-        logger.warning("LLM 재판정 호출 실패", exc_info=True)
+        logger.warning("LLM 재판정 호출 실패 (제공자 응답은 기록하지 않음)")
         return None
 
     message = response.choices[0].message

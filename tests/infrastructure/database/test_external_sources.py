@@ -1603,8 +1603,8 @@ class TestLlmRematch:
         )
 
         assert results[0].llm_recommended_url is None
-        # 복호화에서 이미 실패했으니 LLM 호출까지 가지 않는다 — 그래도 24시간 dedup 은
-        # 걸려야 한다(잘못된 키로 계속 재시도하며 비용을 쓰지 않게).
+        # 송신 자격을 확인하기 전에 호출 로그·상한을 소비하지 않는다. 잘못된 복구 키는
+        # 네트워크 요청을 만들지 않으며, 올바른 키 복구 후의 재시도를 dedup으로 막지 않는다.
         assert calls == []
         logs = list(await session.scalars(select(ExternalLlmRematchLog)))
-        assert len(logs) == 1
+        assert logs == []

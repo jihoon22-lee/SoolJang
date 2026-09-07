@@ -779,3 +779,75 @@ export interface SourceProbeResult {
   matched_name: string | null;
   match_score: number | null;
 }
+
+/** 설정 전용 연결 메타데이터. 인증 원문은 서버 응답·동기화 대상이 아니다. */
+export type ProviderKind =
+  | "naver_hub"
+  | "naver_legacy"
+  | "brave"
+  | "exa"
+  | "openai_ocr"
+  | "dailyshot"
+  | "source";
+export interface ConnectionCredentialField {
+  name: string;
+  label: string;
+  saved: boolean;
+  masked_hint: string | null;
+}
+export interface ProviderDefinition {
+  kind: ProviderKind;
+  label: string;
+  fields: ConnectionCredentialField[];
+  features: string[];
+  guide_url: string;
+  note: string;
+  probe_supported: boolean;
+}
+export interface ProviderConnection {
+  id: string;
+  provider_kind: ProviderKind;
+  name: string;
+  is_active: boolean;
+  config_revision: number;
+  rate_limit_per_min: number;
+  request_limit_per_day: number;
+  registration: "unregistered" | "incomplete" | "saved" | "not_required" | "recovery_required";
+  credential_fields: ConnectionCredentialField[];
+  missing_fields: string[];
+  origin_kind: string;
+  updated_at: string;
+  verified_revision: number | null;
+  last_test_at: string | null;
+  last_outcome: SourceOutcome;
+  verification_stale: boolean;
+  features: string[];
+  sources: { id: string; name: string; is_active: boolean }[];
+  usage: { minute: number; day: number };
+  provider_remaining: null;
+  ocr_model: string;
+  ocr_rematch_enabled: boolean;
+  ocr_rematch_monthly_cap: number;
+}
+export interface ConnectionCreate {
+  provider_kind: ProviderKind;
+  name: string;
+  credentials: Record<string, string>;
+}
+export interface ConnectionUpdate {
+  expected_revision: number;
+  name?: string;
+  is_active?: boolean;
+  rate_limit_per_min?: number;
+  request_limit_per_day?: number;
+  credentials?: Record<string, string>;
+  delete_credentials?: string[];
+  ocr_model?: string;
+  ocr_rematch_enabled?: boolean;
+  ocr_rematch_monthly_cap?: number;
+}
+export interface ConnectionProbeResult {
+  outcome: SourceOutcome;
+  tested_revision: number;
+  applied: boolean;
+}

@@ -65,7 +65,7 @@ async def extract_label(
     실패(거부·빈 응답·네트워크 오류)는 `LabelExtractionFailedError` 로 통일한다 — 호출부가
     LLM SDK 의 예외 종류를 알 필요 없이 "실패 시 수동 폴백"(Task 17 사양)으로 넘어가면 된다.
     """
-    client = AsyncOpenAI(api_key=api_key, http_client=http_client)
+    client = AsyncOpenAI(api_key=api_key, http_client=http_client, max_retries=0)
     data_url = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"
 
     try:
@@ -82,14 +82,16 @@ async def extract_label(
             ],
             response_format=LabelExtraction,
         )
-    except Exception as error:
+    except Exception:
         # SDK 가 던지는 예외 종류가 다양하다(인증·요청 형식·네트워크·타임아웃 등) — 호출부는
         # 세부 종류를 몰라도 되게 전부 같은 실패로 통일한다.
-        raise LabelExtractionFailedError(str(error)) from error
+        raise LabelExtractionFailedError("제공자 인증·권한 또는 네트워크를 확인하세요") from None
 
     message = response.choices[0].message
     if message.refusal:
-        raise LabelExtractionFailedError(message.refusal)
+        raise LabelExtractionFailedError("라벨 인식 요청이 거절되었습니다")
     if message.parsed is None:
         raise LabelExtractionFailedError("LLM 이 구조화된 응답을 반환하지 않았습니다")
+    if api_key and api_key in message.parsed.model_dump_json():
+        raise LabelExtractionFailedError("제공자가 유효하지 않은 응답을 반환했습니다")
     return message.parsed

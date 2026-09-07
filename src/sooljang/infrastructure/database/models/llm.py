@@ -21,8 +21,10 @@ LLM 으로 재판정하는 보조 기능의 설정이다. 이 필드가 있는 �
 """
 
 import enum
+import uuid
 
-from sqlalchemy import Boolean, Integer, LargeBinary, String
+from sqlalchemy import Boolean, ForeignKey, Integer, LargeBinary, String
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sooljang.infrastructure.database.base import Base, EntityMixin, str_enum_column
@@ -51,6 +53,12 @@ class LlmSetting(Base, EntityMixin):
     """
 
     __tablename__ = "llm_setting"
+
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("provider_connection.id", ondelete="SET NULL"),
+        default=None,
+    )
 
     provider: Mapped[LlmProvider] = mapped_column(
         str_enum_column(LlmProvider, "llm_provider", length=20), nullable=False
