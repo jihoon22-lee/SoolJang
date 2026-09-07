@@ -58,11 +58,21 @@ async def snapshot(
         raise ValidationFailedError("다른 대상 구매처를 선택하세요")
     if kind == "location_delete" and target_id is not None:
         raise ValidationFailedError("위치 삭제 시 병은 미지정으로 옮깁니다")
-    rows = [await owned(session, model, user_id, entity_id) for entity_id in sorted(ids)]
     target = None
-    if target_id:
-        target_model = Category if kind == "product_category" else Vendor
-        target = await owned(session, target_model, user_id, target_id)
+    if kind == "vendor_merge":
+        assert target_id is not None
+        # 반대 방향 병합도 같은 두 구매처를 UUID 순서로 잠근다.
+        locked = {
+            entity_id: await owned(session, Vendor, user_id, entity_id)
+            for entity_id in sorted([*ids, target_id])
+        }
+        rows = [locked[entity_id] for entity_id in sorted(ids)]
+        target = locked[target_id]
+    else:
+        if target_id:
+            target_model = Category if kind == "product_category" else Vendor
+            target = await owned(session, target_model, user_id, target_id)
+        rows = [await owned(session, model, user_id, entity_id) for entity_id in sorted(ids)]
     purchases: list[Purchase] = []
     placements: list[BottlePlacement] = []
     stocktakes: list[Stocktake] = []

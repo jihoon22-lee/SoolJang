@@ -817,6 +817,14 @@ async def _dispatch_purchase(
 
         return await _applied(session, op, purchase)
 
+    if op.op == "update" and fields.get("vendor_id") is not None:
+        await _load_writable(
+            session,
+            Vendor,
+            user_id=user_id,
+            entity_id=_required_uuid(fields["vendor_id"], field_name="vendor_id"),
+            op="update",
+        )
     purchase = await _load_writable(
         session, Purchase, user_id=user_id, entity_id=op.entity_id, op=op.op
     )
