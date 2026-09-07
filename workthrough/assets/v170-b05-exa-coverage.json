@@ -1,0 +1,154 @@
+{
+  "provider": "exa",
+  "request_type": "fast + text(maxCharacters=1500)",
+  "requests": 6,
+  "generative_requests": 0,
+  "raw_text_stored": false,
+  "cases": [
+    {
+      "category": "whisky",
+      "outcome": "success",
+      "documents": 10,
+      "excerpt_count": 10,
+      "domains": [
+        "caviste.co.uk",
+        "geordiedrams.blogspot.com",
+        "whiskyboys.com",
+        "whiskyconsidered.com",
+        "www.dramface.com",
+        "www.livetsgoda.se",
+        "www.nicks.com.au",
+        "www.thewhiskyexchange.com",
+        "www.whiskynotes.be",
+        "www.youtube.com"
+      ],
+      "kinds": [
+        "info",
+        "review",
+        "unknown"
+      ],
+      "evidence": [
+        "provider_text"
+      ]
+    },
+    {
+      "category": "wine",
+      "outcome": "success",
+      "documents": 10,
+      "excerpt_count": 10,
+      "domains": [
+        "delectable.com",
+        "en.lespassionnesduvin.com",
+        "finding.wine",
+        "perswijn.nl",
+        "v1.vinous.com",
+        "www.hitimewine.net",
+        "www.raisin.digital",
+        "www.robertparker.com",
+        "www.viniou.co.uk",
+        "www.viniou.fr"
+      ],
+      "kinds": [
+        "review",
+        "unknown"
+      ],
+      "evidence": [
+        "provider_text"
+      ]
+    },
+    {
+      "category": "traditional",
+      "outcome": "success",
+      "documents": 10,
+      "excerpt_count": 10,
+      "domains": [
+        "bellus64.co.kr",
+        "dinoma.tistory.com",
+        "m.edaily.co.kr",
+        "nodam.tistory.com",
+        "per.auction.co.kr",
+        "tohome.thehyundai.com",
+        "wineys.tistory.com",
+        "woong-bee888.tistory.com",
+        "www.dafarm.net",
+        "yangchon.co.kr"
+      ],
+      "kinds": [
+        "info",
+        "review",
+        "unknown"
+      ],
+      "evidence": [
+        "provider_text"
+      ]
+    },
+    {
+      "category": "sake",
+      "outcome": "success",
+      "documents": 10,
+      "excerpt_count": 10,
+      "domains": [
+        "2honsyu.hatenablog.com",
+        "ameblo.jp",
+        "japanesecraftsake.com",
+        "neko-to-nihonsyu.jp",
+        "note.com",
+        "sakeai.com",
+        "www.sakenomy.jp",
+        "www.saketime.jp"
+      ],
+      "kinds": [
+        "unknown"
+      ],
+      "evidence": [
+        "provider_text"
+      ]
+    },
+    {
+      "category": "baijiu",
+      "outcome": "success",
+      "documents": 10,
+      "excerpt_count": 10,
+      "domains": [
+        "mffb.com.cn",
+        "www.460.net.cn",
+        "www.jiupaiming.com",
+        "www.meijiu.com",
+        "www.qianchusai.com",
+        "www.yanhejiu.cn",
+        "www.yanjizhuang.cn",
+        "www.yeeoo.com"
+      ],
+      "kinds": [
+        "unknown"
+      ],
+      "evidence": [
+        "provider_text"
+      ]
+    },
+    {
+      "category": "beer",
+      "outcome": "success",
+      "documents": 10,
+      "excerpt_count": 10,
+      "domains": [
+        "baileysbeerblog.blogspot.com",
+        "bestbeerblog.net",
+        "dingsbeerblog.com",
+        "guruofbrew.com",
+        "smokebeerministry.com",
+        "thebest-beerblog.blogspot.com",
+        "www.beerwanderers.com",
+        "www.diffordsguide.com",
+        "www.thebarleyblog.com"
+      ],
+      "kinds": [
+        "review",
+        "unknown"
+      ],
+      "evidence": [
+        "provider_text"
+      ]
+    }
+  ]
+}

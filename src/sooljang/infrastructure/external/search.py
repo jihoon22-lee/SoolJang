@@ -1,5 +1,6 @@
 """제공자별 비생성 검색 계약. HTTP와 순수 문서 변환을 분리하고 원문을 보관하지 않는다."""
 
+import asyncio
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -175,6 +176,8 @@ def parse_search_response(
             continue
         published = row.get("publishedDate") or row.get("postdate") or row.get("page_age")
         published = plain_excerpt(published, 60) or None
+        if published and any(secret and secret in published for secret in secrets):
+            published = None
         # 제목·발췌에 명시된 종류만 구분한다. 맛/평점/긍부정은 추론하지 않는다.
         corpus = f"{title} {excerpt}".lower()
         category = "unknown"
@@ -234,14 +237,17 @@ async def search_provider(
     count = 0
     try:
         host = httpx.URL(requests[0].url).host
-        async with SafeHttpClient(
-            [host],
-            credential_host=host,
-            credential_headers=requests[0].headers,
-            before_request=before_request,
-            transport=transport,
-            limits=HttpLimits(deadline_seconds=18, max_retries=0, max_redirects=0),
-        ) as client:
+        async with (
+            asyncio.timeout(18),
+            SafeHttpClient(
+                [host],
+                credential_host=host,
+                credential_headers=requests[0].headers,
+                before_request=before_request,
+                transport=transport,
+                limits=HttpLimits(deadline_seconds=18, max_retries=0, max_redirects=0),
+            ) as client,
+        ):
             for request in requests:
                 count += 1
                 response = await client.request(
