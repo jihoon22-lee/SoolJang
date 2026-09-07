@@ -1,0 +1,71 @@
+{
+  "version": "1.7.0",
+  "schema": "0018_price_watch",
+  "worker_ready": true,
+  "authenticated_read_statuses": {
+    "/auth/me": 200,
+    "/products": 200,
+    "/categories": 200,
+    "/vendors": 200,
+    "/stats/summary": 200,
+    "/interests": 200,
+    "/connections": 200,
+    "/collection/locations": 200,
+    "/price-watch": 200
+  },
+  "existing_connections_decryptable": true,
+  "exa_registered": true,
+  "exa_search": {
+    "outcome": "success",
+    "documents": 10
+  },
+  "browser": {
+    "passed": true,
+    "version": "1.7.0",
+    "https": true,
+    "flows": [
+      "discover",
+      "interests",
+      "price-watch",
+      "inventory",
+      "quality",
+      "connections"
+    ],
+    "service_worker_ready": true,
+    "mobile_overflow": false,
+    "page_errors": [],
+    "http_errors": [],
+    "production_business_mutations": 0,
+    "screenshots": 0,
+    "auth_scope": "short-lived operator-issued validation session; existing password/sessions preserved"
+  },
+  "release_sha": "f1c5bbc7cf20492d7ba08968c071ebf90b264046",
+  "release_workflow": "https://github.com/jihoon22-lee/SoolJang/actions/runs/34105371427",
+  "images": {
+    "api": {
+      "id": "sha256:b882205349fee49118619371489a2cb2746b50e74cbf92acb5b87e332c4583fa",
+      "digests": [
+        "ghcr.io/jihoon22-lee/sooljang-api@sha256:b882205349fee49118619371489a2cb2746b50e74cbf92acb5b87e332c4583fa"
+      ],
+      "revision": "f1c5bbc7cf20492d7ba08968c071ebf90b264046"
+    },
+    "web": {
+      "id": "sha256:fec1de0dde14112688402be058b581c6ce93e99dfcf3c225f63309e1b6bf8996",
+      "digests": [
+        "ghcr.io/jihoon22-lee/sooljang-web@sha256:fec1de0dde14112688402be058b581c6ce93e99dfcf3c225f63309e1b6bf8996"
+      ],
+      "revision": "f1c5bbc7cf20492d7ba08968c071ebf90b264046"
+    }
+  },
+  "original_columns_preserved": true,
+  "database_volume_preserved": true,
+  "backup_before_and_after": true,
+  "actual_isolated_restore_passed": true,
+  "secret_recovery": "Windows CurrentUser DPAPI, owner/SYSTEM ACL, decrypt equality verified",
+  "temporary_validation_session_removed": true,
+  "post_read_auth_session_identity_preserved": true,
+  "expected_auth_activity_fields": [
+    "last_seen_at",
+    "updated_at"
+  ]
+}

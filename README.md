@@ -75,7 +75,8 @@ make help         # 전체 명령 목록
 
 ## 개발 현황
 
-현재 구현·수용 검증 범위는 [v1.7.0 마일스톤](https://github.com/jihoon22-lee/SoolJang/milestone/1)이다.
+현재 릴리스·운영 배포 버전은 **v1.7.0**이다. 구현·수용 결과는
+[v1.7.0 마일스톤](https://github.com/jihoon22-lee/SoolJang/milestone/1)에서 확인한다.
 현재 위치와 기존 Task/WP 대응은 [docs/plan.md](docs/plan.md),
 작업 진입점은 [v1.7.0 로드맵](docs/roadmap/v1.7.0.md)에서 확인한다.
 패키지 버전과 마지막 확인한 배포 버전은 계획 문서에서 구분한다.
