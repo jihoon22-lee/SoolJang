@@ -3,7 +3,7 @@
 2026-09-07. 원장: [메인 #117](https://github.com/jihoon22-lee/SoolJang/issues/117),
 [명세 #118](https://github.com/jihoon22-lee/SoolJang/issues/118),
 [통합 WP13 #131](https://github.com/jihoon22-lee/SoolJang/issues/131).
-**B01~B08 구현 PR은 필수 CI 통과·머지. B09 검증 보강 진행, 마일스톤 수용·릴리스·운영 배포 미완료.**
+**B01~B08 구현 PR은 필수 CI 통과·머지. B09 #141 검증 보강 CI 진행, 마일스톤 수용·릴리스·운영 배포 미완료.**
 
 실행 명령·SHA·측정값·화면과 제한은 [B09 기록](../../../workthrough/2026-09-07-v170-b09-acceptance.md)에
 모았다. 아래 통과는 명시한 검증 층의 판정이며 운영 배포까지 완료했다는 뜻이 아니다.
@@ -20,7 +20,7 @@
 | B06 / #120 | [#135](https://github.com/jihoon22-lee/SoolJang/pull/135) / `d238717` | [동기화·PWA](../../../workthrough/2026-09-07-v170-sync.md) |
 | B07 / #128 | [#140](https://github.com/jihoon22-lee/SoolJang/pull/140) / `b7861b1` | [가격 감시·알림](../../../workthrough/2026-09-07-v170-b07-price-watch.md) |
 | B08 / #129 #130 | [#138](https://github.com/jihoon22-lee/SoolJang/pull/138) / `6660b48` | [정리·관심·실사](../../../workthrough/2026-09-07-v170-b08-data-inventory.md) |
-| B09 / #131 | `feature/v170-acceptance`, 통합 `8ab59ee`·런타임 보강 `b56db33` | [최종 통합](../../../workthrough/2026-09-07-v170-b09-acceptance.md) |
+| B09 / #131 | [#141](https://github.com/jihoon22-lee/SoolJang/pull/141), 통합 `8ab59ee`·런타임 보강 `b56db33` | [최종 통합](../../../workthrough/2026-09-07-v170-b09-acceptance.md) |
 
 ## R01~R24
 
@@ -71,3 +71,6 @@
 R11/S05와 관련 실연결 사례의 범위 답변은 아직 받지 않았다. Naver/Brave 모든 키 발급이나
 모든 후보 소스 계약을 새 필수 조건으로 추가하지 않는다. 마일스톤을 닫거나 릴리스하지 않았으며,
 사용자가 승인한 릴리스·배포는 필수 수용 또는 명시적 범위 결정 후 이어간다.
+
+완료된 기반/동기화/연결/정리/재고 WP #119/#120/#122/#123/#129/#130은 증거와 함께 종료했다.
+#124/#125/#126/#127/#128은 남은 실연결 수용을, #121/#131은 운영·최종 수용을 추적한다.

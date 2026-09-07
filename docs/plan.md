@@ -16,13 +16,15 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-09-07 — B01~B08 CI 통과·머지. B09 통합 회귀·복구·브라우저·Docker 검증 완료, PR 준비 |
+| 최종 갱신 | 2026-09-07 — B01~B08 CI 통과·머지. B09 #141 통합 회귀·복구·브라우저·Docker 검증 완료, CI 진행 |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
 | 다음 착수 Task | **B09/WP13 #131 최종 통합 수용**. 필수 CI·외부 실연결 범위 결정 후 릴리스·배포 |
 | 현재 브랜치 | `feature/v170-acceptance` — B09. 실제 재개 시 Git/열린 PR 및 분리 worktree 상태 확인 |
 | 진행 중 잔여 항목 | B01~B08 머지(B05 #139, B07 #140). B09 Python1322/91.22%·웹634/81.09%, 실제 복구·401/SW·Docker no-recreate 통과. 국내 2가격 출처·실푸시·운영 수용은 미완료. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
 | 버전 상태 | 패키지 `1.6.1`. 2026-09-07 운영 readonly 확인: API/web 이미지 `1.6.1`, health 정상, 실제 schema `0012_llm_rematch`. 새 버전 운영 변경은 아직 실행하지 않음 |
 
+- 완료된 WP #119/#120/#122/#123/#129/#130은 실행 근거와 함께 종료했다.
+  구현 PR8개 머지와 GitHub closed 이슈 비율·최종 수용은 다른 지표다.
 - 현재 마일스톤: [v1.7.0](https://github.com/jihoon22-lee/SoolJang/milestone/1).
   [메인 #117](https://github.com/jihoon22-lee/SoolJang/issues/117)은 범위·PR 진행,
   [명세 #118](https://github.com/jihoon22-lee/SoolJang/issues/118)은 R/S 수용 기준의 원장이다.
@@ -201,7 +203,7 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 | B08 / WP11·12 | 🟡 #138 CI 통과·머지, 운영 통합 수용은 B09 | [기록](../workthrough/2026-09-07-v170-b08-data-inventory.md) |
 | B05 / WP08·09 | 🟡 #139 CI 통과·머지, 실제 Exa·앱 탐색 통과. 국내 가격 수용 별도 | [기록](../workthrough/2026-09-07-v170-b05-discovery.md) |
 | B07 / WP10 | 🟡 #140 CI 통과·머지, 실제 푸시 수신 미실행 | [기록](../workthrough/2026-09-07-v170-b07-price-watch.md) |
-| B09 / WP13 | 🟡 최종 격리 검증 완료·PR 준비, 필수 외부/운영 수용 남음 | [수용 원장](plans/v1.7.0/acceptance.md), [기록](../workthrough/2026-09-07-v170-b09-acceptance.md) |
+| B09 / WP13 | 🟡 최종 격리 검증 완료·#141 CI 진행, 필수 외부/운영 수용 남음 | [수용 원장](plans/v1.7.0/acceptance.md), [기록](../workthrough/2026-09-07-v170-b09-acceptance.md) |
 
 ### 기존 Task 이력
 
