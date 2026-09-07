@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 
+from sooljang.domain.discovery import RequestBudgetExceeded, SourceOutcome
 from sooljang.infrastructure.external.adapter import (
     AUTO_ACCEPT,
     MAX_CANDIDATES,
@@ -118,7 +119,8 @@ async def test_셀렉터가_깨지면_부분_결과와_degraded를_반환한다(
     assert result.fields["rating"] is None
     assert result.degraded is True
     assert result.warning is not None
-    assert "rating" in result.warning
+    assert result.warning == "일부 항목을 확인하지 못했습니다"
+    assert result.outcome == SourceOutcome.PARTIAL
 
 
 async def test_검색_결과가_없으면_후보_없음으로_처리한다() -> None:
@@ -427,7 +429,7 @@ async def test_상세_페이지가_다른_호스트로_리다이렉트되면_거
             if request.url.path == "/product/1":
                 return httpx.Response(302, headers={"location": "https://evil.example/stolen"})
         if request.url.host == "evil.example":
-            return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+            pytest.fail("허용되지 않은 redirect 대상이 전송에 도달했습니다")
         raise AssertionError(f"예상하지 못한 요청: {request.url}")
 
     transport = httpx.MockTransport(handler)
@@ -443,7 +445,7 @@ async def test_상세_페이지가_다른_호스트로_리다이렉트되면_거
     assert result.ok is False
     assert result.degraded is True
     assert result.warning is not None
-    assert "리다이렉트" in result.warning
+    assert result.outcome == SourceOutcome.POLICY_BLOCKED
 
 
 # --- JSON 모드(Task 24 후속) --------------------------------------------------
@@ -512,7 +514,8 @@ async def test_JSON_결과_필드가_없으면_degraded와_경고를_반환한�
     assert result.fields["rating"] is None
     assert result.degraded is True
     assert result.warning is not None
-    assert "rating" in result.warning
+    assert result.warning == "일부 항목을 확인하지 못했습니다"
+    assert result.outcome == SourceOutcome.PARTIAL
 
 
 async def test_JSON_모드에서_검색_응답이_올바른_JSON이_아니면_degraded를_반환한다() -> None:
@@ -1140,3 +1143,324 @@ async def test_제외_키워드가_없는_스펙은_동작이_그대로다() -> 
     )
 
     assert len(result.candidates) == 2
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome"),
+    [
+        (401, SourceOutcome.AUTHENTICATION_FAILED),
+        (403, SourceOutcome.FORBIDDEN),
+        (429, SourceOutcome.RATE_LIMITED),
+        (503, SourceOutcome.NETWORK_ERROR),
+    ],
+)
+@pytest.mark.parametrize("stage", ["robots", "search", "detail"])
+async def test_http_failures_keep_typed_status_and_never_expose_response(
+    status: int,
+    outcome: SourceOutcome,
+    stage: str,
+) -> None:
+    sent: list[str] = []
+    sensitive = "fixture-secret-query-server-body"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        paths = {"robots": "/robots.txt", "search": "/search", "detail": "/product/1"}
+        if request.url.path == paths[stage]:
+            return httpx.Response(status, text=sensitive, headers={"retry-after": "999"})
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            return httpx.Response(200, text=_SEARCH_PAGE)
+        pytest.fail("unexpected request after failure")
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.outcome == outcome
+    assert not result.ok
+    assert sensitive not in repr(result)
+    assert "https://" not in (result.warning or "")
+    assert "글렌피딕" not in (result.warning or "")
+    assert len(sent) == {"robots": 1, "search": 2, "detail": 3}[stage]
+
+
+async def test_robots_network_error_is_fail_closed_and_not_cached() -> None:
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            raise httpx.ConnectError("fixture-secret-diagnostic")
+        pytest.fail("request sent without robots policy")
+
+    for _ in range(2):
+        result = await fetch_snapshot(
+            ADAPTER_SPEC,
+            base_url="https://example.com",
+            identity=ProductIdentity(name="글렌피딕 12년"),
+            transport=httpx.MockTransport(handler),
+        )
+        assert result.outcome == SourceOutcome.NETWORK_ERROR
+        assert "fixture-secret-diagnostic" not in repr(result)
+    assert sent == ["/robots.txt", "/robots.txt"]
+
+
+async def test_robots_404_allows_access_but_500_does_not() -> None:
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=_transport(
+            {
+                "/robots.txt": (404, ""),
+                "/search": (200, _SEARCH_PAGE),
+                "/product/1": (200, _DETAIL_PAGE_FULL),
+            }
+        ),
+    )
+    assert result.outcome == SourceOutcome.SUCCESS
+    assert result.ok
+
+
+async def test_credentials_are_only_sent_to_search_not_robots_detail_or_redirect() -> None:
+    spec = {**ADAPTER_SPEC, "credentials": _HEADER_ADAPTER_SPEC["credentials"]}
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/search":
+            assert request.headers["x-client-secret"] == "fixture-key-value"
+            return httpx.Response(302, headers={"location": "/redirect-search"})
+        assert "x-client-secret" not in request.headers
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/redirect-search":
+            return httpx.Response(200, text=_SEARCH_PAGE)
+        if request.url.path == "/product/1":
+            return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+        pytest.fail("unexpected request")
+
+    result = await fetch_snapshot(
+        spec,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        credentials={"client_secret": "fixture-key-value"},
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.ok
+    assert seen == ["/robots.txt", "/search", "/redirect-search", "/product/1"]
+
+
+async def test_redirect_checks_robots_before_sending_forbidden_path() -> None:
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /private")
+        if request.url.path == "/search":
+            return httpx.Response(302, headers={"location": "/private"})
+        pytest.fail("robots-disallowed redirect was sent")
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.outcome == SourceOutcome.POLICY_BLOCKED
+    assert sent == ["/robots.txt", "/search"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/admin",
+        "http://169.254.169.254/latest",
+        "https://example.com:8443/private",
+        "https://user:secret@example.com/x",
+    ],
+)
+async def test_unsafe_static_search_never_reaches_transport(url: str) -> None:
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(str(request.url))
+        return httpx.Response(200)
+
+    result = await fetch_snapshot(
+        {**ADAPTER_SPEC, "search": {**ADAPTER_SPEC["search"], "url_template": url}},
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.outcome == SourceOutcome.POLICY_BLOCKED
+    assert not sent
+
+
+async def test_explicit_allowed_detail_host_is_used_without_remote_allowlist_expansion() -> None:
+    detail_host = "detail.example"
+    page = _SEARCH_PAGE.replace("/product/1", f"https://{detail_host}/product/1")
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.host)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        if request.url.path == "/search":
+            return httpx.Response(200, text=page)
+        if request.url.host == detail_host:
+            return httpx.Response(200, text=_DETAIL_PAGE_FULL)
+        pytest.fail("unexpected request")
+
+    common: dict[str, Any] = dict(
+        base_url="https://example.com", identity=ProductIdentity(name="글렌피딕 12년")
+    )
+    blocked = await fetch_snapshot(ADAPTER_SPEC, transport=httpx.MockTransport(handler), **common)
+    assert blocked.outcome == SourceOutcome.POLICY_BLOCKED
+    assert detail_host not in sent
+    assert not blocked.candidates
+    reset_robots_cache()
+    allowed = await fetch_snapshot(
+        {**ADAPTER_SPEC, "allowed_hosts": [detail_host]},
+        transport=httpx.MockTransport(handler),
+        **common,
+    )
+    assert allowed.ok
+    assert detail_host in sent
+
+
+async def test_budget_counts_robots_and_stops_before_unreserved_search() -> None:
+    reserved: list[str] = []
+    sent: list[str] = []
+
+    async def budget(request: httpx.Request) -> None:
+        reserved.append(request.url.path)
+        if len(reserved) > 1:
+            raise RequestBudgetExceeded
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        before_request=budget,
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.outcome == SourceOutcome.RATE_LIMITED
+    assert reserved == ["/robots.txt", "/search"]
+    assert sent == ["/robots.txt"]
+
+
+async def test_query_expansion_and_redirects_share_total_request_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sooljang.infrastructure.external import adapter
+
+    monkeypatch.setattr(adapter, "_MAX_LOOKUP_REQUESTS", 3)
+    monkeypatch.setattr(adapter, "build_queries", lambda identity: ["one", "two", "three"])
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+        return httpx.Response(200, text="<div>no results</div>")
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.outcome == SourceOutcome.RATE_LIMITED
+    assert len(sent) == 3
+
+
+async def test_query_expansion_shares_wall_clock_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from sooljang.infrastructure.external import adapter
+
+    monkeypatch.setattr(adapter, "_LOOKUP_DEADLINE_SECONDS", 0.02)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200)
+
+    result = await fetch_snapshot(
+        ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.outcome == SourceOutcome.NETWORK_ERROR
+
+
+async def test_raw_excerpt_contains_public_fields_only_despite_server_credential_echo() -> None:
+    secret = "fixture-secret-no-persist"  # scan-secrets-allow: synthetic reflection fixture
+    item = {
+        "id": 1,
+        "name": "글렌피딕 12년",
+        "price": 35000,
+        "debug": secret,
+        "headers": {"x-secret": secret},
+    }
+    result = await fetch_snapshot(
+        _HEADER_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        credentials={"client_secret": secret},
+        transport=_transport({"/api/search": (200, json.dumps({"results": [item]}))}),
+    )
+    assert result.ok
+    assert result.raw_excerpt == '{"price": 35000}'
+    assert secret not in repr(result)
+
+
+async def test_credential_reflected_in_selected_field_is_not_persisted() -> None:
+    secret = "fixture-secret-no-persist"  # scan-secrets-allow: synthetic reflection fixture
+    item = {"id": 1, "name": "글렌피딕 12년", "price": secret}
+    result = await fetch_snapshot(
+        _HEADER_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        credentials={"client_secret": secret},
+        transport=_transport({"/api/search": (200, json.dumps({"results": [item]}))}),
+    )
+    assert not result.ok
+    assert result.outcome == SourceOutcome.PARSE_ERROR
+    assert secret not in repr(result)
+    assert result.fields == {}
+
+
+@pytest.mark.parametrize("body", ["not-json", '{"results": {"error": "bad"}}'])
+async def test_malformed_candidate_document_is_parse_error(body: str) -> None:
+    result = await fetch_snapshot(
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=_transport({"/api/search": (200, body)}),
+    )
+    assert result.outcome == SourceOutcome.PARSE_ERROR
+
+
+async def test_empty_candidates_and_bad_config_have_distinct_outcomes() -> None:
+    empty = await fetch_snapshot(
+        JSON_ADAPTER_SPEC,
+        base_url="https://example.com",
+        identity=ProductIdentity(name="글렌피딕 12년"),
+        transport=_transport({"/api/search": (200, '{"results": []}')}),
+    )
+    invalid = await fetch_snapshot(
+        {}, base_url="https://example.com", identity=ProductIdentity(name="fixture")
+    )
+    assert empty.outcome == SourceOutcome.EMPTY
+    assert invalid.outcome == SourceOutcome.INVALID_CONFIGURATION

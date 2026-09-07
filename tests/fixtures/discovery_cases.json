@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "cases": [
+    {
+      "id": "ko-basic",
+      "identity": {
+        "name": "해안 싱글몰트 12년"
+      },
+      "candidates": [
+        {
+          "name": "해안 싱글몰트 12년",
+          "matches": true
+        },
+        {
+          "name": "산들 버번",
+          "matches": false
+        }
+      ],
+      "rationale": "동일 이름/숙성, 다른 생산자 음성 후보"
+    },
+    {
+      "id": "promo",
+      "identity": {
+        "name": "Harbor 12y"
+      },
+      "candidates": [
+        {
+          "name": "[특가] Harbor 12y",
+          "matches": true
+        }
+      ],
+      "rationale": "판매 문구는 판본과 구분"
+    },
+    {
+      "id": "age",
+      "identity": {
+        "name": "Harbor 12y"
+      },
+      "candidates": [
+        {
+          "name": "Harbor 18y",
+          "matches": false
+        },
+        {
+          "name": "Harbor 12y",
+          "matches": true
+        }
+      ],
+      "rationale": "숙성 연수 다름"
+    },
+    {
+      "id": "volume",
+      "identity": {
+        "name": "Harbor",
+        "volumes_ml": [
+          700
+        ]
+      },
+      "candidates": [
+        {
+          "name": "Harbor 750ml",
+          "matches": false
+        },
+        {
+          "name": "Harbor 700ml",
+          "matches": true
+        }
+      ],
+      "rationale": "700ml와750ml 별도 SKU"
+    },
+    {
+      "id": "vintage",
+      "identity": {
+        "name": "Lumiere",
+        "vintage": 2021
+      },
+      "candidates": [
+        {
+          "name": "Lumiere 2020",
+          "matches": false
+        },
+        {
+          "name": "Lumiere 2021",
+          "matches": true
+        }
+      ],
+      "rationale": "와인 빈티지 구분"
+    },
+    {
+      "id": "abv",
+      "identity": {
+        "name": "Harbor",
+        "abv": "46"
+      },
+      "candidates": [
+        {
+          "name": "Harbor 40%",
+          "matches": false
+        },
+        {
+          "name": "Harbor 46%",
+          "matches": true
+        }
+      ],
+      "rationale": "도수 불일치"
+    },
+    {
+      "id": "batch-parentheses",
+      "identity": {
+        "name": "Harbor (Batch 5)"
+      },
+      "candidates": [
+        {
+          "name": "Harbor (Batch 6)",
+          "matches": false
+        },
+        {
+          "name": "Harbor (Batch 5)",
+          "matches": true
+        }
+      ],
+      "rationale": "괄호의 배치는 제품 식별 정보"
+    },
+    {
+      "id": "cask-parentheses",
+      "identity": {
+        "name": "Harbor (Cask 123)"
+      },
+      "candidates": [
+        {
+          "name": "Harbor (Cask 456)",
+          "matches": false
+        },
+        {
+          "name": "Harbor (Cask 123)",
+          "matches": true
+        }
+      ],
+      "rationale": "캐스크 번호는 보존"
+    },
+    {
+      "id": "japanese",
+      "identity": {
+        "name": "山海 純米吟醸"
+      },
+      "candidates": [
+        {
+          "name": "山川 純米大吟醸",
+          "matches": false
+        },
+        {
+          "name": "山海 純米吟醸",
+          "matches": true
+        }
+      ],
+      "rationale": "다른 일본어 이름을 빈문자열로 합치지 않음"
+    },
+    {
+      "id": "chinese",
+      "identity": {
+        "name": "江山 白酒"
+      },
+      "candidates": [
+        {
+          "name": "青山 白酒",
+          "matches": false
+        },
+        {
+          "name": "江山 白酒",
+          "matches": true
+        }
+      ],
+      "rationale": "한자 생산자 식별"
+    },
+    {
+      "id": "accent",
+      "identity": {
+        "name": "Château Lumière"
+      },
+      "candidates": [
+        {
+          "name": "Chateau Lumiere",
+          "matches": true
+        }
+      ],
+      "rationale": "악센트만 다른 동일 표기"
+    },
+    {
+      "id": "unicode-width",
+      "identity": {
+        "name": "Ｈａｒｂｏｒ"
+      },
+      "candidates": [
+        {
+          "name": "Harbor",
+          "matches": true
+        }
+      ],
+      "rationale": "전각 라틴 정규화"
+    },
+    {
+      "id": "set-vs-single",
+      "identity": {
+        "name": "Harbor 700ml",
+        "volumes_ml": [
+          700
+        ]
+      },
+      "candidates": [
+        {
+          "name": "Harbor 700ml 2병 세트",
+          "matches": false
+        },
+        {
+          "name": "Harbor 700ml",
+          "matches": true
+        }
+      ],
+      "rationale": "세트와 단품 비교 금지"
+    },
+    {
+      "id": "set-only",
+      "identity": {
+        "name": "Harbor 700ml",
+        "volumes_ml": [
+          700
+        ]
+      },
+      "candidates": [
+        {
+          "name": "Harbor 700ml 2병 세트",
+          "matches": false
+        }
+      ],
+      "rationale": "맞는 단품 후보가 없는 경우"
+    },
+    {
+      "id": "no-answer",
+      "identity": {
+        "name": "해안"
+      },
+      "candidates": [
+        {
+          "name": "전혀다른술",
+          "matches": false
+        }
+      ],
+      "rationale": "정답 후보 없음"
+    },
+    {
+      "id": "no-results",
+      "identity": {
+        "name": "미등록 합성 제품"
+      },
+      "candidates": [],
+      "rationale": "검색엔진 미등록/빈결과"
+    }
+  ]
+}

@@ -25,6 +25,7 @@ JSON 으로 파싱한다 — 최근 국내 쇼핑몰은 Next.js 등으로 만들
 최상위 필드들을 그대로 치환한다(`{"url_template": "https://x.com/item/{id}"}` 가
 `item["id"]` 를 채운다)."""
 
+import asyncio
 import json
 import logging
 import math
@@ -32,18 +33,29 @@ import re
 import time
 import urllib.parse
 import urllib.robotparser
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from sooljang.domain.discovery import RequestBudgetExceeded, SourceOutcome
+from sooljang.infrastructure.external.fields import STANDARD_KEYS
 from sooljang.infrastructure.external.matching import ProductIdentity, build_queries, is_excluded
 from sooljang.infrastructure.external.matching import score as score_name
+from sooljang.infrastructure.external.safe_http import (
+    BeforeRequest,
+    HttpLimits,
+    ResponseTooLarge,
+    SafeHttpClient,
+    UnsafeRequest,
+    validate_url,
+)
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_SECONDS = 8.0
+_LOOKUP_DEADLINE_SECONDS = 20.0
+_MAX_LOOKUP_REQUESTS = 12
 #: 프로젝트 식별자 + 연락 수단(§7.3) — 사이트 운영자가 이 요청의 출처를 알 수 있게 한다.
 USER_AGENT = "SoolJangBot/1.0 (+https://github.com/jihoon22-lee/sooljang; personal-use lookup)"
 #: 후보 점수를 세 구간으로 나눈다(Task 34 PR1). 매칭이 100% 가 될 수 없다는 전제 위에서,
@@ -118,6 +130,7 @@ class AdapterResult:
     candidates: list[LookupCandidate] = field(default_factory=list)
     #: 이 결과가 사용자가 고정해 둔 매칭으로부터 나왔는지.
     pinned: bool = False
+    outcome: SourceOutcome = SourceOutcome.UNKNOWN
 
 
 def _apply_transform(value: Any, transform: str) -> Any:
@@ -142,7 +155,7 @@ def _apply_transform(value: Any, transform: str) -> Any:
         return number if math.isfinite(number) else None
     # 등록 화면에서 오타를 낸 transform 이름 — 이 필드 하나만 못 뽑을 뿐, 조회 전체를
     # 막을 이유가 없다.
-    logger.warning("알 수 없는 transform 이라 건너뜁니다: %r", transform)
+    logger.warning("알 수 없는 필드 변환을 건너뜁니다")
     return None
 
 
@@ -179,7 +192,7 @@ def _extract_field(scope: Tag | BeautifulSoup, spec: Any, *, base_url: str) -> A
             raw = urllib.parse.urljoin(base_url, raw)
         return raw
     except Exception:
-        logger.warning("필드 추출 중 예외가 나 건너뜁니다: spec=%r", spec, exc_info=True)
+        logger.warning("필드 추출 설정을 확인하지 못했습니다")
         return None
 
 
@@ -231,11 +244,11 @@ def _extract_field_json(item: Any, spec: Any) -> Any:
                 return None
         return value
     except Exception:
-        logger.warning("JSON 필드 추출 중 예외가 나 건너뜁니다: spec=%r", spec, exc_info=True)
+        logger.warning("JSON 필드 추출 설정을 확인하지 못했습니다")
         return None
 
 
-async def _allowed(target_url: str, *, client: httpx.AsyncClient) -> bool:
+async def _allowed(target_url: str, *, client: SafeHttpClient) -> bool:
     """robots.txt 가 `target_url` 을 허용하는지. 도메인 단위로 캐시한다(§7.3).
 
     robots.txt 는 **호스트별 규약**이라, `target_url` 자신의 호스트에서 받아야 한다
@@ -243,6 +256,7 @@ async def _allowed(target_url: str, *, client: httpx.AsyncClient) -> bool:
     링크 호스트가 다른 소스(데일리샷의 `api.dailyshot.co` vs `dailyshot.co`)에서 검색
     요청의 robots.txt 가 실제로는 확인되지 않는 버그가 있었다.
     """
+    validate_url(target_url, client.allowed_hosts)
     parsed = urllib.parse.urlparse(target_url)
     domain = f"{parsed.scheme}://{parsed.netloc}"
     now = time.monotonic()
@@ -250,14 +264,19 @@ async def _allowed(target_url: str, *, client: httpx.AsyncClient) -> bool:
 
     if cached is None or cached[1] < now:
         parser = urllib.robotparser.RobotFileParser()
-        try:
-            response = await client.get(f"{domain}/robots.txt")
-            parser.parse(response.text.splitlines() if response.status_code == 200 else [])
-        except httpx.HTTPError as error:
-            # robots.txt 자체를 못 가져온 경우 규칙이 없다고 보고 허용한다 — 네트워크
-            # 문제 한 번 때문에 사용자가 요청한 조회를 영구히 막지 않는다.
-            logger.warning("robots.txt 조회 실패(%s): %s", domain, error)
+        response = await client.get(
+            f"{domain}/robots.txt",
+            robots=True,
+            headers={"User-Agent": USER_AGENT},
+            send_credentials=False,
+        )
+        if response.status_code == 404:
             parser.parse([])
+        else:
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise UnsafeRequest("Robots policy is unavailable")
+            parser.parse(response.text.splitlines())
         _robots_cache[domain] = (parser, now + _ROBOTS_TTL_SECONDS)
     else:
         parser = cached[0]
@@ -278,6 +297,14 @@ def _same_host(base_url: str, candidate_url: str) -> bool:
     return candidate.scheme in ("http", "https") and candidate.netloc.lower() == base_host
 
 
+def _within_allowed(url: str, client: SafeHttpClient) -> bool:
+    try:
+        validate_url(url, client.allowed_hosts)
+    except UnsafeRequest:
+        return False
+    return True
+
+
 def _uses_result_fields(adapter_spec: dict[str, Any], search_spec: dict[str, Any]) -> bool:
     """검색 응답 자체에서 최종 값을 뽑는 소스인지(`search.result_fields`, 데일리샷 등).
 
@@ -294,7 +321,7 @@ def _uses_result_fields(adapter_spec: dict[str, Any], search_spec: dict[str, Any
 
 
 def _missing_warning(missing: list[str]) -> str | None:
-    return f"일부 항목을 확인하지 못했습니다: {', '.join(missing)}" if missing else None
+    return "일부 항목을 확인하지 못했습니다" if missing else None
 
 
 def _extract_named_fields(extract: Any, spec: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -377,6 +404,7 @@ async def fetch_snapshot(
     transport: httpx.AsyncBaseTransport | None = None,
     pinned: PinnedMatch | None = None,
     credentials: dict[str, str] | None = None,
+    before_request: BeforeRequest | None = None,
 ) -> AdapterResult:
     """제품을 검색해 가장 잘 맞는 후보의 상세 정보를 가져온다.
 
@@ -394,32 +422,128 @@ async def fetch_snapshot(
     `transport` 는 테스트가 `httpx.MockTransport` 로 실제 네트워크 없이 응답을 흉내 낼 수
     있게 하는 자리다 — 운영에서는 항상 `None`(기본 전송).
     """
-    queries = [identity.name] if pinned is not None else build_queries(identity)
+    queries = ([identity.name] if pinned is not None else build_queries(identity))[:3]
     best: AdapterResult | None = None
+    requests = 0
 
-    for query in queries:
-        try:
-            result = await _fetch_snapshot_unsafe(
-                adapter_spec,
-                base_url=base_url,
-                identity=identity,
-                query=query,
+    async def reserve(request: httpx.Request) -> None:
+        nonlocal requests
+        if requests >= _MAX_LOOKUP_REQUESTS:
+            raise RequestBudgetExceeded
+        if not request.extensions.get("sooljang_robots") and not await _allowed(
+            str(request.url), client=client
+        ):
+            raise UnsafeRequest("Robots policy denies request")
+        if requests >= _MAX_LOOKUP_REQUESTS:
+            raise RequestBudgetExceeded
+        requests += 1
+        if before_request:
+            await before_request(request)
+
+    try:
+        search = adapter_spec.get("search")
+        if not isinstance(search, dict):
+            return _failure(SourceOutcome.INVALID_CONFIGURATION, "검색 설정이 없습니다")
+        template = search.get("url_template")
+        hosts = [httpx.URL(base_url).host]
+        if isinstance(template, str):
+            # Host must be static; query/template expansion cannot widen the network boundary.
+            hosts.append(httpx.URL(template).host)
+        extra_hosts = adapter_spec.get("allowed_hosts", [])
+        if not isinstance(extra_hosts, list) or not all(
+            isinstance(host, str) for host in extra_hosts
+        ):
+            return _failure(SourceOutcome.INVALID_CONFIGURATION, "허용 호스트 설정이 잘못됐습니다")
+        hosts.extend(host for host in extra_hosts if isinstance(host, str))
+        secret_headers = _build_credential_headers(adapter_spec, search, credentials)
+        async with (
+            asyncio.timeout(_LOOKUP_DEADLINE_SECONDS),
+            SafeHttpClient(
+                hosts,
+                credential_host=httpx.URL(template).host if isinstance(template, str) else None,
+                credential_headers=secret_headers,
+                before_request=reserve,
                 transport=transport,
-                pinned=pinned,
-                credentials=credentials,
-            )
-        except Exception as error:
-            # 여기까지 오는 건 아래 구체적인 방어로도 못 잡은 진짜 예상 밖의 adapter_spec
-            # 모양이다 — 그래도 이 함수의 계약("절대 예외를 던지지 않는다")은 지킨다.
-            logger.warning("adapter_spec 처리 중 예상 못 한 예외: %s", error, exc_info=True)
-            return AdapterResult(None, {}, None, True, f"adapter_spec 처리 실패: {error}")
+                limits=HttpLimits(max_redirects=_MAX_REDIRECTS),
+            ) as client,
+        ):
+            validate_url(base_url, client.allowed_hosts)
+            for query in queries:
+                result = await _fetch_snapshot_unsafe(
+                    adapter_spec,
+                    base_url=base_url,
+                    identity=identity,
+                    query=query,
+                    client=client,
+                    pinned=pinned,
+                )
+                if best is None or _is_better(result, best):
+                    best = result
+                if result.ok and not result.needs_confirmation:
+                    break
+                if result.outcome not in {
+                    SourceOutcome.EMPTY,
+                    SourceOutcome.PARTIAL,
+                    SourceOutcome.SUCCESS,
+                }:
+                    return _without_reflected_secrets(result, credentials, secret_headers)
+        result = best if best is not None else _failure(SourceOutcome.EMPTY, "질의가 없습니다")
+        return _without_reflected_secrets(result, credentials, secret_headers)
+    except (httpx.HTTPError, RequestBudgetExceeded, TimeoutError) as error:
+        return _http_failure(error, "외부 정보 조회")
+    except Exception:
+        logger.warning("외부 소스 설정을 처리하지 못했습니다")
+        return _failure(SourceOutcome.INVALID_CONFIGURATION, "외부 소스 설정이 잘못됐습니다")
 
-        if best is None or _is_better(result, best):
-            best = result
-        if result.ok and not result.needs_confirmation:
-            break
 
-    return best if best is not None else AdapterResult(None, {}, None, True, "질의가 없습니다")
+def _failure(outcome: SourceOutcome, warning: str) -> AdapterResult:
+    return AdapterResult(None, {}, None, True, warning, outcome=outcome)
+
+
+def _http_failure(error: Exception, stage: str) -> AdapterResult:
+    if isinstance(error, RequestBudgetExceeded):
+        return _failure(SourceOutcome.RATE_LIMITED, "외부 요청 한도에 도달했습니다")
+    if isinstance(error, (UnsafeRequest, ResponseTooLarge, httpx.TooManyRedirects)):
+        return _failure(
+            SourceOutcome.POLICY_BLOCKED, "허용되지 않은 대상 또는 응답 한도로 조회를 중단했습니다"
+        )
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        if status == 401:
+            return _failure(SourceOutcome.AUTHENTICATION_FAILED, "외부 소스 인증에 실패했습니다")
+        if status == 403:
+            return _failure(SourceOutcome.FORBIDDEN, "외부 소스가 접근을 거부했습니다")
+        if status == 429:
+            return _failure(SourceOutcome.RATE_LIMITED, "외부 소스 요청 한도에 도달했습니다")
+    return _failure(SourceOutcome.NETWORK_ERROR, f"{stage}에 실패했습니다")
+
+
+def _public_excerpt(fields: dict[str, Any]) -> str | None:
+    # Whole HTML/JSON may echo auth headers. Persist only selected public scalar facts.
+    public = {
+        key: value
+        for key, value in fields.items()
+        if key in STANDARD_KEYS | {"price", "scale"}
+        and (value is None or isinstance(value, (str, int, float, bool)))
+    }
+    return json.dumps(public, ensure_ascii=False)[:500] if public else None
+
+
+def _without_reflected_secrets(
+    result: AdapterResult,
+    credentials: dict[str, str] | None,
+    headers: dict[str, str],
+) -> AdapterResult:
+    secrets = [value for value in [*(credentials or {}).values(), *headers.values()] if value]
+    encoded = json.dumps(asdict(result), ensure_ascii=False)
+    if any(
+        secret in encoded or json.dumps(secret, ensure_ascii=False)[1:-1] in encoded
+        for secret in secrets
+    ):
+        return _failure(
+            SourceOutcome.PARSE_ERROR, "응답에 민감한 값이 포함되어 저장하지 않았습니다"
+        )
+    return result
 
 
 def _is_better(candidate: AdapterResult, current: AdapterResult) -> bool:
@@ -434,20 +558,32 @@ async def _fetch_pinned_detail(
     *,
     base_url: str,
     pinned: PinnedMatch,
-    client: httpx.AsyncClient,
+    client: SafeHttpClient,
 ) -> AdapterResult:
     """고정된 URL 의 상세 페이지를 직접 조회한다 — 검색 왕복을 건너뛴다.
 
     저장 시점에 호스트를 검증했더라도 여기서 다시 확인한다. 저장 후에 소스의 `base_url`
     이 바뀌었을 수 있다(SSRF 방어, §7.2).
     """
-    if not _same_host(base_url, pinned.external_url):
+    if not _within_allowed(pinned.external_url, client):
         return AdapterResult(
-            None, {}, None, True, "고정된 링크가 등록된 사이트 밖을 가리켜 건너뜁니다", pinned=True
+            None,
+            {},
+            None,
+            True,
+            "고정된 링크가 등록된 사이트 밖을 가리켜 건너뜁니다",
+            pinned=True,
+            outcome=SourceOutcome.POLICY_BLOCKED,
         )
     if not await _allowed(pinned.external_url, client=client):
         return AdapterResult(
-            None, {}, None, True, "robots.txt 가 상세 페이지 접근을 금지합니다", pinned=True
+            None,
+            {},
+            None,
+            True,
+            "robots.txt 가 상세 페이지 접근을 금지합니다",
+            pinned=True,
+            outcome=SourceOutcome.POLICY_BLOCKED,
         )
     return await _fetch_detail(
         adapter_spec,
@@ -467,7 +603,7 @@ async def _fetch_detail(
     *,
     base_url: str,
     url: str,
-    client: httpx.AsyncClient,
+    client: SafeHttpClient,
     matched_name: str | None,
     match_score: float | None,
     matched_key: str | None,
@@ -476,34 +612,19 @@ async def _fetch_detail(
 ) -> AdapterResult:
     """상세 페이지를 받아 `detail.fields` 셀렉터로 값을 뽑는다."""
     try:
-        detail_response = await client.get(url)
+        detail_response = await client.get(
+            url, headers={"User-Agent": USER_AGENT}, send_credentials=False
+        )
         detail_response.raise_for_status()
-    except httpx.HTTPError as error:
-        return AdapterResult(
-            url,
-            {},
-            None,
-            True,
-            f"상세 페이지 조회 실패: {error}",
-            matched_name=matched_name,
-            match_score=match_score,
-            matched_key=matched_key,
-            candidates=candidates,
-            pinned=pinned,
-        )
-
-    # 리다이렉트를 따라간 뒤 최종 주소도 같은 호스트인지 다시 확인한다 — 등록한
-    # 사이트 자체가 공격받아 다른 호스트로 리다이렉트하도록 바뀌었을 가능성을 막는다.
-    if not _same_host(base_url, str(detail_response.url)):
-        return AdapterResult(
-            None,
-            {},
-            None,
-            True,
-            "상세 페이지가 등록된 사이트 밖으로 리다이렉트됐습니다",
-            candidates=candidates,
-            pinned=pinned,
-        )
+    except (httpx.HTTPError, RequestBudgetExceeded) as error:
+        failure = _http_failure(error, "상세 페이지 조회")
+        failure.source_url = url if failure.outcome != SourceOutcome.POLICY_BLOCKED else None
+        failure.matched_name = matched_name
+        failure.match_score = match_score
+        failure.matched_key = matched_key
+        failure.candidates = candidates
+        failure.pinned = pinned
+        return failure
 
     detail_soup = BeautifulSoup(detail_response.text, "html.parser")
     detail_section = adapter_spec.get("detail")
@@ -513,7 +634,7 @@ async def _fetch_detail(
     fields, missing = _extract_named_fields(
         lambda spec: _extract_field(detail_soup, spec, base_url=base_url), detail_fields_spec
     )
-    excerpt = detail_soup.get_text(" ", strip=True)[:500] or None
+    excerpt = _public_excerpt(fields)
     return AdapterResult(
         url,
         fields,
@@ -526,6 +647,7 @@ async def _fetch_detail(
         matched_key=matched_key,
         candidates=candidates,
         pinned=pinned,
+        outcome=SourceOutcome.PARTIAL if missing else SourceOutcome.SUCCESS,
     )
 
 
@@ -556,12 +678,7 @@ def _build_request_headers(
     search_spec: dict[str, Any],
     credentials: dict[str, str] | None,
 ) -> dict[str, str]:
-    """`search.headers`(정적 헤더)와 `credentials` 주입(Task 34 PR5)을 합친다.
-
-    자격 증명 값은 **헤더로만** 주입한다 — URL 에 넣으면 접근 로그·리다이렉트 Location
-    등으로 새기 쉽다. 스펙에 없는 이름이거나 값이 없으면 조용히 건너뛴다: 그 요청은
-    인증 없이 나가 사이트가 401 등으로 거부할 뿐이고, 조회 전체를 막을 이유가 없다.
-    """
+    """공개 검색 헤더만 반환한다. 비밀값은 별도 검색 host 계약에서 주입한다."""
     headers: dict[str, str] = {}
     static_headers = search_spec.get("headers")
     if isinstance(static_headers, dict):
@@ -569,6 +686,30 @@ def _build_request_headers(
             if isinstance(key, str) and isinstance(value, str):
                 headers[key] = value
 
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower()
+        in {"accept", "accept-language", "content-type", "user-agent", "x-requested-with"}
+    }
+
+
+def _build_credential_headers(
+    adapter_spec: dict[str, Any],
+    search_spec: dict[str, Any],
+    credentials: dict[str, str] | None,
+) -> dict[str, str]:
+    public_names = {"accept", "accept-language", "content-type", "user-agent", "x-requested-with"}
+    static = search_spec.get("headers")
+    headers = (
+        {
+            key: value
+            for key, value in static.items()
+            if isinstance(key, str) and isinstance(value, str) and key.lower() not in public_names
+        }
+        if isinstance(static, dict)
+        else {}
+    )
     entries = adapter_spec.get("credentials")
     if credentials and isinstance(entries, list):
         for entry in entries:
@@ -594,207 +735,204 @@ async def _fetch_snapshot_unsafe(
     base_url: str,
     identity: ProductIdentity,
     query: str,
-    transport: httpx.AsyncBaseTransport | None,
+    client: SafeHttpClient,
     pinned: PinnedMatch | None,
-    credentials: dict[str, str] | None = None,
 ) -> AdapterResult:
     search_spec = adapter_spec.get("search")
     if not isinstance(search_spec, dict):
-        return AdapterResult(None, {}, None, True, "adapter_spec 에 search 설정이 없습니다")
+        return _failure(SourceOutcome.INVALID_CONFIGURATION, "검색 설정이 없습니다")
 
-    async with httpx.AsyncClient(
-        timeout=_TIMEOUT_SECONDS,
-        transport=transport,
-        headers={"User-Agent": USER_AGENT},
-        follow_redirects=True,
-        max_redirects=_MAX_REDIRECTS,
-    ) as client:
-        # 고정돼 있고 상세 페이지가 따로 있는 소스면 검색 자체를 건너뛴다.
-        if pinned is not None and not _uses_result_fields(adapter_spec, search_spec):
-            return await _fetch_pinned_detail(
-                adapter_spec, base_url=base_url, pinned=pinned, client=client
-            )
+    # 고정돼 있고 상세 페이지가 따로 있는 소스면 검색 자체를 건너뛴다.
+    if pinned is not None and not _uses_result_fields(adapter_spec, search_spec):
+        return await _fetch_pinned_detail(
+            adapter_spec, base_url=base_url, pinned=pinned, client=client
+        )
 
-        url_template = search_spec.get("url_template")
-        if not isinstance(url_template, str):
-            return AdapterResult(
-                None, {}, None, True, "adapter_spec.search.url_template 이 없습니다"
-            )
-        try:
-            search_url = url_template.format(query=urllib.parse.quote(query))
-        except (KeyError, IndexError, ValueError) as error:
-            return AdapterResult(None, {}, None, True, f"url_template 형식이 잘못됐습니다: {error}")
+    url_template = search_spec.get("url_template")
+    if not isinstance(url_template, str):
+        return _failure(SourceOutcome.INVALID_CONFIGURATION, "url_template 설정이 없습니다")
+    try:
+        search_url = url_template.format(query=urllib.parse.quote(query))
+    except KeyError, IndexError, ValueError:
+        return _failure(SourceOutcome.INVALID_CONFIGURATION, "url_template 형식이 잘못됐습니다")
 
-        if not await _allowed(search_url, client=client):
-            return AdapterResult(
-                None, {}, None, True, "robots.txt 가 검색 페이지 접근을 금지합니다"
-            )
+    if not await _allowed(search_url, client=client):
+        return _failure(SourceOutcome.POLICY_BLOCKED, "robots.txt 가 검색 페이지 접근을 금지합니다")
 
-        request_headers = _build_request_headers(adapter_spec, search_spec, credentials)
-        method = _search_method(search_spec)
-        try:
-            if method == "POST":
-                body = search_spec.get("body")
-                payload = _fill_template(body, query) if isinstance(body, dict) else None
-                response = await client.post(
-                    search_url, json=payload, headers=request_headers or None
-                )
-            else:
-                response = await client.get(search_url, headers=request_headers or None)
-            response.raise_for_status()
-        except httpx.HTTPError as error:
-            return AdapterResult(None, {}, None, True, f"검색 페이지 조회 실패: {error}")
-
-        fields_spec = search_spec.get("fields")
-        if not isinstance(fields_spec, dict):
-            fields_spec = {}
-
-        is_json = adapter_spec.get("format") == "json"
-        #: (이름, 링크, 원본 JSON 아이템 또는 None) — JSON 모드는 상세를 다시 조회하지
-        #: 않고 이 원본 아이템에서 바로 결과 필드를 뽑을 수도 있어(`result_fields`) 붙여
-        #: 둔다. HTML 모드는 늘 `None` 이다.
-        raw: list[tuple[str, str, dict[str, Any] | None]] = []
-        if is_json:
-            try:
-                parsed = response.json()
-            except ValueError:
-                return AdapterResult(None, {}, None, True, "검색 응답이 올바른 JSON이 아닙니다")
-            item_path = search_spec.get("item")
-            items_data = _get_json_path(parsed, item_path) if isinstance(item_path, str) else parsed
-            for raw_item in items_data if isinstance(items_data, list) else []:
-                if not isinstance(raw_item, dict):
-                    continue
-                name = _extract_field_json(raw_item, fields_spec.get("name"))
-                url = _extract_field_json(raw_item, fields_spec.get("url"))
-                if isinstance(name, str) and isinstance(url, str):
-                    raw.append((name, url, raw_item))
+    request_headers = {
+        "User-Agent": USER_AGENT,
+        **_build_request_headers(adapter_spec, search_spec, None),
+    }
+    method = _search_method(search_spec)
+    try:
+        if method == "POST":
+            body = search_spec.get("body")
+            payload = _fill_template(body, query) if isinstance(body, dict) else None
+            response = await client.post(search_url, json=payload, headers=request_headers or None)
         else:
-            soup = BeautifulSoup(response.text, "html.parser")
-            item_selector = search_spec.get("item")
-            items = soup.select(item_selector) if isinstance(item_selector, str) else []
-            for item in items:
-                name = _extract_field(item, fields_spec.get("name"), base_url=base_url)
-                url = _extract_field(item, fields_spec.get("url"), base_url=base_url)
-                if isinstance(name, str) and isinstance(url, str):
-                    raw.append((name, url, None))
+            response = await client.get(search_url, headers=request_headers or None)
+        response.raise_for_status()
+    except (httpx.HTTPError, RequestBudgetExceeded) as error:
+        return _http_failure(error, "검색 페이지 조회")
 
-        # 제외 키워드(Task 34 PR7)는 자동 후보 선택에서만 적용한다 — 고정된 상품은
-        # 사용자가 명시적으로 골라 뒀으므로, 검색 결과에서 그 항목을 다시 찾아야 하는
-        # `_match_pinned` 경로를 이 필터가 방해하면 안 된다.
-        if pinned is None and raw:
-            exclude_keywords = search_spec.get("exclude_keywords")
-            keywords = (
-                [word for word in exclude_keywords if isinstance(word, str)]
-                if isinstance(exclude_keywords, list)
-                else []
-            )
-            if keywords:
-                filtered = [entry for entry in raw if not is_excluded(entry[0], keywords)]
-                if not filtered:
-                    return AdapterResult(
-                        None, {}, None, True, "제외 키워드에 걸려 후보가 모두 걸러졌습니다"
-                    )
-                raw = filtered
+    fields_spec = search_spec.get("fields")
+    if not isinstance(fields_spec, dict):
+        fields_spec = {}
 
-        if not raw:
+    is_json = adapter_spec.get("format") == "json"
+    #: (이름, 링크, 원본 JSON 아이템 또는 None) — JSON 모드는 상세를 다시 조회하지
+    #: 않고 이 원본 아이템에서 바로 결과 필드를 뽑을 수도 있어(`result_fields`) 붙여
+    #: 둔다. HTML 모드는 늘 `None` 이다.
+    raw: list[tuple[str, str, dict[str, Any] | None]] = []
+    if is_json:
+        try:
+            parsed = response.json()
+        except ValueError:
+            return _failure(SourceOutcome.PARSE_ERROR, "검색 응답이 올바른 JSON이 아닙니다")
+        item_path = search_spec.get("item")
+        items_data = _get_json_path(parsed, item_path) if isinstance(item_path, str) else parsed
+        if not isinstance(items_data, list):
+            return _failure(SourceOutcome.PARSE_ERROR, "검색 응답의 후보 목록을 읽지 못했습니다")
+        for raw_item in items_data:
+            if not isinstance(raw_item, dict):
+                continue
+            name = _extract_field_json(raw_item, fields_spec.get("name"))
+            url = _extract_field_json(raw_item, fields_spec.get("url"))
+            if isinstance(name, str) and isinstance(url, str):
+                raw.append((name, url, raw_item))
+    else:
+        soup = BeautifulSoup(response.text, "html.parser")
+        item_selector = search_spec.get("item")
+        items = soup.select(item_selector) if isinstance(item_selector, str) else []
+        for item in items:
+            name = _extract_field(item, fields_spec.get("name"), base_url=base_url)
+            url = _extract_field(item, fields_spec.get("url"), base_url=base_url)
+            if isinstance(name, str) and isinstance(url, str):
+                raw.append((name, url, None))
+
+    # 제외 키워드(Task 34 PR7)는 자동 후보 선택에서만 적용한다 — 고정된 상품은
+    # 사용자가 명시적으로 골라 뒀으므로, 검색 결과에서 그 항목을 다시 찾아야 하는
+    # `_match_pinned` 경로를 이 필터가 방해하면 안 된다.
+    if pinned is None and raw:
+        exclude_keywords = search_spec.get("exclude_keywords")
+        keywords = (
+            [word for word in exclude_keywords if isinstance(word, str)]
+            if isinstance(exclude_keywords, list)
+            else []
+        )
+        if keywords:
+            filtered = [entry for entry in raw if not is_excluded(entry[0], keywords)]
+            if not filtered:
+                return _failure(SourceOutcome.EMPTY, "제외 키워드에 걸려 후보가 모두 걸러졌습니다")
+            raw = filtered
+
+    if not raw:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "검색 결과에서 후보를 찾지 못했습니다",
+            pinned=pinned is not None,
+            outcome=SourceOutcome.EMPTY,
+        )
+
+    scored = _score_candidates(identity, query, raw)
+    # 자동 채택 여부와 무관하게 상위 후보를 늘 함께 돌려준다 — 사용자가 다른 것을
+    # 고를 수 있어야 하기 때문이다(진단 6번).
+    candidates = [entry[0] for entry in scored if _within_allowed(entry[0].url, client)][
+        :MAX_CANDIDATES
+    ]
+
+    if pinned is not None:
+        selected = _match_pinned(scored, pinned)
+        if selected is None:
             return AdapterResult(
                 None,
                 {},
                 None,
                 True,
-                "검색 결과에서 후보를 찾지 못했습니다",
-                pinned=pinned is not None,
+                "고정된 상품을 검색 결과에서 찾지 못했습니다",
+                candidates=candidates,
+                pinned=True,
+                outcome=SourceOutcome.EMPTY,
             )
-
-        scored = _score_candidates(identity, query, raw)
-        # 자동 채택 여부와 무관하게 상위 후보를 늘 함께 돌려준다 — 사용자가 다른 것을
-        # 고를 수 있어야 하기 때문이다(진단 6번).
-        candidates = [entry[0] for entry in scored[:MAX_CANDIDATES]]
-
-        if pinned is not None:
-            selected = _match_pinned(scored, pinned)
-            if selected is None:
-                return AdapterResult(
-                    None,
-                    {},
-                    None,
-                    True,
-                    "고정된 상품을 검색 결과에서 찾지 못했습니다",
-                    candidates=candidates,
-                    pinned=True,
-                )
-        else:
-            # 하드 제약(용량·연수·빈티지·도수 불일치)에 걸린 후보는 점수가 0 이라
-            # 정렬만으로 자연스럽게 뒤로 밀린다 — 별도 필터가 필요 없다.
-            selected = scored[0]
-            if selected[0].score < MIN_CANDIDATE:
-                return AdapterResult(
-                    None,
-                    {},
-                    None,
-                    True,
-                    f"충분히 비슷한 후보가 없습니다(가장 가까움: {selected[0].name!r})",
-                    candidates=candidates,
-                )
-
-        best, best_item = selected
-        needs_confirmation = pinned is None and best.score < AUTO_ACCEPT
-
-        if not _same_host(base_url, best.url):
+    else:
+        # 하드 제약(용량·연수·빈티지·도수 불일치)에 걸린 후보는 점수가 0 이라
+        # 정렬만으로 자연스럽게 뒤로 밀린다 — 별도 필터가 필요 없다.
+        selected = scored[0]
+        if selected[0].score < MIN_CANDIDATE:
             return AdapterResult(
                 None,
                 {},
                 None,
                 True,
-                "검색 결과 링크가 등록된 사이트 밖을 가리켜 건너뜁니다",
+                "충분히 비슷한 후보가 없습니다",
                 candidates=candidates,
-                pinned=pinned is not None,
+                outcome=SourceOutcome.EMPTY,
             )
 
-        result_fields_spec = search_spec.get("result_fields")
-        if _uses_result_fields(adapter_spec, search_spec) and best_item is not None:
-            # 검색 응답 자체에 이미 상세 정보가 있는 사이트다 — 상세 페이지를 또 조회하지
-            # 않는다(불필요한 왕복 + robots.txt 재확인을 피한다).
-            fields, missing = _extract_named_fields(
-                lambda spec: _extract_field_json(best_item, spec), result_fields_spec
-            )
-            excerpt = json.dumps(best_item, ensure_ascii=False)[:500] or None
-            return AdapterResult(
-                best.url,
-                fields,
-                excerpt,
-                bool(missing),
-                _missing_warning(missing),
-                ok=True,
-                matched_name=best.name,
-                match_score=best.score,
-                matched_key=best.key,
-                needs_confirmation=needs_confirmation,
-                candidates=candidates,
-                pinned=pinned is not None,
-            )
+    best, best_item = selected
+    needs_confirmation = pinned is None and best.score < AUTO_ACCEPT
 
-        if not await _allowed(best.url, client=client):
-            return AdapterResult(
-                None,
-                {},
-                None,
-                True,
-                "robots.txt 가 상세 페이지 접근을 금지합니다",
-                candidates=candidates,
-                pinned=pinned is not None,
-            )
+    if not _within_allowed(best.url, client):
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "검색 결과 링크가 등록된 사이트 밖을 가리켜 건너뜁니다",
+            candidates=candidates,
+            pinned=pinned is not None,
+            outcome=SourceOutcome.POLICY_BLOCKED,
+        )
 
-        result = await _fetch_detail(
-            adapter_spec,
-            base_url=base_url,
-            url=best.url,
-            client=client,
+    result_fields_spec = search_spec.get("result_fields")
+    if _uses_result_fields(adapter_spec, search_spec) and best_item is not None:
+        # 검색 응답 자체에 이미 상세 정보가 있는 사이트다 — 상세 페이지를 또 조회하지
+        # 않는다(불필요한 왕복 + robots.txt 재확인을 피한다).
+        fields, missing = _extract_named_fields(
+            lambda spec: _extract_field_json(best_item, spec), result_fields_spec
+        )
+        excerpt = _public_excerpt(fields)
+        return AdapterResult(
+            best.url,
+            fields,
+            excerpt,
+            bool(missing),
+            _missing_warning(missing),
+            ok=True,
             matched_name=best.name,
             match_score=best.score,
             matched_key=best.key,
+            needs_confirmation=needs_confirmation,
             candidates=candidates,
             pinned=pinned is not None,
+            outcome=SourceOutcome.PARTIAL if missing else SourceOutcome.SUCCESS,
         )
-        result.needs_confirmation = needs_confirmation
-        return result
+
+    if not await _allowed(best.url, client=client):
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "robots.txt 가 상세 페이지 접근을 금지합니다",
+            candidates=candidates,
+            pinned=pinned is not None,
+            outcome=SourceOutcome.POLICY_BLOCKED,
+        )
+
+    result = await _fetch_detail(
+        adapter_spec,
+        base_url=base_url,
+        url=best.url,
+        client=client,
+        matched_name=best.name,
+        match_score=best.score,
+        matched_key=best.key,
+        candidates=candidates,
+        pinned=pinned is not None,
+    )
+    result.needs_confirmation = needs_confirmation
+    return result

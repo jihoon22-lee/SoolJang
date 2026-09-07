@@ -99,6 +99,7 @@ async def create_external_source(
             priority=payload.priority,
             is_active=payload.is_active,
             rate_limit_per_min=payload.rate_limit_per_min,
+            request_limit_per_day=payload.request_limit_per_day,
             ttl_hours=payload.ttl_hours,
             note=payload.note,
         )
@@ -118,6 +119,7 @@ async def create_external_source(
             priority=payload.priority,
             is_active=payload.is_active,
             rate_limit_per_min=payload.rate_limit_per_min,
+            request_limit_per_day=payload.request_limit_per_day,
             ttl_hours=payload.ttl_hours,
             note=payload.note,
         )
@@ -135,6 +137,11 @@ async def get_sources_health(session: SessionDep, user_id: UserDep) -> list[Sour
             last_success_at=entry.last_success_at,
             consecutive_failures=entry.consecutive_failures,
             last_warning=entry.last_warning,
+            config_revision=entry.config_revision,
+            last_attempt_at=entry.last_attempt_at,
+            last_outcome=entry.last_outcome,
+            verification_stale=entry.verification_stale,
+            reserved_requests_today=entry.reserved_requests_today,
         )
         for entry in health
     ]
@@ -167,6 +174,7 @@ async def probe_external_source(
         warning=result.warning,
         matched_name=result.matched_name,
         match_score=result.match_score,
+        outcome=result.outcome,
     )
 
 
@@ -236,6 +244,7 @@ async def lookup_external_sources(
             source_id=result.source_id,
             source_name=result.source_name,
             cached=result.cached,
+            outcome=result.outcome,
             source_url=result.source_url,
             fields=result.fields,
             raw_excerpt=result.raw_excerpt,

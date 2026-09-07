@@ -7,14 +7,12 @@
 `ttl_hours` 내 캐시 재사용, `source_url` 없는 결과는 저장 거부. robots.txt 확인은
 `infrastructure/external/adapter.py` 가 맡는다.
 
-rate limit 은 인메모리 슬라이딩 윈도로 추적한다. 이 앱은 단일 프로세스로만 배포되므로
-(§8.1) 서버 재시작 사이에 카운트가 리셋되는 정도는 안전 마진 안이다 — `LlmSetting` 의
-"단일 활성 행을 애플리케이션 계층에서 강제" 판단과 같은 종류의 단순화다.
+robots·검색·상세·redirect·retry의 각 요청은 별도 영속 트랜잭션에서 예산을 예약한다.
+주 조회의 실패/롤백과 프로세스 재시작으로 요청 한도가 초기화되지 않는다.
 """
 
-import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -23,8 +21,14 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError
+from sooljang.application.external_request_usage import (
+    RequestBudget,
+    current_usage,
+    reserve_request,
+)
 from sooljang.application.llm_settings import get_llm_setting
 from sooljang.application.products import ensure_category_exists
+from sooljang.domain.discovery import SourceOutcome
 from sooljang.infrastructure.database.models import (
     ExternalLlmRematchLog,
     ExternalLookupCache,
@@ -36,6 +40,7 @@ from sooljang.infrastructure.database.models import (
     Sku,
 )
 from sooljang.infrastructure.external.adapter import (
+    AdapterResult,
     LookupCandidate,
     PinnedMatch,
     fetch_snapshot,
@@ -45,32 +50,10 @@ from sooljang.infrastructure.external.fields import NormalizedFields, split_fiel
 from sooljang.infrastructure.external.match_llm import rematch as llm_rematch
 from sooljang.infrastructure.external.matching import ProductIdentity
 from sooljang.infrastructure.external.presets import get_preset
-from sooljang.infrastructure.security.secrets import decrypt_secret, encrypt_secret
+from sooljang.infrastructure.security.secrets import InvalidToken, decrypt_secret, encrypt_secret
 
-#: 소스별 최근 요청 시각(초, `time.monotonic()`). 슬라이딩 60초 윈도로 rate limit 을 본다.
-_rate_limit_history: dict[uuid.UUID, list[float]] = {}
-
-#: 캐시 스냅샷 모양의 버전(Task 34 PR3). `fields` 가 표준 키를 쓰기 시작한 시점을
-#: 표시한다 — 버전이 낮은 행은 `_fresh_cache` 가 TTL 과 무관하게 stale 로 취급해, 다음
-#: 조회에서 자연스럽게 새 모양으로 교체된다(별도 데이터 마이그레이션 없음).
-SNAPSHOT_VERSION = 2
-
-
-def reset_rate_limit_history() -> None:
-    """테스트 편의를 위한 초기화. 앞선 테스트의 호출 이력이 다음 테스트의 rate limit
-    판정에 새지 않게 한다(`application/auth.py::reset_rate_limiter` 와 같은 패턴)."""
-    _rate_limit_history.clear()
-
-
-def _rate_limit_ok(source_id: uuid.UUID, limit_per_min: int) -> bool:
-    now = time.monotonic()
-    history = [t for t in _rate_limit_history.get(source_id, []) if now - t < 60]
-    if len(history) >= limit_per_min:
-        _rate_limit_history[source_id] = history
-        return False
-    history.append(now)
-    _rate_limit_history[source_id] = history
-    return True
+#: 설정 revision을 함께 저장하여 키/파싱 계약 변경 후 과거 캐시를 재사용하지 않는다.
+SNAPSHOT_VERSION = 3
 
 
 # --- 레지스트리 CRUD ---------------------------------------------------------
@@ -90,6 +73,7 @@ def _sync_preset_if_stale(source: ExternalSource) -> bool:
     source.adapter_spec = preset.adapter_spec
     source.base_url = preset.base_url
     source.preset_version = preset.version
+    source.config_revision += 1
     return True
 
 
@@ -106,7 +90,8 @@ async def list_sources(session: AsyncSession, *, user_id: uuid.UUID) -> list[Ext
             .order_by(ExternalSource.priority, ExternalSource.name)
         )
     )
-    if any(_sync_preset_if_stale(source) for source in sources):
+    updated = [_sync_preset_if_stale(source) for source in sources]
+    if any(updated):
         await session.flush()
     return sources
 
@@ -122,6 +107,7 @@ async def create_source(
     priority: int = 0,
     is_active: bool = True,
     rate_limit_per_min: int = 6,
+    request_limit_per_day: int = 1000,
     ttl_hours: int = 24,
     note: str | None = None,
 ) -> ExternalSource:
@@ -136,6 +122,7 @@ async def create_source(
         priority=priority,
         is_active=is_active,
         rate_limit_per_min=rate_limit_per_min,
+        request_limit_per_day=request_limit_per_day,
         ttl_hours=ttl_hours,
         note=note,
     )
@@ -154,6 +141,7 @@ async def create_source_from_preset(
     priority: int = 0,
     is_active: bool = True,
     rate_limit_per_min: int = 6,
+    request_limit_per_day: int = 1000,
     ttl_hours: int = 24,
     note: str | None = None,
 ) -> ExternalSource:
@@ -176,6 +164,7 @@ async def create_source_from_preset(
         priority=priority,
         is_active=is_active,
         rate_limit_per_min=rate_limit_per_min,
+        request_limit_per_day=request_limit_per_day,
         ttl_hours=ttl_hours,
         note=note,
         preset_key=preset.key,
@@ -210,8 +199,11 @@ async def update_source(
     editing_spec = "adapter_spec" in fields and "spec_overridden" not in fields
     if editing_spec and source.preset_key is not None:
         fields["spec_overridden"] = True
+    changed = any(getattr(source, key) != value for key, value in fields.items())
     for key, value in fields.items():
         setattr(source, key, value)
+    if changed:
+        source.config_revision += 1
     await session.flush()
     return source
 
@@ -247,6 +239,8 @@ async def set_credentials(
     """
     hints: dict[str, str] = {}
     for name, value in values.items():
+        if not value.strip():
+            continue
         ciphertext = encrypt_secret(value, master_key=master_key)
         hint = _credential_hint(value)
         existing = await session.scalar(
@@ -270,6 +264,11 @@ async def set_credentials(
             existing.secret_ciphertext = ciphertext
             existing.hint = hint
         hints[name] = hint
+    if hints:
+        source = await get_owned_source(session, user_id=user_id, source_id=source_id)
+        if source is None:
+            raise NotFoundError("외부 소스를 찾을 수 없습니다")
+        source.config_revision += 1
     await session.flush()
     return hints
 
@@ -409,6 +408,11 @@ class SourceHealth:
     #: 가장 최근 시도부터 센 연속 실패 횟수. 성공이 하나라도 나오면 거기서 멈춘다.
     consecutive_failures: int
     last_warning: str | None
+    config_revision: int = 1
+    last_attempt_at: datetime | None = None
+    last_outcome: str = "unknown"
+    verification_stale: bool = False
+    reserved_requests_today: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,6 +424,7 @@ class ProbeResult:
     warning: str | None
     matched_name: str | None
     match_score: float | None
+    outcome: SourceOutcome = SourceOutcome.UNKNOWN
 
 
 async def _trim_probes(session: AsyncSession, *, source_id: uuid.UUID) -> None:
@@ -447,6 +452,8 @@ async def _record_probe(
     degraded: bool,
     warning: str | None,
     attempted_at: datetime,
+    config_revision: int = 1,
+    outcome: str = "unknown",
 ) -> None:
     """소스에 실제로 조회를 시도한 결과 하나를 헬스 로그에 남긴다.
 
@@ -459,6 +466,8 @@ async def _record_probe(
             user_id=user_id,
             source_id=source_id,
             attempted_at=attempted_at,
+            config_revision=config_revision,
+            outcome=outcome,
             ok=ok,
             degraded=degraded,
             warning=warning,
@@ -479,18 +488,22 @@ def _summarize_health(source: ExternalSource, probes: list[ExternalSourceProbe])
             last_success_at=None,
             consecutive_failures=0,
             last_warning=None,
+            config_revision=source.config_revision,
         )
 
     consecutive_failures = 0
     for probe in probes:
-        if probe.ok:
+        if probe.config_revision != source.config_revision or probe.ok:
             break
         consecutive_failures += 1
 
     last_success_at = next((probe.attempted_at for probe in probes if probe.ok), None)
     latest = probes[0]
 
-    if consecutive_failures >= FAILING_THRESHOLD:
+    stale = latest.config_revision != source.config_revision
+    if stale:
+        status = "unknown"
+    elif consecutive_failures >= FAILING_THRESHOLD:
         status = "failing"
     elif not latest.ok or latest.degraded:
         status = "degraded"
@@ -504,6 +517,10 @@ def _summarize_health(source: ExternalSource, probes: list[ExternalSourceProbe])
         last_success_at=last_success_at,
         consecutive_failures=consecutive_failures,
         last_warning=latest.warning,
+        config_revision=source.config_revision,
+        last_attempt_at=latest.attempted_at,
+        last_outcome=latest.outcome,
+        verification_stale=stale,
     )
 
 
@@ -520,8 +537,73 @@ async def get_health(session: AsyncSession, *, user_id: uuid.UUID) -> list[Sourc
                 .limit(PROBE_HISTORY_LIMIT)
             )
         )
-        results.append(_summarize_health(source, probes))
+        health = _summarize_health(source, probes)
+        usage = await current_usage(
+            session, user_id=user_id, scope_kind="source", scope_id=source.id
+        )
+        results.append(replace(health, reserved_requests_today=usage["day"]))
     return results
+
+
+async def _fetch_source(
+    session: AsyncSession,
+    *,
+    source: ExternalSource,
+    identity: ProductIdentity,
+    transport: httpx.AsyncBaseTransport | None,
+    master_key: str | None,
+    pinned: PinnedMatch | None = None,
+) -> AdapterResult:
+    try:
+        values = (
+            await _load_credential_values(session, source_id=source.id, master_key=master_key)
+            if master_key is not None
+            else {}
+        )
+    except InvalidToken, ValueError:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "저장된 자격증명을 복호화할 수 없습니다",
+            outcome=SourceOutcome.CREDENTIAL_UNAVAILABLE,
+        )
+    entries = source.adapter_spec.get("credentials", [])
+    if isinstance(entries, list) and any(
+        isinstance(entry, dict)
+        and isinstance(entry.get("name"), str)
+        and not values.get(entry["name"])
+        for entry in entries
+    ):
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "필요한 API 자격증명을 등록해 주세요",
+            outcome=SourceOutcome.CREDENTIAL_UNAVAILABLE,
+        )
+
+    async def before_request(_request: httpx.Request) -> None:
+        await reserve_request(
+            user_id=source.user_id,
+            budgets=[
+                RequestBudget(
+                    "source", source.id, source.rate_limit_per_min, source.request_limit_per_day
+                )
+            ],
+        )
+
+    return await fetch_snapshot(
+        source.adapter_spec,
+        base_url=source.base_url,
+        identity=identity,
+        transport=transport,
+        pinned=pinned,
+        credentials=values or None,
+        before_request=before_request,
+    )
 
 
 async def probe_source(
@@ -551,23 +633,20 @@ async def probe_source(
         age_years=None,
         volumes_ml=(),
     )
-    credential_values = (
-        await _load_credential_values(session, source_id=source.id, master_key=master_key)
-        if master_key is not None
-        else {}
-    )
-    result = await fetch_snapshot(
-        source.adapter_spec,
-        base_url=source.base_url,
+    result = await _fetch_source(
+        session,
+        source=source,
         identity=identity,
         transport=transport,
-        credentials=credential_values or None,
+        master_key=master_key,
     )
     await _record_probe(
         session,
         user_id=source.user_id,
         source_id=source.id,
         ok=result.ok,
+        config_revision=source.config_revision,
+        outcome=result.outcome,
         degraded=result.degraded,
         warning=result.warning,
         attempted_at=datetime.now(UTC),
@@ -578,6 +657,7 @@ async def probe_source(
         warning=result.warning,
         matched_name=result.matched_name,
         match_score=result.match_score,
+        outcome=result.outcome,
     )
 
 
@@ -612,6 +692,7 @@ class SourceLookupResult:
     #: 하나를 가리킨다 — 화면이 "LLM 추천" 배지를 붙이는 용도일 뿐, 자동으로 고정되지
     #: 않는다(여전히 사용자가 "이걸로 고정" 을 눌러야 한다).
     llm_recommended_url: str | None = None
+    outcome: SourceOutcome = SourceOutcome.UNKNOWN
 
 
 async def _fresh_cache(
@@ -632,6 +713,8 @@ async def _fresh_cache(
     # 버전이 낮은 스냅샷(표준 키 도입 이전)은 TTL 이 안 지났어도 stale 로 본다 — `fields`
     # 가 옛 자유 dict 모양이라 비교 뷰가 값을 못 잡는다. 다음 조회가 새로 채운다.
     if cached.snapshot.get("version", 1) < SNAPSHOT_VERSION:
+        return None
+    if cached.snapshot.get("config_revision") != source.config_revision:
         return None
     return cached
 
@@ -831,6 +914,7 @@ async def lookup_product(
                     source_id=source.id,
                     source_name=source.name,
                     cached=True,
+                    outcome=SourceOutcome.PARTIAL if cached.degraded else SourceOutcome.SUCCESS,
                     source_url=cached.snapshot.get("source_url"),
                     fields=cached_fields,
                     raw_excerpt=cached.snapshot.get("raw_excerpt"),
@@ -845,35 +929,13 @@ async def lookup_product(
             )
             continue
 
-        if not _rate_limit_ok(source.id, source.rate_limit_per_min):
-            results.append(
-                SourceLookupResult(
-                    source_id=source.id,
-                    source_name=source.name,
-                    cached=False,
-                    source_url=None,
-                    fields={},
-                    raw_excerpt=None,
-                    degraded=True,
-                    warning="이 소스는 잠시 후 다시 시도해 주세요(요청 한도 초과)",
-                    fetched_at=None,
-                    pinned=pinned is not None,
-                )
-            )
-            continue
-
-        credential_values = (
-            await _load_credential_values(session, source_id=source.id, master_key=master_key)
-            if master_key is not None
-            else {}
-        )
-        adapter_result = await fetch_snapshot(
-            source.adapter_spec,
-            base_url=source.base_url,
+        adapter_result = await _fetch_source(
+            session,
+            source=source,
             identity=identity,
             transport=transport,
             pinned=pinned,
-            credentials=credential_values or None,
+            master_key=master_key,
         )
         fetched_at = datetime.now(UTC)
 
@@ -890,6 +952,7 @@ async def lookup_product(
                     product_id=product.id,
                     snapshot={
                         "version": SNAPSHOT_VERSION,
+                        "config_revision": source.config_revision,
                         "source_url": adapter_result.source_url,
                         "fields": adapter_result.fields,
                         "raw_excerpt": adapter_result.raw_excerpt,
@@ -911,6 +974,8 @@ async def lookup_product(
             user_id=user_id,
             source_id=source.id,
             ok=adapter_result.ok,
+            config_revision=source.config_revision,
+            outcome=adapter_result.outcome,
             degraded=adapter_result.degraded,
             warning=adapter_result.warning,
             attempted_at=fetched_at,
@@ -936,6 +1001,7 @@ async def lookup_product(
                 source_id=source.id,
                 source_name=source.name,
                 cached=False,
+                outcome=adapter_result.outcome,
                 source_url=adapter_result.source_url,
                 fields=adapter_result.fields,
                 raw_excerpt=adapter_result.raw_excerpt,

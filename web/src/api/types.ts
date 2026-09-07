@@ -621,6 +621,20 @@ export interface AttachmentResponse {
  * 편집한다. */
 export type AdapterSpec = Record<string, unknown>;
 
+export type SourceOutcome =
+  | "unknown"
+  | "success"
+  | "empty"
+  | "partial"
+  | "authentication_failed"
+  | "forbidden"
+  | "rate_limited"
+  | "network_error"
+  | "parse_error"
+  | "policy_blocked"
+  | "invalid_configuration"
+  | "credential_unavailable";
+
 export interface ExternalSource {
   id: string;
   name: string;
@@ -630,6 +644,8 @@ export interface ExternalSource {
   priority: number;
   is_active: boolean;
   rate_limit_per_min: number;
+  request_limit_per_day?: number;
+  config_revision?: number;
   ttl_hours: number;
   note: string | null;
   /** 이 소스를 만든 프리셋의 키. 커스텀 등록이면 null(Task 34 PR5). */
@@ -652,6 +668,7 @@ export interface ExternalSourceInput {
   priority?: number;
   is_active?: boolean;
   rate_limit_per_min?: number;
+  request_limit_per_day?: number;
   ttl_hours?: number;
   note?: string | null;
 }
@@ -723,6 +740,7 @@ export interface SourceLookupResult {
   /** LLM 이 애매 구간에서 추천한 후보의 URL(Task 34 PR6). `candidates` 중 하나를 가리킨다
    * — 화면이 "LLM 추천" 배지만 붙일 뿐 자동으로 고정하지 않는다. */
   llm_recommended_url: string | null;
+  outcome?: SourceOutcome;
 }
 
 export interface ExternalMatchInput {
@@ -741,6 +759,11 @@ export interface SourceHealth {
   last_success_at: string | null;
   consecutive_failures: number;
   last_warning: string | null;
+  config_revision?: number;
+  last_attempt_at?: string | null;
+  last_outcome?: SourceOutcome;
+  verification_stale?: boolean;
+  reserved_requests_today?: number;
 }
 
 export interface SourceProbeRequest {
@@ -749,6 +772,7 @@ export interface SourceProbeRequest {
 
 /** 테스트 조회 결과. 캐시에는 저장되지 않는다. */
 export interface SourceProbeResult {
+  outcome?: SourceOutcome;
   ok: boolean;
   degraded: boolean;
   warning: string | null;

@@ -31,7 +31,6 @@ from sooljang.application.external_sources import (
     lookup_product,
     pin_match,
     probe_source,
-    reset_rate_limit_history,
     set_credentials,
     unpin_match,
     update_source,
@@ -98,7 +97,6 @@ ADAPTER_SPEC_STANDARD = {
 @pytest.fixture(autouse=True)
 def _reset_module_state() -> None:
     """소스별 rate limit·robots.txt 캐시가 테스트 간에 새지 않게 한다."""
-    reset_rate_limit_history()
     reset_robots_cache()
 
 
@@ -484,7 +482,7 @@ class TestLookup:
             name="전역 소스",
             base_url="https://example.com",
             adapter_spec=ADAPTER_SPEC,
-            rate_limit_per_min=1,
+            rate_limit_per_min=3,
         )
         product_a = Product(
             user_id=USER_ID, name="술 A", normalized_name="술a", category_id=category.id
@@ -507,6 +505,94 @@ class TestLookup:
         assert second[0].source_url is None
         assert second[0].warning is not None
         assert "한도" in second[0].warning
+
+
+async def test_one_list_refreshes_all_old_presets_and_preserves_overrides(
+    session: AsyncSession,
+) -> None:
+    sources = [
+        await create_source_from_preset(session, user_id=USER_ID, preset_key="dailyshot", name=name)
+        for name in ("가", "나", "다")
+    ]
+    for source in sources:
+        source.preset_version = 0
+        source.adapter_spec = {"custom": "preserved"}
+    sources[1].spec_overridden = True
+    await session.flush()
+
+    refreshed = await list_sources(session, user_id=USER_ID)
+    assert [source.preset_version for source in refreshed] == [2, 0, 2]
+    assert [source.config_revision for source in refreshed] == [2, 1, 2]
+    assert refreshed[1].adapter_spec == {"custom": "preserved"}
+
+
+async def test_setting_revision_invalidates_cache_and_marks_prior_success_stale(
+    session: AsyncSession, product: Product
+) -> None:
+    source = await create_source(
+        session,
+        user_id=USER_ID,
+        name="설정 변경",
+        base_url="https://example.com",
+        adapter_spec=ADAPTER_SPEC,
+        rate_limit_per_min=20,
+    )
+    first = await lookup_product(
+        session, user_id=USER_ID, product=product, transport=_found_transport()
+    )
+    assert first[0].cached is False
+    assert (await get_health(session, user_id=USER_ID))[0].status == "healthy"
+    await update_source(session, source, user_id=USER_ID, fields={"ttl_hours": 12})
+    stale = (await get_health(session, user_id=USER_ID))[0]
+    assert stale.status == "unknown"
+    assert stale.verification_stale
+    assert stale.last_success_at is not None
+    assert stale.reserved_requests_today == 3
+
+    second = await lookup_product(
+        session, user_id=USER_ID, product=product, transport=_found_transport()
+    )
+    assert second[0].cached is False
+    current = (await get_health(session, user_id=USER_ID))[0]
+    assert current.status == "healthy"
+    assert not current.verification_stale
+    assert current.config_revision == 2
+    assert current.reserved_requests_today == 5  # robots만 TTL 캐시 재사용
+
+
+async def test_empty_credential_input_preserves_ciphertext_and_bad_key_sends_no_request(
+    session: AsyncSession, product: Product
+) -> None:
+    source = await create_source(
+        session,
+        user_id=USER_ID,
+        name="키 보존",
+        base_url="https://example.com",
+        adapter_spec=_CREDENTIAL_ADAPTER_SPEC,
+    )
+    await set_credentials(
+        session,
+        user_id=USER_ID,
+        source_id=source.id,
+        values={"api_key": "synthetic-secret"},
+        master_key=MASTER_KEY,
+    )
+    revision = source.config_revision
+    await set_credentials(
+        session, user_id=USER_ID, source_id=source.id, values={"api_key": ""}, master_key=MASTER_KEY
+    )
+    assert source.config_revision == revision
+    requests: dict[str, str] = {}
+    result = await lookup_product(
+        session,
+        user_id=USER_ID,
+        product=product,
+        transport=_credential_capture_transport(requests),
+        master_key=Fernet.generate_key().decode(),
+    )
+    assert requests == {}
+    assert result[0].outcome == "credential_unavailable"
+    assert await get_credential_hints(session, source_id=source.id) == {"api_key": "cret"}
 
 
 class TestMatchPinning:
@@ -1144,8 +1230,9 @@ class TestCredentials:
             transport=_credential_capture_transport(captured),
         )
 
-        assert "x-api-key" not in captured
-        assert result[0].degraded is False
+        assert captured == {}
+        assert result[0].degraded is True
+        assert result[0].outcome == "credential_unavailable"
 
     async def test_테스트_조회에도_자격_증명이_주입된다(self, session: AsyncSession) -> None:
         source = await create_source(

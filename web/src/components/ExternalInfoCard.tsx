@@ -3,6 +3,7 @@ import { Fragment, useState } from "react";
 import { externalSourcesApi } from "@/api/client";
 import type { LookupCandidate, Money, SourceLookupResult } from "@/api/types";
 import { formatMoney } from "@/format";
+import { sourceOutcomeLabel } from "@/sourceOutcome";
 
 /**
  * 등록된 외부 소스에서 평점·가격을 조회하는 카드(Task 18, Task 34 PR1·PR3).
@@ -250,6 +251,9 @@ function ExternalInfoRow({
       {detailOpen && (
         <tr className="external-compare-detail">
           <td colSpan={6}>
+            {result.outcome && (
+              <p className="muted text-sm">조회 상태: {sourceOutcomeLabel(result.outcome)}</p>
+            )}
             {result.matched_name && (
               <p className="muted text-sm">
                 매칭: {result.matched_name}
