@@ -450,14 +450,18 @@ export const savedViewsApi = {
 
 /** 오프라인 동기화. `sync/engine.ts` 만 직접 호출한다 — 나머지 코드는 outbox 를 거친다. */
 export const syncApi = {
-  pull: (since: string | null, signal?: AbortSignal) =>
+  pull: (since: string | null, expectedUserId: string, signal?: AbortSignal) =>
     request<SyncPullResponse>("/sync", {
-      params: { since: since ?? undefined },
+      params: { since: since ?? undefined, expected_user_id: expectedUserId },
       ...(signal ? { signal } : {}),
     }),
 
-  batch: (operations: SyncOperationRequest[]) =>
-    request<SyncBatchResponse>("/sync/batch", { method: "POST", body: { operations } }),
+  batch: (operations: SyncOperationRequest[], expectedUserId: string, signal?: AbortSignal) =>
+    request<SyncBatchResponse>("/sync/batch", {
+      method: "POST",
+      body: { operations, expected_user_id: expectedUserId },
+      ...(signal ? { signal } : {}),
+    }),
 
   resolveConflict: (conflictId: string) =>
     request<void>(`/sync/conflicts/${conflictId}:resolve`, { method: "POST" }),

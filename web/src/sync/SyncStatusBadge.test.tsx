@@ -22,7 +22,7 @@ afterEach(async () => {
 
 function renderBadge() {
   return renderWithQuery(
-    <SyncStatusProvider>
+    <SyncStatusProvider userId="u1">
       <SyncStatusBadge />
     </SyncStatusProvider>,
   );
@@ -121,7 +121,7 @@ describe("SyncStatusBadge", () => {
 
     renderBadge();
 
-    const badge = await screen.findByRole("button", { name: "동기화 대기 1건" });
+    const badge = await screen.findByRole("button", { name: "동기화 확인 필요" });
     expect(badge.className).toContain("sync-status-warn");
   });
 

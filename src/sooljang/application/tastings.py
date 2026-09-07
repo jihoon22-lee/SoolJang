@@ -60,6 +60,18 @@ def validate_rating(rating: Decimal | None) -> Decimal | None:
     return rating
 
 
+async def load_bottle_for_write(
+    session: AsyncSession, *, user_id: uuid.UUID, bottle_id: uuid.UUID
+) -> Bottle | None:
+    """온라인·outbox가 상태/잔량을 읽기 전에 같은 행 잠금을 얻는다."""
+    return await session.scalar(
+        select(Bottle)
+        .where(Bottle.id == bottle_id, Bottle.user_id == user_id, Bottle.deleted_at.is_(None))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 async def _sku_volume_ml(session: AsyncSession, sku_id: uuid.UUID) -> int | None:
     """규격 용량. 개봉 시 잔량 초기값으로 쓴다."""
     return await session.scalar(select(Sku.volume_ml).where(Sku.id == sku_id))

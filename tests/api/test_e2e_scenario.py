@@ -147,6 +147,7 @@ def test_등록부터_동기화까지_한_여정(api_client: TestClient, prefix:
     batch = client.post(
         f"{prefix}/sync/batch",
         json={
+            "expected_user_id": client.get(f"{prefix}/auth/me").json()["id"],
             "operations": [
                 _sync_op(
                     entity="purchase",
@@ -162,13 +163,15 @@ def test_등록부터_동기화까지_한_여정(api_client: TestClient, prefix:
                         "bottle_ids": [str(offline_bottle_id)],
                     },
                 ),
-            ]
+            ],
         },
     )
     assert batch.status_code == 200, batch.text
     assert batch.json()["results"][0]["status"] == "applied"
 
-    pulled = client.get(f"{prefix}/sync", params={}).json()
+    pulled = client.get(
+        f"{prefix}/sync", params={"expected_user_id": client.get(f"{prefix}/auth/me").json()["id"]}
+    ).json()
     assert any(p["id"] == str(offline_purchase_id) for p in pulled["changes"]["purchase"])
 
     summary_after_offline = client.get(f"{prefix}/stats/summary").json()

@@ -8,7 +8,7 @@ import datetime
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import NotFoundError
@@ -25,12 +25,21 @@ from sooljang.infrastructure.database.models import ConflictLog
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 
+def _check_owner(user_id: uuid.UUID, expected_user_id: uuid.UUID) -> None:
+    if user_id != expected_user_id:
+        raise HTTPException(
+            status_code=409, detail="로그인 계정이 변경되었습니다. 대기열은 보존됩니다"
+        )
+
+
 @router.get("", response_model=SyncPullOut, summary="델타 풀")
 async def pull(
     session: SessionDep,
     user_id: UserDep,
+    expected_user_id: Annotated[uuid.UUID, Query(description="로컬 저장소 소유자")],
     since: Annotated[str | None, Query(description="이전 응답의 next_cursor")] = None,
 ) -> SyncPullOut:
+    _check_owner(user_id, expected_user_id)
     cursor = Cursor.decode(since) if since else None
     result = await pull_changes(session, user_id=user_id, cursor=cursor)
     return SyncPullOut(
@@ -40,6 +49,7 @@ async def pull(
 
 @router.post("/batch", response_model=SyncBatchOut, summary="outbox 일괄 전송")
 async def batch(session: SessionDep, user_id: UserDep, payload: SyncBatchIn) -> SyncBatchOut:
+    _check_owner(user_id, payload.expected_user_id)
     operations = [
         SyncOperation(
             idempotency_key=item.idempotency_key,

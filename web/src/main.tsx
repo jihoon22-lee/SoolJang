@@ -5,10 +5,16 @@ import { createRoot } from "react-dom/client";
 import { App } from "@/App";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "@/styles.css";
+import { initializeDraftTab } from "@/sync/drafts";
+import { controllerChanged, markUpdateReady, protectFormUpdates } from "@/sync/update";
 
-// autoUpdate: 새 배포가 있으면 조용히 최신 셸로 갱신한다. 사용자에게 "새로고침 하세요"
-// 프롬프트를 띄우지 않는다 — 개인 도구라 확인을 강제할 필요가 없다.
-registerSW({ immediate: true });
+initializeDraftTab();
+protectFormUpdates();
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh: () => markUpdateReady(() => updateSW(true)),
+  onNeedReload: () => controllerChanged(() => window.location.reload()),
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {

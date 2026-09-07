@@ -15,8 +15,17 @@ import { StatsPage } from "@/pages/StatsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
 import { VendorsPage } from "@/pages/VendorsPage";
 import { parseHash, type Route, routeToHash, type View } from "@/router";
+import { activateDatabase, lockDatabase } from "@/sync/db";
+import { syncEngine } from "@/sync/engine";
+import {
+  forgetLocalSession,
+  LOCAL_SESSION_KEY,
+  offlineSession,
+  rememberLocalSession,
+} from "@/sync/localSession";
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
+import { UpdateNotice } from "@/sync/UpdateNotice";
 
 /** 자주 쓰는 화면만 주 탭에 남긴다(항목 3·6). "매장 모드" 는 nav 에서 빠졌지만 `#scan`
  * 라우트·화면은 그대로 있다 — `ProductsPage` 의 모바일 전용 진입 버튼으로만 들어간다. */
@@ -52,6 +61,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const [localOwner, setLocalOwner] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // 메뉴 바깥을 클릭하거나 Esc 를 누르면 닫는다 — 드물게 여는 `SyncStatusBadge` 패널과 달리
   // 이건 자주 여닫는 상시 내비게이션이라 닫는 방법이 트리거 버튼 재클릭뿐이면 불편하다.
@@ -91,12 +102,28 @@ export function App() {
 
   const session = useQuery({
     queryKey: ["auth", "me"],
-    queryFn: ({ signal }) => authApi.me(signal),
+    queryFn: async ({ signal }) => {
+      if (!navigator.onLine) {
+        const cached = offlineSession();
+        if (!cached)
+          throw new Error("오프라인으로 열 수 있는 계정이 없습니다. 온라인에서 로그인하세요");
+        return cached;
+      }
+      const user = await authApi.me(signal);
+      rememberLocalSession(user);
+      return user;
+    },
+    networkMode: "always",
     // 401 은 정상적인 "로그인 안 됨" 상태다. 재시도하면 로그인 화면이 늦게 뜬다.
     retry: false,
   });
 
   const handleUnauthorized = useCallback(() => {
+    syncEngine.stop();
+    lockDatabase();
+    forgetLocalSession();
+    setLocalOwner(null);
+    void queryClient.cancelQueries();
     // 세션이 끊기면 캐시된 데이터를 남겨 두지 않는다. 다른 사용자의 화면에 남으면 안 된다.
     queryClient.setQueryData(["auth", "me"], null);
     queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
@@ -107,10 +134,62 @@ export function App() {
     return () => setUnauthorizedHandler(null);
   }, [handleUnauthorized]);
 
+  useEffect(() => {
+    const user = session.data;
+    if (!user) return;
+    let active = true;
+    syncEngine.stop();
+    setLocalOwner(null);
+    setLocalError(null);
+    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
+    void activateDatabase(user.id)
+      .then(() => {
+        if (active) setLocalOwner(user.id);
+      })
+      .catch(() => {
+        if (active)
+          setLocalError("로컬 기록을 열지 못했습니다. 저장소를 삭제하지 말고 다시 시도하세요");
+      });
+    return () => {
+      active = false;
+      syncEngine.stop();
+      lockDatabase();
+    };
+  }, [session.data, queryClient]);
+
+  useEffect(() => {
+    function accountChanged(event: StorageEvent) {
+      if (event.key !== LOCAL_SESSION_KEY) return;
+      if (!event.newValue || offlineSession()?.id !== session.data?.id) {
+        syncEngine.stop();
+        lockDatabase();
+        setLocalOwner(null);
+        void queryClient.cancelQueries();
+        queryClient.setQueryData(["auth", "me"], null);
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
+      }
+    }
+    window.addEventListener("storage", accountChanged);
+    return () => window.removeEventListener("storage", accountChanged);
+  }, [queryClient, session.data?.id]);
+
   const isUnauthenticated =
     session.data === null || (session.error instanceof ApiError && session.error.status === 401);
 
-  if (session.isPending) {
+  if (localError || (session.error && !isUnauthenticated && !session.data)) {
+    return (
+      <div className="app-shell">
+        <p role="alert">
+          {localError ?? "현재 계정을 확인하지 못했습니다. 온라인에서 다시 시도하세요"}
+        </p>
+        <button type="button" onClick={() => void session.refetch()}>
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+
+  if (session.isPending || (session.data && localOwner !== session.data.id)) {
     return (
       <div className="app-shell">
         <output className="app-loading">불러오는 중…</output>
@@ -122,6 +201,7 @@ export function App() {
     return (
       <LoginScreen
         onAuthenticated={(result) => {
+          rememberLocalSession(result.user);
           queryClient.setQueryData(["auth", "me"], result.user);
           void queryClient.invalidateQueries();
         }}
@@ -133,12 +213,13 @@ export function App() {
   const isSettingsView = SETTINGS_VIEWS.some((item) => item.id === route.view);
 
   return (
-    <SyncStatusProvider>
+    <SyncStatusProvider key={user?.id} userId={user?.id}>
       <div className="app-shell">
         <a className="skip-link" href="#main">
           본문으로 건너뛰기
         </a>
 
+        <UpdateNotice />
         <header className="app-header">
           <h1>술장</h1>
           <nav className="app-nav" aria-label="주요 화면">
@@ -193,6 +274,7 @@ export function App() {
                     className="settings-menu-logout"
                     onClick={() => {
                       setSettingsOpen(false);
+                      handleUnauthorized();
                       void authApi.logout().finally(() => {
                         queryClient.setQueryData(["auth", "me"], null);
                         queryClient.removeQueries({

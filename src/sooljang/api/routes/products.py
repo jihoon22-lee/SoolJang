@@ -234,7 +234,7 @@ async def get_product(product_id: uuid.UUID, session: SessionDep, user_id: UserD
 async def update_product(
     product_id: uuid.UUID, payload: ProductUpdate, session: SessionDep, user_id: UserDep
 ) -> ProductOut:
-    product = await load_product(session, user_id=user_id, product_id=product_id)
+    product = await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
 
     if payload.category_id is not None:
         await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
@@ -264,7 +264,7 @@ async def delete_product(product_id: uuid.UUID, session: SessionDep, user_id: Us
     """soft delete 한다. 복구 가능해야 실수로 지운 기록을 되살릴 수 있다."""
     import datetime
 
-    product = await load_product(session, user_id=user_id, product_id=product_id)
+    product = await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
     product.deleted_at = datetime.datetime.now(datetime.UTC)
     await session.flush()
 
@@ -278,7 +278,7 @@ async def delete_product(product_id: uuid.UUID, session: SessionDep, user_id: Us
 async def add_sku(
     product_id: uuid.UUID, payload: SkuCreate, session: SessionDep, user_id: UserDep
 ) -> SkuOut:
-    await load_product(session, user_id=user_id, product_id=product_id)
+    await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
     try:
         sku = _new_sku(user_id, product_id, payload)
     except InvalidBarcodeError as error:
@@ -311,7 +311,7 @@ async def update_sku(
     못했을 때, 사용자가 확인한 뒤 이 엔드포인트로 바코드를 저장하면 다음 스캔부터는
     바로 매칭된다.
     """
-    sku = await load_sku(session, user_id=user_id, sku_id=sku_id)
+    sku = await load_sku(session, user_id=user_id, sku_id=sku_id, for_update=True)
 
     fields = payload.model_dump(exclude_unset=True, exclude={"barcode", "barcode_type"})
     for key, value in fields.items():
