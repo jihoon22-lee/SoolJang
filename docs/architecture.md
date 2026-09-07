@@ -28,7 +28,7 @@ flowchart LR
     subgraph 외부
         OFF[Open Food Facts<br/>바코드 조회]
         SEARCH[웹 검색 API]
-        LLM[Vision·Text LLM<br/>OCR·요약]
+        LLM[Vision·Text LLM<br/>OCR·선택형 기존 보조]
         SITES[사용자 등록 소스 사이트]
     end
 
@@ -43,8 +43,12 @@ flowchart LR
     API -.온디맨드.-> SITES
 ```
 
-외부 호출은 모두 **사용자 조작에 의한 온디맨드**다. 백그라운드 대량 수집은 하지 않는다
-(§9.4 근거). 오프라인 상태에서는 외부 호출 기능만 비활성화되고 기록·조회는 계속 동작한다.
+외부 탐색은 사용자가 선택한 연결을 명시적으로 조회하며 생성형 답변·요약을 호출하지 않는다.
+가격 감시는 Interest별 정기 조회에 따로 동의한 경우만 제한된 worker가 실행한다. 푸시 수신도
+별도 동의다. 요청마다 설정 revision·호스트·실제 호출량을 검사하며 개인 소비 이력을 보내지 않는다.
+오프라인에서도 기존 기록·로컬 조회와 입력 복원은 유지되지만 외부 탐색·가격 이력·첨부 원본은
+온라인이 필요하다. 상세 계약은 [연결 관리](provider-connections.md), [가격 감시](price-watch.md),
+[수용 원장](plans/v1.7.0/acceptance.md)에 연결한다.
 
 ### 1.2 컴포넌트 구조
 
@@ -470,7 +474,8 @@ erDiagram
 | `POST /bottles/{id}:open`, `:finish`, `:gift`, `:sell` | 상태 전이 | 13 |
 | `GET·POST /bottles/{id}/tastings`, `PATCH·DELETE /tastings/{id}` | 시음 세션 | 13 |
 | `GET·POST /vendors`, `PATCH·DELETE /vendors/{id}` | 구매처 | 9 |
-| `POST /attachments` | 파일 업로드 | 10 |
+| `POST /attachments` | 이미지 업로드 | 10 |
+| `GET /attachments?product_id=…` / `GET /attachments/{id}/content` | 인증·소유권 기반 목록/원본, no-store·경로/해시 검증 | v1.7 B09 |
 | `POST /imports/legacy:analyze` | 업로드 파일 블록 분석·dry-run | 11 |
 | `POST /imports/legacy:commit` | 실제 적재 | 11 |
 | `GET /imports/{id}/report` | 실패 행·경고 리포트 | 11 |

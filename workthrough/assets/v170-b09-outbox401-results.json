@@ -1,0 +1,104 @@
+{
+  "passed": true,
+  "date": "2026-09-07T08:19:24.315Z",
+  "reference_commit": "8ab59ee",
+  "reference_harness": "workthrough/assets/v170-b06-browser.cjs",
+  "runtime_source_limit": "B05+B07 integrated source 8ab59ee; synthetic isolated database",
+  "environment": {
+    "browser": "actual Chromium with two tabs and actual Service Worker",
+    "api": "http://127.0.0.1:8224",
+    "preview": "http://127.0.0.1:5184",
+    "database": "127.0.0.1:54329/sooljang_acceptance_browser_test",
+    "health": {
+      "status": "ok",
+      "version": "1.6.1",
+      "environment": "local",
+      "database_connected": true,
+      "migration_revision": "0018_price_watch",
+      "schema_ready": true,
+      "supported_revisions": [
+        "0018_price_watch"
+      ],
+      "migration_revisions": [
+        "0018_price_watch"
+      ],
+      "price_watch_worker_ready": true
+    },
+    "verified_database_by": "explicit startup script b09-api.py",
+    "frontend_index_sha256": "bc802cacaef48f0532d13aaea76658fc7a7fee130c0970e7799d21f3533c5bf8",
+    "javascript_assets": [
+      {
+        "file": "index-BFQl3lLt.js",
+        "sha256": "10e659dea5e72762867146529ff3d46e9401e9f9bd6f2147ece86c1f1c023991"
+      },
+      {
+        "file": "index-CkKGVUPy.js",
+        "sha256": "cc2e81c6a2bf30b78c7626dbd54559a616064900c41652c774a5de467a6b48ed"
+      },
+      {
+        "file": "index-DY8cb1Xq.js",
+        "sha256": "6cf70c05b10c237165f60a56e965cb856b571e554e74d7c469ab3f9129a6d23d"
+      },
+      {
+        "file": "workbox-window.prod.es5-BBnX5xw4.js",
+        "sha256": "cadd21be4a88598a4dec91a26a025df0a5790ff6baec54a884e401c3f5c95557"
+      }
+    ]
+  },
+  "fault_injection": "actual POST committed by API/PG; second response dropped in Playwright; successful result ordering reversed",
+  "results": [
+    {
+      "scenario": "normal 401 with response IDs reordered",
+      "logical_batch_sizes": [
+        200,
+        200,
+        1
+      ],
+      "actual_attempt_sizes": [
+        200,
+        200,
+        1
+      ],
+      "max_parallel_batches": 1,
+      "max_browser_inflight_batches": 1,
+      "remaining_after_first_ack": 201,
+      "remaining_after_lost_response": null,
+      "same_retry_id_set": null,
+      "source_commands": 401,
+      "server_unique_entities": 401,
+      "remaining_outbox": 0,
+      "missing_entities": 0,
+      "duplicate_entities": 0,
+      "unknown_id_removed": 0
+    },
+    {
+      "scenario": "second committed response dropped then same-ID retry",
+      "logical_batch_sizes": [
+        200,
+        200,
+        1
+      ],
+      "actual_attempt_sizes": [
+        200,
+        200,
+        200,
+        1
+      ],
+      "max_parallel_batches": 1,
+      "max_browser_inflight_batches": 1,
+      "remaining_after_first_ack": 201,
+      "remaining_after_lost_response": 201,
+      "same_retry_id_set": true,
+      "source_commands": 401,
+      "server_unique_entities": 401,
+      "remaining_outbox": 0,
+      "missing_entities": 0,
+      "duplicate_entities": 0,
+      "unknown_id_removed": 0
+    }
+  ],
+  "page_errors": [],
+  "external_provider_calls": 0,
+  "production_mutations": 0,
+  "schema_reset": false
+}

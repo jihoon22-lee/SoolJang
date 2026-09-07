@@ -1,0 +1,41 @@
+{
+  "no_recreate_preserved": true,
+  "state": {
+    "db": {
+      "id": "f55ee85c3cfcfb8422f3f71e0cf003f77b9bab72494db64081a16013d4a6adf0",
+      "image": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+      "volumes": [
+        {
+          "Type": "volume",
+          "Name": "sooljang-v170-acceptance_pgdata",
+          "Destination": "/var/lib/postgresql/data"
+        }
+      ]
+    },
+    "api": {
+      "id": "4079c5b1a9191dfc962b3ca0e727deee90cb07b456839c3ac2ca02e9077f3f89",
+      "image": "sha256:5c9165547de8da491828bfe1e6e9b4c1655c22ed295000caf53f211a2ae221ea",
+      "volumes": [
+        {
+          "Type": "volume",
+          "Name": "sooljang-v170-acceptance_uploads_verified",
+          "Destination": "/app/uploads"
+        }
+      ],
+      "worker_enabled": "true"
+    },
+    "web": {
+      "id": "a6999fef1ddf0dd16046c89de7cf4f80639ce7103ed90c01bfffe891f27b7362",
+      "image": "sha256:f7dbe6291153f380887e2ef72ce547d7a29d879a64886fc4adc26cdae011c384",
+      "volumes": []
+    }
+  },
+  "source": "8ab59ee plus docker/api.Dockerfile upload-directory ownership fix (now b56db33)",
+  "scope": "isolated Compose project; no Windows/WSL restart or production change",
+  "old_schema_readiness": 503,
+  "final_schema_readiness": 200,
+  "supported_schema": "0018_price_watch",
+  "upload_before_restart": true,
+  "upload_after_restart": true,
+  "new_volume_writable_as_uid": 1001
+}

@@ -1,0 +1,24 @@
+{
+  "result": "passed",
+  "database": "synthetic restored backup",
+  "owner_content_status": 200,
+  "anonymous_content_status": 401,
+  "other_account_content_status": 404,
+  "other_account_metadata_status": 404,
+  "image_decoded_width": 1,
+  "image_decoded_height": 1,
+  "content_type": "image/png",
+  "cache_control": "private, no-store",
+  "mobile_overflow": false,
+  "viewports": [
+    [
+      390,
+      844
+    ],
+    [
+      1280,
+      900
+    ]
+  ],
+  "real_external_http_calls": 0
+}
