@@ -70,6 +70,9 @@ class ExternalSource(Base, EntityMixin):
     preset_version: Mapped[int | None] = mapped_column(Integer, default=None)
     #: 사용자가 `adapter_spec` 을 직접 편집했는지. 참이면 프리셋 자동 갱신 대상에서 빠진다.
     spec_overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: 설정/자격증명이 바뀌면 과거 정상 판정을 현재 검증으로 재사용하지 않는다.
+    config_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    request_limit_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
 
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_external_source_user_id_name"),
@@ -192,6 +195,8 @@ class ExternalSourceProbe(Base, EntityMixin):
     #: 셀렉터 일부가 깨져 부분 결과만 얻었는지. `ok=True` 여도 참일 수 있다.
     degraded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     warning: Mapped[str | None] = mapped_column(Text, default=None)
+    config_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
 
     __table_args__ = (
         Index("ix_external_source_probe_source_id_attempted_at", "source_id", "attempted_at"),

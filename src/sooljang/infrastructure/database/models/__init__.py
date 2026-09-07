@@ -17,6 +17,7 @@ from sooljang.infrastructure.database.models.external_source import (
     ExternalSourceCredential,
     ExternalSourceProbe,
 )
+from sooljang.infrastructure.database.models.external_usage import ExternalRequestUsage
 from sooljang.infrastructure.database.models.inventory import (
     IN_STOCK_STATUSES,
     Bottle,
@@ -66,6 +67,7 @@ __all__ = [
     "ExternalLlmRematchLog",
     "ExternalLookupCache",
     "ExternalProductMatch",
+    "ExternalRequestUsage",
     "ExternalSource",
     "ExternalSourceCredential",
     "ExternalSourceProbe",

@@ -53,6 +53,21 @@ def test_기본값이_채워진다(api_client: TestClient, prefix: str) -> None:
     assert source["rate_limit_per_min"] == 6
     assert source["ttl_hours"] == 24
     assert source["category_id"] is None
+    assert source["request_limit_per_day"] == 1000
+    assert source["config_revision"] == 1
+
+
+def test_daily_request_budget_can_be_changed_but_not_cleared(
+    api_client: TestClient, prefix: str
+) -> None:
+    source = _create_source(api_client, prefix)
+    path = f"{prefix}/external-sources/{source['id']}"
+    changed = api_client.patch(path, json={"request_limit_per_day": 25})
+    assert changed.status_code == 200
+    assert changed.json()["request_limit_per_day"] == 25
+    assert changed.json()["config_revision"] == 2
+    assert api_client.patch(path, json={"request_limit_per_day": None}).status_code == 422
+    assert api_client.patch(path, json={"adapter_spec": None}).status_code == 422
 
 
 def test_수정하면_반영된다(api_client: TestClient, prefix: str) -> None:

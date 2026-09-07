@@ -76,6 +76,42 @@ afterEach(async () => {
 });
 
 describe("SourcesPage", () => {
+  it("변경 전 검증과 현재 요청 사용량을 구분한다", async () => {
+    stubRoutes([
+      emptyPresetsRoute(),
+      {
+        match: "/external-sources/health",
+        method: "GET",
+        body: [
+          {
+            source_id: "src-1",
+            source_name: "데일리샷",
+            status: "unknown",
+            last_success_at: NOW,
+            consecutive_failures: 0,
+            last_warning: null,
+            config_revision: 2,
+            verification_stale: true,
+            last_attempt_at: NOW,
+            last_outcome: "authentication_failed",
+            reserved_requests_today: 4,
+          },
+        ],
+      },
+      {
+        match: "/external-sources",
+        method: "GET",
+        body: [sourceRow({ request_limit_per_day: 25 })],
+      },
+    ]);
+    renderWithQuery(<SourcesPage />);
+    const row = (await screen.findByText("데일리샷")).closest("li");
+    expect(row).toHaveTextContent("설정 변경 후 다시 확인 필요");
+    expect(row).toHaveTextContent("인증 실패");
+    expect(row).toHaveTextContent("오늘 요청 예약 4 / 25회 (UTC)");
+    expect(row).not.toHaveTextContent("정상");
+  });
+
   it("소스가 없으면 안내한다", async () => {
     stubRoutes([
       emptyHealthRoute(),

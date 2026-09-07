@@ -7,6 +7,8 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from sooljang.domain.discovery import SourceOutcome
+
 
 class ExternalSourceCreate(BaseModel):
     #: 프리셋 카탈로그(`GET /external-sources/presets`)에서 고른 키(Task 34 PR5). 있으면
@@ -23,6 +25,7 @@ class ExternalSourceCreate(BaseModel):
     priority: int = 0
     is_active: bool = True
     rate_limit_per_min: int = Field(default=6, ge=1, le=60)
+    request_limit_per_day: int = Field(default=1000, ge=1, le=100000)
     ttl_hours: int = Field(default=24, ge=1, le=24 * 30)
     note: str | None = None
 
@@ -49,8 +52,16 @@ class ExternalSourceUpdate(BaseModel):
     priority: int | None = None
     is_active: bool | None = None
     rate_limit_per_min: int | None = Field(default=None, ge=1, le=60)
+    request_limit_per_day: int | None = Field(default=None, ge=1, le=100000)
     ttl_hours: int | None = Field(default=None, ge=1, le=24 * 30)
     note: str | None = None
+
+    @model_validator(mode="after")
+    def _reject_null_for_required_fields(self) -> Self:
+        for key in self.model_fields_set - {"category_id", "note"}:
+            if getattr(self, key) is None:
+                raise ValueError(f"{key} 필드는 null일 수 없습니다")
+        return self
 
 
 class ExternalSourceOut(BaseModel):
@@ -64,6 +75,8 @@ class ExternalSourceOut(BaseModel):
     priority: int
     is_active: bool
     rate_limit_per_min: int
+    request_limit_per_day: int = 1000
+    config_revision: int = 1
     ttl_hours: int
     note: str | None
     #: 이 소스를 만든 프리셋의 키. 커스텀 등록이면 `None`(Task 34 PR5).
@@ -158,6 +171,7 @@ class SourceLookupOut(BaseModel):
     #: LLM 이 애매 구간에서 추천한 후보의 URL(Task 34 PR6). `candidates` 안의 항목 중
     #: 하나를 가리킨다 — 화면이 "LLM 추천" 배지만 붙일 뿐 자동으로 고정하지 않는다.
     llm_recommended_url: str | None = None
+    outcome: SourceOutcome = SourceOutcome.UNKNOWN
 
 
 class ExternalProductMatchCreate(BaseModel):
@@ -190,6 +204,11 @@ class SourceHealthOut(BaseModel):
     last_success_at: datetime | None
     consecutive_failures: int
     last_warning: str | None
+    config_revision: int = 1
+    last_attempt_at: datetime | None = None
+    last_outcome: SourceOutcome = SourceOutcome.UNKNOWN
+    verification_stale: bool = False
+    reserved_requests_today: int = 0
 
 
 class SourceProbeRequest(BaseModel):
@@ -206,3 +225,4 @@ class SourceProbeOut(BaseModel):
     warning: str | None
     matched_name: str | None
     match_score: float | None
+    outcome: SourceOutcome = SourceOutcome.UNKNOWN

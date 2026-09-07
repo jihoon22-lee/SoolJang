@@ -5,6 +5,7 @@ import { type FormEvent, Fragment, useState } from "react";
 import { ApiError, externalSourcesApi } from "@/api/client";
 import type { ExternalSource, ExternalSourceInput, SourceHealth, SourcePreset } from "@/api/types";
 import { formatCategoryPath } from "@/format";
+import { sourceOutcomeLabel } from "@/sourceOutcome";
 import { getCategoryTree } from "@/sync/queries";
 
 //: 헬스 상태별 화면 표시 문구(Task 34 PR4).
@@ -22,6 +23,7 @@ interface SourceFormState {
   priority: string;
   isActive: boolean;
   rateLimitPerMin: string;
+  requestLimitPerDay: string;
   ttlHours: string;
   note: string;
   adapterSpecText: string;
@@ -51,6 +53,7 @@ const EMPTY_FORM: SourceFormState = {
   priority: "0",
   isActive: true,
   rateLimitPerMin: "6",
+  requestLimitPerDay: "1000",
   ttlHours: "24",
   note: "",
   adapterSpecText: EXAMPLE_ADAPTER_SPEC,
@@ -71,6 +74,7 @@ function formToInput(form: SourceFormState): ExternalSourceInput | { error: stri
     priority: Number(form.priority) || 0,
     is_active: form.isActive,
     rate_limit_per_min: Number(form.rateLimitPerMin) || 6,
+    request_limit_per_day: Number(form.requestLimitPerDay) || 1000,
     ttl_hours: Number(form.ttlHours) || 24,
     note: form.note.trim() || null,
   };
@@ -84,6 +88,7 @@ function sourceToForm(source: ExternalSource): SourceFormState {
     priority: String(source.priority),
     isActive: source.is_active,
     rateLimitPerMin: String(source.rate_limit_per_min),
+    requestLimitPerDay: String(source.request_limit_per_day ?? 1000),
     ttlHours: String(source.ttl_hours),
     note: source.note ?? "",
     adapterSpecText: JSON.stringify(source.adapter_spec, null, 2),
@@ -301,6 +306,17 @@ export function SourcesPage() {
             />
           </div>
           <div className="field">
+            <label htmlFor="source-daily-limit">하루 요청 한도(UTC)</label>
+            <input
+              id="source-daily-limit"
+              type="number"
+              min={1}
+              max={100000}
+              value={form.requestLimitPerDay}
+              onChange={(event) => setForm({ ...form, requestLimitPerDay: event.target.value })}
+            />
+          </div>
+          <div className="field">
             <label htmlFor="source-ttl">캐시 유지 시간(시간)</label>
             <input
               id="source-ttl"
@@ -415,8 +431,8 @@ function PresetCatalog({ onCreated }: { onCreated: () => void }) {
     <section className="mt-3">
       <h3>추천 소스에서 추가</h3>
       <p className="muted text-sm">
-        검증된 설정으로 바로 등록합니다. 사이트 개편 시 앱 업데이트로 자동 갱신됩니다(직접 수정한
-        스펙은 덮어쓰지 않습니다).
+        소스별 시작 설정입니다. 등록 후 실제 연결과 이용 조건을 확인하세요. 사이트 개편 시 앱
+        업데이트로 갱신되며 직접 수정한 스펙은 보존됩니다.
       </p>
       <ul className="vendor-list">
         {presets.data.map((preset) => (
@@ -585,6 +601,23 @@ function SourceRow({
       <span className="muted">우선순위 {source.priority}</span>
       <span className="muted">{categoryPath}</span>
       <span className="badge">{HEALTH_LABELS[status]}</span>
+      {health?.verification_stale && (
+        <span className="notice text-sm">설정 변경 후 다시 확인 필요</span>
+      )}
+      {health?.last_outcome && health.last_outcome !== "unknown" && (
+        <span className="muted text-sm">최근 결과: {sourceOutcomeLabel(health.last_outcome)}</span>
+      )}
+      {health?.last_attempt_at && (
+        <span className="muted text-sm">
+          최근 시도 {new Date(health.last_attempt_at).toLocaleString("ko-KR")}
+        </span>
+      )}
+      {health?.reserved_requests_today !== undefined && (
+        <span className="muted text-sm">
+          오늘 요청 예약 {health.reserved_requests_today} / {source.request_limit_per_day ?? 1000}회
+          (UTC)
+        </span>
+      )}
       {health?.last_warning && <span className="muted text-sm">{health.last_warning}</span>}
       {source.preset_key && (
         <span className="muted text-sm">
