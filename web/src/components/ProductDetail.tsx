@@ -3,6 +3,7 @@ import type { Bottle, BottleStatus, Product, Purchase } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottlePanel, formatRemaining, STATUS_LABELS } from "@/components/BottlePanel";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
+import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import {
   formatAbv,
   formatCategoryPath,
@@ -96,6 +97,7 @@ export function ProductDetail({
   addingSku,
 }: ProductDetailProps) {
   const { metrics } = product;
+  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
 
   return (
     <article aria-labelledby="detail-heading">
@@ -195,6 +197,13 @@ export function ProductDetail({
 
       <BottleSection bottles={bottles} offline={offline} />
 
+      <details
+        className="panel mt-2"
+        onToggle={(event) => setPriceHistoryOpen(event.currentTarget.open)}
+      >
+        <summary>가격 이력 보기</summary>
+        {priceHistoryOpen && <PriceHistoryPanel key={product.id} productId={product.id} />}
+      </details>
       <ExternalInfoCard
         productId={product.id}
         productName={product.name}

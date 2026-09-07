@@ -63,8 +63,21 @@ from sooljang.infrastructure.database.models.tasting import (
 )
 
 from .external_offer import ExternalOffer, ExternalPriceObservation
+from .price_watch import (
+    PriceNotification,
+    PriceWatch,
+    PriceWatchRun,
+    PushDelivery,
+    PushSubscription,
+)
 
 __all__ = [
+    "Interest",
+    "PriceWatch",
+    "PriceWatchRun",
+    "PriceNotification",
+    "PushSubscription",
+    "PushDelivery",
     "ExternalOffer",
     "ExternalPriceObservation",
     "DEFAULT_OPENAI_MODEL",
@@ -74,7 +87,6 @@ __all__ = [
     "Attachment",
     "AttachmentKind",
     "IN_STOCK_STATUSES",
-    "Interest",
     "InterestConversion",
     "MAX_PERSONAL_RATING",
     "BarcodeType",

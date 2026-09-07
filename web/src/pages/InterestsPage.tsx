@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
+import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
@@ -23,6 +24,7 @@ export function InterestsPage({ onSelectProduct }: { onSelectProduct: (id: strin
     requestId: "",
   });
   const [archived, setArchived] = useState(false);
+  const [priceHistoryId, setPriceHistoryId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [convert, setConvert] = useState<Interest | null>(null);
   const action = useMutation({
@@ -172,6 +174,14 @@ export function InterestsPage({ onSelectProduct }: { onSelectProduct: (id: strin
               >
                 {row.archived ? "관심 복원" : "관심 보관"}
               </button>{" "}
+              <button
+                type="button"
+                disabled={!online}
+                onClick={() => setPriceHistoryId(priceHistoryId === row.id ? null : row.id)}
+              >
+                가격 이력·목표가
+              </button>
+              {priceHistoryId === row.id && <PriceHistoryPanel interestId={row.id} />}
               {row.product_id ? (
                 <button type="button" onClick={() => onSelectProduct(row.product_id ?? "")}>
                   구매 전환한 제품 보기

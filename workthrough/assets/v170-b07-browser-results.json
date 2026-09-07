@@ -1,0 +1,32 @@
+{
+  "result": "passed",
+  "viewports": [
+    [
+      390,
+      844
+    ],
+    [
+      1280,
+      900
+    ]
+  ],
+  "flows": [
+    "price history and target creation",
+    "schedule and push disabled by default",
+    "target draft reload recovery",
+    "independent push consent",
+    "encrypted browser subscription registration",
+    "manual worker lookup persists fresh observations",
+    "one app notification",
+    "synthetic push service accepted",
+    "15-minute schedule opt-in",
+    "pause"
+  ],
+  "mobile_horizontal_overflow": false,
+  "notifications": 1,
+  "provider_http": "MockTransport with synthetic fixture",
+  "browser_notification_permission_and_push_manager": "synthetic",
+  "push_service_http": "MockTransport 201",
+  "real_provider_calls": false,
+  "real_push_display_verified": false
+}
