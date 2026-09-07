@@ -2,9 +2,10 @@ import { useMutation } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type FormEvent, useMemo, useState } from "react";
 
-import { vendorsApi } from "@/api/client";
+import { type CleanupPreview, collectionApi } from "@/api/collection";
 import type { Vendor, VendorKind } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
+import { CleanupConfirmation } from "@/components/CleanupConfirmation";
 import { formatMoney, formatVendorKind } from "@/format";
 import { matchesQuery, rankByQuery } from "@/search";
 import { db } from "@/sync/db";
@@ -31,8 +32,7 @@ const VENDOR_KINDS: VendorKind[] = [
  * 구매처 관리 화면.
  *
  * 레거시 임포트가 이름 규칙으로 종류를 **추측**해 채워 넣었다(`guess_vendor_kind`) — 실데이터
- * 64곳 중 틀린 값이 남아 있을 수 있어 고칠 수단이 필요하다. 통합(merge)은 백엔드에 그 API가
- * 없어 이번 범위 밖이다(`docs/plan.md` 백로그).
+ * 64곳 중 틀린 값이 남아 있을 수 있어 고칠 수단이 필요하다. 병합은 영향 미리보기 후 확정한다.
  *
  * 이름·종류 수정은 `CategoriesPage::rename` 과 같은 패턴(오프라인 낙관적 갱신)이다 — 필드만
  * 바꾸는 단순 갱신이라 온라인 전용으로 둘 이유가 없다.
@@ -43,7 +43,7 @@ const VENDOR_KINDS: VendorKind[] = [
  * `matchesQuery`(초성 검색 포함)로 아래 목록 자체도 실시간으로 좁힌다.
  */
 export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: string) => void }) {
-  const { state, triggerSync } = useSyncStatus();
+  const { state, triggerSync, pendingCount } = useSyncStatus();
   const offline = state === "offline";
   const vendors = useLiveQuery(() => getVendors(), []);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,6 +52,7 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
   const [vendorQuery, setVendorQuery] = useState("");
   const [mergingId, setMergingId] = useState<string | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState("");
+  const [mergePreview, setMergePreview] = useState<CleanupPreview | null>(null);
 
   const update = useMutation({
     mutationFn: async (input: { id: string; name: string; kind: VendorKind }) => {
@@ -86,9 +87,18 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
   // 구매처 병합은 온라인 전용이다(재배치 + soft delete 전파 — 주종 이동·병합과 같은 판단).
   const merge = useMutation({
     mutationFn: async (input: { sourceId: string; targetId: string }) => {
-      await vendorsApi.merge(input.sourceId, input.targetId);
+      if (mergePreview) {
+        await collectionApi.confirm(mergePreview.id);
+        return true;
+      }
+      setMergePreview(
+        await collectionApi.preview("vendor_merge", [input.sourceId], input.targetId),
+      );
+      return false;
     },
-    onSuccess: () => {
+    onSuccess: (confirmed) => {
+      if (!confirmed) return;
+      setMergePreview(null);
       setMergingId(null);
       setMergeTargetId("");
       triggerSync();
@@ -99,6 +109,7 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
     setMergingId(vendor.id);
     setMergeTargetId("");
     merge.reset();
+    setMergePreview(null);
   }
 
   // 로딩 중(`vendors === undefined`)에도 훅 호출 순서가 매번 같아야 하므로, 아래 조건부
@@ -194,7 +205,10 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
                   <select
                     id={`vendor-merge-target-${vendor.id}`}
                     value={mergeTargetId}
-                    onChange={(event) => setMergeTargetId(event.target.value)}
+                    onChange={(event) => {
+                      setMergeTargetId(event.target.value);
+                      setMergePreview(null);
+                    }}
                   >
                     <option value="">병합할 구매처를 선택하세요</option>
                     {sorted
@@ -205,19 +219,31 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
                         </option>
                       ))}
                   </select>
+                  {pendingCount > 0 && <output>동기화 대기 기록을 먼저 동기화하세요.</output>}
                   {merge.error ? (
                     <p className="field-error" role="alert">
                       {merge.error instanceof Error ? merge.error.message : "병합할 수 없습니다"}
                     </p>
                   ) : null}
+                  {mergePreview && (
+                    <CleanupConfirmation
+                      preview={mergePreview}
+                      pending={merge.isPending || offline || pendingCount > 0}
+                      onConfirm={() =>
+                        merge.mutate({ sourceId: vendor.id, targetId: mergeTargetId })
+                      }
+                      onCancel={() => setMergePreview(null)}
+                    />
+                  )}
                   <div className="button-row">
                     <button
                       type="button"
                       className="primary"
-                      disabled={!mergeTargetId || merge.isPending}
+                      hidden={!!mergePreview}
+                      disabled={!mergeTargetId || merge.isPending || offline || pendingCount > 0}
                       onClick={() => merge.mutate({ sourceId: vendor.id, targetId: mergeTargetId })}
                     >
-                      {merge.isPending ? "병합 중…" : "병합 확인"}
+                      {merge.isPending ? "확인 중…" : "병합 영향 미리보기"}
                     </button>
                     <button type="button" onClick={() => setMergingId(null)}>
                       취소
