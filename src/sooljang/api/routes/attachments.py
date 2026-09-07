@@ -14,6 +14,8 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 
 from sooljang.api.deps import SessionDep, SettingsDep, UserDep
 from sooljang.api.errors import NotFoundError, ValidationFailedError
@@ -27,8 +29,10 @@ from sooljang.infrastructure.database.models import (
 )
 from sooljang.infrastructure.storage import (
     ALLOWED_IMAGE_EXTENSIONS,
+    StoredImageUnavailableError,
     UploadTooLargeError,
     compute_sha256,
+    read_stored_image,
     read_upload_within_limit,
     save_upload,
     sniff_image_extension,
@@ -168,3 +172,72 @@ async def upload_attachment(
     session.add(attachment)
     await session.flush()
     return attachment
+
+
+@router.get("", response_model=list[AttachmentOut])
+async def list_product_attachments(
+    product_id: uuid.UUID, session: SessionDep, user_id: UserDep, response: Response
+) -> list[Attachment]:
+    """인증된 제품 소유자에게 직접 첨부한 이미지 메타데이터를 제공한다."""
+    await load_product(session, user_id=user_id, product_id=product_id)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Cookie"
+    return list(
+        await session.scalars(
+            select(Attachment)
+            .where(
+                Attachment.user_id == user_id,
+                Attachment.product_id == product_id,
+                Attachment.deleted_at.is_(None),
+            )
+            .order_by(Attachment.created_at.desc(), Attachment.id)
+            .limit(100)
+        )
+    )
+
+
+@router.get("/{attachment_id}/content", response_class=Response)
+async def attachment_content(
+    attachment_id: uuid.UUID, session: SessionDep, user_id: UserDep, settings: SettingsDep
+) -> Response:
+    """소유자와 살아 있는 대상을 확인하고 안전한 이미지 원본만 반환한다."""
+    row = await session.scalar(
+        select(Attachment).where(
+            Attachment.id == attachment_id,
+            Attachment.user_id == user_id,
+            Attachment.deleted_at.is_(None),
+        )
+    )
+    if row is None:
+        raise NotFoundError("첨부 이미지를 찾을 수 없습니다")
+    await _ensure_owner_exists(
+        session,
+        user_id=user_id,
+        product_id=row.product_id,
+        bottle_id=row.bottle_id,
+        tasting_session_id=row.tasting_session_id,
+    )
+    try:
+        data = await run_in_threadpool(
+            read_stored_image,
+            settings.upload_dir,
+            row.storage_path,
+            content_type=row.content_type,
+            byte_size=row.byte_size,
+            sha256=row.sha256,
+            max_bytes=MAX_UPLOAD_BYTES,
+        )
+    except StoredImageUnavailableError as error:
+        raise NotFoundError("첨부 이미지를 찾을 수 없습니다") from error
+    extension = ALLOWED_IMAGE_EXTENSIONS[row.content_type]
+    return Response(
+        data,
+        media_type=row.content_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Vary": "Cookie",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "Content-Disposition": f'inline; filename="{row.id}{extension}"',
+        },
+    )

@@ -98,3 +98,71 @@ def save_upload(
     if not path.exists():
         path.write_bytes(data)
     return relative
+
+
+class StoredImageUnavailableError(Exception):
+    """저장 경로·원본 바이트를 확인할 수 없다. 경로나 파일 내용은 외부에 공개하지 않는다."""
+
+
+def read_stored_image(
+    base_dir: str,
+    relative_path: str,
+    *,
+    content_type: str,
+    byte_size: int,
+    sha256: str,
+    max_bytes: int,
+) -> bytes:
+    """root 디렉터리 FD에서 symlink를 따라가지 않고 검증된 이미지 원본만 읽는다.
+
+    경로를 검사한 뒤 FileResponse가 다시 여는 사이의 symlink 교체도 피한다. DB 경로와
+    파일 확장자·실제 형식·길이·checksum을 모두 대조하고 상한까지 읽는다.
+    """
+    import os
+    import stat
+
+    path = Path(relative_path)
+    extension = ALLOWED_IMAGE_EXTENSIONS.get(content_type)
+    if (
+        not relative_path
+        or path.is_absolute()
+        or "\\" in relative_path
+        or any(part in {"", ".", ".."} for part in relative_path.split("/"))
+        or extension is None
+        or path.suffix != extension
+        or not 0 < byte_size <= max_bytes
+    ):
+        raise StoredImageUnavailableError
+    descriptors = []
+    try:
+        # 설정한 root 자체의 부모 경로는 운영 설정이다. 그 아래 모든 파일 구성요소는
+        # 공격자가 바꿀 수 있는 DB·디스크 데이터로 보고 O_NOFOLLOW를 적용한다.
+        root = Path(base_dir).resolve(strict=True)
+        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(descriptor)
+        for part in path.parts[:-1]:
+            descriptor = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor
+            )
+            descriptors.append(descriptor)
+        file_descriptor = os.open(
+            path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor
+        )
+        descriptors.append(file_descriptor)
+        info = os.fstat(file_descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_size != byte_size:
+            raise StoredImageUnavailableError
+        with os.fdopen(os.dup(file_descriptor), "rb") as file:
+            data = file.read(max_bytes + 1)
+        if (
+            len(data) != byte_size
+            or sniff_image_extension(data) != extension
+            or compute_sha256(data) != sha256
+        ):
+            raise StoredImageUnavailableError
+        return data
+    except (OSError, ValueError) as error:
+        raise StoredImageUnavailableError from error
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
