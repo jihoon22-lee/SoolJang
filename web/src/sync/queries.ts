@@ -761,7 +761,16 @@ interface StatsRow {
   bottles: MetricsBottleRecord[];
 }
 
+export interface StatsCoverage {
+  purchaseCount: number;
+  pricedPurchaseCount: number;
+  paidPurchaseCount: number;
+  missingVolumeProducts: { id: string; name: string }[];
+  missingPriceProducts: { id: string; name: string }[];
+}
+
 interface StatsData {
+  coverage: StatsCoverage;
   rows: StatsRow[];
   vendorIds: Set<string>;
 }
@@ -789,7 +798,28 @@ async function statsRows(): Promise<StatsData> {
     bottles: assembly.bottles,
   }));
 
-  return { rows, vendorIds };
+  const includedPurchases = purchases.filter((purchase) =>
+    liveSkuIds.has(purchase.sku_id as string),
+  );
+  return {
+    rows,
+    vendorIds,
+    coverage: {
+      purchaseCount: includedPurchases.length,
+      pricedPurchaseCount: includedPurchases.filter(
+        (purchase) => purchase.unit_list_price !== null && purchase.unit_list_price !== undefined,
+      ).length,
+      paidPurchaseCount: includedPurchases.filter(
+        (purchase) => purchase.unit_paid_price !== null && purchase.unit_paid_price !== undefined,
+      ).length,
+      missingVolumeProducts: assemblies
+        .filter((assembly) => assembly.skus.length === 0)
+        .map((assembly) => ({ id: assembly.row.id, name: String(assembly.row.name) })),
+      missingPriceProducts: assemblies
+        .filter((assembly) => assembly.lots.some((lot) => lot.unitPaidPrice === null))
+        .map((assembly) => ({ id: assembly.row.id, name: String(assembly.row.name) })),
+    },
+  };
 }
 
 function sumDecimal(values: readonly (Decimal | null)[]): Decimal | null {
@@ -1008,6 +1038,7 @@ export async function getStatsSummary(data?: StatsData): Promise<OfflineStatsSum
 }
 
 export interface StatsDashboard {
+  coverage: StatsCoverage;
   rankings: OfflineRankings;
   categories: CategoryStat[];
   totals: OfflineStatsSummary;
@@ -1020,6 +1051,7 @@ export interface StatsDashboard {
 export async function getStatsDashboard(): Promise<StatsDashboard> {
   const [data, tree] = await Promise.all([statsRows(), getCategoryTree()]);
   return {
+    coverage: data.coverage,
     rankings: await getStatsRankings(DEFAULT_RANKING_LIMIT, data),
     categories: await getCategoryRollup(data, tree),
     totals: await getStatsSummary(data),
