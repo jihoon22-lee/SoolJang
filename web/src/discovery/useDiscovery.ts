@@ -81,11 +81,12 @@ export function useDiscovery() {
   );
   const run = async (
     identity: InterestIdentity,
-    jobs: DiscoveryJob[],
+    requestedJobs: DiscoveryJob[],
     matches: Record<string, SourceMatch>,
     productId?: string,
     interestId?: string,
   ) => {
+    const jobs = requestedJobs.slice(0, 4);
     controller.current?.abort();
     const ownGeneration = ++generation.current;
     const abort = new AbortController();

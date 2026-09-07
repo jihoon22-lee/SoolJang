@@ -309,3 +309,73 @@ it("계정 변경 뒤 관심 저장의 늦은 성공을 표시하지 않는다",
   await act(async () => resolve({ id: "interest", name: "이전 계정" } as never));
   expect(screen.queryByText(/관심에 저장했습니다/)).not.toBeInTheDocument();
 });
+
+it("등록 제품의 현재 식별 정보와 기존 고정·선호 판매처를 관심에 보존한다", async () => {
+  const pins = {
+    source: {
+      external_url: "https://shop.example.com/pinned",
+      external_name: "고정 몰트",
+      external_key: "sku-700",
+      product_key: "malt",
+      preferred_seller_key: "seller",
+    },
+  };
+  const identity = { name: "등록 몰트", abv: "40", vintage: 2020, volumes_ml: [700, 200] };
+  vi.mocked(discoveryApi.productContext).mockResolvedValue({
+    identity,
+    source_matches: pins,
+    updated_at: product.updated_at,
+  });
+  vi.spyOn(discoveryApi, "productLookup").mockResolvedValue([source]);
+  renderWithQuery(<DiscoveryPanel productId="product" initialName="등록 몰트" />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "관심에 저장" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "관심에 저장" }));
+  expect(discoveryApi.saveInterest).toHaveBeenCalledWith(identity, pins, expect.any(String));
+  await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await waitFor(() =>
+    expect(discoveryApi.productLookup).toHaveBeenCalledWith(
+      "product",
+      "source",
+      expect.any(AbortSignal),
+    ),
+  );
+  expect(discoveryApi.lookup).not.toHaveBeenCalled();
+});
+it("저장된 관심 ID로 재조회하고 후보 고정을 revision 검사로 갱신한다", async () => {
+  const interest = {
+    id: "interest",
+    name: "관심 몰트",
+    identity: { name: "관심 몰트", abv: "40", vintage: 2020, volumes_ml: [700] },
+    source_matches: {},
+    updated_at: "2026-09-07T00:00:00Z",
+    archived: false,
+    note: null,
+    product_id: null,
+  };
+  const { interestsApi } = await import("@/api/interests");
+  vi.spyOn(discoveryApi, "interestLookup").mockResolvedValue([source]);
+  vi.spyOn(interestsApi, "update").mockResolvedValue(interest);
+  renderWithQuery(<DiscoveryPanel interest={interest} />);
+  await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(await screen.findByLabelText("합성 몰트 700ml"));
+  await userEvent.click(screen.getByRole("button", { name: "후보 고정 저장" }));
+  expect(discoveryApi.interestLookup).toHaveBeenCalledWith(
+    "interest",
+    "source",
+    expect.any(AbortSignal),
+  );
+  expect(interestsApi.update).toHaveBeenCalledWith("interest", {
+    expected_updated_at: interest.updated_at,
+    source_matches: {
+      source: {
+        external_url: source.candidates[0]?.url,
+        external_name: "합성 몰트 700ml",
+        external_key: "700",
+        product_key: "malt",
+      },
+    },
+  });
+  expect(discoveryApi.saveInterest).not.toHaveBeenCalled();
+});

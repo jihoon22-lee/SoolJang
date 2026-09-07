@@ -48,7 +48,11 @@ export const discoveryApi = {
   ) =>
     request<DiscoverySource[]>("/discovery/lookup", {
       method: "POST",
-      body: { identity, source_ids: [source_id], source_matches },
+      body: {
+        identity,
+        source_ids: [source_id],
+        source_matches: source_matches[source_id] ? { [source_id]: source_matches[source_id] } : {},
+      },
       signal,
       cache: "no-store",
     }),

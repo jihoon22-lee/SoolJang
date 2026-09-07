@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "browser": "Chromium",
+  "backend": "synthetic Playwright route fixtures, no actual external request",
+  "scenarios": [
+    "IME Enter suppression",
+    "four selected sources and global request cap",
+    "partial results and exact canonical URL dedup with SKU kept",
+    "native rating and selected comparison",
+    "domain filter and review tab",
+    "390px mobile no horizontal overflow",
+    "interest idempotent retry and pinned candidate",
+    "no purchase request from interest save",
+    "draft only storage and settings/back restoration",
+    "cancelled request ignores delayed response",
+    "saved interest lookup by stable ID",
+    "product revision conflict and explicit selected field apply",
+    "product context preserves SKU and preferred seller",
+    "legacy generative lookup calls zero"
+  ],
+  "max_parallel": 4,
+  "interest_count": 2,
+  "purchase_posts": 0,
+  "legacy_lookup_posts": 0,
+  "page_errors": [],
+  "screenshots": 2
+}

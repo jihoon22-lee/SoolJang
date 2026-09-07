@@ -39,8 +39,8 @@ function deferred<T>() {
 }
 afterEach(() => vi.restoreAllMocks());
 describe("discovery request lifecycle", () => {
-  it("한 번에 4개만 요청하고 부분 결과와 실패를 보존한다", async () => {
-    const pending = Array.from({ length: 5 }, () => deferred<SearchResponse>());
+  it("명시 검색 1회는 선택된 첫 4개만 요청하고 부분 결과와 실패를 보존한다", async () => {
+    const pending = Array.from({ length: 3 }, () => deferred<SearchResponse>());
     let index = 0;
     const search = vi
       .spyOn(discoveryApi, "search")
@@ -49,7 +49,7 @@ describe("discovery request lifecycle", () => {
       );
     const lookup = vi.spyOn(discoveryApi, "lookup").mockRejectedValue(new Error("전문 소스 실패"));
     const { result } = renderHook(useDiscovery);
-    const jobs = Array.from({ length: 5 }, (_, n) => ({
+    const jobs = Array.from({ length: 3 }, (_, n) => ({
       id: `${n}`,
       name: `${n}`,
       kind: "search" as const,
@@ -58,23 +58,28 @@ describe("discovery request lifecycle", () => {
     act(() => {
       work = result.current.run(
         { name: "술" },
-        [...jobs, { id: "source", name: "전문", kind: "source" }],
+        [
+          ...jobs,
+          { id: "source", name: "전문", kind: "source" },
+          { id: "overflow", name: "추가", kind: "search" },
+        ],
         {},
       );
     });
-    expect(search).toHaveBeenCalledTimes(4);
+    expect(search).toHaveBeenCalledTimes(3);
+    expect(lookup).toHaveBeenCalledTimes(1);
     await act(async () => {
       pending[0]?.resolve(response("https://example.com/first"));
     });
-    expect(search).toHaveBeenCalledTimes(5);
     expect(result.current.state.documents).toHaveLength(1);
     expect(result.current.state.running).toBe(true);
     await act(async () => {
-      for (let n = 1; n < 5; n++) pending[n]?.resolve(response(`https://example.com/${n}`));
+      pending[1]?.resolve(response("https://example.com/second"));
+      pending[2]?.resolve(response("https://example.com/third"));
       await work;
     });
-    expect(lookup).toHaveBeenCalledTimes(1);
-    expect(result.current.state).toMatchObject({ finished: 6, total: 6, running: false });
+    expect(search).toHaveBeenCalledTimes(3);
+    expect(result.current.state).toMatchObject({ finished: 4, total: 4, running: false });
     expect(result.current.state.notices).toContain("전문: 전문 소스 실패");
   });
   it("취소한 요청의 늦은 응답은 반영하지 않고 완료된 결과를 유지한다", async () => {

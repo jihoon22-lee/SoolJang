@@ -2064,3 +2064,54 @@ button:disabled {
   padding: 0.5rem;
   text-align: left;
 }
+.discovery-panel input:not([type="checkbox"]):not([type="radio"]),
+.discovery-panel select {
+  min-height: var(--control-h-md);
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+.discovery-panel input:read-only {
+  color: var(--text-muted);
+}
+.discovery-panel input[type="checkbox"],
+.discovery-panel input[type="radio"] {
+  accent-color: var(--accent);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+.discovery-panel a {
+  color: var(--accent-strong);
+  text-underline-offset: 0.2em;
+}
+.discovery-panel fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.85rem;
+  min-width: 0;
+}
+.discovery-panel fieldset.button-row {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.discovery-panel button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.discovery-panel .discovery-choice {
+  min-height: var(--control-h-md);
+}
+.discovery-panel > .muted.text-sm {
+  margin: 0.15rem 0;
+}
+.discovery-result {
+  background: var(--surface);
+}
+.discovery-result p {
+  line-height: 1.6;
+}

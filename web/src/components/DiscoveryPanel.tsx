@@ -15,6 +15,7 @@ import { sourceOutcomeLabel } from "@/sourceOutcome";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { databaseIdentity } from "@/sync/db";
 import { useDraftState } from "@/sync/drafts";
+import { syncEngine } from "@/sync/engine";
 import { ExternalComparisonTable } from "./ExternalComparisonTable";
 import { OfferComparison } from "./OfferComparison";
 
@@ -59,11 +60,11 @@ export function DiscoveryPanel({
   const [interestRevision, setInterestRevision] = useState(interest?.updated_at);
   const [form, setForm] = useDraftState(formId, {
     name: interest?.name ?? initialName,
-    name_en: "",
-    abv: "",
-    vintage: "",
-    age_years: "",
-    volume: "",
+    name_en: interest?.identity.name_en ?? "",
+    abv: interest?.identity.abv ?? "",
+    vintage: String(interest?.identity.vintage ?? ""),
+    age_years: interest?.identity.age_years ?? "",
+    volume: String(interest?.identity.volumes_ml?.[0] ?? ""),
     selections: [] as string[],
     requestId: "",
   });
@@ -103,6 +104,7 @@ export function DiscoveryPanel({
     queryFn: ({ signal }) => discoveryApi.productContext(productId as string, signal),
     enabled: !!productId && !offline,
   });
+  const productIdentity = context.data?.identity;
   const currentMatches = { ...(context.data?.source_matches ?? {}), ...matches };
   const jobs: DiscoveryJob[] = [
     ...(connections.data ?? [])
@@ -116,6 +118,8 @@ export function DiscoveryPanel({
       .filter((row) => row.is_active)
       .map((row) => ({ id: row.id, name: row.name, kind: "source" as const })),
   ];
+  const selectedJobs = jobs.filter((job) => form.selections.includes(job.id)).slice(0, 4);
+  const selectedIds = selectedJobs.map((job) => job.id);
   const identity = (): InterestIdentity =>
     interest?.identity ?? {
       name: form.name.trim(),
@@ -138,7 +142,11 @@ export function DiscoveryPanel({
             expected_updated_at: interestRevision as string,
             source_matches: currentMatches,
           })
-        : await discoveryApi.saveInterest(identity(), currentMatches, requestId);
+        : await discoveryApi.saveInterest(
+            context.data?.identity ?? identity(),
+            currentMatches,
+            requestId,
+          );
       const now = databaseIdentity();
       if (now.userId !== owner.userId || now.generation !== owner.generation) return;
       setSaved(result.name);
@@ -164,13 +172,7 @@ export function DiscoveryPanel({
   const submit = () => {
     setSaved(null);
     setCompare([]);
-    void run(
-      identity(),
-      jobs.filter((job) => form.selections.includes(job.id)),
-      currentMatches,
-      productId,
-      interest?.id,
-    );
+    void run(identity(), selectedJobs, currentMatches, productId, interest?.id);
   };
   return (
     <section className="discovery-panel" aria-label="술 탐색">
@@ -178,6 +180,14 @@ export function DiscoveryPanel({
         검색·전문 소스의 근거를 확인하고 관심 목록에 보관하세요. 관심 저장은 구매·재고를 늘리지
         않습니다.
       </p>
+      {productIdentity && (
+        <p className="notice">
+          적용·관심 저장 대상: {productIdentity.name} ·{" "}
+          {productIdentity.volumes_ml?.join(" / ") || "용량 미확인"} ml ·{" "}
+          {productIdentity.vintage ?? "빈티지 미확인"}. 검색어를 바꿔도 이 제품의 식별 정보와 고정은
+          유지됩니다.
+        </p>
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -228,8 +238,16 @@ export function DiscoveryPanel({
                 {label}
                 <input
                   disabled={save.isPending}
-                  readOnly={!!interest}
-                  value={form[field]}
+                  readOnly={!!interest || !!productId}
+                  value={
+                    productId && productIdentity
+                      ? String(
+                          field === "volume"
+                            ? (productIdentity.volumes_ml?.[0] ?? "")
+                            : (productIdentity[field] ?? ""),
+                        )
+                      : form[field]
+                  }
                   type={field === "name_en" ? "text" : "number"}
                   min={field === "volume" ? 1 : 0}
                   step={field === "abv" || field === "age_years" ? "any" : 1}
@@ -251,14 +269,16 @@ export function DiscoveryPanel({
             <label className="discovery-choice" key={job.id}>
               <input
                 type="checkbox"
-                checked={form.selections.includes(job.id)}
+                disabled={!selectedIds.includes(job.id) && selectedIds.length >= 4}
+                checked={selectedIds.includes(job.id)}
                 onChange={() =>
-                  setForm((old) => ({ ...old, selections: toggle(old.selections, job.id) }))
+                  setForm((old) => ({ ...old, selections: toggle(selectedIds, job.id) }))
                 }
               />
               {job.name} · {job.kind === "search" ? "검색" : "전문 소스"}
             </label>
           ))}
+          <p className="muted text-sm">한 번에 최대 4개 연결·소스를 조회합니다.</p>
           {!jobs.length && <p>활성 연결이 없습니다. 설정에서 연결을 추가하세요.</p>}
           <button
             type="button"
@@ -275,6 +295,7 @@ export function DiscoveryPanel({
         )}
         <div className="button-row">
           <button
+            className="primary"
             type="submit"
             disabled={
               offline || !form.name.trim() || !jobs.some((job) => form.selections.includes(job.id))
@@ -328,8 +349,8 @@ export function DiscoveryPanel({
             : state.running
               ? "조회 중"
               : "조회 완료"}{" "}
-          · {state.finished}/{state.total} · 검색 연결 {state.searchConnections}개 · 원문 도메인{" "}
-          {new Set(state.documents.map((doc) => doc.domain)).size}개
+          · {state.finished}/{state.total} · 검색 연결 {state.searchConnections}개 · 검색 원문
+          도메인 {new Set(state.documents.map((doc) => doc.domain)).size}개
         </output>
       )}
       {state.notices.map((notice) => (
@@ -459,7 +480,10 @@ export function DiscoveryPanel({
                     product={product.data}
                     offline={offline}
                     titleEvidence
-                    onApplied={() => void cache.invalidateQueries()}
+                    onApplied={() => {
+                      void cache.invalidateQueries();
+                      void syncEngine.triggerSync();
+                    }}
                   />
                 )}
               </article>
@@ -537,8 +561,16 @@ export function DiscoveryPanel({
                     {candidate.name}
                   </label>
                   <p className="text-sm">
-                    {candidate.relationship ?? "대상 확인 필요"} ·{" "}
-                    {[...(candidate.conflicts ?? []), ...(candidate.missing ?? [])].join(" · ")}
+                    {(
+                      {
+                        same_sku: "같은 제품·규격 후보",
+                        same_product: "같은 제품·다른 규격 후보",
+                        related: "관련 제품 후보",
+                        needs_confirmation: "대상 확인 필요",
+                        mismatch: "다른 제품 후보",
+                      } as Record<string, string>
+                    )[candidate.relationship ?? ""] ?? "대상 확인 필요"}{" "}
+                    · {[...(candidate.conflicts ?? []), ...(candidate.missing ?? [])].join(" · ")}
                   </p>
                   {publicLink(candidate.url) && (
                     <a href={publicLink(candidate.url)} target="_blank" rel="noreferrer">
@@ -555,7 +587,10 @@ export function DiscoveryPanel({
               evidence={result}
               product={product.data}
               offline={offline}
-              onApplied={() => void cache.invalidateQueries()}
+              onApplied={() => {
+                void cache.invalidateQueries();
+                void syncEngine.triggerSync();
+              }}
             />
           )}
         </article>
