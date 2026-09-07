@@ -1,5 +1,8 @@
 # v1.7.0 수용 원장
 
+> v1.7.1 정정: 개인 구매 가격 공란은0원이다. 아래 R09/R15의 빈티지·관측 근거와
+> R18/R22/R23의 가격 계산·품질 판정은 [패치 검증](../../../workthrough/2026-09-07-v171-price-vintage.md)을 함께 따른다.
+
 2026-09-07. 원장: [메인 #117](https://github.com/jihoon22-lee/SoolJang/issues/117),
 [명세 #118](https://github.com/jihoon22-lee/SoolJang/issues/118),
 [통합 WP13 #131](https://github.com/jihoon22-lee/SoolJang/issues/131).

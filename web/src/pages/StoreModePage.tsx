@@ -264,10 +264,10 @@ function StoreModeSummary({
   );
 }
 
-/** 구매 이력에서 최근·최저 단가를 뽑는다. 실구매가가 없으면 정가로 대체한다. */
+/** 구매 이력에서 최근·최저 단가를 뽑는다. 실구매가 공란은 선물·포인트 구매의 0원이다. */
 function priceHighlights(purchases: Purchase[]): { latest: string | null; lowest: string | null } {
   const priced = purchases
-    .map((purchase) => ({ purchase, price: purchase.unit_paid_price ?? purchase.unit_list_price }))
+    .map((purchase) => ({ purchase, price: purchase.unit_paid_price ?? "0.00" }))
     .filter((entry): entry is { purchase: Purchase; price: string } => entry.price !== null);
 
   if (priced.length === 0) return { latest: null, lowest: null };

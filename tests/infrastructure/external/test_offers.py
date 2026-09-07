@@ -1,6 +1,8 @@
 """합성 3매장·규격/조건 분리와 고정 제품 전체 판매 취득."""
 
+import json
 from copy import deepcopy
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -102,6 +104,73 @@ def test_invalid_price_is_not_a_new_observation(amount: Any) -> None:
 def test_raw_observation_excludes_derived_comparison() -> None:
     assert "comparison_group" not in raw_offer(offer())
     assert offer(price_krw=0)["amount"] == "0"
+
+
+@pytest.mark.parametrize("candidate_vintage", [2021, 2020])
+def test_structured_edition_evidence_survives_observation_round_trip(
+    candidate_vintage: int,
+) -> None:
+    identity = ProductIdentity(
+        name="Lumiere", vintage=2021, abv=Decimal("13.5"), volumes_ml=(750,), producer="Maison"
+    )
+    fresh = prepare_offer(
+        product_key="wine",
+        offer_key="shop",
+        name="Lumiere",
+        url="https://example.com/wine",
+        fields={
+            **CONDITIONS,
+            "price_krw": 50000,
+            "volume_ml": 750,
+            "vintage": candidate_vintage,
+            "abv": Decimal("13.5"),
+            "producer": "Maison",
+        },
+        identity=identity,
+        confirmed=True,
+    )
+    assert fresh is not None
+    stored = json.loads(json.dumps(raw_offer(fresh)))
+    assert stored["vintage"] == candidate_vintage
+    assert stored["producer"] == "Maison"
+    restored = prepare_offer(
+        product_key=stored["product_key"],
+        offer_key=stored["offer_key"],
+        name=stored["name"],
+        url=stored["source_url"],
+        fields=stored,
+        identity=identity,
+        confirmed=True,
+    )
+    assert restored is not None
+    assert restored["needs_confirmation"] is (candidate_vintage != 2021)
+    assert restored["comparison_group"] == fresh["comparison_group"]
+
+
+def test_name_detail_vintage_conflict_remains_unconfirmed_after_storage() -> None:
+    identity = ProductIdentity(name="Lumiere", vintage=2021, volumes_ml=(750,))
+    fresh = prepare_offer(
+        product_key="wine",
+        offer_key="shop",
+        name="Lumiere 2021",
+        url="https://example.com/wine",
+        fields={**CONDITIONS, "price_krw": 50000, "volume_ml": 750, "vintage": 2020},
+        identity=identity,
+        confirmed=True,
+    )
+    assert fresh is not None
+    stored = raw_offer(fresh)
+    restored = prepare_offer(
+        product_key=stored["product_key"],
+        offer_key=stored["offer_key"],
+        name=stored["name"],
+        url=stored["source_url"],
+        fields=stored,
+        identity=identity,
+        confirmed=True,
+    )
+    assert restored is not None and restored["needs_confirmation"]
+    assert restored["comparison_group"] is None
 
 
 @pytest.mark.parametrize(

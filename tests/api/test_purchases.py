@@ -389,3 +389,34 @@ def test_split_of_purchase_without_bottles_creates_them(
     for part in response.json():
         bottles = api_client.get(f"{prefix}/purchases/{part['id']}/bottles").json()
         assert len(bottles) == 1
+
+
+def test_split_explicit_blank_price_is_zero_and_omitted_price_is_inherited(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "포인트와 유료 혼합", "skus": [{"volume_ml": 750}]}
+    ).json()
+    purchase = api_client.post(
+        f"{prefix}/purchases",
+        json={
+            "sku_id": product["skus"][0]["id"],
+            "quantity": 2,
+            "unit_list_price": "30000",
+            "unit_paid_price": "20000",
+        },
+    ).json()
+    response = api_client.post(
+        f"{prefix}/purchases/{purchase['id']}:split",
+        json={
+            "parts": [
+                {"quantity": 1, "unit_list_price": None, "unit_paid_price": None},
+                {"quantity": 1},
+            ]
+        },
+    )
+    assert response.status_code == 200, response.text
+    parts = api_client.get(f"{prefix}/purchases").json()
+    assert {part["unit_paid_price"] for part in parts} == {"0.00", "20000.00"}
+    assert {part["unit_list_price"] for part in parts} == {"0.00", "30000.00"}
+    assert sum(part["bottle_count"] for part in parts) == 2

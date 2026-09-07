@@ -164,7 +164,9 @@ def test_stocktake_duplicate_missing_pause_and_unrecorded_never_change_stock(
     assert api_client.patch(status_path, json={"status": "active"}).status_code == 409
 
 
-def test_quality_distinguishes_free_and_unknown_price(api_client: TestClient, prefix: str) -> None:
+def test_quality_treats_blank_and_explicit_zero_prices_as_free(
+    api_client: TestClient, prefix: str
+) -> None:
     _, purchase_id, _ = sample(api_client, prefix)
     api_client.patch(f"{prefix}/purchases/{purchase_id}", json={"unit_paid_price": "0"})
     report = api_client.get(f"{prefix}/collection/quality").json()
@@ -173,5 +175,46 @@ def test_quality_distinguishes_free_and_unknown_price(api_client: TestClient, pr
     assert report["coverage"]["known_paid_total"] == "0.00"
     api_client.patch(f"{prefix}/purchases/{purchase_id}", json={"unit_paid_price": None})
     report = api_client.get(f"{prefix}/collection/quality").json()
-    assert report["coverage"]["unknown_price_purchases"] == 1
-    assert any(item["reason"] == "price" for item in report["items"])
+    assert report["coverage"]["unknown_price_purchases"] == 0
+    assert not any(item["reason"] == "price" for item in report["items"])
+
+
+def test_blank_gifts_and_points_prices_are_zero_in_purchase_product_and_statistics(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = post(
+        api_client,
+        prefix,
+        "/products",
+        {
+            "name": "선물과 포인트 구매",
+            "vintage": 2021,
+            "skus": [{"volume_ml": 750}],
+        },
+    )
+    sku_id = product["skus"][0]["id"]
+    gift = post(api_client, prefix, "/purchases", {"sku_id": sku_id, "quantity": 2})
+    assert gift["unit_list_price"] == gift["unit_paid_price"] == "0.00"
+    assert gift["list_total"] == gift["paid_total"] == "0.00"
+    post(
+        api_client,
+        prefix,
+        "/purchases",
+        {
+            "sku_id": sku_id,
+            "quantity": 1,
+            "unit_list_price": "90000",
+            "unit_paid_price": "60000",
+        },
+    )
+    result = api_client.get(f"{prefix}/products/{product['id']}").json()
+    assert result["vintage"] == 2021
+    assert result["metrics"]["purchased_count"] == 3
+    assert result["metrics"]["avg_list_price"] == "30000.00"
+    assert result["metrics"]["avg_paid_price"] == "20000.00"
+    summary = api_client.get(f"{prefix}/stats/summary").json()
+    assert summary["avg_list_price"] == "30000.00"
+    assert summary["avg_paid_price"] == "20000.00"
+    report = api_client.get(f"{prefix}/collection/quality").json()
+    assert report["coverage"]["unknown_price_purchases"] == 0
+    assert not any(item["reason"] == "price" for item in report["items"])

@@ -12,7 +12,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Numeric, Select, and_, case, cast, func, literal, null, select
+from sqlalchemy import Numeric, Select, and_, case, cast, func, literal, select
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.expression import ColumnElement
 
@@ -30,29 +30,12 @@ _MONEY = Numeric(20, 4)
 
 
 def _priced_amount(unit_price: InstrumentedAttribute[Decimal | None]) -> ColumnElement[Any]:
-    """단가가 있는 구매 건만 금액으로 환산한다. 없으면 NULL 이라 SUM 에서 빠진다."""
-    return cast(unit_price, _MONEY) * cast(Purchase.quantity, _MONEY)
+    """구매 가격 공란은 0원이다. 무료 취득도 수량·용량 분모에 포함한다."""
+    return cast(func.coalesce(unit_price, literal(0)), _MONEY) * cast(Purchase.quantity, _MONEY)
 
 
-def _priced_quantity(unit_price: InstrumentedAttribute[Decimal | None]) -> ColumnElement[Any]:
-    """단가가 있는 구매 건의 병수만 센다. 평단가의 분모가 되어야 한다."""
-    return case((unit_price.is_(None), literal(0)), else_=Purchase.quantity)
-
-
-def _priced_volume(unit_price: InstrumentedAttribute[Decimal | None]) -> ColumnElement[Any]:
-    """단가가 있는 구매 건의 총 용량만 센다. 100ml당 가격의 분모가 되어야 한다."""
-    return case(
-        (unit_price.is_(None), literal(0)),
-        else_=cast(Sku.volume_ml, _MONEY) * cast(Purchase.quantity, _MONEY),
-    )
-
-
-def _both_priced() -> ColumnElement[bool]:
-    """정가와 실구매가가 모두 있는 구매 건. 할인율의 모집단이다."""
-    return and_(
-        Purchase.unit_list_price.is_not(None),
-        Purchase.unit_paid_price.is_not(None),
-    )
+def _purchased_volume() -> ColumnElement[Any]:
+    return cast(Sku.volume_ml, _MONEY) * cast(Purchase.quantity, _MONEY)
 
 
 def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
@@ -60,24 +43,20 @@ def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
 
     `domain.metrics.compute_price_metrics` 와 같은 규칙을 따른다.
 
-    - 가격이 없는 구매 건은 금액 집계에서 빠지고 병수 집계에는 남는다
-    - 평단가의 분모는 **가격이 있는 구매 건의 병수**다
+    - 구매 가격 공란은 0원이다
+    - 평단가의 분모는 선물·포인트 구매를 포함한 전체 구매 병수다
     - 100ml당 가격은 가중 평균이며 **정가 기준**이다
-    - 할인율은 정가와 실구매가가 모두 있는 구매 건만으로 계산한다
+    - 할인율은 전체 구매의 정가·실구매가 합계로 계산한다
     """
     list_amount = func.sum(_priced_amount(Purchase.unit_list_price))
     paid_amount = func.sum(_priced_amount(Purchase.unit_paid_price))
-    list_quantity = func.sum(_priced_quantity(Purchase.unit_list_price))
-    paid_quantity = func.sum(_priced_quantity(Purchase.unit_paid_price))
-    list_volume = func.sum(_priced_volume(Purchase.unit_list_price))
-    paid_volume = func.sum(_priced_volume(Purchase.unit_paid_price))
+    list_quantity = func.sum(Purchase.quantity)
+    paid_quantity = func.sum(Purchase.quantity)
+    list_volume = func.sum(_purchased_volume())
+    paid_volume = func.sum(_purchased_volume())
 
-    discount_list = func.sum(
-        case((_both_priced(), _priced_amount(Purchase.unit_list_price)), else_=literal(0))
-    )
-    discount_paid = func.sum(
-        case((_both_priced(), _priced_amount(Purchase.unit_paid_price)), else_=literal(0))
-    )
+    discount_list = list_amount
+    discount_paid = paid_amount
 
     return (
         select(
@@ -202,7 +181,7 @@ def purchase_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
     """
     list_amount = _priced_amount(Purchase.unit_list_price)
     paid_amount = _priced_amount(Purchase.unit_paid_price)
-    list_volume = _priced_volume(Purchase.unit_list_price)
+    list_volume = _purchased_volume()
 
     return (
         select(
@@ -217,8 +196,8 @@ def purchase_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
             list_amount.label("list_amount"),
             paid_amount.label("paid_amount"),
             list_volume.label("list_volume"),
-            case((_both_priced(), list_amount), else_=null()).label("both_priced_list_amount"),
-            case((_both_priced(), paid_amount), else_=null()).label("both_priced_paid_amount"),
+            list_amount.label("both_priced_list_amount"),
+            paid_amount.label("both_priced_paid_amount"),
         )
         .select_from(Product)
         .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))

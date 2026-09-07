@@ -186,14 +186,10 @@ async def _to_purchase_out(session: SessionDep, purchase: Purchase) -> PurchaseO
         vendor_name=vendor.name if vendor else None,
         purchased_on=purchase.purchased_on,
         quantity=purchase.quantity,
-        unit_list_price=purchase.unit_list_price,
-        unit_paid_price=purchase.unit_paid_price,
-        list_total=purchase.unit_list_price * quantity
-        if purchase.unit_list_price is not None
-        else None,
-        paid_total=purchase.unit_paid_price * quantity
-        if purchase.unit_paid_price is not None
-        else None,
+        unit_list_price=purchase.unit_list_price or Decimal("0.00"),
+        unit_paid_price=purchase.unit_paid_price or Decimal("0.00"),
+        list_total=(purchase.unit_list_price or Decimal("0.00")) * quantity,
+        paid_total=(purchase.unit_paid_price or Decimal("0.00")) * quantity,
         currency=purchase.currency,
         fx_rate=purchase.fx_rate,
         foreign_unit_price=purchase.foreign_unit_price,
@@ -357,11 +353,11 @@ async def split_purchase(
             if part.purchased_on is not None
             else purchase.purchased_on,
             quantity=part.quantity,
-            unit_list_price=part.unit_list_price
-            if part.unit_list_price is not None
+            unit_list_price=(part.unit_list_price or Decimal("0.00"))
+            if "unit_list_price" in part.model_fields_set
             else purchase.unit_list_price,
-            unit_paid_price=part.unit_paid_price
-            if part.unit_paid_price is not None
+            unit_paid_price=(part.unit_paid_price or Decimal("0.00"))
+            if "unit_paid_price" in part.model_fields_set
             else purchase.unit_paid_price,
             currency=purchase.currency,
             fx_rate=purchase.fx_rate,

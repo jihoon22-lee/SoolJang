@@ -10,8 +10,7 @@
 
 1. **100ml당 가격은 정가 기준**이다. 레거시 통계와 일치시키기 위한 결정이며
    실구매 기준으로 계산하면 168건이 불일치한다(`docs/legacy-schema.md` §4.2)
-2. **가격이 없는 구매 건(선물)은 금액 집계에서 제외**하되 병수 집계에는 포함한다.
-   레거시에 정가 결측 33건, 실구매가 결측 34건이 있다
+2. **구매 가격 공란은 0원**이다. 선물·포인트 구매의 병수와 용량도 평균의 분모에 포함한다.
 3. **여러 용량이 섞인 제품**의 100ml당 가격은 가중 평균으로 계산한다
 """
 
@@ -70,18 +69,14 @@ class PurchaseLot:
             raise ValueError(f"용량은 양수여야 합니다: {self.volume_ml}")
 
     @property
-    def list_total(self) -> Decimal | None:
-        """정가 총액. 단가가 없으면 None."""
-        if self.unit_list_price is None:
-            return None
-        return self.unit_list_price * Decimal(self.quantity)
+    def list_total(self) -> Decimal:
+        """정가 총액. 기록의 공란은 0원이다."""
+        return (self.unit_list_price or Decimal(0)) * Decimal(self.quantity)
 
     @property
-    def paid_total(self) -> Decimal | None:
-        """실지불 총액. 단가가 없으면 None."""
-        if self.unit_paid_price is None:
-            return None
-        return self.unit_paid_price * Decimal(self.quantity)
+    def paid_total(self) -> Decimal:
+        """실지불 총액. 선물·포인트 구매의 공란은 0원이다."""
+        return (self.unit_paid_price or Decimal(0)) * Decimal(self.quantity)
 
     @property
     def total_volume_ml(self) -> int:
@@ -178,19 +173,13 @@ class PriceMetrics:
 
 
 def _weighted_total(lots: Sequence[PurchaseLot], *, paid: bool) -> tuple[Decimal | None, int, int]:
-    """가격이 있는 구매 건만 합산한다.
-
-    반환값은 (금액 합계, 병수 합계, 용량 합계 ml). 금액이 있는 구매 건이 없으면 금액은
-    None 이다. 0 을 반환하면 "전부 무료" 와 "가격 정보 없음" 을 구분할 수 없다.
-    """
+    """공란을 0원으로 합산한다. 구매 자체가 없을 때만 금액을 None으로 반환한다."""
     amount = Decimal(0)
     quantity = 0
     volume = 0
     found = False
     for lot in lots:
         total = lot.paid_total if paid else lot.list_total
-        if total is None:
-            continue
         found = True
         amount += total
         quantity += lot.quantity
@@ -247,19 +236,14 @@ def compute_price_metrics(lots: Sequence[PurchaseLot]) -> PriceMetrics:
 
 
 def _discount_rate(lots: Sequence[PurchaseLot]) -> Decimal | None:
-    """할인율. 정가와 실구매가가 **모두 있는** 구매 건만으로 계산한다.
-
-    한쪽만 있는 구매 건을 섞으면 분모와 분자의 모집단이 달라져 할인율이 왜곡된다.
-    """
+    """공란을 0원으로 포함한다. 정가 합계가 0이면 할인율은 정의되지 않는다."""
     list_amount = Decimal(0)
     paid_amount = Decimal(0)
     found = False
     for lot in lots:
-        if lot.unit_list_price is None or lot.unit_paid_price is None:
-            continue
         found = True
-        list_amount += lot.unit_list_price * Decimal(lot.quantity)
-        paid_amount += lot.unit_paid_price * Decimal(lot.quantity)
+        list_amount += lot.list_total
+        paid_amount += lot.paid_total
     if not found or list_amount == 0:
         return None
     return quantize_ratio(Decimal(1) - paid_amount / list_amount)

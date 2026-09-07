@@ -638,8 +638,8 @@ export async function getPurchasesForProduct(productId: string): Promise<Purchas
     const vendorId = p.vendor_id as string | null;
     const vendor = vendorId ? vendorById.get(vendorId) : undefined;
     const quantity = p.quantity as number;
-    const unitList = toDecimalOrNull(p.unit_list_price);
-    const unitPaid = toDecimalOrNull(p.unit_paid_price);
+    const unitList = toDecimalOrNull(p.unit_list_price) ?? new Decimal(0);
+    const unitPaid = toDecimalOrNull(p.unit_paid_price) ?? new Decimal(0);
     return {
       id: p.id,
       sku_id: p.sku_id as string,
@@ -648,10 +648,10 @@ export async function getPurchasesForProduct(productId: string): Promise<Purchas
       vendor_name: vendor ? (vendor.name as string) : null,
       purchased_on: (p.purchased_on as string | null) ?? null,
       quantity,
-      unit_list_price: (p.unit_list_price as string | null) ?? null,
-      unit_paid_price: (p.unit_paid_price as string | null) ?? null,
-      list_total: unitList ? unitList.times(quantity).toFixed(2) : null,
-      paid_total: unitPaid ? unitPaid.times(quantity).toFixed(2) : null,
+      unit_list_price: unitList.toFixed(2),
+      unit_paid_price: unitPaid.toFixed(2),
+      list_total: unitList.times(quantity).toFixed(2),
+      paid_total: unitPaid.times(quantity).toFixed(2),
       currency: p.currency as string,
       fx_rate: (p.fx_rate as string | null) ?? null,
       foreign_unit_price: (p.foreign_unit_price as string | null) ?? null,
@@ -719,13 +719,9 @@ export async function getVendors(): Promise<Vendor[]> {
     if (!vendorId) continue;
     counts.set(vendorId, (counts.get(vendorId) ?? 0) + 1);
 
-    // 실구매가가 있으면 그걸, 없으면 정가로 보충한다 — 둘 다 없으면 이 구매 건은 합계에서
-    // 빠진다("0 원 지출" 과 "가격 정보 없음" 을 구분한다, D35 와 같은 원칙).
+    // 실구매가 공란은 0원이다. 선물·포인트 구매를 정가 지출로 바꾸지 않는다.
     const quantity = purchase.quantity as number;
-    const unitPaid = toDecimalOrNull(purchase.unit_paid_price);
-    const unitList = toDecimalOrNull(purchase.unit_list_price);
-    const unitPrice = unitPaid ?? unitList;
-    if (unitPrice === null) continue;
+    const unitPrice = toDecimalOrNull(purchase.unit_paid_price) ?? new Decimal(0);
     const current = spend.get(vendorId) ?? new Decimal(0);
     spend.set(vendorId, current.plus(unitPrice.times(quantity)));
   }
@@ -806,18 +802,12 @@ async function statsRows(): Promise<StatsData> {
     vendorIds,
     coverage: {
       purchaseCount: includedPurchases.length,
-      pricedPurchaseCount: includedPurchases.filter(
-        (purchase) => purchase.unit_list_price !== null && purchase.unit_list_price !== undefined,
-      ).length,
-      paidPurchaseCount: includedPurchases.filter(
-        (purchase) => purchase.unit_paid_price !== null && purchase.unit_paid_price !== undefined,
-      ).length,
+      pricedPurchaseCount: includedPurchases.length,
+      paidPurchaseCount: includedPurchases.length,
       missingVolumeProducts: assemblies
         .filter((assembly) => assembly.skus.length === 0)
         .map((assembly) => ({ id: assembly.row.id, name: String(assembly.row.name) })),
-      missingPriceProducts: assemblies
-        .filter((assembly) => assembly.lots.some((lot) => lot.unitPaidPrice === null))
-        .map((assembly) => ({ id: assembly.row.id, name: String(assembly.row.name) })),
+      missingPriceProducts: [],
     },
   };
 }

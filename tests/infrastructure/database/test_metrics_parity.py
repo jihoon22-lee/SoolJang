@@ -196,7 +196,7 @@ async def test_mixed_volume_parity(session: AsyncSession, user_id: uuid.UUID) ->
 
 
 async def test_gift_purchase_parity(session: AsyncSession, user_id: uuid.UUID) -> None:
-    """가격 없는 구매 건은 금액 집계에서 빠지고 병수에는 남아야 한다."""
+    """가격 공란은 0원으로 포함하고 평균 분모에도 병수를 포함한다."""
     row = await _compare(
         session,
         user_id,
@@ -206,13 +206,11 @@ async def test_gift_purchase_parity(session: AsyncSession, user_id: uuid.UUID) -
     )
 
     assert row.purchased_count == 3
-    assert row.priced_quantity == 1
+    assert row.priced_quantity == 3
 
 
-async def test_all_gift_parity_returns_null_not_zero(
-    session: AsyncSession, user_id: uuid.UUID
-) -> None:
-    """0 을 반환하면 '전부 무료' 와 '가격 정보 없음' 을 구분할 수 없다."""
+async def test_all_gift_parity_returns_zero(session: AsyncSession, user_id: uuid.UUID) -> None:
+    """선물만 있는 제품은 가격과 원가가 0원이다."""
     row = await _compare(
         session,
         user_id,
@@ -221,8 +219,8 @@ async def test_all_gift_parity_returns_null_not_zero(
         bottle_statuses=[BottleStatus.UNOPENED, BottleStatus.UNOPENED],
     )
 
-    assert row.avg_list_price is None
-    assert row.price_per_100ml is None
+    assert row.avg_list_price == Decimal(0)
+    assert row.price_per_100ml == Decimal(0)
     assert row.discount_rate is None
 
 
@@ -235,12 +233,12 @@ async def test_list_price_only_parity(session: AsyncSession, user_id: uuid.UUID)
         bottle_statuses=[BottleStatus.UNOPENED],
     )
 
-    assert row.avg_paid_price is None
-    assert row.discount_rate is None
+    assert row.avg_paid_price == Decimal(0)
+    assert row.discount_rate == Decimal(1)
 
 
 async def test_partial_price_discount_parity(session: AsyncSession, user_id: uuid.UUID) -> None:
-    """할인율은 정가·실구매가가 모두 있는 구매 건만으로 계산해야 한다."""
+    """포인트 구매의 실구매가 공란도 0원으로 할인율에 포함한다."""
     row = await _compare(
         session,
         user_id,
@@ -249,7 +247,7 @@ async def test_partial_price_discount_parity(session: AsyncSession, user_id: uui
         bottle_statuses=[BottleStatus.UNOPENED, BottleStatus.UNOPENED],
     )
 
-    assert Decimal(str(row.discount_rate)).quantize(Decimal("0.0001")) == Decimal("0.2000")
+    assert Decimal(str(row.discount_rate)).quantize(Decimal("0.0001")) == Decimal("0.6000")
 
 
 async def test_disposed_bottles_are_not_stock_parity(

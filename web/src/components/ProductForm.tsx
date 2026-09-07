@@ -362,6 +362,7 @@ export function ProductForm({
                 id="form-list-price"
                 type="number"
                 min={0}
+                placeholder="0"
                 value={values.unitListPrice}
                 onChange={(event) => set({ unitListPrice: event.target.value })}
               />
@@ -372,6 +373,7 @@ export function ProductForm({
                 id="form-paid-price"
                 type="number"
                 min={0}
+                placeholder="0"
                 value={values.unitPaidPrice}
                 onChange={(event) => set({ unitPaidPrice: event.target.value })}
               />

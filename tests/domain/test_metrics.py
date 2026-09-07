@@ -105,52 +105,42 @@ def test_mixed_volumes_use_weighted_per_100ml() -> None:
     assert metrics.total_volume_ml == 1700
 
 
-# --- 가격 결측 (선물) ---------------------------------------------------------
+# --- 선물·포인트 구매의 0원 가격 ----------------------------------------------
 
 
-def test_gift_lot_is_excluded_from_money_but_counted_in_bottles() -> None:
-    """레거시에 정가 결측 33건이 있다. 병수는 세고 금액은 빼야 한다."""
+def test_gift_lots_are_zero_cost_bottles_in_weighted_average() -> None:
     metrics = compute_price_metrics([_lot(2, 900, None, None), _lot(1, 900, "30000", "30000")])
-
     assert metrics.purchased_count == 3
-    assert metrics.priced_quantity == 1
-    assert metrics.list_total == Decimal(30000)
-    # 무가격 구매 건이 평단가를 끌어내리지 않아야 한다.
-    assert metrics.avg_list_price == Decimal("30000.00")
+    assert metrics.priced_quantity == metrics.paid_quantity == 3
+    assert metrics.list_total == metrics.paid_total == Decimal(30000)
+    assert metrics.avg_list_price == metrics.avg_paid_price == Decimal("10000.00")
 
 
-def test_all_gift_lots_yield_none_not_zero() -> None:
-    """0 을 반환하면 '전부 무료' 와 '가격 정보 없음' 을 구분할 수 없다."""
+def test_all_gift_lots_have_zero_cost() -> None:
     metrics = compute_price_metrics([_lot(2, 900, None, None)])
-
     assert metrics.purchased_count == 2
-    assert metrics.list_total is None
-    assert metrics.avg_list_price is None
-    assert metrics.price_per_100ml is None
+    assert metrics.list_total == metrics.paid_total == Decimal(0)
+    assert metrics.avg_list_price == metrics.avg_paid_price == Decimal(0)
+    assert metrics.price_per_100ml == metrics.price_per_100ml_paid == Decimal(0)
     assert metrics.discount_rate is None
-    assert metrics.has_prices is False
+    assert metrics.has_prices
 
 
-def test_list_price_only_lot_has_no_paid_metrics() -> None:
+def test_points_purchase_has_zero_paid_price_and_full_discount() -> None:
     metrics = compute_price_metrics([_lot(1, 700, "50000", None)])
-
     assert metrics.avg_list_price == Decimal("50000.00")
-    assert metrics.avg_paid_price is None
-    assert metrics.price_per_100ml_paid is None
-    # 한쪽만 있으면 할인율을 계산할 수 없다.
-    assert metrics.discount_rate is None
+    assert metrics.avg_paid_price == metrics.price_per_100ml_paid == Decimal(0)
+    assert metrics.discount_rate == Decimal("1.0000")
 
 
-def test_discount_rate_only_uses_lots_with_both_prices() -> None:
-    """한쪽만 있는 구매 건을 섞으면 분모와 분자의 모집단이 달라져 왜곡된다."""
+def test_discount_rate_includes_points_purchase() -> None:
     metrics = compute_price_metrics(
         [
-            _lot(1, 700, "100000", "80000"),  # 할인율 20%
-            _lot(1, 700, "100000", None),  # 제외되어야 한다
+            _lot(1, 700, "100000", "80000"),
+            _lot(1, 700, "100000", None),
         ]
     )
-
-    assert metrics.discount_rate == Decimal("0.2000")
+    assert metrics.discount_rate == Decimal("0.6000")
 
 
 def test_empty_lots_produce_zero_counts_and_none_prices() -> None:
@@ -310,12 +300,12 @@ def test_bottle_count_mismatch_produces_warning_not_exception() -> None:
     assert metrics.prices.purchased_count == 3
 
 
-def test_inventory_value_is_none_without_paid_prices() -> None:
+def test_gift_inventory_has_zero_cost() -> None:
     metrics = compute_product_metrics(
         [_lot(1, 700, None, None)], [BottleRecord(BottleState.UNOPENED)]
     )
 
-    assert metrics.inventory_value_at_cost is None
+    assert metrics.inventory_value_at_cost == Decimal(0)
 
 
 def test_fully_consumed_product_has_zero_inventory_value() -> None:

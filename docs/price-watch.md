@@ -71,3 +71,7 @@
 [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291.html),
 [RFC 8292](https://www.rfc-editor.org/rfc/rfc8292.html)이다.
 실행 증거와 미실행 범위는 [B07 workthrough](../workthrough/2026-09-07-v170-b07-price-watch.md)에 둔다.
+
+v1.7.1은 별도 상세 필드의 빈티지·도수·숙성·생산자를 관측에 보존한다.
+등록 빈티지를 상품명보다 우선하며 다른 빈티지와 모순된 상세는 확인 필요로 유지한다.
+[패치 검증](../workthrough/2026-09-07-v171-price-vintage.md)을 따른다.

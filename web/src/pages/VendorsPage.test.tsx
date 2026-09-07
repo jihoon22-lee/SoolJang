@@ -58,7 +58,7 @@ describe("VendorsPage", () => {
         unit_paid_price: "10000",
         unit_list_price: "12000",
       }),
-      // 실구매가가 없으면 정가로 보충한다.
+      // 포인트 구매의 실구매가 공란은 0원이며 정가로 보충하지 않는다.
       row({ id: "pu2", sku_id: "s2", vendor_id: "v1", quantity: 1, unit_list_price: "5000" }),
     ]);
 
@@ -72,8 +72,8 @@ describe("VendorsPage", () => {
     expect(screen.getByText("온라인")).toBeInTheDocument();
     expect(screen.getByText("구매 2건")).toBeInTheDocument();
     expect(screen.getByText("구매 0건")).toBeInTheDocument();
-    // 10000*2 + 5000*1 = 25000
-    expect(screen.getByText("25,000원")).toBeInTheDocument();
+    // 10000*2 + 0*1 = 20000
+    expect(screen.getByText("20,000원")).toBeInTheDocument();
     expect(screen.getByText("가격 정보 없음")).toBeInTheDocument();
   });
 

@@ -21,7 +21,7 @@ export function CleanupConfirmation({
       </p>
       <p>
         변경 대상 {facts.affected_count}건 · 구매 병수 {facts.bottle_count}병 · 확인된 구매 합계{" "}
-        {formatMoney(facts.known_paid_total)} · 가격 미상 {facts.unknown_price_count}건
+        {formatMoney(facts.known_paid_total)}
       </p>
       <p>전체 변경을 한 번에 저장합니다. 그동안 기록이 바뀌면 미리보기를 다시 확인해야 합니다.</p>
       <div className="button-row">
