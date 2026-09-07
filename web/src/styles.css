@@ -1925,3 +1925,95 @@ button:disabled {
     font-size: var(--text-xs);
   }
 }
+
+/* 보관·실사·관심·품질은 기존 색상·간격·입력 토큰을 공유한다. */
+.collection-page {
+  display: grid;
+  gap: var(--space);
+}
+
+.collection-page fieldset,
+.collection-page .card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+  background: var(--surface);
+}
+
+.collection-page form,
+.collection-page form > fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+  gap: var(--space-sm);
+  align-items: end;
+}
+
+.collection-page form > fieldset {
+  grid-column: 1 / -1;
+}
+
+.collection-page label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.collection-page label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-xs) 0;
+}
+
+.collection-page input:not([type="checkbox"]),
+.collection-page select,
+.collection-page textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h-md);
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.collection-page input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+.collection-page ul {
+  display: grid;
+  gap: var(--space-sm);
+  list-style: none;
+  padding: 0;
+}
+
+.collection-page li {
+  min-width: 0;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.collection-page li > label {
+  margin: var(--space-xs) 0;
+}
+
+.collection-page code {
+  overflow-wrap: anywhere;
+}
+
+.collection-page table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.collection-page th,
+.collection-page td {
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}

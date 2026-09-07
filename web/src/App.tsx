@@ -6,8 +6,11 @@ import type { User } from "@/api/types";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
 import { CategoriesPage } from "@/pages/CategoriesPage";
+import { CollectionQualityPage } from "@/pages/CollectionQualityPage";
 import { HomePage } from "@/pages/HomePage";
 import { ImportPage } from "@/pages/ImportPage";
+import { InterestsPage } from "@/pages/InterestsPage";
+import { InventoryPage } from "@/pages/InventoryPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StatsPage } from "@/pages/StatsPage";
@@ -34,10 +37,13 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "categories", label: "주종 관리" },
   { id: "vendors", label: "구매처" },
   { id: "stats", label: "통계" },
+  { id: "inventory", label: "보관·실사" },
+  { id: "interests", label: "관심" },
 ];
 
 /** 자주 쓰지 않는 환경 설정류. 헤더의 설정 메뉴 안에 접어 둔다(항목 3). */
 const SETTINGS_VIEWS: { id: View; label: string }[] = [
+  { id: "quality", label: "데이터 품질" },
   { id: "import", label: "가져오기" },
   { id: "settings", label: "설정" },
   { id: "status", label: "서비스 상태" },
@@ -320,8 +326,24 @@ export function App() {
           {route.view === "sources" && <SettingsPage key={user?.id} />}
           {route.view === "stats" && (
             <StatsPage
+              onOpenQuality={() => navigate({ view: "quality" })}
               onSelectProduct={(id) => navigate({ view: "products", productId: id })}
               onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+            />
+          )}
+          {route.view === "interests" && (
+            <InterestsPage
+              onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+            />
+          )}
+          {route.view === "inventory" && (
+            <InventoryPage
+              onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+            />
+          )}
+          {route.view === "quality" && (
+            <CollectionQualityPage
+              onSelectProduct={(id) => navigate({ view: "products", productId: id })}
             />
           )}
           {route.view === "import" && <ImportPage />}

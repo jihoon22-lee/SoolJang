@@ -111,8 +111,14 @@ def test_merge_vendor_reassigns_purchases_and_deletes_source(
         {"sku_id": sku_id, "vendor_id": source["id"], "quantity": 2},
     )
 
+    preview = _post(
+        api_client,
+        f"{prefix}/collection/cleanup/preview",
+        {"kind": "vendor_merge", "ids": [source["id"]], "target_id": target["id"]},
+    )
     response = api_client.post(
-        f"{prefix}/vendors/{source['id']}:merge", json={"target_id": target["id"]}
+        f"{prefix}/vendors/{source['id']}:merge",
+        json={"target_id": target["id"], "preview_id": preview["id"]},
     )
 
     assert response.status_code == 204, response.text
