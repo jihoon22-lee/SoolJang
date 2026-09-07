@@ -163,7 +163,16 @@ async def lookup_identity(
             else None
         )
         raw_match = (matches or {}).get(str(source_id))
-        pinned = PinnedMatch(**raw_match) if raw_match else None
+        pinned = (
+            PinnedMatch(
+                **{
+                    key: raw_match.get(key)
+                    for key in ("external_url", "external_name", "external_key", "product_key")
+                }
+            )
+            if raw_match
+            else None
+        )
         adapter = await _fetch_source(
             session,
             source=source,
@@ -253,6 +262,7 @@ async def lookup_identity(
                 outcome=adapter.outcome,
                 product_key=adapter.product_key,
                 configuration_revision=source.config_revision,
+                preferred_seller_key=raw_match.get("preferred_seller_key") if raw_match else None,
                 offers=[{**offer, "fetched_at": fetched_at.isoformat()} for offer in adapter.offers]
                 if adapter.ok
                 else [],

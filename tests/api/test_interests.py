@@ -57,7 +57,7 @@ def test_interest_source_pin_validates_source_and_public_http_url(
     payload = {"identity": {"name": "합성 술"}, "source_matches": {source_id: pin}}
     response = api_client.post(f"{prefix}/interests", json=payload)
     assert response.status_code == 201, response.text
-    assert response.json()["source_matches"] == {source_id: pin}
+    assert response.json()["source_matches"] == {source_id: {**pin, "preferred_seller_key": None}}
     for url in (
         "javascript:alert(1)",
         "http://127.0.0.1/private",

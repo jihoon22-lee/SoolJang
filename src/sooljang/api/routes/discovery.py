@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, SettingsDep, UserDep
 from sooljang.api.errors import NotFoundError
@@ -18,6 +19,7 @@ from sooljang.api.schemas.discovery import (
     SearchInput,
 )
 from sooljang.api.schemas.external_sources import SourceLookupOut
+from sooljang.api.schemas.interests import InterestIdentity
 from sooljang.application import discovery as service
 from sooljang.application.discovery_evidence import (
     applicable_fields,
@@ -28,12 +30,17 @@ from sooljang.application.discovery_evidence import (
 )
 from sooljang.application.external_sources import (
     SourceLookupResult,
+    _build_identity,
     get_owned_source,
     lookup_product,
 )
 from sooljang.application.interests import validate_source_matches
 from sooljang.application.products import load_product
-from sooljang.infrastructure.database.models import ExternalSource, ProviderConnection
+from sooljang.infrastructure.database.models import (
+    ExternalProductMatch,
+    ExternalSource,
+    ProviderConnection,
+)
 from sooljang.infrastructure.external.request_guard import outbound_guard
 
 
@@ -202,3 +209,37 @@ async def product_lookup(
         master_key=settings.secret_key,
     )
     return await _outputs(results, session, user_id, settings.secret_key)
+
+
+@router.get("/products/{product_id}/context")
+async def product_context(
+    product_id: uuid.UUID, session: SessionDep, user_id: UserDep, response: Response
+) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
+    product = await load_product(session, user_id=user_id, product_id=product_id)
+    identity = await _build_identity(session, product)
+    matches = await session.scalars(
+        select(ExternalProductMatch)
+        .join(ExternalSource, ExternalSource.id == ExternalProductMatch.source_id)
+        .where(
+            ExternalProductMatch.product_id == product_id,
+            ExternalProductMatch.user_id == user_id,
+            ExternalProductMatch.deleted_at.is_(None),
+            ExternalSource.deleted_at.is_(None),
+            ExternalSource.user_id == user_id,
+        )
+    )
+    return {
+        "identity": InterestIdentity.model_validate(asdict(identity)).model_dump(mode="json"),
+        "updated_at": product.updated_at,
+        "source_matches": {
+            str(match.source_id): {
+                "external_url": match.external_url,
+                "external_name": match.external_name,
+                "external_key": match.external_key,
+                "product_key": match.external_product_key,
+                "preferred_seller_key": match.preferred_seller_key,
+            }
+            for match in matches
+        },
+    }

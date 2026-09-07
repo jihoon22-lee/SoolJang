@@ -30,6 +30,7 @@ class InterestIdentity(BaseModel):
 
 class InterestSourceMatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    preferred_seller_key: str | None = Field(default=None, max_length=1000)
     product_key: str | None = Field(default=None, min_length=1, max_length=1000)
     external_url: str = Field(min_length=1, max_length=2000)
     external_key: str | None = Field(default=None, min_length=1, max_length=1000)
