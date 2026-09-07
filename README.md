@@ -79,7 +79,7 @@ make help         # 전체 명령 목록
 현재 위치와 기존 Task/WP 대응은 [docs/plan.md](docs/plan.md),
 작업 진입점은 [v1.7.0 로드맵](docs/roadmap/v1.7.0.md)에서 확인한다.
 패키지 버전과 마지막 확인한 배포 버전은 계획 문서에서 구분한다.
-국내 가격 2출처의 실제 허용 사례와 운영 수용은 아직 완료되지 않았다. 구현·실연결·
+국내 가격 2출처의 실제 허용 사례와 기기 푸시 수용은 사용자 결정으로 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142)·[#143](https://github.com/jihoon22-lee/SoolJang/issues/143)에 이연했다. 구현·실연결·
 릴리스 상태와 제한은 [수용 원장](docs/plans/v1.7.0/acceptance.md)에서 구분한다.
 검색 API 키는 앱의 통합 연결 화면에서 관리하며, 새 탐색은 생성형 답변·요약을 호출하지 않는다.
 기존 OCR·선택형 AI 설정은 보존한다. 가격은 같은 규격·통화·판매 조건의 실제 관측끼리 비교한다.
