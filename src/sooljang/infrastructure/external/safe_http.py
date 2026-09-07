@@ -429,6 +429,9 @@ class SafeHttpClient:
                 await self.before_request(request)
             # preflight가 robots 요청을 할 수 있으므로 callback 이후 실제 송신만 제한한다.
             async with _outbound_limiter():
+                # 대기 중 브라우저 연결이나 worker/소스 상태가 바뀔 수 있다.
+                # 예산 예약과 robots preflight를 반복하지 않고 송신 가드만 재검사한다.
+                await check_outbound_guard(request)
                 response = await self._transport.handle_async_request(request)
                 response.request = request
                 try:

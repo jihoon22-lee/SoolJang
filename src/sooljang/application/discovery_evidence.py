@@ -77,6 +77,26 @@ async def apply_evidence(
         raise ValidationFailedError(
             "적용할 외부 자료가 만료되었거나 올바르지 않습니다. 다시 조회하세요"
         ) from None
+    product = await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
+    if product.updated_at != expected_updated_at:
+        raise ConflictError("제품이 다른 화면에서 수정되었습니다. 최신 값을 확인하세요")
+    if evidence["connection_id"]:
+        connection = await session.scalar(
+            select(ProviderConnection)
+            .where(
+                ProviderConnection.id == uuid.UUID(evidence["connection_id"]),
+                ProviderConnection.user_id == user_id,
+            )
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+        if (
+            connection is None
+            or connection.deleted_at
+            or not connection.is_active
+            or connection.config_revision != evidence["connection_revision"]
+        ):
+            raise ConflictError("검색 연결이 바뀌었습니다. 다시 조회하세요")
     if evidence.get("source_id"):
         source = await session.scalar(
             select(ExternalSource)
@@ -85,7 +105,8 @@ async def apply_evidence(
                 ExternalSource.user_id == user_id,
                 ExternalSource.deleted_at.is_(None),
             )
-            .with_for_update()
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
         )
         if (
             source is None
@@ -93,19 +114,6 @@ async def apply_evidence(
             or not source.is_active
         ):
             raise ConflictError("외부 소스 설정이 바뀌었습니다. 다시 조회하세요")
-    if evidence["connection_id"]:
-        connection = await session.get(ProviderConnection, uuid.UUID(evidence["connection_id"]))
-        if (
-            connection is None
-            or connection.user_id != user_id
-            or connection.deleted_at
-            or not connection.is_active
-            or connection.config_revision != evidence["connection_revision"]
-        ):
-            raise ConflictError("검색 연결이 바뀌었습니다. 다시 조회하세요")
-    product = await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
-    if product.updated_at != expected_updated_at:
-        raise ConflictError("제품이 다른 화면에서 수정되었습니다. 최신 값을 확인하세요")
     validated = ProductUpdate.model_validate(fields).model_dump(exclude_unset=True)
     for key, value in validated.items():
         setattr(product, key, value)

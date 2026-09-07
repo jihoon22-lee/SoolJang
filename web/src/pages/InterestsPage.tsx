@@ -3,6 +3,7 @@ import { useState } from "react";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
+import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
@@ -134,6 +135,7 @@ export function InterestsPage({ onSelectProduct }: { onSelectProduct: (id: strin
           .map((row) => (
             <li key={row.id}>
               <h2>{row.name}</h2>
+              <InterestDiscovery interest={row} offline={!online} />
               <p>
                 {row.identity.volumes_ml?.join(" / ") || "용량 미상"}
                 {row.identity.volumes_ml?.length ? " ml" : ""} · {row.identity.abv ?? "도수 미상"}
@@ -254,6 +256,16 @@ export function InterestsPage({ onSelectProduct }: { onSelectProduct: (id: strin
         />
       )}
     </section>
+  );
+}
+
+function InterestDiscovery({ interest, offline }: { interest: Interest; offline: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>관심 자료 탐색</summary>
+      {open && <DiscoveryPanel key={interest.id} interest={interest} offline={offline} />}
+    </details>
   );
 }
 

@@ -25,6 +25,7 @@ from sooljang.infrastructure.database.models.interest import Interest
 from sooljang.infrastructure.external.adapter import PinnedMatch
 from sooljang.infrastructure.external.fields import split_fields
 from sooljang.infrastructure.external.matching import ProductIdentity
+from sooljang.infrastructure.external.request_guard import outbound_guard
 from sooljang.infrastructure.external.search import SEARCH_KINDS, SearchResult, search_provider
 from sooljang.infrastructure.security.secrets import InvalidToken
 
@@ -84,17 +85,27 @@ async def search_connection(
             expected_revision=revision,
         )
 
+    async def check_configuration(_request: httpx.Request) -> None:
+        await reserve_connection_request(
+            session,
+            user_id=user_id,
+            connection_id=connection_id,
+            expected_revision=revision,
+            reserve=False,
+        )
+
     try:
-        async with asyncio.timeout(20):
-            result = await search_provider(
-                connection.provider_kind,
-                credentials,
-                query=query,
-                page=page,
-                language=language,
-                before_request=before_request,
-                transport=transport,
-            )
+        with outbound_guard(check_configuration):
+            async with asyncio.timeout(20):
+                result = await search_provider(
+                    connection.provider_kind,
+                    credentials,
+                    query=query,
+                    page=page,
+                    language=language,
+                    before_request=before_request,
+                    transport=transport,
+                )
     except ConnectionChanged:
         return SearchResult(
             SourceOutcome.INVALID_CONFIGURATION, warning="요청 중 연결 설정이 바뀌었습니다"

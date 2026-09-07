@@ -7,6 +7,7 @@ import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { CollectionQualityPage } from "@/pages/CollectionQualityPage";
+import { DiscoverPage } from "@/pages/DiscoverPage";
 import { HomePage } from "@/pages/HomePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { InterestsPage } from "@/pages/InterestsPage";
@@ -36,15 +37,16 @@ import { UpdateNotice } from "@/sync/UpdateNotice";
 const VIEWS: { id: View; label: string }[] = [
   { id: "home", label: "홈" },
   { id: "products", label: "내 술" },
-  { id: "categories", label: "주종 관리" },
-  { id: "vendors", label: "구매처" },
   { id: "stats", label: "통계" },
-  { id: "inventory", label: "보관·실사" },
   { id: "interests", label: "관심" },
+  { id: "discover", label: "탐색" },
 ];
 
 /** 자주 쓰지 않는 환경 설정류. 헤더의 설정 메뉴 안에 접어 둔다(항목 3). */
 const SETTINGS_VIEWS: { id: View; label: string }[] = [
+  { id: "categories", label: "주종 관리" },
+  { id: "vendors", label: "구매처" },
+  { id: "inventory", label: "보관·실사" },
   { id: "quality", label: "데이터 품질" },
   { id: "import", label: "가져오기" },
   { id: "price-watch", label: "가격 감시·알림" },
@@ -301,6 +303,7 @@ export function App() {
 
         <main className="app-main" id="main">
           {route.view === "price-watch" && <PriceWatchPage key={user?.id} />}
+          {route.view === "discover" && <DiscoverPage key={user?.id} />}
           {route.view === "home" && (
             <HomePage
               onSelectProduct={(id) => navigate({ view: "products", productId: id })}

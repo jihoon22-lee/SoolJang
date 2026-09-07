@@ -13,7 +13,17 @@ _current_guard: ContextVar[BeforeRequest | None] = ContextVar(
 
 @contextmanager
 def outbound_guard(guard: BeforeRequest) -> Iterator[None]:
-    token = _current_guard.set(guard)
+    previous = _current_guard.get()
+
+    async def combined(request: object) -> None:
+        import httpx
+
+        assert isinstance(request, httpx.Request)
+        if previous is not None:
+            await previous(request)
+        await guard(request)
+
+    token = _current_guard.set(combined)
     try:
         yield
     finally:

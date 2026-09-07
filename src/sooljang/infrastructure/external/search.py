@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -56,6 +56,18 @@ def canonical_document_url(value: Any) -> str | None:
         )
     except ValueError, UnsafeRequest:
         return None
+
+
+def _reflects_credentials(value: str, secrets: tuple[str, ...]) -> bool:
+    # URL의 중첩 percent-encoding을 풀어도 인증 값이 드러나는 문서는 반환하지 않는다.
+    # 매 회 문자열이 줄어들며 입력은 URL/title/excerpt 상한으로 제한된다.
+    while True:
+        if any(secret and secret in value for secret in secrets):
+            return True
+        decoded = unquote(value)
+        if decoded == value:
+            return False
+        value = decoded
 
 
 def plain_excerpt(value: Any, limit: int = 500) -> str:
@@ -168,15 +180,11 @@ def parse_search_response(
         title = plain_excerpt(row.get("title"), 300)
         text = row.get("text") if kind == "exa" else row.get("description")
         excerpt = plain_excerpt(text)
-        if (
-            not url
-            or not title
-            or any(secret and secret in (url + title + excerpt) for secret in secrets)
-        ):
+        if not url or not title or _reflects_credentials(url + title + excerpt, secrets):
             continue
         published = row.get("publishedDate") or row.get("postdate") or row.get("page_age")
         published = plain_excerpt(published, 60) or None
-        if published and any(secret and secret in published for secret in secrets):
+        if published and _reflects_credentials(published, secrets):
             published = None
         # 제목·발췌에 명시된 종류만 구분한다. 맛/평점/긍부정은 추론하지 않는다.
         corpus = f"{title} {excerpt}".lower()

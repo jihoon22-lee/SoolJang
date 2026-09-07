@@ -20,8 +20,8 @@
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — 단 Task 19 본 사양(시세 이력·목표가 알림)은 여전히 미착수. Task 23(첫 릴리스·배포)은 완료 |
 | 다음 착수 Task | **B05/WP08·09 #126/#127 다중 출처 탐색·관심 저장**. B07 목표가와 B08 데이터·재고 병행 |
 | 현재 브랜치 | `feature/v170-discovery` — B05. 실제 재개 시 Git/열린 PR 및 분리 worktree 상태 확인 |
-| 진행 중 잔여 항목 | B01/B02/B03/B04/B06 머지. B08 데이터 정리·관심 구매 전환·보관/실사 구현과 전체 로컬 검사·실브라우저 완료. B05 검색/API·Exa6주종 실연결 검증, UI통합 진행. B07 목표가 구현, B09 통합 수용 후 릴리스·배포. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
-| 버전 상태 | 패키지 `1.6.1`. 마지막 문서상 확인 배포는 `v1.6.0`(2026-08-20, migration `0012_llm_rematch`). 이번 작업에서 운영 상태를 재조회하지 않음 |
+| 진행 중 잔여 항목 | B01/B02/B03/B04/B06 머지. B08 #138 CI 통과·머지. B05 검색/API·Exa6주종 실연결 검증, UI통합 진행. B07 목표가 구현, B09 통합 수용 후 릴리스·배포. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
+| 버전 상태 | 패키지 `1.6.1`. 2026-09-07 운영 readonly 확인: API/web 이미지 `1.6.1`, health 정상, 실제 schema `0012_llm_rematch`. 새 버전 운영 변경은 아직 실행하지 않음 |
 
 - 현재 마일스톤: [v1.7.0](https://github.com/jihoon22-lee/SoolJang/milestone/1).
   [메인 #117](https://github.com/jihoon22-lee/SoolJang/issues/117)은 범위·PR 진행,
@@ -198,7 +198,7 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 | B06 / WP02 | 🟡 #135 CI 통과·머지, 최초 운영 교체 수용은 B09 | [작업 기록](../workthrough/2026-09-07-v170-sync.md) |
 | B03 / WP05 | 🟡 #136 CI 통과·머지, 실제 계정 인증 수용 남음 | [기록](../workthrough/2026-09-07-v170-b03-connections.md) |
 | B04 / WP06·07 | 🟡 #137 CI 통과·머지. 실제 국내 2출처는 미확정 | [기록](../workthrough/2026-09-07-v170-b04-matching-offers.md) |
-| B08 / WP11·12 | 🟡 구현·전체 로컬 검사·실브라우저 완료, CI 준비 | [기록](../workthrough/2026-09-07-v170-b08-data-inventory.md) |
+| B08 / WP11·12 | 🟡 #138 CI 통과·머지, 운영 통합 수용은 B09 | [기록](../workthrough/2026-09-07-v170-b08-data-inventory.md) |
 | B05 / B07·B09 | 🟡 B05·B07·B08 구현, B09 후속 | [로드맵](roadmap/v1.7.0.md), 실제 PR/상태는 [#117](https://github.com/jihoon22-lee/SoolJang/issues/117) |
 
 ### 기존 Task 이력

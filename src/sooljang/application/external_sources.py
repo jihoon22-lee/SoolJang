@@ -28,7 +28,7 @@ from sooljang.application.external_request_usage import (
     reserve_request,
 )
 from sooljang.application.llm_settings import get_llm_setting
-from sooljang.application.products import ensure_category_exists
+from sooljang.application.products import ensure_category_exists, load_product
 from sooljang.domain.discovery import SourceOutcome
 from sooljang.infrastructure.database.models import (
     ExternalLlmRematchLog,
@@ -38,6 +38,7 @@ from sooljang.infrastructure.database.models import (
     ExternalSourceCredential,
     ExternalSourceProbe,
     Product,
+    ProviderConnection,
     Sku,
 )
 from sooljang.infrastructure.external.adapter import (
@@ -52,6 +53,7 @@ from sooljang.infrastructure.external.match_llm import rematch as llm_rematch
 from sooljang.infrastructure.external.matching import ProductIdentity
 from sooljang.infrastructure.external.offers import prepare_offer, raw_offer
 from sooljang.infrastructure.external.presets import get_preset
+from sooljang.infrastructure.external.request_guard import outbound_guard
 from sooljang.infrastructure.security.secrets import InvalidToken, decrypt_secret, encrypt_secret
 
 #: 설정 revision을 함께 저장하여 키/파싱 계약 변경 후 과거 캐시를 재사용하지 않는다.
@@ -376,6 +378,7 @@ async def pin_match(
             f"고정 대상 URL 이 소스의 주소와 다른 호스트입니다: {external_url}"
         )
 
+    await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
     confirmed_at = datetime.now(UTC)
     match = await get_match(session, source_id=source.id, product_id=product_id)
     if match is None:
@@ -408,6 +411,7 @@ async def unpin_match(
     session: AsyncSession, *, source_id: uuid.UUID, product_id: uuid.UUID
 ) -> bool:
     """고정을 해제한다. 해제할 것이 없었으면 `False`."""
+    await session.execute(select(Product.id).where(Product.id == product_id).with_for_update())
     match = await get_match(session, source_id=source_id, product_id=product_id)
     if match is None:
         return False
@@ -686,15 +690,48 @@ async def _fetch_source(
             ],
         )
 
-    return await fetch_snapshot(
-        source.adapter_spec,
-        base_url=source.base_url,
-        identity=identity,
-        transport=transport,
-        pinned=pinned,
-        credentials=values or None,
-        before_request=before_request,
-    )
+    source_revision = source.config_revision
+    connection_revision = connection.config_revision if connection is not None else None
+
+    async def check_configuration(_request: httpx.Request) -> None:
+        if connection is not None:
+            await reserve_connection_request(
+                session,
+                user_id=source.user_id,
+                connection_id=connection.id,
+                expected_revision=connection_revision or 0,
+                require_active=not allow_paused,
+                source_id=source.id,
+                source_revision=source_revision,
+                reserve=False,
+            )
+        else:
+            current = (
+                await session.execute(
+                    select(ExternalSource.config_revision, ExternalSource.is_active).where(
+                        ExternalSource.id == source.id,
+                        ExternalSource.user_id == source.user_id,
+                        ExternalSource.deleted_at.is_(None),
+                    )
+                )
+            ).first()
+            if (
+                current is None
+                or current[0] != source_revision
+                or (not allow_paused and not current[1])
+            ):
+                raise ConnectionChanged("요청 중 소스 설정이 바뀌었습니다")
+
+    with outbound_guard(check_configuration):
+        return await fetch_snapshot(
+            source.adapter_spec,
+            base_url=source.base_url,
+            identity=identity,
+            transport=transport,
+            pinned=pinned,
+            credentials=values or None,
+            before_request=before_request,
+        )
 
 
 async def probe_source(
@@ -964,6 +1001,103 @@ async def _maybe_llm_rematch(
     return candidates[outcome.index].url
 
 
+_MATCH_STATE_FIELDS = (
+    "id",
+    "external_url",
+    "external_key",
+    "external_name",
+    "external_product_key",
+    "preferred_seller_key",
+    "confirmed_at",
+)
+
+
+def _match_state(match: ExternalProductMatch | None) -> tuple[Any, ...] | None:
+    return tuple(getattr(match, name) for name in _MATCH_STATE_FIELDS) if match else None
+
+
+async def _lookup_target_current(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    product: Product,
+    source: ExternalSource,
+    product_revision: datetime,
+    match_state: tuple[Any, ...] | None,
+    connection_revision: int | None,
+) -> bool:
+    # 읽기 대상은 SHARE 잠금으로 설정 변경을 막는다. FK의 KEY SHARE와 호환되어
+    # 동시에 새 pin을 만드는 Product→source FK 순서와 교착하지 않는다.
+    if source.connection_id:
+        connection = (
+            await session.execute(
+                select(ProviderConnection.config_revision, ProviderConnection.is_active)
+                .where(
+                    ProviderConnection.id == source.connection_id,
+                    ProviderConnection.user_id == user_id,
+                    ProviderConnection.deleted_at.is_(None),
+                )
+                .with_for_update(read=True)
+            )
+        ).first()
+        if connection is None or connection[0] != connection_revision or not connection[1]:
+            return False
+    current_source = (
+        await session.execute(
+            select(
+                ExternalSource.config_revision,
+                ExternalSource.is_active,
+                ExternalSource.price_history_allowed,
+            )
+            .where(
+                ExternalSource.id == source.id,
+                ExternalSource.user_id == user_id,
+                ExternalSource.deleted_at.is_(None),
+            )
+            .with_for_update(read=True)
+        )
+    ).first()
+    if (
+        current_source is None
+        or current_source[0] != source.config_revision
+        or not current_source[1]
+        or current_source[2] != source.price_history_allowed
+    ):
+        return False
+    current_product = await session.scalar(
+        select(Product.updated_at)
+        .where(Product.id == product.id, Product.user_id == user_id, Product.deleted_at.is_(None))
+        .with_for_update()
+    )
+    if current_product != product_revision:
+        return False
+    current_match = (
+        await session.execute(
+            select(*(getattr(ExternalProductMatch, name) for name in _MATCH_STATE_FIELDS)).where(
+                ExternalProductMatch.source_id == source.id,
+                ExternalProductMatch.product_id == product.id,
+                ExternalProductMatch.deleted_at.is_(None),
+            )
+        )
+    ).first()
+    return (tuple(current_match) if current_match else None) == match_state
+
+
+def _changed_lookup(source: ExternalSource) -> SourceLookupResult:
+    return SourceLookupResult(
+        source.id,
+        source.name,
+        False,
+        None,
+        {},
+        None,
+        True,
+        "조회 중 제품·고정 또는 소스 설정이 바뀌어 이전 결과를 폐기했습니다",
+        None,
+        outcome=SourceOutcome.INVALID_CONFIGURATION,
+    )
+
+
 async def lookup_product(
     session: AsyncSession,
     *,
@@ -985,6 +1119,7 @@ async def lookup_product(
     같은 `master_key` 로 `LlmSetting` 의 API 키도 복호화해, 애매 구간에서 사용자가 "LLM
     매칭 보조"를 켜 뒀으면 재판정을 시도한다(Task 34 PR6, `_maybe_llm_rematch`).
     """
+    product_revision = product.updated_at
     identity = await _build_identity(session, product)
     sources = await session.scalars(
         select(ExternalSource)
@@ -1004,6 +1139,16 @@ async def lookup_product(
     results: list[SourceLookupResult] = []
     for source in sources:
         match = await get_match(session, source_id=source.id, product_id=product.id)
+        expected_match = _match_state(match)
+        connection_revision = (
+            await session.scalar(
+                select(ProviderConnection.config_revision).where(
+                    ProviderConnection.id == source.connection_id
+                )
+            )
+            if source.connection_id
+            else None
+        )
         pinned = (
             PinnedMatch(
                 external_url=match.external_url,
@@ -1017,6 +1162,17 @@ async def lookup_product(
 
         cached = await _fresh_cache(session, source=source, product_id=product.id)
         if cached is not None:
+            if not await _lookup_target_current(
+                session,
+                user_id=user_id,
+                product=product,
+                source=source,
+                product_revision=product_revision,
+                match_state=expected_match,
+                connection_revision=connection_revision,
+            ):
+                results.append(_changed_lookup(source))
+                continue
             cached_offers = []
             for facts in cached.snapshot.get("offers", []):
                 rebuilt = prepare_offer(
@@ -1066,6 +1222,17 @@ async def lookup_product(
             master_key=master_key,
         )
         fetched_at = datetime.now(UTC)
+        if not await _lookup_target_current(
+            session,
+            user_id=user_id,
+            product=product,
+            source=source,
+            product_revision=product_revision,
+            match_state=expected_match,
+            connection_revision=connection_revision,
+        ):
+            results.append(_changed_lookup(source))
+            continue
 
         # 절대 규칙(§7.1): 출처 URL 이 없는 결과는 캐시에 저장하지 않는다. `ok` 도 함께
         # 확인한다 — 상세 페이지 조회 자체가 실패해도 `source_url` 은 채워져 있을 수
