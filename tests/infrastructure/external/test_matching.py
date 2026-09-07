@@ -224,3 +224,58 @@ def test_여러_단어짜리_키워드는_모든_토큰이_있어야_걸린다()
     그때는 후보가 그 키워드의 토큰을 전부 포함해야만(부분 집합) 제외된다."""
     assert is_excluded("위스키 미니어처 세트 5종", ["미니어처 세트"]) is True
     assert is_excluded("위스키 미니어처 5종", ["미니어처 세트"]) is False
+
+
+@pytest.mark.parametrize(
+    ("name", "candidate", "conflict"),
+    [
+        ("Harbor (Batch 5)", "Harbor (Batch 6)", "batch"),
+        ("Harbor (Cask 123)", "Harbor (Cask 456)", "cask"),
+        ("Harbor (2021)", "Harbor (2022)", "vintage"),
+        ("Harbor 700ml", "Harbor 700ml 2병 세트", "packaging"),
+    ],
+)
+def test_short_search_never_erases_original_variant(
+    name: str, candidate: str, conflict: str
+) -> None:
+    result = score(_identity(name), candidate, query="Harbor")
+    assert result.rejected and conflict in result.conflicts
+
+
+@pytest.mark.parametrize(
+    ("name", "candidate"),
+    [
+        ("山海 純米吟醸", "山海 純米吟醸"),
+        ("江山 白酒", "江山 白酒"),
+        ("Château Lumière", "Chateau Lumiere"),
+        ("Ｈａｒｂｏｒ", "Harbor"),
+    ],
+)
+def test_unicode_names_retain_identity(name: str, candidate: str) -> None:
+    assert score(_identity(name), candidate).value == 1
+
+
+def test_missing_batch_requires_confirmation_despite_identical_brand() -> None:
+    result = score(_identity("Harbor (Batch 5)"), "Harbor", query="Harbor")
+    assert result.value < 0.85 and "batch" in result.missing
+    assert result.relationship == "needs_confirmation"
+
+
+def test_registered_original_language_name_is_used_without_query_override() -> None:
+    assert score(_identity("하버", name_en="Harbor"), "Harbor").value == 1
+    assert score(_identity("Harbor"), "Unrelated", query="Unrelated").value < 0.5
+
+
+def test_calendar_year_is_not_truncated_to_aging_years() -> None:
+    facts = parse_name("Harbor 2021년 (12년)")
+    assert facts.vintage == 2021 and facts.age_years == 12
+
+
+def test_detail_properties_complete_missing_evidence_but_conflicts_remain() -> None:
+    from sooljang.infrastructure.external.matching import score_details
+
+    identity = _identity("Harbor", volumes_ml=(700,))
+    assert score(identity, "Harbor").value < 0.85
+    assert score_details(identity, "Harbor", {"volume_ml": 700}).value == 1
+    conflict = score_details(identity, "Harbor 700ml", {"volume_ml": 1000})
+    assert conflict.rejected and "detail_volume_ml" in conflict.conflicts

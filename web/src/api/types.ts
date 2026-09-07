@@ -645,6 +645,7 @@ export interface ExternalSource {
   is_active: boolean;
   rate_limit_per_min: number;
   request_limit_per_day?: number;
+  price_history_allowed?: boolean;
   config_revision?: number;
   ttl_hours: number;
   note: string | null;
@@ -669,6 +670,7 @@ export interface ExternalSourceInput {
   is_active?: boolean;
   rate_limit_per_min?: number;
   request_limit_per_day?: number;
+  price_history_allowed?: boolean;
   ttl_hours?: number;
   note?: string | null;
 }
@@ -697,6 +699,10 @@ export interface LookupCandidate {
   url: string;
   key: string | null;
   score: number;
+  product_key?: string | null;
+  relationship?: string;
+  conflicts?: string[];
+  missing?: string[];
 }
 
 /** 표준 필드로 분류·계산된 값(Task 34 PR3). 소스마다 다른 키 이름 문제를 없애 비교
@@ -741,6 +747,9 @@ export interface SourceLookupResult {
    * — 화면이 "LLM 추천" 배지만 붙일 뿐 자동으로 고정하지 않는다. */
   llm_recommended_url: string | null;
   outcome?: SourceOutcome;
+  product_key?: string | null;
+  offers?: ExternalOffer[];
+  preferred_seller_key?: string | null;
 }
 
 export interface ExternalMatchInput {
@@ -748,6 +757,8 @@ export interface ExternalMatchInput {
   external_url: string;
   external_name: string;
   external_key?: string | null;
+  external_product_key?: string | null;
+  preferred_seller_key?: string | null;
 }
 
 /** 소스 하나의 최근 조회 이력 요약(Task 34 PR4). */
@@ -778,4 +789,109 @@ export interface SourceProbeResult {
   warning: string | null;
   matched_name: string | null;
   match_score: number | null;
+}
+
+/** 설정 전용 연결 메타데이터. 인증 원문은 서버 응답·동기화 대상이 아니다. */
+export type ProviderKind =
+  | "naver_hub"
+  | "naver_legacy"
+  | "brave"
+  | "exa"
+  | "openai_ocr"
+  | "dailyshot"
+  | "source";
+export interface ConnectionCredentialField {
+  name: string;
+  label: string;
+  saved: boolean;
+  masked_hint: string | null;
+}
+export interface ProviderDefinition {
+  kind: ProviderKind;
+  label: string;
+  fields: ConnectionCredentialField[];
+  features: string[];
+  guide_url: string;
+  note: string;
+  probe_supported: boolean;
+}
+export interface ProviderConnection {
+  id: string;
+  provider_kind: ProviderKind;
+  name: string;
+  is_active: boolean;
+  config_revision: number;
+  rate_limit_per_min: number;
+  request_limit_per_day: number;
+  registration: "unregistered" | "incomplete" | "saved" | "not_required" | "recovery_required";
+  credential_fields: ConnectionCredentialField[];
+  missing_fields: string[];
+  origin_kind: string;
+  updated_at: string;
+  verified_revision: number | null;
+  last_test_at: string | null;
+  last_outcome: SourceOutcome;
+  verification_stale: boolean;
+  features: string[];
+  sources: { id: string; name: string; is_active: boolean }[];
+  usage: { minute: number; day: number };
+  provider_remaining: null;
+  ocr_model: string;
+  ocr_rematch_enabled: boolean;
+  ocr_rematch_monthly_cap: number;
+}
+export interface ConnectionCreate {
+  provider_kind: ProviderKind;
+  name: string;
+  credentials: Record<string, string>;
+}
+export interface ConnectionUpdate {
+  expected_revision: number;
+  name?: string;
+  is_active?: boolean;
+  rate_limit_per_min?: number;
+  request_limit_per_day?: number;
+  credentials?: Record<string, string>;
+  delete_credentials?: string[];
+  ocr_model?: string;
+  ocr_rematch_enabled?: boolean;
+  ocr_rematch_monthly_cap?: number;
+}
+export interface ConnectionProbeResult {
+  outcome: SourceOutcome;
+  tested_revision: number;
+  applied: boolean;
+}
+
+/** 실제로 확인한 판매 조건. 미기재 조건은 null로 보존한다. */
+export interface ExternalOffer {
+  product_key: string;
+  offer_key: string;
+  condition_key: string;
+  source_url: string;
+  name: string;
+  amount: string;
+  currency: string;
+  volume_ml: number | null;
+  units: number | null;
+  is_set: boolean;
+  seller_key: string | null;
+  seller_name: string | null;
+  branch: string | null;
+  price_kind: string | null;
+  membership: string | null;
+  coupon: string | null;
+  fulfillment: string | null;
+  region: string | null;
+  shipping: string | null;
+  tax: string | null;
+  in_stock: boolean | null;
+  fetched_at: string;
+  source_observed_at: string | null;
+  comparison_group: string | null;
+  needs_confirmation: boolean;
+  relationship: string;
+  collection_scope: string;
+  observation_id?: string;
+  last_good?: boolean;
 }

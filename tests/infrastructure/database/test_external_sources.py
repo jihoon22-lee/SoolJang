@@ -521,7 +521,7 @@ async def test_one_list_refreshes_all_old_presets_and_preserves_overrides(
     await session.flush()
 
     refreshed = await list_sources(session, user_id=USER_ID)
-    assert [source.preset_version for source in refreshed] == [2, 0, 2]
+    assert [source.preset_version for source in refreshed] == [3, 0, 3]
     assert [source.config_revision for source in refreshed] == [2, 1, 2]
     assert refreshed[1].adapter_spec == {"custom": "preserved"}
 
@@ -750,6 +750,7 @@ class TestNormalizedFields:
             name="전역 소스",
             base_url="https://example.com",
             adapter_spec=ADAPTER_SPEC_STANDARD,
+            price_history_allowed=True,
         )
         await lookup_product(
             session, user_id=USER_ID, product=product, transport=_found_transport()
@@ -1002,7 +1003,7 @@ class TestPresets:
         assert source.name == "데일리샷"
         assert source.base_url == "https://dailyshot.co"
         assert source.preset_key == "dailyshot"
-        assert source.preset_version == 2
+        assert source.preset_version == 3
         assert source.spec_overridden is False
 
     async def test_없는_프리셋_키는_거부한다(self, session: AsyncSession) -> None:
@@ -1603,8 +1604,138 @@ class TestLlmRematch:
         )
 
         assert results[0].llm_recommended_url is None
-        # 복호화에서 이미 실패했으니 LLM 호출까지 가지 않는다 — 그래도 24시간 dedup 은
-        # 걸려야 한다(잘못된 키로 계속 재시도하며 비용을 쓰지 않게).
+        # 송신 자격을 확인하기 전에 호출 로그·상한을 소비하지 않는다. 잘못된 복구 키는
+        # 네트워크 요청을 만들지 않으며, 올바른 키 복구 후의 재시도를 dedup으로 막지 않는다.
         assert calls == []
         logs = list(await session.scalars(select(ExternalLlmRematchLog)))
-        assert len(logs) == 1
+        assert logs == []
+
+
+@pytest.mark.parametrize("history_allowed", [True, False])
+async def test_multiple_offers_cache_and_reprocessing_do_not_fabricate_observations(
+    session: AsyncSession,
+    product: Product,
+    history_allowed: bool,
+) -> None:
+    from sqlalchemy import func
+
+    from sooljang.application.external_offers import record_offers
+    from sooljang.infrastructure.database.models import ExternalOffer, ExternalPriceObservation
+    from tests.infrastructure.external.test_offers import ITEMS, SPEC
+
+    product.name = "Harbor 12y 700ml"
+    source = await create_source(
+        session,
+        user_id=USER_ID,
+        name="합성 판매처",
+        base_url="https://example.com",
+        adapter_spec=SPEC,
+        price_history_allowed=history_allowed,
+    )
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return (
+            httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+            if request.url.path == "/robots.txt"
+            else httpx.Response(200, json={"results": ITEMS})
+        )
+
+    transport = httpx.MockTransport(handler)
+    first = (await lookup_product(session, user_id=USER_ID, product=product, transport=transport))[
+        0
+    ]
+    assert len(first.offers) == 3
+    count = await session.scalar(select(func.count()).select_from(ExternalPriceObservation))
+    assert count == (3 if history_allowed else 0)
+    second = (await lookup_product(session, user_id=USER_ID, product=product, transport=transport))[
+        0
+    ]
+    assert second.cached is history_allowed
+    assert len(second.offers) == 3
+    assert await session.scalar(select(func.count()).select_from(ExternalPriceObservation)) == count
+    assert calls.count("/search") == (1 if history_allowed else 2)
+    if history_allowed:
+        assert first.fetched_at is not None
+        await record_offers(
+            session,
+            user_id=USER_ID,
+            source_id=source.id,
+            product_id=product.id,
+            fetched_at=first.fetched_at,
+            offers=first.offers,
+        )
+        assert await session.scalar(select(func.count()).select_from(ExternalPriceObservation)) == 3
+        assert await session.scalar(select(func.count()).select_from(ExternalOffer)) == 3
+        observation = await session.scalar(select(ExternalPriceObservation).limit(1))
+        assert observation is not None and "comparison_group" not in observation.facts
+        await external_sources_module._purge_cache(
+            session, source_id=source.id, product_id=product.id
+        )
+        failed = (
+            await lookup_product(
+                session,
+                user_id=USER_ID,
+                product=product,
+                transport=httpx.MockTransport(lambda request: httpx.Response(500)),
+            )
+        )[0]
+        assert failed.degraded and len(failed.offers) == 3
+        assert all(row["last_good"] for row in failed.offers)
+        assert datetime.fromisoformat(failed.offers[0]["fetched_at"]) == first.fetched_at
+        assert await session.scalar(select(func.count()).select_from(ExternalPriceObservation)) == 3
+
+
+async def test_legacy_pin_maps_only_after_original_offer_is_found_and_preserves_other_sellers(
+    session: AsyncSession,
+    product: Product,
+) -> None:
+    from copy import deepcopy
+
+    from tests.infrastructure.external.test_offers import ITEMS, SPEC
+
+    product.name = "Harbor 12y 700ml"
+    source = await create_source(
+        session, user_id=USER_ID, name="합성", base_url="https://example.com", adapter_spec=SPEC
+    )
+    match = await pin_match(
+        session,
+        user_id=USER_ID,
+        source=source,
+        product_id=product.id,
+        external_url="https://example.com/item/1",
+        external_name="Harbor 12y 700ml",
+        external_key="1",
+        preferred_seller_key="seller-1",
+    )
+    assert match.external_product_key is None
+    items = deepcopy(ITEMS)
+    transport = httpx.MockTransport(
+        lambda request: (
+            httpx.Response(200, text=_ROBOTS_ALLOW_ALL)
+            if request.url.path == "/robots.txt"
+            else httpx.Response(200, json={"results": items})
+        )
+    )
+    first = (await lookup_product(session, user_id=USER_ID, product=product, transport=transport))[
+        0
+    ]
+    assert len(first.offers) == 3 and first.pinned
+    assert match.external_product_key == "harbor-12"
+    assert match.external_key == "1" and match.preferred_seller_key == "seller-1"
+    items.pop(0)
+    await update_source(session, source, user_id=USER_ID, fields={"note": "설정 개정"})
+    session.expire(match)
+    second = (await lookup_product(session, user_id=USER_ID, product=product, transport=transport))[
+        0
+    ]
+    assert len(second.offers) == 2 and second.pinned
+    assert match.external_key == "1" and match.preferred_seller_key == "seller-1"
+    items.clear()
+    items.append({"id": "unrelated", "product": "other", "name": "Harbor 12y 700ml", "price": 1})
+    missing = (
+        await lookup_product(session, user_id=USER_ID, product=product, transport=transport)
+    )[0]
+    assert missing.pinned and not missing.offers and missing.degraded
+    assert match.external_product_key == "harbor-12"

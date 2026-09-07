@@ -4,6 +4,7 @@ import { externalSourcesApi } from "@/api/client";
 import type { LookupCandidate, Money, SourceLookupResult } from "@/api/types";
 import { formatMoney } from "@/format";
 import { sourceOutcomeLabel } from "@/sourceOutcome";
+import { OfferComparison } from "./OfferComparison";
 
 /**
  * 등록된 외부 소스에서 평점·가격을 조회하는 카드(Task 18, Task 34 PR1·PR3).
@@ -17,8 +18,8 @@ import { sourceOutcomeLabel } from "@/sourceOutcome";
  *
  * Task 34 PR3 에서 소스별 카드 나열을 **표 하나**로 바꿨다 — 소스가 하나뿐일 때는 카드로도
  * 충분했지만, 여럿이 되면 "어디가 더 싼지"를 한눈에 비교할 방법이 없었다(계획서 진단 8번).
- * `normalized.price_per_100ml` 로 최저가를 표시하고, `myPricePer100ml` 을 주면 내 실평단가
- * 대비 델타도 함께 보여준다.
+ * 판매 조건을 확인한 복수 가격만 비교한다. `myPricePer100ml`은 내 실평단가 대비
+ * 참고 단위 가격 차이에 사용한다.
  */
 export function ExternalInfoCard({
   productId,
@@ -111,60 +112,61 @@ function ExternalComparisonTable({
   myPricePer100ml: Money;
   onChanged: () => void;
 }) {
-  const per100Values = results
-    .map((result) => toNumber(result.normalized.price_per_100ml))
-    .filter((value): value is number => value !== null);
-  const lowest = per100Values.length > 0 ? Math.min(...per100Values) : null;
   const myPrice = toNumber(myPricePer100ml);
 
   return (
-    <div className="table-scroll">
-      <table className="external-compare-table">
-        <thead>
-          <tr>
-            <th scope="col">소스</th>
-            <th scope="col">가격</th>
-            <th scope="col">100ml당</th>
-            <th scope="col">평점</th>
-            <th scope="col">재고</th>
-            <th scope="col">확인</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((result) => {
-            const per100 = toNumber(result.normalized.price_per_100ml);
-            return (
-              <ExternalInfoRow
-                key={result.source_id}
-                result={result}
-                isLowest={lowest !== null && per100 === lowest}
-                deltaPercent={
-                  per100 !== null && myPrice !== null && myPrice > 0
-                    ? Math.round(((per100 - myPrice) / myPrice) * 100)
-                    : null
-                }
-                productId={productId}
-                offline={offline}
-                onChanged={onChanged}
-              />
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <OfferComparison
+        results={results}
+        productId={productId}
+        offline={offline}
+        onChanged={onChanged}
+      />
+      <div className="table-scroll table-scroll--always">
+        <table className="stats-table external-compare-table">
+          <thead>
+            <tr>
+              <th scope="col">소스</th>
+              <th scope="col">가격</th>
+              <th scope="col">100ml당</th>
+              <th scope="col">평점</th>
+              <th scope="col">재고</th>
+              <th scope="col">확인</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((result) => {
+              const per100 = toNumber(result.normalized.price_per_100ml);
+              return (
+                <ExternalInfoRow
+                  key={result.source_id}
+                  result={result}
+                  deltaPercent={
+                    per100 !== null && myPrice !== null && myPrice > 0
+                      ? Math.round(((per100 - myPrice) / myPrice) * 100)
+                      : null
+                  }
+                  productId={productId}
+                  offline={offline}
+                  onChanged={onChanged}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
 function ExternalInfoRow({
   result,
-  isLowest,
   deltaPercent,
   productId,
   offline,
   onChanged,
 }: {
   result: SourceLookupResult;
-  isLowest: boolean;
   deltaPercent: number | null;
   productId: string;
   offline: boolean;
@@ -183,6 +185,7 @@ function ExternalInfoRow({
         external_url: candidate.url,
         external_name: candidate.name,
         external_key: candidate.key,
+        external_product_key: candidate.product_key ?? null,
       }),
     onSuccess: onChanged,
   });
@@ -218,7 +221,6 @@ function ExternalInfoRow({
         </td>
         <td className="numeric">
           {formatMoney(normalized.price_per_100ml, { short: true })}
-          {isLowest && <span className="badge">최저</span>}
           {deltaPercent !== null && (
             <div className="muted text-sm">
               내 가격 대비 {deltaPercent > 0 ? "+" : ""}
@@ -258,7 +260,7 @@ function ExternalInfoRow({
               <p className="muted text-sm">
                 매칭: {result.matched_name}
                 {result.match_score !== null &&
-                  ` (유사도 ${Math.round(result.match_score * 100)}%)`}
+                  ` (일치 지표 ${Math.round(result.match_score * 100)}점)`}
               </p>
             )}
             {result.needs_confirmation && (
@@ -291,7 +293,15 @@ function ExternalInfoRow({
                 {result.candidates.map((candidate) => (
                   <li key={candidate.url} className="external-candidate">
                     <span className="name">{candidate.name}</span>
-                    <span className="muted text-sm">{Math.round(candidate.score * 100)}%</span>
+                    <span className="muted text-sm">{Math.round(candidate.score * 100)}점</span>
+                    {!!candidate.conflicts?.length && (
+                      <span className="badge">불일치: {matchFacts(candidate.conflicts)}</span>
+                    )}
+                    {!!candidate.missing?.length && (
+                      <span className="muted text-sm">
+                        확인 필요: {matchFacts(candidate.missing)}
+                      </span>
+                    )}
                     {/* LLM 재판정 추천(Task 34 PR6) — 배지만 붙일 뿐 자동으로 고정하지
                         않는다. "이걸로 고정" 은 다른 후보와 똑같이 사용자가 눌러야 한다. */}
                     {result.llm_recommended_url === candidate.url && (
@@ -316,6 +326,24 @@ function ExternalInfoRow({
       )}
     </Fragment>
   );
+}
+
+const MATCH_FACT_LABELS: Record<string, string> = {
+  volume_ml: "용량",
+  age_years: "숙성 연수",
+  abv: "도수",
+  vintage: "빈티지",
+  batch: "배치",
+  cask: "캐스크",
+  packaging: "세트·수량",
+  producer: "생산자",
+  detail_volume_ml: "상세 용량",
+  detail_age_years: "상세 숙성 연수",
+  detail_abv: "상세 도수",
+  detail_vintage: "상세 빈티지",
+};
+function matchFacts(keys: string[]) {
+  return keys.map((key) => MATCH_FACT_LABELS[key] ?? key).join(", ");
 }
 
 function numberToMoney(value: number | null): Money {

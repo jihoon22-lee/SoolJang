@@ -57,10 +57,10 @@ async def extract_label_fields(
         )
 
     configured = await get_decrypted_api_key(
-        session, user_id=user_id, master_key=settings.secret_key
+        session, user_id=user_id, master_key=settings.secret_key, reserve=True
     )
     if configured is None:
-        raise LlmNotConfiguredError("라벨 OCR 을 쓰려면 먼저 설정 화면에서 LLM API 키를 등록하세요")
+        raise LlmNotConfiguredError("API·외부 연결에서 라벨 인식의 키 등록·사용 상태를 확인하세요")
     _provider, api_key, model = configured
 
     try:

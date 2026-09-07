@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sooljang import __version__
 from sooljang.api.deps import active_session
 from sooljang.api.errors import ProblemDetail, register_error_handlers
+from sooljang.api.private_settings import private_settings_cache
 from sooljang.api.routes import (
     attachments,
     auth,
@@ -15,10 +16,12 @@ from sooljang.api.routes import (
     categories,
     external_sources,
     health,
+    interests,
     legacy_import,
     llm_settings,
     ocr,
     products,
+    provider_connections,
     purchases,
     saved_views,
     stats,
@@ -70,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     register_error_handlers(app, cors_origins=settings.cors_origins)
+    app.middleware("http")(private_settings_cache)
 
     # `/health` 와 `/auth` 만 인증 없이 접근한다. 나머지는 **라우터 단위로** 인증을 걸어,
     # 새 라우터를 추가할 때 인증을 빠뜨려 조용히 공개 엔드포인트가 되는 일을 막는다.
@@ -78,6 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     protected = Depends(active_session)
     for router in (
+        interests.router,
+        provider_connections.router,
         categories.router,
         products.router,
         products.skus_router,

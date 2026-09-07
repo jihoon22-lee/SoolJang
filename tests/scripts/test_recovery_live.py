@@ -73,9 +73,11 @@ def databases(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[str, str]]:
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(target)))
 
 
-def post(client: TestClient, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+def post(
+    client: TestClient, path: str, payload: dict[str, Any], *, expected_status: int = 201
+) -> Any:
     response = client.post(f"{API_PREFIX}/{path}", json=payload)
-    assert response.status_code == 201, response.text
+    assert response.status_code == expected_status, response.text
     return response.json()
 
 
@@ -154,6 +156,50 @@ def test_full_backup_restores_app_references_secrets_and_attachment(
             },
         )
         assert settings.status_code == 200
+        # 신규 가격 관측도 실제 덤프/복원으로 보존한다. 외부 HTTP는 합성 응답만 사용한다.
+        import httpx
+        from tests.infrastructure.external.test_offers import ITEMS, SPEC
+
+        from sooljang.application import external_sources as external_application
+
+        original_fetch = external_application.fetch_snapshot
+        items = [{**item, "name": product["name"] + " 700ml"} for item in ITEMS]
+        transport = httpx.MockTransport(
+            lambda request: (
+                httpx.Response(200, text="User-agent: *\nAllow: /")
+                if request.url.path == "/robots.txt"
+                else httpx.Response(200, json={"results": items})
+            )
+        )
+
+        async def fixture_fetch(*args: Any, **kwargs: Any) -> Any:
+            kwargs["transport"] = transport
+            return await original_fetch(*args, **kwargs)
+
+        monkeypatch.setattr(external_application, "fetch_snapshot", fixture_fetch)
+        price_source = post(
+            client,
+            "external-sources",
+            {
+                "name": "합성 복구 가격",
+                "base_url": "https://example.com",
+                "adapter_spec": SPEC,
+                "price_history_allowed": True,
+            },
+        )
+        post(
+            client,
+            f"products/{product['id']}/external-matches",
+            {
+                "source_id": price_source["id"],
+                "external_url": "https://example.com/item/1",
+                "external_name": product["name"] + " 700ml",
+                "external_key": "1",
+            },
+        )
+        prices = post(client, f"products/{product['id']}/external-lookup", {}, expected_status=200)
+        assert len(prices[0]["offers"]) == 3
+        expected_prices = sorted(row["amount"] for row in prices[0]["offers"])
         expected_product = client.get(f"{API_PREFIX}/products/{product['id']}").json()
         assert client.get(f"{API_PREFIX}/health/ready").status_code == 200
         release_connections(client)
@@ -203,6 +249,12 @@ def test_full_backup_restores_app_references_secrets_and_attachment(
         timeline = client.get(f"{API_PREFIX}/tastings", params={"bottle_id": bottle["id"]}).json()
         assert timeline[0]["id"] == tasting["id"] and timeline[0]["rating"] == "4.5"
         assert client.get(f"{API_PREFIX}/llm-settings").json()["configured"] is True
+        restored_prices = post(
+            client, f"products/{product['id']}/external-lookup", {}, expected_status=200
+        )
+        assert restored_prices[0]["cached"] is True
+        assert sorted(row["amount"] for row in restored_prices[0]["offers"]) == expected_prices
+        assert restored_prices[0]["pinned"] is True
         release_connections(client)
     with psycopg.connect(dbname=target) as connection:
         # pg_restore가 FK를 설치/검증했다. 임의의 잘못된 참조도 허용되지 않는다.
@@ -218,3 +270,6 @@ def test_full_backup_restores_app_references_secrets_and_attachment(
             connection.execute("SELECT 1 / 0")
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == before
         assert connection.execute("SELECT count(*) FROM purchase").fetchone() == (1,)
+        assert connection.execute("SELECT count(*) FROM external_price_observation").fetchone() == (
+            3,
+        )

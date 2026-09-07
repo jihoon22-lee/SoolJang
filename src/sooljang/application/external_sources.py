@@ -20,7 +20,8 @@ import httpx
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.api.errors import NotFoundError
+from sooljang.api.errors import NotFoundError, ValidationFailedError
+from sooljang.application.external_offers import last_observed_offers, record_offers
 from sooljang.application.external_request_usage import (
     RequestBudget,
     current_usage,
@@ -49,11 +50,12 @@ from sooljang.infrastructure.external.adapter import (
 from sooljang.infrastructure.external.fields import NormalizedFields, split_fields
 from sooljang.infrastructure.external.match_llm import rematch as llm_rematch
 from sooljang.infrastructure.external.matching import ProductIdentity
+from sooljang.infrastructure.external.offers import prepare_offer, raw_offer
 from sooljang.infrastructure.external.presets import get_preset
 from sooljang.infrastructure.security.secrets import InvalidToken, decrypt_secret, encrypt_secret
 
 #: 설정 revision을 함께 저장하여 키/파싱 계약 변경 후 과거 캐시를 재사용하지 않는다.
-SNAPSHOT_VERSION = 3
+SNAPSHOT_VERSION = 4
 
 
 # --- 레지스트리 CRUD ---------------------------------------------------------
@@ -90,9 +92,12 @@ async def list_sources(session: AsyncSession, *, user_id: uuid.UUID) -> list[Ext
             .order_by(ExternalSource.priority, ExternalSource.name)
         )
     )
-    updated = [_sync_preset_if_stale(source) for source in sources]
-    if any(updated):
-        await session.flush()
+    for source in sources:
+        if _sync_preset_if_stale(source):
+            from sooljang.application.provider_connections import source_configuration_changed
+
+            await source_configuration_changed(session, source)
+    await session.flush()
     return sources
 
 
@@ -106,6 +111,7 @@ async def create_source(
     category_id: uuid.UUID | None = None,
     priority: int = 0,
     is_active: bool = True,
+    price_history_allowed: bool = False,
     rate_limit_per_min: int = 6,
     request_limit_per_day: int = 1000,
     ttl_hours: int = 24,
@@ -121,6 +127,7 @@ async def create_source(
         category_id=category_id,
         priority=priority,
         is_active=is_active,
+        price_history_allowed=price_history_allowed,
         rate_limit_per_min=rate_limit_per_min,
         request_limit_per_day=request_limit_per_day,
         ttl_hours=ttl_hours,
@@ -128,6 +135,9 @@ async def create_source(
     )
     session.add(source)
     await session.flush()
+    from sooljang.application.provider_connections import ensure_source_connection
+
+    await ensure_source_connection(session, source)
     return source
 
 
@@ -140,6 +150,7 @@ async def create_source_from_preset(
     category_id: uuid.UUID | None = None,
     priority: int = 0,
     is_active: bool = True,
+    price_history_allowed: bool = False,
     rate_limit_per_min: int = 6,
     request_limit_per_day: int = 1000,
     ttl_hours: int = 24,
@@ -163,6 +174,7 @@ async def create_source_from_preset(
         category_id=category_id,
         priority=priority,
         is_active=is_active,
+        price_history_allowed=price_history_allowed,
         rate_limit_per_min=rate_limit_per_min,
         request_limit_per_day=request_limit_per_day,
         ttl_hours=ttl_hours,
@@ -173,6 +185,9 @@ async def create_source_from_preset(
     )
     session.add(source)
     await session.flush()
+    from sooljang.application.provider_connections import ensure_source_connection
+
+    await ensure_source_connection(session, source)
     return source
 
 
@@ -204,6 +219,9 @@ async def update_source(
         setattr(source, key, value)
     if changed:
         source.config_revision += 1
+        from sooljang.application.provider_connections import source_configuration_changed
+
+        await source_configuration_changed(session, source)
     await session.flush()
     return source
 
@@ -237,6 +255,9 @@ async def set_credentials(
     반환값은 마스킹된 힌트뿐이다 — 원문은 이 함수를 벗어나지 않는다(`LlmSetting` 과 같은
     Fernet 패턴, `infrastructure/security/secrets.py`).
     """
+    source = await get_owned_source(session, user_id=user_id, source_id=source_id)
+    if source is None:
+        raise NotFoundError("외부 소스를 찾을 수 없습니다")
     hints: dict[str, str] = {}
     for name, value in values.items():
         if not value.strip():
@@ -270,6 +291,9 @@ async def set_credentials(
             raise NotFoundError("외부 소스를 찾을 수 없습니다")
         source.config_revision += 1
     await session.flush()
+    from sooljang.application.provider_connections import sync_legacy_source_credentials
+
+    await sync_legacy_source_credentials(session, source)
     return hints
 
 
@@ -343,6 +367,8 @@ async def pin_match(
     external_url: str,
     external_name: str,
     external_key: str | None = None,
+    external_product_key: str | None = None,
+    preferred_seller_key: str | None = None,
 ) -> ExternalProductMatch:
     """ "이 제품 = 이 소스의 이 상품" 을 확정한다. 이미 있으면 덮어쓴다."""
     if not is_same_host(source.base_url, external_url):
@@ -361,6 +387,8 @@ async def pin_match(
             external_name=external_name,
             external_key=external_key,
             confirmed_at=confirmed_at,
+            external_product_key=external_product_key,
+            preferred_seller_key=preferred_seller_key,
         )
         session.add(match)
     else:
@@ -368,6 +396,8 @@ async def pin_match(
         match.external_name = external_name
         match.external_key = external_key
         match.confirmed_at = confirmed_at
+        match.external_product_key = external_product_key
+        match.preferred_seller_key = preferred_seller_key
 
     await _purge_cache(session, source_id=source.id, product_id=product_id)
     await session.flush()
@@ -553,12 +583,62 @@ async def _fetch_source(
     transport: httpx.AsyncBaseTransport | None,
     master_key: str | None,
     pinned: PinnedMatch | None = None,
+    allow_paused: bool = False,
 ) -> AdapterResult:
+    from sooljang.application.provider_connections import (
+        ConnectionChanged,
+        get_owned_connection,
+        get_request_credentials,
+        reserve_connection_request,
+        validate_source_connection,
+    )
+
+    connection = None
     try:
-        values = (
-            await _load_credential_values(session, source_id=source.id, master_key=master_key)
-            if master_key is not None
-            else {}
+        if source.connection_id is not None:
+            connection = await get_owned_connection(
+                session, user_id=source.user_id, connection_id=source.connection_id
+            )
+            await validate_source_connection(session, source, connection)
+            values = await get_request_credentials(
+                session,
+                user_id=source.user_id,
+                connection_id=connection.id,
+                master_key=master_key or "",
+                require_active=not allow_paused,
+            )
+        else:
+            values = (
+                await _load_credential_values(session, source_id=source.id, master_key=master_key)
+                if master_key is not None
+                else {}
+            )
+    except ConnectionChanged:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "연결 사용이 일시 중지되었습니다",
+            outcome=SourceOutcome.INVALID_CONFIGURATION,
+        )
+    except NotFoundError:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "소스에 연결된 인증 설정이 해제되었습니다",
+            outcome=SourceOutcome.CREDENTIAL_UNAVAILABLE,
+        )
+    except ValidationFailedError:
+        return AdapterResult(
+            None,
+            {},
+            None,
+            True,
+            "소스와 제공자의 인증 대상이 일치하지 않습니다",
+            outcome=SourceOutcome.INVALID_CONFIGURATION,
         )
     except InvalidToken, ValueError:
         return AdapterResult(
@@ -586,6 +666,17 @@ async def _fetch_source(
         )
 
     async def before_request(_request: httpx.Request) -> None:
+        if connection is not None:
+            await reserve_connection_request(
+                session,
+                user_id=source.user_id,
+                connection_id=connection.id,
+                expected_revision=connection.config_revision,
+                require_active=not allow_paused,
+                source_id=source.id,
+                source_revision=source.config_revision,
+            )
+            return
         await reserve_request(
             user_id=source.user_id,
             budgets=[
@@ -639,6 +730,7 @@ async def probe_source(
         identity=identity,
         transport=transport,
         master_key=master_key,
+        allow_paused=True,
     )
     await _record_probe(
         session,
@@ -693,6 +785,9 @@ class SourceLookupResult:
     #: 않는다(여전히 사용자가 "이걸로 고정" 을 눌러야 한다).
     llm_recommended_url: str | None = None
     outcome: SourceOutcome = SourceOutcome.UNKNOWN
+    offers: list[dict[str, Any]] = field(default_factory=list)
+    product_key: str | None = None
+    preferred_seller_key: str | None = None
 
 
 async def _fresh_cache(
@@ -842,21 +937,26 @@ async def _maybe_llm_rematch(
     if calls_this_month >= setting.rematch_monthly_cap:
         return None
 
-    # 이 시점부터는 "호출을 시도했다" — 실패하더라도 기록해 24시간 dedup 이 걸리게 한다.
+    from sooljang.application.llm_settings import get_decrypted_api_key
+
+    try:
+        configured = await get_decrypted_api_key(
+            session, user_id=user_id, master_key=master_key, reserve=True
+        )
+    except Exception:
+        return None
+    if configured is None:
+        return None
+    _, api_key, model = configured
     await _record_rematch_call(
         session, user_id=user_id, source_id=source_id, product_id=product_id, called_at=now
     )
-
-    try:
-        api_key = decrypt_secret(setting.api_key_ciphertext, master_key=master_key)
-    except Exception:
-        return None
 
     outcome = await llm_rematch(
         identity,
         [candidate.name for candidate in candidates],
         api_key=api_key,
-        model=setting.model,
+        model=model,
     )
     if outcome is None or outcome.index is None:
         return None
@@ -901,19 +1001,43 @@ async def lookup_product(
     for source in sources:
         match = await get_match(session, source_id=source.id, product_id=product.id)
         pinned = (
-            PinnedMatch(external_url=match.external_url, external_key=match.external_key)
+            PinnedMatch(
+                external_url=match.external_url,
+                external_key=match.external_key,
+                product_key=match.external_product_key,
+                external_name=match.external_name,
+            )
             if match is not None
             else None
         )
 
         cached = await _fresh_cache(session, source=source, product_id=product.id)
         if cached is not None:
+            cached_offers = []
+            for facts in cached.snapshot.get("offers", []):
+                rebuilt = prepare_offer(
+                    product_key=facts["product_key"],
+                    offer_key=facts["offer_key"],
+                    name=facts["name"],
+                    url=facts["source_url"],
+                    fields=facts,
+                    identity=identity,
+                    confirmed=pinned is not None
+                    or not cached.snapshot.get("needs_confirmation", True),
+                )
+                if rebuilt is not None:
+                    rebuilt["fetched_at"] = cached.fetched_at.isoformat()
+                    cached_offers.append(rebuilt)
             cached_fields = cached.snapshot.get("fields", {})
             results.append(
                 SourceLookupResult(
                     source_id=source.id,
                     source_name=source.name,
                     cached=True,
+                    offers=cached_offers,
+                    preferred_seller_key=match.preferred_seller_key if match is not None else None,
+                    product_key=cached.snapshot.get("product_key"),
+                    needs_confirmation=cached.snapshot.get("needs_confirmation", True),
                     outcome=SourceOutcome.PARTIAL if cached.degraded else SourceOutcome.SUCCESS,
                     source_url=cached.snapshot.get("source_url"),
                     fields=cached_fields,
@@ -945,27 +1069,60 @@ async def lookup_product(
         # 캐시해 버리면 다음 조회도 계속 빈 결과만 돌려주게 된다. 매번 새로 시도하도록
         # 두되(다음 조회에서 다시 시도할 기회를 준다), 화면에는 이번 결과만 보여준다.
         if adapter_result.ok and adapter_result.source_url is not None:
-            session.add(
-                ExternalLookupCache(
+            # 기존 고정은 원래 판매 항목을 실제로 다시 찾은 경우에만 제품 identity로 연결한다.
+            if (
+                match is not None
+                and match.external_product_key is None
+                and adapter_result.product_key
+            ):
+                match.external_product_key = adapter_result.product_key
+            adapter_result.offers = [
+                {**offer, "fetched_at": fetched_at.isoformat()} for offer in adapter_result.offers
+            ]
+            if source.price_history_allowed:
+                adapter_result.offers = await record_offers(
+                    session,
                     user_id=user_id,
                     source_id=source.id,
                     product_id=product.id,
-                    snapshot={
-                        "version": SNAPSHOT_VERSION,
-                        "config_revision": source.config_revision,
-                        "source_url": adapter_result.source_url,
-                        "fields": adapter_result.fields,
-                        "raw_excerpt": adapter_result.raw_excerpt,
-                        "matched_name": adapter_result.matched_name,
-                        "match_score": adapter_result.match_score,
-                        "external_key": adapter_result.matched_key,
-                    },
-                    degraded=adapter_result.degraded,
-                    warning=adapter_result.warning,
                     fetched_at=fetched_at,
+                    offers=adapter_result.offers,
                 )
+            if source.price_history_allowed or not adapter_result.offers:
+                session.add(
+                    ExternalLookupCache(
+                        user_id=user_id,
+                        source_id=source.id,
+                        product_id=product.id,
+                        snapshot={
+                            "version": SNAPSHOT_VERSION,
+                            "config_revision": source.config_revision,
+                            "source_url": adapter_result.source_url,
+                            "fields": adapter_result.fields,
+                            "raw_excerpt": adapter_result.raw_excerpt,
+                            "matched_name": adapter_result.matched_name,
+                            "match_score": adapter_result.match_score,
+                            "external_key": adapter_result.matched_key,
+                            "product_key": adapter_result.product_key,
+                            "needs_confirmation": adapter_result.needs_confirmation,
+                            "offers": [raw_offer(offer) for offer in adapter_result.offers],
+                        },
+                        degraded=adapter_result.degraded,
+                        warning=adapter_result.warning,
+                        fetched_at=fetched_at,
+                    )
+                )
+                await session.flush()
+
+        if not adapter_result.ok and source.price_history_allowed:
+            adapter_result.offers = await last_observed_offers(
+                session,
+                user_id=user_id,
+                source_id=source.id,
+                product_id=product.id,
+                identity=identity,
+                pinned_product_key=pinned.product_key if pinned is not None else None,
             )
-            await session.flush()
 
         # 실제 시도였으니 헬스 로그에 남긴다(캐시 적중·rate limit 스킵은 시도가 아니라
         # 위 두 continue 에서 이미 걸러졌다).
@@ -1001,6 +1158,9 @@ async def lookup_product(
                 source_id=source.id,
                 source_name=source.name,
                 cached=False,
+                offers=adapter_result.offers,
+                preferred_seller_key=match.preferred_seller_key if match is not None else None,
+                product_key=adapter_result.product_key,
                 outcome=adapter_result.outcome,
                 source_url=adapter_result.source_url,
                 fields=adapter_result.fields,

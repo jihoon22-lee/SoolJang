@@ -18,6 +18,7 @@ from sooljang.infrastructure.database.models.external_source import (
     ExternalSourceProbe,
 )
 from sooljang.infrastructure.database.models.external_usage import ExternalRequestUsage
+from sooljang.infrastructure.database.models.interest import Interest
 from sooljang.infrastructure.database.models.inventory import (
     IN_STOCK_STATUSES,
     Bottle,
@@ -39,6 +40,10 @@ from sooljang.infrastructure.database.models.product import (
     ProductVariety,
     Sku,
 )
+from sooljang.infrastructure.database.models.provider_connection import (
+    ProviderConnection,
+    ProviderCredential,
+)
 from sooljang.infrastructure.database.models.saved_view import SavedView
 from sooljang.infrastructure.database.models.sync import ConflictLog, OutboxReceipt, SyncCursor
 from sooljang.infrastructure.database.models.tasting import (
@@ -49,7 +54,12 @@ from sooljang.infrastructure.database.models.tasting import (
     TastingSession,
 )
 
+from .external_offer import ExternalOffer, ExternalPriceObservation
+
 __all__ = [
+    "Interest",
+    "ExternalOffer",
+    "ExternalPriceObservation",
     "DEFAULT_OPENAI_MODEL",
     "DEFAULT_REMATCH_MONTHLY_CAP",
     "MAX_RATING",
@@ -75,6 +85,8 @@ __all__ = [
     "LlmSetting",
     "OutboxReceipt",
     "Producer",
+    "ProviderConnection",
+    "ProviderCredential",
     "Product",
     "ProductVariety",
     "SavedView",

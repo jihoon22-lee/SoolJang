@@ -12,6 +12,9 @@ import type {
   Bottle,
   CategoryStat,
   CategoryTree,
+  ConnectionCreate,
+  ConnectionProbeResult,
+  ConnectionUpdate,
   DeleteStrategy,
   ExternalMatchInput,
   ExternalSource,
@@ -31,6 +34,8 @@ import type {
   ProductCreateInput,
   ProductFilters,
   ProductPage,
+  ProviderConnection,
+  ProviderDefinition,
   Purchase,
   PurchaseCreateInput,
   Rankings,
@@ -110,6 +115,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
+  cache?: RequestCache;
   method?: string;
   body?: unknown;
   params?: Record<string, string | number | boolean | undefined | null>;
@@ -137,6 +143,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const response = await fetch(`${API_PREFIX}${path}${buildQuery(params)}`, {
     method,
+    ...(options.cache ? { cache: options.cache } : {}),
     // 세션 쿠키를 실어야 인증이 통과한다. 기본값 `same-origin` 으로도 되지만 의도를 명시한다.
     credentials: "same-origin",
     headers: {
@@ -556,5 +563,44 @@ export const attachmentsApi = {
       ...(meta.product_id ? { product_id: meta.product_id } : {}),
       ...(meta.bottle_id ? { bottle_id: meta.bottle_id } : {}),
       ...(meta.tasting_session_id ? { tasting_session_id: meta.tasting_session_id } : {}),
+    }),
+};
+
+export const connectionsApi = {
+  providers: (signal?: AbortSignal) =>
+    request<ProviderDefinition[]>("/connections/providers", {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
+  list: (signal?: AbortSignal) =>
+    request<ProviderConnection[]>("/connections", {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
+  create: (input: ConnectionCreate) =>
+    request<ProviderConnection>("/connections", { method: "POST", body: input, cache: "no-store" }),
+  update: (id: string, input: ConnectionUpdate) =>
+    request<ProviderConnection>(`/connections/${id}`, {
+      method: "PATCH",
+      body: input,
+      cache: "no-store",
+    }),
+  remove: (id: string, expectedRevision: number) =>
+    request<void>(`/connections/${id}`, {
+      method: "DELETE",
+      body: { expected_revision: expectedRevision },
+      cache: "no-store",
+    }),
+  probe: (id: string, expectedRevision: number) =>
+    request<ConnectionProbeResult>(`/connections/${id}/probe`, {
+      method: "POST",
+      body: { expected_revision: expectedRevision },
+      cache: "no-store",
+    }),
+  attachSource: (id: string, sourceId: string, expectedRevision: number) =>
+    request<ProviderConnection>(`/connections/${id}/sources/${sourceId}`, {
+      method: "PUT",
+      body: { expected_revision: expectedRevision },
+      cache: "no-store",
     }),
 };

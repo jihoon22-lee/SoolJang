@@ -33,7 +33,7 @@ import re
 import time
 import urllib.parse
 import urllib.robotparser
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 import httpx
@@ -41,8 +41,14 @@ from bs4 import BeautifulSoup, Tag
 
 from sooljang.domain.discovery import RequestBudgetExceeded, SourceOutcome
 from sooljang.infrastructure.external.fields import STANDARD_KEYS
-from sooljang.infrastructure.external.matching import ProductIdentity, build_queries, is_excluded
+from sooljang.infrastructure.external.matching import (
+    ProductIdentity,
+    build_queries,
+    is_excluded,
+    score_details,
+)
 from sooljang.infrastructure.external.matching import score as score_name
+from sooljang.infrastructure.external.offers import prepare_offer
 from sooljang.infrastructure.external.safe_http import (
     BeforeRequest,
     HttpLimits,
@@ -94,6 +100,10 @@ class LookupCandidate:
     url: str
     key: str | None
     score: float
+    product_key: str | None = None
+    relationship: str = "needs_confirmation"
+    conflicts: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -102,6 +112,8 @@ class PinnedMatch:
 
     external_url: str
     external_key: str | None
+    product_key: str | None = None
+    external_name: str | None = None
 
 
 @dataclass
@@ -131,6 +143,8 @@ class AdapterResult:
     #: 이 결과가 사용자가 고정해 둔 매칭으로부터 나왔는지.
     pinned: bool = False
     outcome: SourceOutcome = SourceOutcome.UNKNOWN
+    offers: list[dict[str, Any]] = field(default_factory=list)
+    product_key: str | None = None
 
 
 def _apply_transform(value: Any, transform: str) -> Any:
@@ -344,6 +358,7 @@ def _score_candidates(
     identity: ProductIdentity,
     query: str,
     raw: list[tuple[str, str, dict[str, Any] | None]],
+    product_key_spec: Any = None,
 ) -> list[_ScoredCandidate]:
     """후보에 점수를 매겨 내림차순으로 정렬한다.
 
@@ -355,13 +370,23 @@ def _score_candidates(
         # JSON API 는 관례적으로 `id` 를 식별자로 쓴다. 다른 이름이면 키가 비지만,
         # 고정은 URL 로도 후보를 되찾을 수 있어(`_match_pinned`) 동작에 문제가 없다.
         key = item.get("id") if isinstance(item, dict) else None
+        judgment = score_name(identity, name, query=query)
+        product_key = (
+            _extract_field_json(item, product_key_spec)
+            if item is not None and product_key_spec
+            else None
+        )
         scored.append(
             (
                 LookupCandidate(
                     name=name,
                     url=url,
                     key=str(key) if key is not None else None,
-                    score=score_name(identity, name, query=query).value,
+                    score=judgment.value,
+                    product_key=str(product_key) if product_key is not None else None,
+                    relationship=judgment.relationship,
+                    conflicts=judgment.conflicts,
+                    missing=judgment.missing,
                 ),
                 item,
             )
@@ -376,6 +401,11 @@ def _match_pinned(scored: list[_ScoredCandidate], pinned: PinnedMatch) -> _Score
     **유사도로 폴백하지 않는다.** 못 찾으면 `None` 을 돌려주고 호출자가 경고를 낸다 —
     조용히 다른 상품으로 되돌아가면 고정의 의미가 사라진다.
     """
+    if pinned.product_key is not None:
+        for entry in scored:
+            if entry[0].product_key == pinned.product_key:
+                return entry
+        return None
     if pinned.external_key is not None:
         for entry in scored:
             if entry[0].key == pinned.external_key:
@@ -744,9 +774,24 @@ async def _fetch_snapshot_unsafe(
 
     # 고정돼 있고 상세 페이지가 따로 있는 소스면 검색 자체를 건너뛴다.
     if pinned is not None and not _uses_result_fields(adapter_spec, search_spec):
-        return await _fetch_pinned_detail(
+        result = await _fetch_pinned_detail(
             adapter_spec, base_url=base_url, pinned=pinned, client=client
         )
+        if result.ok and pinned.external_name:
+            offer = prepare_offer(
+                product_key=pinned.product_key or pinned.external_key or pinned.external_url,
+                offer_key=pinned.external_key or pinned.external_url,
+                name=pinned.external_name,
+                url=pinned.external_url,
+                fields=result.fields,
+                identity=identity,
+                confirmed=True,
+            )
+            if offer is not None:
+                result.offers = [offer]
+            result.matched_name = pinned.external_name
+            result.product_key = pinned.product_key
+        return result
 
     url_template = search_spec.get("url_template")
     if not isinstance(url_template, str):
@@ -784,6 +829,7 @@ async def _fetch_snapshot_unsafe(
     #: 않고 이 원본 아이템에서 바로 결과 필드를 뽑을 수도 있어(`result_fields`) 붙여
     #: 둔다. HTML 모드는 늘 `None` 이다.
     raw: list[tuple[str, str, dict[str, Any] | None]] = []
+    collection_partial = False
     if is_json:
         try:
             parsed = response.json()
@@ -793,7 +839,47 @@ async def _fetch_snapshot_unsafe(
         items_data = _get_json_path(parsed, item_path) if isinstance(item_path, str) else parsed
         if not isinstance(items_data, list):
             return _failure(SourceOutcome.PARSE_ERROR, "검색 응답의 후보 목록을 읽지 못했습니다")
-        for raw_item in items_data:
+        collected_items: list[Any] = list(items_data)
+        pagination = search_spec.get("pagination")
+        if isinstance(pagination, dict) and isinstance(pagination.get("next_path"), str):
+            next_path = pagination["next_path"]
+            next_url = _get_json_path(parsed, next_path)
+            visited = {str(response.url)}
+            for _ in range(2):
+                if not next_url:
+                    break
+                if (
+                    not isinstance(next_url, str)
+                    or next_url in visited
+                    or not _within_allowed(next_url, client)
+                ):
+                    collection_partial = True
+                    break
+                visited.add(next_url)
+                try:
+                    if not await _allowed(next_url, client=client):
+                        collection_partial = True
+                        break
+                    page = await client.get(next_url, headers=request_headers or None)
+                    page.raise_for_status()
+                    parsed_page = page.json()
+                    page_items = (
+                        _get_json_path(parsed_page, item_path)
+                        if isinstance(item_path, str)
+                        else parsed_page
+                    )
+                    if not isinstance(page_items, list):
+                        collection_partial = True
+                        break
+                    collected_items.extend(page_items)
+                    next_url = _get_json_path(parsed_page, next_path)
+                except httpx.HTTPError, RequestBudgetExceeded, ValueError:
+                    collection_partial = True
+                    break
+            else:
+                if next_url:
+                    collection_partial = True
+        for raw_item in collected_items:
             if not isinstance(raw_item, dict):
                 continue
             name = _extract_field_json(raw_item, fields_spec.get("name"))
@@ -837,7 +923,7 @@ async def _fetch_snapshot_unsafe(
             outcome=SourceOutcome.EMPTY,
         )
 
-    scored = _score_candidates(identity, query, raw)
+    scored = _score_candidates(identity, query, raw, fields_spec.get("product_key"))
     # 자동 채택 여부와 무관하게 상위 후보를 늘 함께 돌려준다 — 사용자가 다른 것을
     # 고를 수 있어야 하기 때문이다(진단 6번).
     candidates = [entry[0] for entry in scored if _within_allowed(entry[0].url, client)][
@@ -894,21 +980,83 @@ async def _fetch_snapshot_unsafe(
         fields, missing = _extract_named_fields(
             lambda spec: _extract_field_json(best_item, spec), result_fields_spec
         )
+        detail_judgment = score_details(identity, best.name, fields)
+        needs_confirmation = pinned is None and detail_judgment.value < AUTO_ACCEPT
+        if detail_judgment.conflicts:
+            needs_confirmation = True
+        candidates = [
+            replace(
+                candidate,
+                score=detail_judgment.value,
+                relationship=detail_judgment.relationship,
+                conflicts=detail_judgment.conflicts,
+                missing=detail_judgment.missing,
+            )
+            if candidate.url == best.url
+            else candidate
+            for candidate in candidates
+        ]
+        offers = []
+        seen = set()
+        product_key = best.product_key or best.key or best.url
+        offer_specs = search_spec.get("offer_fields", {})
+        for candidate, item in scored:
+            same_product = (
+                candidate.product_key == best.product_key
+                if best.product_key is not None
+                else candidate.url == best.url
+            )
+            if not same_product or item is None or not _within_allowed(candidate.url, client):
+                continue
+            offer_fields, _ = _extract_named_fields(
+                lambda spec, item=item: _extract_field_json(item, spec), result_fields_spec
+            )
+            if isinstance(offer_specs, dict):
+                extra, _ = _extract_named_fields(
+                    lambda spec, item=item: _extract_field_json(item, spec), offer_specs
+                )
+                offer_fields.update(extra)
+            offer = prepare_offer(
+                product_key=product_key,
+                offer_key=candidate.key or candidate.url,
+                name=candidate.name,
+                url=candidate.url,
+                fields=offer_fields,
+                identity=identity,
+                confirmed=pinned is not None or not needs_confirmation,
+            )
+            if offer is not None and offer["condition_key"] not in seen:
+                seen.add(offer["condition_key"])
+                offers.append(offer)
+                if len(offers) >= 100:
+                    break
+        if len(offers) >= 100:
+            collection_partial = True
+        for offer in offers:
+            offer["collection_scope"] = (
+                "검색 응답 최대 3페이지·100개 판매 조건; 전체 매장 범위 미확인"
+            )
         excerpt = _public_excerpt(fields)
         return AdapterResult(
             best.url,
             fields,
             excerpt,
-            bool(missing),
-            _missing_warning(missing),
+            bool(missing) or collection_partial,
+            "일부 페이지·판매 조건만 수집했습니다"
+            if collection_partial
+            else _missing_warning(missing),
             ok=True,
             matched_name=best.name,
-            match_score=best.score,
+            match_score=detail_judgment.value,
             matched_key=best.key,
+            product_key=best.product_key,
+            offers=offers,
             needs_confirmation=needs_confirmation,
             candidates=candidates,
             pinned=pinned is not None,
-            outcome=SourceOutcome.PARTIAL if missing else SourceOutcome.SUCCESS,
+            outcome=SourceOutcome.PARTIAL
+            if missing or collection_partial
+            else SourceOutcome.SUCCESS,
         )
 
     if not await _allowed(best.url, client=client):
@@ -934,5 +1082,24 @@ async def _fetch_snapshot_unsafe(
         candidates=candidates,
         pinned=pinned is not None,
     )
-    result.needs_confirmation = needs_confirmation
+    if result.ok:
+        judgment = score_details(identity, best.name, result.fields)
+        result.match_score = judgment.value
+        result.needs_confirmation = (pinned is None and judgment.value < AUTO_ACCEPT) or bool(
+            judgment.conflicts
+        )
+        offer = prepare_offer(
+            product_key=best.product_key or best.key or best.url,
+            offer_key=best.key or best.url,
+            name=best.name,
+            url=best.url,
+            fields=result.fields,
+            identity=identity,
+            confirmed=not result.needs_confirmation,
+        )
+        if offer is not None:
+            result.offers = [offer]
+        result.product_key = best.product_key
+    else:
+        result.needs_confirmation = True
     return result

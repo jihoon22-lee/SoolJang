@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -47,6 +48,11 @@ class ExternalSource(Base, EntityMixin):
 
     __tablename__ = "external_source"
 
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("provider_connection.id", ondelete="SET NULL"),
+        default=None,
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     #: robots.txt 확인과 상대 URL 절대화에 쓰는 사이트 루트(예: `https://example.com`).
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -71,6 +77,7 @@ class ExternalSource(Base, EntityMixin):
     #: 사용자가 `adapter_spec` 을 직접 편집했는지. 참이면 프리셋 자동 갱신 대상에서 빠진다.
     spec_overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: 설정/자격증명이 바뀌면 과거 정상 판정을 현재 검증으로 재사용하지 않는다.
+    price_history_allowed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     config_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     request_limit_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
 
@@ -96,8 +103,11 @@ class ExternalLookupCache(Base, EntityMixin):
     source_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("external_source.id", ondelete="CASCADE"), nullable=False
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=False
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("product.id", ondelete="CASCADE"), nullable=True
+    )
+    interest_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("interest.id", ondelete="CASCADE"), default=None
     )
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     #: 셀렉터 일부가 깨져 부분 결과만 얻었는지. 참이면 UI 가 "일부 정보만 확인됨"을 보여준다.
@@ -106,6 +116,8 @@ class ExternalLookupCache(Base, EntityMixin):
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
+        CheckConstraint("(product_id IS NULL) <> (interest_id IS NULL)", name="one_lookup_target"),
+        Index("ix_external_lookup_cache_interest", "source_id", "interest_id", "fetched_at"),
         Index(
             "ix_external_lookup_cache_source_id_product_id", "source_id", "product_id", "fetched_at"
         ),
@@ -149,6 +161,8 @@ class ExternalProductMatch(Base, EntityMixin):
     #: JSON API 아이템 식별자. `search.result_fields` 모드는 상세 페이지를 조회하지 않아
     #: 검색 결과에서 고정된 항목을 되찾아야 하는데, 그때 이 값으로 찾는다.
     external_key: Mapped[str | None] = mapped_column(String(200), default=None)
+    external_product_key: Mapped[str | None] = mapped_column(Text, default=None)
+    preferred_seller_key: Mapped[str | None] = mapped_column(Text, default=None)
     confirmed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (

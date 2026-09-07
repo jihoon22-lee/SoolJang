@@ -22,6 +22,7 @@ interface SourceFormState {
   categoryId: string;
   priority: string;
   isActive: boolean;
+  priceHistoryAllowed: boolean;
   rateLimitPerMin: string;
   requestLimitPerDay: string;
   ttlHours: string;
@@ -52,6 +53,7 @@ const EMPTY_FORM: SourceFormState = {
   categoryId: "",
   priority: "0",
   isActive: true,
+  priceHistoryAllowed: false,
   rateLimitPerMin: "6",
   requestLimitPerDay: "1000",
   ttlHours: "24",
@@ -73,6 +75,7 @@ function formToInput(form: SourceFormState): ExternalSourceInput | { error: stri
     category_id: form.categoryId || null,
     priority: Number(form.priority) || 0,
     is_active: form.isActive,
+    price_history_allowed: form.priceHistoryAllowed,
     rate_limit_per_min: Number(form.rateLimitPerMin) || 6,
     request_limit_per_day: Number(form.requestLimitPerDay) || 1000,
     ttl_hours: Number(form.ttlHours) || 24,
@@ -87,6 +90,7 @@ function sourceToForm(source: ExternalSource): SourceFormState {
     categoryId: source.category_id ?? "",
     priority: String(source.priority),
     isActive: source.is_active,
+    priceHistoryAllowed: source.price_history_allowed ?? false,
     rateLimitPerMin: String(source.rate_limit_per_min),
     requestLimitPerDay: String(source.request_limit_per_day ?? 1000),
     ttlHours: String(source.ttl_hours),
@@ -111,7 +115,7 @@ function sourceToForm(source: ExternalSource): SourceFormState {
  * 서버 전용 데이터라(`LlmSetting` 과 같은 이유로 동기화 대상이 아니다) `enqueue()` 오프라인
  * 경로 대신 `externalSourcesApi` 를 직접 호출한다.
  */
-export function SourcesPage() {
+export function SourcesPage({ connectionsManaged = false }: { connectionsManaged?: boolean }) {
   const queryClient = useQueryClient();
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const sources = useQuery({
@@ -128,7 +132,10 @@ export function SourcesPage() {
   const [form, setForm] = useState<SourceFormState>(EMPTY_FORM);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["external-sources"] });
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["external-sources"] });
+    await queryClient.invalidateQueries({ queryKey: ["connections"] });
+  };
 
   const create = useMutation({
     mutationFn: (input: ExternalSourceInput) => externalSourcesApi.create(input),
@@ -212,6 +219,7 @@ export function SourcesPage() {
             <SourceRow
               key={source.id}
               source={source}
+              connectionsManaged={connectionsManaged}
               health={healthBySourceId.get(source.id)}
               categoryPath={
                 source.category_id
@@ -232,7 +240,7 @@ export function SourcesPage() {
         <output className="notice">등록된 외부 소스가 없습니다.</output>
       )}
 
-      <PresetCatalog onCreated={invalidate} />
+      {!connectionsManaged && <PresetCatalog onCreated={invalidate} />}
 
       <form className="mt-3" onSubmit={handleSubmit}>
         <h3>{editingId ? "소스 수정" : "새 소스 등록"}</h3>
@@ -340,6 +348,21 @@ export function SourcesPage() {
           </label>
         </div>
 
+        <div className="field checkbox-field">
+          <label htmlFor="source-price-history">
+            <input
+              id="source-price-history"
+              type="checkbox"
+              checked={form.priceHistoryAllowed}
+              onChange={(event) => setForm({ ...form, priceHistoryAllowed: event.target.checked })}
+            />
+            이 소스의 가격 이력 저장
+          </label>
+          <p className="muted text-sm">
+            제공자가 가격 자료의 보관을 허용하는 경우에만 켜세요. 꺼져 있으면 새 복수 가격은 조회
+            응답에서만 표시합니다.
+          </p>
+        </div>
         <div className="field">
           <label htmlFor="source-note">메모</label>
           <input
@@ -550,6 +573,7 @@ function PresetRow({
  */
 function SourceRow({
   source,
+  connectionsManaged = false,
   health,
   categoryPath,
   onEdit,
@@ -557,6 +581,7 @@ function SourceRow({
   removing,
 }: {
   source: ExternalSource;
+  connectionsManaged?: boolean;
   health: SourceHealth | undefined;
   categoryPath: string;
   onEdit: () => void;
@@ -636,9 +661,11 @@ function SourceRow({
         <button type="button" onClick={() => setProbeOpen((open) => !open)}>
           {probeOpen ? "테스트 조회 닫기" : "테스트 조회"}
         </button>
-        <button type="button" onClick={() => setCredentialsOpen((open) => !open)}>
-          {credentialsOpen ? "자격 증명 닫기" : "자격 증명"}
-        </button>
+        {!connectionsManaged && (
+          <button type="button" onClick={() => setCredentialsOpen((open) => !open)}>
+            {credentialsOpen ? "자격 증명 닫기" : "자격 증명"}
+          </button>
+        )}
       </div>
 
       {probeOpen && (
