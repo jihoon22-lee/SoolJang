@@ -422,6 +422,9 @@ class SafeHttpClient:
                     ("connect", "read", "write", "pool"), self.limits.io_timeout_seconds
                 ),
             }
+            from sooljang.infrastructure.external.request_guard import check_outbound_guard
+
+            await check_outbound_guard(request)
             if self.before_request:
                 await self.before_request(request)
             # preflight가 robots 요청을 할 수 있으므로 callback 이후 실제 송신만 제한한다.

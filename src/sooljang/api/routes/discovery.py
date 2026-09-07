@@ -1,10 +1,13 @@
 """인증된 앱 내 비생성 탐색. 검색 응답은 브라우저/서버 캐시에 보관하지 않는다."""
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Response
+import httpx
+from fastapi import APIRouter, Depends, Request, Response
 
 from sooljang.api.deps import SessionDep, SettingsDep, UserDep
 from sooljang.api.schemas.discovery import (
@@ -19,12 +22,27 @@ from sooljang.application.discovery_evidence import (
     applicable_fields,
     apply_evidence,
     issue_evidence,
+    issue_search_evidence,
+    title_fields,
 )
 from sooljang.application.external_sources import SourceLookupResult
 from sooljang.application.interests import validate_source_matches
 from sooljang.infrastructure.database.models import ExternalSource, ProviderConnection
+from sooljang.infrastructure.external.request_guard import outbound_guard
 
-router = APIRouter(prefix="/discovery", tags=["discovery"])
+
+async def _cancel_disconnected(request: Request) -> AsyncIterator[None]:
+    async def check(_outbound: httpx.Request) -> None:
+        if await request.is_disconnected():
+            raise asyncio.CancelledError
+
+    with outbound_guard(check):
+        yield
+
+
+router = APIRouter(
+    prefix="/discovery", tags=["discovery"], dependencies=[Depends(_cancel_disconnected)]
+)
 
 
 @router.post("/search")
@@ -39,7 +57,22 @@ async def search(
     result = await service.search_connection(
         session, user_id=user_id, master_key=settings.secret_key, **payload.model_dump()
     )
-    return {"connection_id": str(payload.connection_id), **asdict(result)}
+    output: dict[str, Any] = {"connection_id": str(payload.connection_id), **asdict(result)}
+    connection = await session.get(ProviderConnection, payload.connection_id)
+    for document in output["documents"]:
+        document["applicable_fields"] = title_fields(document["title"])
+        document["evidence_token"] = (
+            issue_search_evidence(
+                user_id=user_id,
+                connection=connection,
+                title=document["title"],
+                source_url=document["url"],
+                master_key=settings.secret_key,
+            )
+            if connection and document["applicable_fields"]
+            else None
+        )
+    return output
 
 
 async def _outputs(
@@ -50,7 +83,12 @@ async def _outputs(
 ) -> list[dict[str, Any]]:
     outputs = []
     for result in results:
-        output = SourceLookupOut.model_validate(asdict(result)).model_dump(mode="json")
+        data = asdict(result)
+        data["normalized"].update(
+            rating_normalized=result.normalized.rating_normalized,
+            price_per_100ml=result.normalized.price_per_100ml,
+        )
+        output = SourceLookupOut.model_validate(data).model_dump(mode="json")
         output["applicable_fields"] = applicable_fields(result.fields)
         output["evidence_token"] = None
         if result.source_url and output["applicable_fields"] and not result.degraded:
