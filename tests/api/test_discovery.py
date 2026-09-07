@@ -368,6 +368,21 @@ def test_product_discovery_keeps_existing_pin_and_never_uses_opt_in_llm(
         },
     )
     assert pinned.status_code == 201, pinned.text
+    context = api_client.get(f"{prefix}/discovery/products/{product['id']}/context")
+    assert context.status_code == 200, context.text
+    assert context.headers["cache-control"] == "no-store"
+    copied = api_client.post(
+        f"{prefix}/interests",
+        json={
+            "identity": context.json()["identity"],
+            "source_matches": context.json()["source_matches"],
+        },
+    )
+    assert copied.status_code == 201, copied.text
+    original_pin = copied.json()["source_matches"][source["id"]]
+    assert original_pin["external_key"] == "1" and original_pin["product_key"] == "harbor-12"
+    assert original_pin["preferred_seller_key"] == "Shop 2"
+    assert copied.json()["identity"]["volumes_ml"] == [700]
     path = f"{prefix}/discovery/products/{product['id']}/lookup"
     first = api_client.post(path, json={"source_ids": [source["id"]]})
     assert first.status_code == 200, first.text
