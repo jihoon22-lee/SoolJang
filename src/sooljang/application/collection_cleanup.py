@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import ConflictError, ValidationFailedError
-from sooljang.application.collection_inventory import owned
+from sooljang.application.collection_inventory import owned, owned_many
 from sooljang.infrastructure.database.base import EntityMixin
 from sooljang.infrastructure.database.models import (
     Bottle,
@@ -62,17 +62,15 @@ async def snapshot(
     if kind == "vendor_merge":
         assert target_id is not None
         # 반대 방향 병합도 같은 두 구매처를 UUID 순서로 잠근다.
-        locked = {
-            entity_id: await owned(session, Vendor, user_id, entity_id)
-            for entity_id in sorted([*ids, target_id])
-        }
+        locked = await owned_many(session, Vendor, user_id, [*ids, target_id])
         rows = [locked[entity_id] for entity_id in sorted(ids)]
         target = locked[target_id]
     else:
         if target_id:
             target_model = Category if kind == "product_category" else Vendor
             target = await owned(session, target_model, user_id, target_id)
-        rows = [await owned(session, model, user_id, entity_id) for entity_id in sorted(ids)]
+        locked_rows = await owned_many(session, model, user_id, ids)
+        rows = [locked_rows[entity_id] for entity_id in sorted(ids)]
     purchases: list[Purchase] = []
     placements: list[BottlePlacement] = []
     stocktakes: list[Stocktake] = []
@@ -165,22 +163,24 @@ async def confirm_cleanup(
     if current != preview.snapshot:
         raise ConflictError("미리보기 이후 기록이 변경되었습니다. 다시 미리보기를 확인하세요")
     if preview.kind == "vendor_merge":
-        for fact in current["purchases"]:
-            if fact["vendor_id"] == str(ids[0]):
-                purchase = await owned(session, Purchase, user_id, uuid.UUID(fact["id"]))
-                purchase.vendor_id = target_id
+        source_id = str(ids[0])
+        moving = [
+            uuid.UUID(fact["id"]) for fact in current["purchases"] if fact["vendor_id"] == source_id
+        ]
+        for purchase in (await owned_many(session, Purchase, user_id, moving)).values():
+            purchase.vendor_id = target_id
         source = await owned(session, Vendor, user_id, ids[0])
         source.deleted_at = datetime.datetime.now(datetime.UTC)
     elif preview.kind in {"product_category", "purchase_vendor"}:
         model = Product if preview.kind == "product_category" else Purchase
         field = "category_id" if preview.kind == "product_category" else "vendor_id"
-        for entity_id in ids:
-            row = await owned(session, model, user_id, entity_id)
+        for row in (await owned_many(session, model, user_id, ids)).values():
             setattr(row, field, target_id)
     else:
         location = await owned(session, StorageLocation, user_id, ids[0])
-        for fact in current["placements"]:
-            placement = await owned(session, BottlePlacement, user_id, uuid.UUID(fact["id"]))
+        placement_ids = [uuid.UUID(fact["id"]) for fact in current["placements"]]
+        placements = await owned_many(session, BottlePlacement, user_id, placement_ids)
+        for placement in placements.values():
             session.add(
                 BottleMovement(
                     user_id=user_id,

@@ -121,19 +121,22 @@ async def test_rankings_order_by_expected_basis(session: AsyncSession, user_id: 
     assert [e.product_name for e in rankings.by_price_per_100ml] == ["비쌈", "쌈"]
 
 
-async def test_rankings_include_free_purchases_at_zero_and_exclude_missing_rating(
+async def test_rankings_leave_zero_priced_products_out_of_price_rankings(
     session: AsyncSession, user_id: uuid.UUID
 ) -> None:
-    """가격 공란인 선물은 0원으로 포함하며 없는 평점만 해당 랭킹에서 제외한다."""
+    """가격 공란(0원) 제품은 가격 순위에서 빠지고, 없는 평점은 평점 순위에서 빠진다.
+
+    합계·평단가에는 여전히 0원으로 포함한다(v1.7.1 정책). 순위만 비교 기준이 없는 값을 뺀다.
+    """
     await _add_product(session, user_id, name="선물", quantity=1)
     await _add_product(session, user_id, name="평점만", personal_rating="5.0", quantity=1)
+    await _add_product(session, user_id, name="산 술", quantity=1, unit_list_price="10000")
 
     rankings = await get_rankings(session, user_id=user_id, limit=10)
 
-    assert {e.product_name for e in rankings.by_bottle_price} == {"선물", "평점만"}
-    assert all(e.value == Decimal(0) for e in rankings.by_bottle_price)
-    assert len(rankings.by_total_spend) == 2
-    assert all(e.value == Decimal(0) for e in rankings.by_total_spend)
+    assert [e.product_name for e in rankings.by_price_per_100ml] == ["산 술"]
+    assert rankings.by_bottle_price == []
+    assert rankings.by_total_spend == []
     assert [e.product_name for e in rankings.by_personal_rating] == ["평점만"]
 
 

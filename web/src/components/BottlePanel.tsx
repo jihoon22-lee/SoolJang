@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { bottlesApi, tastingsApi } from "@/api/client";
 import type { Bottle, BottleStatus, User } from "@/api/types";
+import { todayLocal } from "@/format";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { databaseIdentity, db, type SyncRow } from "@/sync/db";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
@@ -30,7 +31,7 @@ async function transitionFields(
   current: SyncRow,
   action: TransitionAction,
 ): Promise<Record<string, unknown>> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   switch (action) {
     case "open":
       return {
@@ -50,7 +51,13 @@ async function transitionFields(
     case "sell":
       return { status: "sold", finished_on: today };
     case "reopen":
-      return { status: "open", finished_on: null, opened_on: current.opened_on ?? today };
+      // 소진으로 0 이 된 잔량은 실제 잔량이 아니다 — 서버(`reopen_bottle`)처럼 미기록으로 돌린다.
+      return {
+        status: "open",
+        finished_on: null,
+        opened_on: current.opened_on ?? today,
+        remaining_ml: current.remaining_ml === 0 ? null : current.remaining_ml,
+      };
     case "unopen":
       return { status: "unopened", opened_on: null, remaining_ml: null };
   }
@@ -315,9 +322,7 @@ interface TastingFormProps {
 
 function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element {
   const queryClient = useQueryClient();
-  const [tastedOn, setTastedOn] = useDraftState(`tasting:${bottleId}:tastedOn`, () =>
-    new Date().toISOString().slice(0, 10),
-  );
+  const [tastedOn, setTastedOn] = useDraftState(`tasting:${bottleId}:tastedOn`, () => todayLocal());
   const [pouredMl, setPouredMl] = useDraftState(`tasting:${bottleId}:pouredMl`, "");
   const [rating, setRating] = useDraftState(`tasting:${bottleId}:rating`, "");
   const [nose, setNose] = useDraftState(`tasting:${bottleId}:nose`, "");

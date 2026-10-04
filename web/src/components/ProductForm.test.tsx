@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/client";
 import type { CategoryNode, ProblemDetail } from "@/api/types";
 import { ProductForm } from "@/components/ProductForm";
+import { todayLocal } from "@/format";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -176,7 +177,7 @@ describe("ProductForm", () => {
   it("구매일은 오늘로 미리 채워진다", () => {
     setup();
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     expect(screen.getByLabelText("구매일")).toHaveValue(today);
   });
 

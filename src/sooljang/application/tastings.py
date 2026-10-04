@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sooljang.clock import local_today
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
@@ -99,7 +100,7 @@ async def open_bottle(
         raise BottleTransitionError(f"미개봉 병만 개봉할 수 있습니다 (현재 상태: {bottle.status})")
 
     bottle.status = BottleStatus.OPEN
-    bottle.opened_on = opened_on or datetime.date.today()
+    bottle.opened_on = opened_on or local_today()
     if remaining_ml is not None:
         bottle.remaining_ml = remaining_ml
     else:
@@ -121,7 +122,7 @@ async def finish_bottle(
             f"이미 내보낸 병은 소진할 수 없습니다 (현재 상태: {bottle.status})"
         )
 
-    when = finished_on or datetime.date.today()
+    when = finished_on or local_today()
     # 지역 변수로 받아 둔다. 속성에 대입한 뒤에는 타입이 좁혀지지 않는다.
     opened_on = bottle.opened_on if bottle.opened_on is not None else when
     if when < opened_on:
@@ -153,7 +154,7 @@ async def hand_over_bottle(
     if bottle.status == BottleStatus.FINISHED:
         raise BottleTransitionError("이미 소진한 병은 넘길 수 없습니다")
 
-    when = on or datetime.date.today()
+    when = on or local_today()
     if bottle.opened_on is not None and when < bottle.opened_on:
         raise BottleTransitionError("증여·판매일이 개봉일보다 앞설 수 없습니다")
 
@@ -168,16 +169,44 @@ async def hand_over_bottle(
 async def reopen_bottle(session: AsyncSession, bottle: Bottle) -> Bottle:
     """상태를 개봉으로 되돌린다.
 
-    잘못 누른 경우를 위한 되돌리기다. 기록을 지우는 것이 아니라 상태만 바꾼다. 소진일을 지우고
-    잔량은 그대로 둔다. 사용자가 실제 잔량을 다시 입력하면 된다.
+    잘못 누른 경우를 위한 되돌리기다. 기록을 지우는 것이 아니라 상태만 바꾼다. 소진일을 지운다.
+    소진 처리로 0 이 된 잔량은 실제 남은 양이 아니므로 "미기록"(`None`)으로 돌린다 — 0 으로
+    두면 되돌린 병에 시음을 기록할 때 잔량 부족으로 막힌다. 사용자가 `set_remaining` 으로
+    실제 잔량을 다시 입력할 수 있다.
     """
     if bottle.status == BottleStatus.UNOPENED:
         raise BottleTransitionError("미개봉 병은 되돌릴 상태가 없습니다")
 
     bottle.status = BottleStatus.OPEN
     bottle.finished_on = None
+    if bottle.remaining_ml == 0:
+        bottle.remaining_ml = None
     if bottle.opened_on is None:
-        bottle.opened_on = datetime.date.today()
+        bottle.opened_on = local_today()
+    await session.flush()
+    return bottle
+
+
+async def set_remaining(
+    session: AsyncSession, bottle: Bottle, *, remaining_ml: int, on: datetime.date | None = None
+) -> Bottle:
+    """개봉 병의 잔량을 직접 맞춘다(눈대중 25/50/75% 등).
+
+    시음 기록 없이 줄어든 양(요리·나눔)이나 잘못 기록된 잔량을 바로잡는 용도다. 0 이면
+    소진으로 처리한다 — 시음 기록이 잔량 0 에서 자동 소진하는 규칙과 같다.
+    """
+    if bottle.status != BottleStatus.OPEN:
+        raise BottleTransitionError(
+            f"개봉한 병만 잔량을 조정할 수 있습니다 (현재 상태: {bottle.status})"
+        )
+    if remaining_ml < 0:
+        raise BottleTransitionError("잔량은 0 이상이어야 합니다")
+    volume = await _bottle_volume_ml(session, bottle)
+    if volume is not None and remaining_ml > volume:
+        raise BottleTransitionError(f"잔량이 병 용량({volume}ml)보다 클 수 없습니다")
+    if remaining_ml == 0:
+        return await finish_bottle(session, bottle, finished_on=on)
+    bottle.remaining_ml = remaining_ml
     await session.flush()
     return bottle
 
@@ -224,6 +253,7 @@ async def record_tasting(
     bottle: Bottle | None = None,
     finish_if_empty: bool = True,
     id: uuid.UUID | None = None,  # noqa: A002 - 오프라인 outbox 가 미리 생성한 PK
+    reconcile: bool = False,
 ) -> TastingSession:
     """시음을 기록하고 병 잔량을 차감한다.
 
@@ -234,30 +264,40 @@ async def record_tasting(
     잊어버려 재고가 남아 있는 것처럼 보인다.
 
     `id` 를 지정하면 그대로 쓴다 — 오프라인 클라이언트가 미리 생성한 UUIDv7 PK 를 반영한다.
+
+    `reconcile=True` 는 오프라인에서 이미 일어난 시음을 나중에 반영할 때 쓴다. 다른 기기가
+    그 사이 잔량을 줄였거나 병을 내보냈어도 마신 사실은 잃지 않는다 — 잔량은 0 으로 맞추고,
+    이미 내보낸 병은 상태를 바꾸지 않은 채 기록만 연결한다.
     """
     validate_rating(data.rating)
 
     if bottle is not None:
+        handed_over = bottle.status in {BottleStatus.GIFTED, BottleStatus.SOLD}
         if bottle.status == BottleStatus.UNOPENED:
             await open_bottle(session, bottle, opened_on=data.tasted_on)
-        elif bottle.status in {BottleStatus.GIFTED, BottleStatus.SOLD}:
+        elif handed_over and not reconcile:
             raise BottleTransitionError(
                 f"내보낸 병은 시음을 기록할 수 없습니다 (현재 상태: {bottle.status})"
             )
 
-        if data.poured_ml is not None:
+        if not handed_over and (bottle.opened_on is None or data.tasted_on < bottle.opened_on):
+            # 기록된 개봉일보다 앞선 날 마셨다면 실제로는 그날 이미 열려 있었다. 그대로 두면
+            # 마지막 잔으로 소진할 때 소진일이 개봉일보다 앞서 저장이 거부된다.
+            bottle.opened_on = data.tasted_on
+
+        if data.poured_ml is not None and not handed_over:
             remaining = bottle.remaining_ml
             if remaining is None:
                 remaining = await _bottle_volume_ml(session, bottle) or 0
             if data.poured_ml > remaining:
-                raise InsufficientRemainingError(remaining, data.poured_ml)
+                if not reconcile:
+                    raise InsufficientRemainingError(remaining, data.poured_ml)
+                remaining = data.poured_ml
             bottle.remaining_ml = remaining - data.poured_ml
 
             if bottle.remaining_ml == 0 and finish_if_empty:
                 bottle.status = BottleStatus.FINISHED
                 bottle.finished_on = data.tasted_on
-                if bottle.opened_on is None:
-                    bottle.opened_on = data.tasted_on
 
     kwargs: dict[str, Any] = {
         "user_id": user_id,

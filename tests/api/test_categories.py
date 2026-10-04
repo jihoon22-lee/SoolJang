@@ -331,3 +331,39 @@ def test_unknown_category_returns_not_found(api_client: TestClient, prefix: str)
 
     assert response.status_code == 404
     assert response.json()["type"].endswith("/not-found")
+
+
+def test_unknown_parent_is_rejected_on_create_and_move(api_client: TestClient, prefix: str) -> None:
+    ghost = "00000000-0000-4000-8000-000000000000"
+    created = api_client.post(f"{prefix}/categories", json={"name": "고아", "parent_id": ghost})
+    child = api_client.post(f"{prefix}/categories", json={"name": "옮길 주종"}).json()
+    moved = api_client.post(
+        f"{prefix}/categories/{child['id']}:reparent", json={"new_parent_id": ghost}
+    )
+
+    assert created.status_code == 404
+    assert moved.status_code == 404
+
+
+def test_merge_that_would_exceed_depth_cap_is_rejected(api_client: TestClient, prefix: str) -> None:
+    parent_id = None
+    deep: list[dict[str, Any]] = []
+    for level in range(1, 8):
+        body: dict[str, Any] = {"name": f"깊은 {level}"}
+        if parent_id:
+            body["parent_id"] = parent_id
+        node = api_client.post(f"{prefix}/categories", json=body).json()
+        deep.append(node)
+        parent_id = node["id"]
+    source = api_client.post(f"{prefix}/categories", json={"name": "원본"}).json()
+    child = api_client.post(
+        f"{prefix}/categories", json={"name": "원본 하위", "parent_id": source["id"]}
+    ).json()
+    api_client.post(f"{prefix}/categories", json={"name": "손자", "parent_id": child["id"]})
+
+    response = api_client.post(
+        f"{prefix}/categories/{source['id']}:merge", json={"target_id": deep[-1]["id"]}
+    )
+
+    assert response.status_code == 422
+    assert "깊이" in response.json()["detail"]

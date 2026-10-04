@@ -278,3 +278,32 @@ def test_import_after_seed_reuses_existing_categories(api_client: TestClient, pr
     # 미분류 하위의 새 주종만 추가된다.
     assert result["categories_created"] < before
     assert after > before
+
+
+def test_failed_row_does_not_break_later_rows_sharing_its_new_references(
+    api_client: TestClient, prefix: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 첫 행이 주종·구매처를 새로 만든 뒤 실패해 롤백돼도, 같은 참조를 쓰는 뒤 행은 다시 만든다.
+    from sooljang.application import legacy_import
+
+    original = legacy_import._apply_product
+    calls = {"count": 0}
+
+    async def fail_first(*args: Any, **kwargs: Any) -> None:
+        calls["count"] += 1
+        await original(*args, **kwargs)
+        if calls["count"] == 1:
+            raise RuntimeError("합성 실패")
+
+    monkeypatch.setattr(legacy_import, "_apply_product", fail_first)
+
+    result = _upload(api_client, prefix, "commit").json()
+
+    assert [reason for _, reason in result["failed_rows"]] == ["합성 실패"]
+    assert result["products_created"] == 6
+    assert result["bottles_created"] == 14 - _first_row_bottles()
+
+
+def _first_row_bottles() -> int:
+    # 픽스처 첫 행은 1병짜리 구매다(`sample_sheet.csv`).
+    return 1

@@ -66,6 +66,29 @@ async function liveTable(name: LiveTableName): Promise<SyncRow[]> {
   return live(await db.table(name).toArray());
 }
 
+/**
+ * 부모까지 살아 있는 구매·병. 이전 버전은 제품만 지우고 하위 행을 남겼으므로, 행 자신의
+ * `deleted_at` 만 보면 삭제한 제품의 병이 재고·구매처 집계에 계속 잡힌다.
+ */
+async function liveRecordChain(): Promise<{ purchases: SyncRow[]; bottles: SyncRow[] }> {
+  const [products, skus, purchases, bottles] = await Promise.all([
+    liveTable("product"),
+    liveTable("sku"),
+    liveTable("purchase"),
+    liveTable("bottle"),
+  ]);
+  const productIds = new Set(products.map((row) => row.id));
+  const skuIds = new Set(
+    skus.filter((row) => productIds.has(row.product_id as string)).map((row) => row.id),
+  );
+  const livePurchases = purchases.filter((row) => skuIds.has(row.sku_id as string));
+  const purchaseIds = new Set(livePurchases.map((row) => row.id));
+  return {
+    purchases: livePurchases,
+    bottles: bottles.filter((row) => purchaseIds.has(row.purchase_id as string)),
+  };
+}
+
 // --- 주종 계층 ----------------------------------------------------------------
 
 export async function getCategoryTree(): Promise<CategoryTree> {
@@ -196,10 +219,15 @@ function assembleOneProduct(
   for (const sku of productSkus) {
     const skuPurchases = purchasesBySku.get(sku.id) ?? [];
     for (const purchase of skuPurchases) {
+      const quantity = purchase.quantity as number;
+      const volumeMl = sku.volume_ml as number;
+      // 서버 제약상 생기지 않지만, 손상된 로컬 행 하나가 `RangeError` 로 목록·통계 전체를
+      // 빈 화면으로 만들지 않게 그 구매만 지표에서 뺀다.
+      if (!(quantity > 0) || !(volumeMl > 0)) continue;
       lots.push(
         purchaseLot(
-          purchase.quantity as number,
-          sku.volume_ml as number,
+          quantity,
+          volumeMl,
           toDecimalOrNull(purchase.unit_list_price),
           toDecimalOrNull(purchase.unit_paid_price),
         ),
@@ -668,7 +696,7 @@ export async function getBottles(params: {
   status?: string;
   in_stock?: boolean;
 }): Promise<Bottle[]> {
-  let bottles = await liveTable("bottle");
+  let { bottles } = await liveRecordChain();
   if (params.status) {
     bottles = bottles.filter((row) => row.status === params.status);
   } else if (params.in_stock) {
@@ -711,7 +739,7 @@ export async function getBottlesForProduct(productId: string): Promise<Bottle[]>
 // --- 구매처 -----------------------------------------------------------------
 
 export async function getVendors(): Promise<Vendor[]> {
-  const [vendors, purchases] = await Promise.all([liveTable("vendor"), liveTable("purchase")]);
+  const [vendors, { purchases }] = await Promise.all([liveTable("vendor"), liveRecordChain()]);
   const counts = new Map<string, number>();
   const spend = new Map<string, Decimal>();
   for (const purchase of purchases) {
@@ -759,10 +787,11 @@ interface StatsRow {
 
 export interface StatsCoverage {
   purchaseCount: number;
-  pricedPurchaseCount: number;
-  paidPurchaseCount: number;
+  /** 실구매가 0원(공란·선물·포인트)으로 계산된 구매. 미상이 아니라 정보로 알린다. */
+  zeroPaidPurchaseCount: number;
+  /** 정가가 기록돼 할인율 계산에 들어간 구매. */
+  listPricedPurchaseCount: number;
   missingVolumeProducts: { id: string; name: string }[];
-  missingPriceProducts: { id: string; name: string }[];
 }
 
 interface StatsData {
@@ -802,12 +831,15 @@ async function statsRows(): Promise<StatsData> {
     vendorIds,
     coverage: {
       purchaseCount: includedPurchases.length,
-      pricedPurchaseCount: includedPurchases.length,
-      paidPurchaseCount: includedPurchases.length,
+      zeroPaidPurchaseCount: includedPurchases.filter(
+        (purchase) => !(toDecimalOrNull(purchase.unit_paid_price)?.greaterThan(0) ?? false),
+      ).length,
+      listPricedPurchaseCount: includedPurchases.filter(
+        (purchase) => toDecimalOrNull(purchase.unit_list_price)?.greaterThan(0) ?? false,
+      ).length,
       missingVolumeProducts: assemblies
         .filter((assembly) => assembly.skus.length === 0)
         .map((assembly) => ({ id: assembly.row.id, name: String(assembly.row.name) })),
-      missingPriceProducts: [],
     },
   };
 }
@@ -871,11 +903,16 @@ export async function getStatsRankings(
 ): Promise<OfflineRankings> {
   const { rows } = data ?? (await statsRows());
 
-  function top(keyFn: (row: StatsRow) => Decimal | null): { row: StatsRow; value: Decimal }[] {
+  // 가격 순위는 0원(공란·선물·포인트)을 뺀다 — 서버 `stats._top` 과 같은 규칙. 평점은 0점도 둔다.
+  function top(
+    keyFn: (row: StatsRow) => Decimal | null,
+    { allowZero = false }: { allowZero?: boolean } = {},
+  ): { row: StatsRow; value: Decimal }[] {
     return rows
       .map((row) => ({ row, value: keyFn(row) }))
       .filter(
-        (candidate): candidate is { row: StatsRow; value: Decimal } => candidate.value !== null,
+        (candidate): candidate is { row: StatsRow; value: Decimal } =>
+          candidate.value !== null && (allowZero || candidate.value.greaterThan(0)),
       )
       .sort((a, b) => {
         const cmp = b.value.comparedTo(a.value);
@@ -909,7 +946,9 @@ export async function getStatsRankings(
       2,
     ),
     by_personal_rating: toEntries(
-      top((row) => (row.personalRating !== null ? new Decimal(row.personalRating) : null)),
+      top((row) => (row.personalRating !== null ? new Decimal(row.personalRating) : null), {
+        allowZero: true,
+      }),
       1,
     ),
     by_value_for_money: toEntries(
@@ -1081,21 +1120,17 @@ export async function getRecentProducts(limit = 5): Promise<RecentProduct[]> {
 /** 최근 시음(`tasted_on` 내림차순). 제품 이름은 sku→product 로 붙인다. */
 export async function getRecentTastings(limit = 5): Promise<RecentTasting[]> {
   const tastings = await db.tasting_session.filter((row) => row.deleted_at === null).toArray();
+  const [skus, products] = await Promise.all([liveTable("sku"), liveTable("product")]);
+  const skuById = new Map(skus.map((sku) => [sku.id, sku]));
+  const productById = new Map(products.map((product) => [product.id, product]));
+  // 삭제한 제품의 시음은 최근 활동에 다시 띄우지 않는다(기록 자체는 보존된다).
   const recent = tastings
+    .filter((t) => {
+      const sku = skuById.get(t.sku_id as string);
+      return sku !== undefined && productById.has(sku.product_id as string);
+    })
     .sort((a, b) => String(b.tasted_on).localeCompare(String(a.tasted_on)))
     .slice(0, limit);
-
-  const skuIds = recent.map((t) => t.sku_id as string);
-  const skus = await db.sku.bulkGet(skuIds);
-  const skuById = new Map(skus.filter((sku) => sku !== undefined).map((sku) => [sku.id, sku]));
-
-  const productIds = recent
-    .map((t) => skuById.get(t.sku_id as string)?.product_id)
-    .filter((id): id is string => typeof id === "string");
-  const products = await db.product.bulkGet(productIds);
-  const productById = new Map(
-    products.filter((product) => product !== undefined).map((product) => [product.id, product]),
-  );
 
   return recent.map((t) => {
     const sku = skuById.get(t.sku_id as string);

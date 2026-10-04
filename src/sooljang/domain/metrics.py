@@ -236,11 +236,17 @@ def compute_price_metrics(lots: Sequence[PurchaseLot]) -> PriceMetrics:
 
 
 def _discount_rate(lots: Sequence[PurchaseLot]) -> Decimal | None:
-    """공란을 0원으로 포함한다. 정가 합계가 0이면 할인율은 정의되지 않는다."""
+    """정가가 기록된(0원 초과) 구매만으로 계산한다.
+
+    가격 공란은 0원이지만(선물·포인트 구매) "정가 0원"은 할인의 기준이 될 수 없다. 포함하면
+    정가 없이 실구매가만 적은 구매가 할인율을 음수로 만든다. 정가 합계가 0이면 정의되지 않는다.
+    """
     list_amount = Decimal(0)
     paid_amount = Decimal(0)
     found = False
     for lot in lots:
+        if lot.list_total <= 0:
+            continue
         found = True
         list_amount += lot.list_total
         paid_amount += lot.paid_total

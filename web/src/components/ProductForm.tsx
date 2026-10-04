@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ApiError } from "@/api/client";
 import type { CategoryNode } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { formatCategoryPath } from "@/format";
+import { formatCategoryPath, todayLocal } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching, rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
@@ -101,7 +101,7 @@ export function ProductForm({
     mode === "create" ? "product:create" : `product:edit:${window.location.hash}`,
     {
       ...EMPTY_PRODUCT_FORM,
-      purchasedOn: new Date().toISOString().slice(0, 10),
+      purchasedOn: todayLocal(),
       vendorName: getLastVendorName(),
       ...initialValues,
     },

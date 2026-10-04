@@ -35,16 +35,16 @@ def test_vendor_merge_and_purchase_update_finish_without_deadlock(
         json={"kind": "vendor_merge", "ids": [source["id"]], "target_id": target["id"]},
     ).json()
     locked, release, started = (threading.Event() for _ in range(3))
-    original_owned = cleanup.owned
+    original_owned_many = cleanup.owned_many
     original_vendor = purchase_routes._owned_vendor
     original_sync = sync_service._load_writable
 
-    async def hold_target(session: Any, model: Any, user_id: Any, entity_id: Any) -> Any:
-        row = await original_owned(session, model, user_id, entity_id)
-        if model is Vendor and str(entity_id) == target["id"] and not locked.is_set():
+    async def hold_target(session: Any, model: Any, user_id: Any, ids: Any) -> Any:
+        rows = await original_owned_many(session, model, user_id, ids)
+        if model is Vendor and target["id"] in {str(i) for i in ids} and not locked.is_set():
             locked.set()
             assert await asyncio.to_thread(release.wait, 5)
-        return row
+        return rows
 
     async def observe_vendor(*args: Any, **kwargs: Any) -> Any:
         started.set()
@@ -55,7 +55,7 @@ def test_vendor_merge_and_purchase_update_finish_without_deadlock(
             started.set()
         return await original_sync(session, model, **kwargs)
 
-    monkeypatch.setattr(cleanup, "owned", hold_target)
+    monkeypatch.setattr(cleanup, "owned_many", hold_target)
     monkeypatch.setattr(purchase_routes, "_owned_vendor", observe_vendor)
     monkeypatch.setattr(sync_service, "_load_writable", observe_sync)
     with ThreadPoolExecutor(max_workers=2) as pool:

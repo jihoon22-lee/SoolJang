@@ -102,3 +102,19 @@ def test_rankings_limit_query_param(api_client: TestClient, prefix: str) -> None
 
     rankings = api_client.get(f"{prefix}/stats/rankings", params={"limit": 1}).json()
     assert len(rankings["by_bottle_price"]) == 1
+
+
+def test_zero_priced_products_stay_out_of_price_rankings(
+    api_client: TestClient, prefix: str
+) -> None:
+    gift = api_client.post(
+        f"{prefix}/products",
+        json={"name": "선물 받은 술", "personal_rating": "4.0", "skus": [{"volume_ml": 700}]},
+    ).json()
+    api_client.post(f"{prefix}/purchases", json={"sku_id": gift["skus"][0]["id"], "quantity": 1})
+
+    rankings = api_client.get(f"{prefix}/stats/rankings").json()
+
+    for key in ("by_bottle_price", "by_total_spend", "by_price_per_100ml"):
+        assert rankings[key] == []
+    assert [entry["product_name"] for entry in rankings["by_personal_rating"]] == ["선물 받은 술"]

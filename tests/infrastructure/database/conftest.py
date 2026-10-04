@@ -18,7 +18,7 @@ from sooljang.infrastructure.database.session import get_engine
 # 위 models import 가 없으면 Base.metadata 가 비어 있어 create_all 이 아무 테이블도 만들지
 # 않고, 그 사실이 조용히 통과한다.
 
-DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://sooljang:sooljang@127.0.0.1:5432/sooljang_test"
+DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_test"
 
 
 def database_url() -> str:

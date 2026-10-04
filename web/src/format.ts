@@ -51,6 +51,16 @@ export function formatPercent(ratio: string | null | undefined): string {
   return Number.isNaN(value) ? "—" : `${Math.round(value * 1000) / 10}%`;
 }
 
+/**
+ * 기기 시간대 기준 오늘(YYYY-MM-DD). `toISOString()` 은 UTC 라 한국 시간 00~09시에
+ * 기록한 개봉·시음·구매가 전날로 저장된다.
+ */
+export function todayLocal(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 export function formatDate(date: string | null | undefined): string {
   if (!date) return "날짜 미기록";
   return date;

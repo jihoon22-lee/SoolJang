@@ -46,7 +46,7 @@ def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
     - 구매 가격 공란은 0원이다
     - 평단가의 분모는 선물·포인트 구매를 포함한 전체 구매 병수다
     - 100ml당 가격은 가중 평균이며 **정가 기준**이다
-    - 할인율은 전체 구매의 정가·실구매가 합계로 계산한다
+    - 할인율은 정가가 기록된(0원 초과) 구매의 정가·실구매가 합계로 계산한다
     """
     list_amount = func.sum(_priced_amount(Purchase.unit_list_price))
     paid_amount = func.sum(_priced_amount(Purchase.unit_paid_price))
@@ -55,8 +55,13 @@ def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
     list_volume = func.sum(_purchased_volume())
     paid_volume = func.sum(_purchased_volume())
 
-    discount_list = list_amount
-    discount_paid = paid_amount
+    list_recorded = func.coalesce(Purchase.unit_list_price, literal(0)) > 0
+    discount_list = func.sum(
+        case((list_recorded, _priced_amount(Purchase.unit_list_price)), else_=literal(0))
+    )
+    discount_paid = func.sum(
+        case((list_recorded, _priced_amount(Purchase.unit_paid_price)), else_=literal(0))
+    )
 
     return (
         select(
@@ -196,8 +201,15 @@ def purchase_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
             list_amount.label("list_amount"),
             paid_amount.label("paid_amount"),
             list_volume.label("list_volume"),
-            list_amount.label("both_priced_list_amount"),
-            paid_amount.label("both_priced_paid_amount"),
+            # 할인율 재료 — 정가가 기록된 구매만(`domain.metrics._discount_rate`).
+            case(
+                (func.coalesce(Purchase.unit_list_price, literal(0)) > 0, list_amount),
+                else_=literal(0),
+            ).label("both_priced_list_amount"),
+            case(
+                (func.coalesce(Purchase.unit_list_price, literal(0)) > 0, paid_amount),
+                else_=literal(0),
+            ).label("both_priced_paid_amount"),
         )
         .select_from(Product)
         .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))

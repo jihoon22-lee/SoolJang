@@ -450,7 +450,31 @@ function ProductDetailView({
   const [editing, setEditing] = useState(false);
 
   const remove = useMutation({
-    mutationFn: () => enqueue({ entity: "product", op: "delete", entityId: productId, fields: {} }),
+    mutationFn: async () => {
+      // 서버는 제품 삭제를 규격·구매·병까지 전파한다. 동기화 전에도 재고·통계가 같은 결과를
+      // 보이게 하위 행을 함께 지우고, 이후 pull 이 덮어쓰지 않게 대상 id 를 보호한다.
+      const skuIds = (await db.sku.where("product_id").equals(productId).toArray())
+        .filter((row) => row.deleted_at === null)
+        .map((row) => row.id);
+      const purchaseIds = (await db.purchase.where("sku_id").anyOf(skuIds).toArray())
+        .filter((row) => row.deleted_at === null)
+        .map((row) => row.id);
+      const bottleIds = (await db.bottle.where("purchase_id").anyOf(purchaseIds).toArray())
+        .filter((row) => row.deleted_at === null)
+        .map((row) => row.id);
+      await enqueue({
+        entity: "product",
+        op: "delete",
+        entityId: productId,
+        fields: {},
+        touchedIds: [...skuIds, ...purchaseIds, ...bottleIds],
+        cascadeDeletes: [
+          { entity: "sku", ids: skuIds },
+          { entity: "purchase", ids: purchaseIds },
+          { entity: "bottle", ids: bottleIds },
+        ],
+      });
+    },
     onSuccess: () => {
       triggerSync();
       onBack();
@@ -614,6 +638,7 @@ function ProductDetailView({
         splitPurchase.isPending ? (splitPurchase.variables?.purchaseId ?? null) : null
       }
       splitError={splitPurchase.error}
+      actionError={remove.error ?? deletePurchase.error ?? addSku.error}
       onAddSku={(volumeMl) => addSku.mutate(volumeMl)}
       addingSku={addSku.isPending}
     />

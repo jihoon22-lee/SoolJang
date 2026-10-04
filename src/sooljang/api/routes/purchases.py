@@ -177,13 +177,26 @@ async def _to_purchase_out(session: SessionDep, purchase: Purchase) -> PurchaseO
         .select_from(Bottle)
         .where(Bottle.purchase_id == purchase.id, Bottle.deleted_at.is_(None))
     )
+    return _purchase_out(
+        purchase,
+        volume_ml=sku.volume_ml if sku else None,
+        vendor_name=vendor.name if vendor else None,
+        bottle_count=bottle_count or 0,
+    )
+
+
+def _purchase_out(
+    purchase: Purchase, *, volume_ml: int | None, vendor_name: str | None, bottle_count: int
+) -> PurchaseOut:
+    """가격 공란은 0원으로 응답한다(v1.7.1 정책 — 선물·포인트 구매). 동기화 미러의 null
+    도 화면에서 같은 0원으로 계산한다."""
     quantity = Decimal(purchase.quantity)
     return PurchaseOut(
         id=purchase.id,
         sku_id=purchase.sku_id,
-        volume_ml=sku.volume_ml if sku else None,
+        volume_ml=volume_ml,
         vendor_id=purchase.vendor_id,
-        vendor_name=vendor.name if vendor else None,
+        vendor_name=vendor_name,
         purchased_on=purchase.purchased_on,
         quantity=purchase.quantity,
         unit_list_price=purchase.unit_list_price or Decimal("0.00"),
@@ -195,7 +208,7 @@ async def _to_purchase_out(session: SessionDep, purchase: Purchase) -> PurchaseO
         foreign_unit_price=purchase.foreign_unit_price,
         discount_note=purchase.discount_note,
         import_note=purchase.import_note,
-        bottle_count=bottle_count or 0,
+        bottle_count=bottle_count,
     )
 
 
@@ -221,8 +234,26 @@ async def list_purchases(
             Purchase.sku_id.in_(select(Sku.id).where(Sku.product_id == product_id))
         )
 
-    purchases = (await session.scalars(statement)).all()
-    return [await _to_purchase_out(session, purchase) for purchase in purchases]
+    # 목록은 규격·구매처·병 수를 한 번에 조인한다. 행마다 조회하면 구매 1,000건에 수천 번
+    # 왕복한다.
+    bottle_counts = (
+        select(Bottle.purchase_id, func.count().label("bottle_count"))
+        .where(Bottle.user_id == user_id, Bottle.deleted_at.is_(None))
+        .group_by(Bottle.purchase_id)
+        .subquery()
+    )
+    rows = await session.execute(
+        statement.add_columns(Sku.volume_ml, Vendor.name, bottle_counts.c.bottle_count)
+        .outerjoin(Sku, Sku.id == Purchase.sku_id)
+        .outerjoin(Vendor, Vendor.id == Purchase.vendor_id)
+        .outerjoin(bottle_counts, bottle_counts.c.purchase_id == Purchase.id)
+    )
+    return [
+        _purchase_out(
+            purchase, volume_ml=volume_ml, vendor_name=vendor_name, bottle_count=count or 0
+        )
+        for purchase, volume_ml, vendor_name, count in rows
+    ]
 
 
 @purchases_router.post(

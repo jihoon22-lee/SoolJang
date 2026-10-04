@@ -14,6 +14,7 @@ import {
   MAX_RATING,
   NO_PRICE_LABEL,
   NO_PRICE_SHORT,
+  todayLocal,
 } from "@/format";
 
 describe("formatMoney", () => {
@@ -147,5 +148,14 @@ describe("라벨 변환", () => {
   it("구매처 종류를 한글로 표시한다", () => {
     expect(formatVendorKind("duty_free")).toBe("면세점");
     expect(formatVendorKind("bottle_shop")).toBe("주류샵");
+  });
+});
+
+describe("todayLocal", () => {
+  it("UTC 가 아니라 기기 시간대의 날짜를 쓴다", () => {
+    // 2026-10-04 23:30 UTC 는 한국에서 10월 5일 08:30 이다. 지역 시각으로 만든 Date 는
+    // 실행 환경 시간대와 상관없이 그 지역 날짜를 돌려줘야 한다.
+    expect(todayLocal(new Date(2026, 9, 5, 0, 30))).toBe("2026-10-05");
+    expect(todayLocal(new Date(2026, 0, 1, 23, 59))).toBe("2026-01-01");
   });
 });

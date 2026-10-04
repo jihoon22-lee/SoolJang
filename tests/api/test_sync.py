@@ -1,5 +1,6 @@
 """동기화 API 테스트 (`GET /sync`, `POST /sync/batch`, 충돌 확인 처리)."""
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -758,3 +759,199 @@ def test_two_devices_updating_same_base_keep_one_conflict(
         statuses = list(executor.map(send, commands))
     assert sorted(statuses) == ["applied", "conflict"]
     assert len(_pull(api_client, prefix)["changes"]["conflict_log"]) == 1
+
+
+def _one_bottle(client: TestClient, prefix: str, name: str, volume_ml: int = 500) -> str:
+    product = client.post(
+        f"{prefix}/products", json={"name": name, "skus": [{"volume_ml": volume_ml}]}
+    ).json()
+    purchase = client.post(
+        f"{prefix}/purchases", json={"sku_id": product["skus"][0]["id"], "quantity": 1}
+    ).json()
+    return client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()[0]["id"]
+
+
+def test_bottle_transition_conflict_keeps_server_state_and_continues_batch(
+    api_client: TestClient, prefix: str
+) -> None:
+    # 다른 기기가 먼저 소진한 병을 오프라인 기기가 개봉하려 해도 대기열이 멈추지 않는다.
+    finished_bottle = _one_bottle(api_client, prefix, "다른 기기에서 소진한 술")
+    other_bottle = _one_bottle(api_client, prefix, "뒤따르는 다른 병")
+    assert api_client.post(f"{prefix}/bottles/{finished_bottle}:finish", json={}).status_code == 200
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(entity="bottle", op="action", entity_id=uuid.UUID(finished_bottle), action="open"),
+            _op(entity="bottle", op="action", entity_id=uuid.UUID(other_bottle), action="open"),
+        ],
+    )
+
+    assert result["stopped"] is False
+    conflict, applied = result["results"]
+    assert conflict["status"] == "conflict"
+    assert conflict["snapshot"]["status"] == "finished"
+    assert applied["status"] == "applied"
+    assert api_client.get(f"{prefix}/bottles/{other_bottle}").json()["status"] == "open"
+    logged = _pull(api_client, prefix)["changes"]["conflict_log"]
+    assert [row["entity_id"] for row in logged] == [finished_bottle]
+
+
+def test_offline_tasting_beyond_remaining_is_kept_and_finishes_bottle(
+    api_client: TestClient, prefix: str
+) -> None:
+    bottle_id = _one_bottle(api_client, prefix, "잔량이 줄어든 술", volume_ml=500)
+    api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={"remaining_ml": 50})
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="tasting_session",
+                op="action",
+                action="record_tasting",
+                fields={"bottle_id": bottle_id, "tasted_on": "2026-10-01", "poured_ml": 120},
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "applied"
+    bottle = api_client.get(f"{prefix}/bottles/{bottle_id}").json()
+    assert bottle["status"] == "finished"
+    assert bottle["remaining_ml"] == 0
+
+
+def test_set_remaining_action_adjusts_open_bottle(api_client: TestClient, prefix: str) -> None:
+    bottle_id = _one_bottle(api_client, prefix, "잔량 조정 술", volume_ml=700)
+    api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={})
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="bottle",
+                op="action",
+                entity_id=uuid.UUID(bottle_id),
+                action="set_remaining",
+                fields={"remaining_ml": 350},
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "applied"
+    assert api_client.get(f"{prefix}/bottles/{bottle_id}").json()["remaining_ml"] == 350
+
+
+def test_sync_sku_barcode_is_normalized_like_online_registration(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = api_client.post(f"{prefix}/products", json={"name": "바코드 술"}).json()
+    sku_id = uuid.uuid4()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="sku",
+                op="create",
+                entity_id=sku_id,
+                fields={"product_id": product["id"], "volume_ml": 750, "barcode": "036000291452"},
+            )
+        ],
+    )
+
+    snapshot = result["results"][0]["snapshot"]
+    assert snapshot["barcode"] == "0036000291452"
+    assert snapshot["barcode_type"] == "upca"
+
+
+def test_non_string_currency_fails_only_that_operation(api_client: TestClient, prefix: str) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "통화 술", "skus": [{"volume_ml": 500}]}
+    ).json()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="purchase",
+                op="create",
+                fields={"sku_id": product["skus"][0]["id"], "quantity": 1, "currency": 123},
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "통화" in result["results"][0]["detail"]
+
+
+def test_sync_product_delete_cascades_to_purchases_and_bottles(
+    api_client: TestClient, prefix: str
+) -> None:
+    bottle_id = _one_bottle(api_client, prefix, "삭제할 술")
+    product_id = api_client.get(f"{prefix}/products").json()["items"][0]["id"]
+
+    delete = _op(entity="product", op="delete", entity_id=uuid.UUID(product_id))
+    _batch(api_client, prefix, [delete])
+
+    changes = _pull(api_client, prefix)["changes"]
+    assert all(row["deleted_at"] for row in changes["sku"])
+    assert all(row["deleted_at"] for row in changes["purchase"])
+    assert [row["deleted_at"] is not None for row in changes["bottle"]] == [True]
+    assert api_client.get(f"{prefix}/bottles/{bottle_id}").status_code == 404
+
+
+def test_sync_category_delete_with_children_is_rejected(
+    api_client: TestClient, prefix: str
+) -> None:
+    parent = api_client.post(f"{prefix}/categories", json={"name": "상위"}).json()
+    api_client.post(f"{prefix}/categories", json={"name": "하위", "parent_id": parent["id"]})
+
+    result = _batch(
+        api_client, prefix, [_op(entity="category", op="delete", entity_id=uuid.UUID(parent["id"]))]
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    names = [node["name"] for node in api_client.get(f"{prefix}/categories").json()["items"]]
+    assert "하위" in names
+
+
+def test_rewind_pull_returns_rows_committed_late_behind_the_cursor(
+    api_client: TestClient, prefix: str
+) -> None:
+    first = api_client.post(f"{prefix}/vendors", json={"name": "먼저 보인 구매처"}).json()
+    cursor = _pull(api_client, prefix)["next_cursor"]
+    # 커서보다 이른 시각으로 커밋된 행(늦게 끝난 트랜잭션)을 흉내 낸다.
+    late = api_client.post(f"{prefix}/vendors", json={"name": "늦게 커밋된 구매처"}).json()
+    asyncio.run(_backdate_vendor(late["id"], seconds=5))
+
+    plain = _pull(api_client, prefix, cursor)["changes"]["vendor"]
+    params = {
+        "expected_user_id": api_client.get(f"{prefix}/auth/me").json()["id"],
+        "since": cursor,
+        "rewind": "true",
+    }
+    rewound = api_client.get(f"{prefix}/sync", params=params).json()["changes"]["vendor"]
+
+    assert late["id"] not in {row["id"] for row in plain}
+    assert {first["id"], late["id"]} <= {row["id"] for row in rewound}
+
+
+async def _backdate_vendor(vendor_id: str, *, seconds: int) -> None:
+    from sqlalchemy import text
+
+    from sooljang.infrastructure.database.session import get_session_factory
+
+    async with get_session_factory().begin() as session:
+        await session.execute(
+            text(
+                "UPDATE vendor SET updated_at = updated_at - make_interval(secs => :s) "
+                "WHERE id = :id"
+            ),
+            {"s": seconds, "id": vendor_id},
+        )

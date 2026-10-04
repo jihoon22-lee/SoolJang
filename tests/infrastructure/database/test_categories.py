@@ -68,7 +68,7 @@ async def test_reparent_moves_the_whole_subtree(session: AsyncSession, user_id: 
     wine, sweet, tokaji = await _chain(session, user_id, "와인", "스위트와인", "토카이와인")
     other = await create_category(session, user_id=user_id, name="기타")
 
-    await reparent_category(session, category_id=sweet.id, new_parent_id=other.id)
+    await reparent_category(session, user_id=user_id, category_id=sweet.id, new_parent_id=other.id)
 
     nodes = {node.name: node for node in await load_tree(session, user_id)}
 
@@ -83,7 +83,9 @@ async def test_reparent_to_self_is_rejected(session: AsyncSession, user_id: uuid
     category = await create_category(session, user_id=user_id, name="와인")
 
     with pytest.raises(CategoryCycleError, match="자기 자신"):
-        await reparent_category(session, category_id=category.id, new_parent_id=category.id)
+        await reparent_category(
+            session, user_id=user_id, category_id=category.id, new_parent_id=category.id
+        )
 
 
 async def test_reparent_to_descendant_is_rejected(
@@ -93,7 +95,9 @@ async def test_reparent_to_descendant_is_rejected(
     wine, sweet, tokaji = await _chain(session, user_id, "와인", "스위트와인", "토카이와인")
 
     with pytest.raises(CategoryCycleError, match="순환"):
-        await reparent_category(session, category_id=wine.id, new_parent_id=tokaji.id)
+        await reparent_category(
+            session, user_id=user_id, category_id=wine.id, new_parent_id=tokaji.id
+        )
 
     assert sweet.parent_id == wine.id
 
@@ -101,7 +105,7 @@ async def test_reparent_to_descendant_is_rejected(
 async def test_reparent_to_root_is_allowed(session: AsyncSession, user_id: uuid.UUID) -> None:
     _, sweet = await _chain(session, user_id, "와인", "스위트와인")
 
-    await reparent_category(session, category_id=sweet.id, new_parent_id=None)
+    await reparent_category(session, user_id=user_id, category_id=sweet.id, new_parent_id=None)
 
     nodes = {node.name: node for node in await load_tree(session, user_id)}
     assert nodes["스위트와인"].is_root
@@ -115,7 +119,9 @@ async def test_reparent_rejects_move_that_would_exceed_depth(
     subtree = await _chain(session, user_id, "루트", "중간", "말단")
 
     with pytest.raises(CategoryDepthError, match="상한"):
-        await reparent_category(session, category_id=subtree[0].id, new_parent_id=deep[-1].id)
+        await reparent_category(
+            session, user_id=user_id, category_id=subtree[0].id, new_parent_id=deep[-1].id
+        )
 
 
 async def test_descendant_query_includes_self_and_all_descendants(

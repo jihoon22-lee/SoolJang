@@ -31,7 +31,7 @@ describe("isNativeBarcodeDetectorSupported", () => {
 });
 
 describe("startScanning — 네이티브 BarcodeDetector 경로", () => {
-  it("카메라를 붙이고 첫 감지에서 콜백을 부른 뒤, stop 이 트랙을 정지시킨다", async () => {
+  it("카메라를 붙이고 첫 감지에서 콜백을 부르며 카메라를 스스로 끈다", async () => {
     const { stream, track } = fakeStream();
     (navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>).mockResolvedValue(stream);
     const detect = vi.fn().mockResolvedValue([{ rawValue: "8801234567890", format: "ean_13" }]);
@@ -50,11 +50,12 @@ describe("startScanning — 네이티브 BarcodeDetector 경로", () => {
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
       video: { facingMode: "environment" },
     });
-    expect(video.srcObject).toBe(stream);
     await vi.waitFor(() => expect(onDetect).toHaveBeenCalledWith("8801234567890"));
+    // 감지 직후 호출부가 stop 을 부르기 전에도 track 이 꺼져 있어야 한다(카메라 표시등 잔류 방지).
+    expect(track.stop).toHaveBeenCalled();
+    expect(video.srcObject).toBeNull();
 
     controller.stop();
-    expect(track.stop).toHaveBeenCalled();
   });
 
   it("빈 프레임은 무시하고 다음 프레임에서 다시 시도한다", async () => {

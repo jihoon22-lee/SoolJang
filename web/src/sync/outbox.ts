@@ -29,6 +29,11 @@ export interface EnqueueInput {
   optimisticRow?: SyncRow | undefined;
   /** `entityId` 외에 이 작업이 로컬에서 부작용으로 직접 건드리는 다른 엔티티 id들. */
   touchedIds?: string[] | undefined;
+  /**
+   * `delete` 와 함께 로컬에서 soft delete 할 하위 행. 서버가 제품 삭제를 규격·구매·병까지
+   * 전파하므로 화면도 동기화 전부터 같은 결과를 보여야 한다. id 는 `touchedIds` 에도 넣는다.
+   */
+  cascadeDeletes?: { entity: SyncEntity; ids: string[] }[] | undefined;
 }
 
 /** outbox 항목 하나를 적재하고, 있으면 로컬 미러도 낙관적으로 갱신한다. */
@@ -54,27 +59,37 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
     touched_ids: input.touchedIds,
   };
 
-  await store.transaction("rw", store.outbox, store.table(input.entity), async () => {
-    if (identity.generation !== databaseIdentity().generation || store !== db)
-      throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
-    const existing = (await store.table(input.entity).get(input.entityId)) as SyncRow | undefined;
-    entry.user_id ??= existing?.user_id;
-    if (identity.userId && entry.user_id !== identity.userId)
-      throw new Error("다른 계정의 입력을 저장할 수 없습니다");
-    await store.outbox.add(entry);
-    if (input.op === "delete") {
-      const existing = await store.table(input.entity).get(input.entityId);
-      if (existing) {
-        await store
-          .table(input.entity)
-          .update(input.entityId, { deleted_at: now, updated_at: now });
+  const cascadeTables = (input.cascadeDeletes ?? []).map(({ entity }) => store.table(entity));
+  await store.transaction(
+    "rw",
+    [store.outbox, store.table(input.entity), ...cascadeTables],
+    async () => {
+      if (identity.generation !== databaseIdentity().generation || store !== db)
+        throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
+      const existing = (await store.table(input.entity).get(input.entityId)) as SyncRow | undefined;
+      entry.user_id ??= existing?.user_id;
+      if (identity.userId && entry.user_id !== identity.userId)
+        throw new Error("다른 계정의 입력을 저장할 수 없습니다");
+      await store.outbox.add(entry);
+      if (input.op === "delete") {
+        const existing = await store.table(input.entity).get(input.entityId);
+        if (existing) {
+          await store
+            .table(input.entity)
+            .update(input.entityId, { deleted_at: now, updated_at: now });
+        }
+        for (const cascade of input.cascadeDeletes ?? []) {
+          for (const id of cascade.ids) {
+            await store.table(cascade.entity).update(id, { deleted_at: now, updated_at: now });
+          }
+        }
+      } else if (input.optimisticRow) {
+        await store.table(input.entity).put(input.optimisticRow);
       }
-    } else if (input.optimisticRow) {
-      await store.table(input.entity).put(input.optimisticRow);
-    }
-    if (identity.generation !== databaseIdentity().generation || store !== db)
-      throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
-  });
+      if (identity.generation !== databaseIdentity().generation || store !== db)
+        throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
+    },
+  );
 
   syncEvents.dispatchEvent(new Event(OUTBOX_CHANGED));
   return idempotencyKey;

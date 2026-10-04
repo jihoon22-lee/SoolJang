@@ -34,7 +34,13 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await Promise.all([db.vendor.clear(), db.purchase.clear(), db.outbox.clear()]);
+  await Promise.all([
+    db.vendor.clear(),
+    db.purchase.clear(),
+    db.product.clear(),
+    db.sku.clear(),
+    db.outbox.clear(),
+  ]);
 });
 
 describe("VendorsPage", () => {
@@ -48,6 +54,11 @@ describe("VendorsPage", () => {
     await db.vendor.bulkPut([
       row({ id: "v1", name: "이마트", kind: "mart", url: null, note: null }),
       row({ id: "v2", name: "데일리샷", kind: "online", url: null, note: null }),
+    ]);
+    await db.product.put(row({ id: "p1", name: "합성 술" }));
+    await db.sku.bulkPut([
+      row({ id: "s1", product_id: "p1", volume_ml: 700 }),
+      row({ id: "s2", product_id: "p1", volume_ml: 350 }),
     ]);
     await db.purchase.bulkPut([
       row({

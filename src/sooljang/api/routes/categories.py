@@ -175,7 +175,10 @@ async def reparent(
 
     try:
         await reparent_category(
-            session, category_id=category_id, new_parent_id=payload.new_parent_id
+            session,
+            user_id=user_id,
+            category_id=category_id,
+            new_parent_id=payload.new_parent_id,
         )
     except CategoryError as error:
         raise _translate(error) from error

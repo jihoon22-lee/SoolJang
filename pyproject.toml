@@ -36,6 +36,8 @@ dependencies = [
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.51.0,<1",
     "http-ece>=1.2.1,<2",
+    # 사용자 시간대의 "오늘" 계산(zoneinfo). slim 이미지에 OS tzdata 가 없어도 동작한다.
+    "tzdata>=2025.2",
 ]
 
 [project.scripts]

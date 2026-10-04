@@ -190,12 +190,16 @@ interface DiscountTotals {
   paidAmount: Decimal | null;
 }
 
-/** 가격 공란도 0원으로 포함하는 전체 구매의 정가·실구매가 합계. */
+/**
+ * 정가가 기록된(0원 초과) 구매의 정가·실구매가 합계. 정가 0원(공란)은 할인의 기준이 될 수
+ * 없어 제외한다 — `domain/metrics.py::_discount_rate` 와 같은 규칙.
+ */
 function discountTotalsOf(lots: readonly PurchaseLot[]): DiscountTotals {
   let listAmount = new Decimal(0);
   let paidAmount = new Decimal(0);
   let found = false;
   for (const lot of lots) {
+    if (!lotListTotal(lot).greaterThan(0)) continue;
     found = true;
     listAmount = listAmount.plus(lotListTotal(lot));
     paidAmount = paidAmount.plus(lotPaidTotal(lot));
@@ -203,7 +207,7 @@ function discountTotalsOf(lots: readonly PurchaseLot[]): DiscountTotals {
   return found ? { listAmount, paidAmount } : { listAmount: null, paidAmount: null };
 }
 
-/** 할인율. 선물·포인트 구매의 공란을 0원으로 포함한다. */
+/** 할인율. 정가가 기록된 구매만으로 계산한다. */
 function discountRateOf(totals: DiscountTotals): Decimal | null {
   if (totals.listAmount === null || totals.paidAmount === null || totals.listAmount.isZero()) {
     return null;

@@ -169,7 +169,16 @@ export function useCreateProduct() {
 /** 온라인 생성 응답을 로컬 미러(`db.product`/`db.sku`)에 낙관적으로 반영한다. */
 async function mirrorProductOptimistically(product: Product, userId: string): Promise<void> {
   const now = new Date().toISOString();
-  await db.transaction("rw", db.product, db.sku, async () => {
+  await db.transaction("rw", db.product, db.sku, db.sync_meta, async () => {
+    // 이 행의 updated_at 은 기기 시계다. 기기 시계가 서버보다 빠르면 다음 pull 의 서버 행이
+    // "더 오래됐다" 고 판단돼 무시된다 — 서버가 정규화한 값(생산자 등)을 반드시 받도록
+    // 비교 없이 덮어쓸 대상으로 표시한다.
+    const reconcile = new Set<string>(
+      JSON.parse((await db.sync_meta.get("reconcile_ids"))?.value ?? "[]"),
+    );
+    reconcile.add(product.id);
+    for (const sku of product.skus) reconcile.add(sku.id);
+    await db.sync_meta.put({ key: "reconcile_ids", value: JSON.stringify([...reconcile]) });
     await db.product.put({
       id: product.id,
       user_id: userId,

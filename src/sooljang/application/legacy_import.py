@@ -7,11 +7,14 @@
 사용자가 실수로 두 번 누르는 일은 반드시 생기고, 그때 429행이 858행이 되면 복구가 어렵다.
 """
 
+import dataclasses
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.categories import create_category, load_tree
@@ -41,6 +44,13 @@ _VENDOR_KIND_HINTS: tuple[tuple[tuple[str, ...], VendorKind], ...] = (
     (("펍", "바", "창고"), VendorKind.BAR),
     (("온라인", "스마트오더", "데일리샷", "비타트라", "GS25", "위클리"), VendorKind.ONLINE),
 )
+
+
+def _failure_reason(error: Exception) -> str:
+    """실패 사유. DB 예외 원문(SQL·제약 이름)을 사용자 리포트에 그대로 싣지 않는다."""
+    if isinstance(error, DBAPIError):
+        return "저장 중 제약 조건을 위반했습니다(중복 또는 형식 오류)"
+    return str(error) or error.__class__.__name__
 
 
 def guess_vendor_kind(name: str) -> VendorKind:
@@ -81,6 +91,16 @@ class _Registry:
         self.products: dict[tuple[str, int | None, Decimal | None], uuid.UUID] = {}
         self.skus: dict[tuple[uuid.UUID, int], uuid.UUID] = {}
 
+    def snapshot(self) -> _Registry:
+        """행 하나를 적용하기 전 상태. 그 행이 롤백되면 새로 등록한 id 도 되돌린다."""
+        clone = _Registry()
+        clone.categories = dict(self.categories)
+        clone.vendors = dict(self.vendors)
+        clone.varieties = dict(self.varieties)
+        clone.products = dict(self.products)
+        clone.skus = dict(self.skus)
+        return clone
+
 
 async def _load_registry(session: AsyncSession, user_id: uuid.UUID) -> _Registry:
     registry = _Registry()
@@ -119,16 +139,30 @@ async def apply_plan(
     한 행의 문제로 전체를 되돌리면 429행 중 428행이 정상인데도 아무것도 얻지 못한다.
     """
     result = ImportResult()
+    # 같은 사용자의 적재를 직렬화한다. 더블탭·재시도로 두 요청이 동시에 "이미 적재됨"
+    # 검사를 통과하면 같은 시트가 두 번 들어간다.
+    lock_key = int.from_bytes(
+        hashlib.blake2b(b"legacy-import" + user_id.bytes, digest_size=8).digest(), signed=True
+    )
+    await session.execute(select(func.pg_advisory_xact_lock(lock_key)))
     registry = await _load_registry(session, user_id)
 
     for planned in plan.products:
         savepoint = await session.begin_nested()
+        registry_before = registry.snapshot()
+        counts_before = dataclasses.replace(result, failed_rows=result.failed_rows)
         try:
             await _apply_product(session, user_id, planned, registry, result)
             await savepoint.commit()
         except Exception as error:  # noqa: BLE001 - 행 단위로 격리하는 것이 목적이다
             await savepoint.rollback()
-            result.failed_rows.append((planned.line_number, str(error)))
+            # 롤백된 행이 등록한 id·건수를 되돌린다. 남겨 두면 같은 주종·구매처·제품을 쓰는
+            # 뒤 행들이 존재하지 않는 FK 를 참조해 줄줄이 실패하고 생성 건수가 부풀려진다.
+            registry = registry_before
+            failed_rows = result.failed_rows
+            result = counts_before
+            result.failed_rows = failed_rows
+            result.failed_rows.append((planned.line_number, _failure_reason(error)))
 
     await session.flush()
 

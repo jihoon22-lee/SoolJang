@@ -57,22 +57,25 @@ async function startNativeScanning(
       const codes = await detector.detect(video);
       const first = codes[0];
       if (first?.rawValue) {
+        // 한 번 감지하면 카메라까지 끈다 — 다시 스캔하려면 호출부가 재시작한다. 루프만
+        // 멈추고 track 을 남기면 카메라 표시등과 배터리 소모가 화면을 떠난 뒤에도 남는다.
+        release();
         onDetect(first.rawValue);
-        return; // 한 번 감지하면 멈춘다 — 다시 스캔하려면 호출부가 재시작한다.
+        return;
       }
     } catch {
       // 프레임 하나를 못 읽은 것은 무시하고 다음 프레임을 시도한다.
     }
     requestAnimationFrame(() => void tick());
   };
+  function release(): void {
+    stopped = true;
+    for (const track of stream.getTracks()) track.stop();
+    video.srcObject = null;
+  }
   void tick();
 
-  return {
-    stop: () => {
-      stopped = true;
-      for (const track of stream.getTracks()) track.stop();
-    },
-  };
+  return { stop: release };
 }
 
 async function startZXingScanning(
