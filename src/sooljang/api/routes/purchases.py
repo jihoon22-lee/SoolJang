@@ -307,10 +307,46 @@ async def update_purchase(
     purchase = await _owned_purchase(session, user_id, purchase_id)
     if "currency" in fields and fields["currency"]:
         fields["currency"] = fields["currency"].upper()
+    quantity = fields.pop("quantity", None)
+    if quantity is not None and quantity != purchase.quantity:
+        await _resize_bottles(session, user_id, purchase, quantity)
     for key, value in fields.items():
         setattr(purchase, key, value)
     await session.flush()
     return await _to_purchase_out(session, purchase)
+
+
+async def _resize_bottles(
+    session: SessionDep, user_id: uuid.UUID, purchase: Purchase, quantity: int
+) -> None:
+    """구매 병수를 바꾸고 병 레코드를 맞춘다.
+
+    늘리면 미개봉 병을 뒤 번호로 추가한다. 줄이면 번호가 큰 **미개봉** 병만 지운다 — 이미
+    마시거나 내보낸 병은 시음·이력이 붙어 있어 조용히 지우면 기록을 잃는다.
+    """
+    bottles = list(
+        await session.scalars(
+            select(Bottle)
+            .where(Bottle.purchase_id == purchase.id, Bottle.deleted_at.is_(None))
+            .order_by(Bottle.label_no)
+            .with_for_update()
+        )
+    )
+    if quantity > len(bottles):
+        start = (bottles[-1].label_no + 1) if bottles else 1
+        _add_bottles(session, user_id, purchase, count=quantity - len(bottles), start=start)
+    elif quantity < len(bottles):
+        removable = [bottle for bottle in reversed(bottles) if bottle.status == "unopened"]
+        excess = len(bottles) - quantity
+        if len(removable) < excess:
+            raise ConflictError(
+                f"미개봉 병 {len(removable)}개만 줄일 수 있습니다. "
+                "개봉·소진한 병은 제품 상세에서 상태를 먼저 바꾸세요"
+            )
+        now = datetime.datetime.now(datetime.UTC)
+        for bottle in removable[:excess]:
+            bottle.deleted_at = now
+    purchase.quantity = quantity
 
 
 @purchases_router.delete(

@@ -36,6 +36,8 @@ export interface QualityReport {
     kind: string;
     id: string;
     name: string | null;
+    /** 이름이 없는 구매·규격도 알아볼 수 있는 표시 이름(제품명 · 날짜 · 병수). */
+    label?: string;
     reason: string;
     product_id: string | null;
   }[];
@@ -44,6 +46,7 @@ export interface QualityReport {
     purchases: number;
     known_price_purchases: number;
     unknown_price_purchases: number;
+    zero_paid_purchases?: number;
     known_paid_total: string;
     skus: number;
     unknown_volume_skus: number;
@@ -57,9 +60,24 @@ export interface Stocktake {
   status: "active" | "paused" | "completed";
   location_id: string | null;
   expected_count: number;
-  observations: { bottle_id: string; result: string }[];
+  observed_count: number;
+  mismatch_count: number;
+  unexpected_count: number;
+  observations: {
+    bottle_id: string;
+    result: string;
+    recorded_location_id: string | null;
+    observed_location_id: string | null;
+  }[];
   missing: InventoryBottle[];
   found_notes: string[];
+}
+export interface BatchScanResult {
+  bottle_code: string;
+  status: "ok" | "error";
+  duplicate?: boolean;
+  observation?: { result: string };
+  detail?: string;
 }
 export const collectionApi = {
   quality: () => request<QualityReport>("/collection/quality"),
@@ -79,6 +97,12 @@ export const collectionApi = {
   bottles: () => request<InventoryBottle[]>("/collection/bottles"),
   move: (id: string, location_id: string | null) =>
     request(`/collection/bottles/${id}/location`, { method: "PUT", body: { location_id } }),
+  /** 여러 병을 한 위치로. 전부 성공하거나 전부 취소된다. */
+  moveMany: (bottle_ids: string[], location_id: string | null) =>
+    request<{ moved: number; unchanged: number }>("/collection/bottles:move", {
+      method: "PUT",
+      body: { bottle_ids, location_id },
+    }),
   movements: (id: string) =>
     request<
       {
@@ -97,6 +121,16 @@ export const collectionApi = {
     request<{ duplicate: boolean; observation: { result: string } }>(
       `/collection/stocktakes/${id}/scan`,
       { method: "POST", body: { bottle_code, observed_location_id } },
+    ),
+  scanMany: (id: string, bottle_codes: string[], observed_location_id: string | null) =>
+    request<{ results: BatchScanResult[]; stocktake: Stocktake }>(
+      `/collection/stocktakes/${id}/scans:batch`,
+      { method: "POST", body: { bottle_codes, observed_location_id } },
+    ),
+  applyLocations: (id: string) =>
+    request<{ moved: number; stocktake: Stocktake }>(
+      `/collection/stocktakes/${id}:apply-locations`,
+      { method: "POST" },
     ),
   found: (id: string, note: string) =>
     request<Stocktake>(`/collection/stocktakes/${id}/found`, { method: "POST", body: { note } }),

@@ -1,7 +1,7 @@
 /**
  * 병 상태 전이와 시음 기록.
  *
- * 상태 전이를 버튼으로 노출한다. 증여·판매는 되돌리기가 번거로우므로 확인을 받는다.
+ * 상태 전이를 버튼으로 노출한다. 증여·판매는 날짜·메모를 받는 시트로 한 번 더 확인한다.
  * 잔량은 `null` 이 "미개봉(전량)" 이라는 뜻이다. 0ml 이 아니므로 그대로 표시하면 안 된다.
  */
 
@@ -9,86 +9,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { bottlesApi, tastingsApi } from "@/api/client";
 import type { Bottle, BottleStatus, User } from "@/api/types";
+import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
+import { RemainingEditor } from "@/components/RemainingEditor";
 import { todayLocal } from "@/format";
+import {
+  applyBottleTransition,
+  bottleVolumeMl,
+  type TransitionAction,
+  type TransitionOptions,
+} from "@/sync/bottleActions";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
-import { databaseIdentity, db, type SyncRow } from "@/sync/db";
+import { databaseIdentity, db } from "@/sync/db";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { newId } from "@/sync/uuid7";
-
-type TransitionAction = "open" | "finish" | "gift" | "sell" | "reopen" | "unopen";
-
-async function bottleVolumeMl(purchaseId: string): Promise<number | null> {
-  const purchase = await db.purchase.get(purchaseId);
-  if (!purchase) return null;
-  const sku = await db.sku.get(purchase.sku_id as string);
-  return (sku?.volume_ml as number | undefined) ?? null;
-}
-
-/** `application/tastings.py` 의 상태 전이 부작용을 오프라인 낙관적 갱신용으로 옮긴 것. */
-async function transitionFields(
-  current: SyncRow,
-  action: TransitionAction,
-): Promise<Record<string, unknown>> {
-  const today = todayLocal();
-  switch (action) {
-    case "open":
-      return {
-        status: "open",
-        opened_on: current.opened_on ?? today,
-        remaining_ml: await bottleVolumeMl(current.purchase_id as string),
-      };
-    case "finish":
-      return {
-        status: "finished",
-        opened_on: current.opened_on ?? today,
-        finished_on: today,
-        remaining_ml: 0,
-      };
-    case "gift":
-      return { status: "gifted", finished_on: today };
-    case "sell":
-      return { status: "sold", finished_on: today };
-    case "reopen":
-      // 소진으로 0 이 된 잔량은 실제 잔량이 아니다 — 서버(`reopen_bottle`)처럼 미기록으로 돌린다.
-      return {
-        status: "open",
-        finished_on: null,
-        opened_on: current.opened_on ?? today,
-        remaining_ml: current.remaining_ml === 0 ? null : current.remaining_ml,
-      };
-    case "unopen":
-      return { status: "unopened", opened_on: null, remaining_ml: null };
-  }
-}
-
-/**
- * `transitionFields()` 가 만든 낙관적 필드 중 서버 `_dispatch_bottle_action` 이 실제로
- * 읽는 것만 골라 outbox `fields` 로 옮긴다.
- *
- * 이전에는 `fields: {}` 를 그대로 보내 서버가 `opened_on`/`finished_on`/`on` 을 전부
- * 오늘 날짜로 채웠다 — 오프라인 상태에서 한 행동의 실제 날짜가 재접속 시점 날짜로
- * 조용히 바뀌는 버그였다. 필드 이름은 로컬 낙관적 행(`bottle.opened_on`/`finished_on`)과
- * 서버 페이로드(`on`)가 gift/sell 에서만 다르다 — 나머지는 그대로 대응한다.
- */
-function transitionOutboxFields(
-  action: TransitionAction,
-  fields: Record<string, unknown>,
-): Record<string, unknown> {
-  switch (action) {
-    case "open":
-      return { opened_on: fields.opened_on, remaining_ml: fields.remaining_ml };
-    case "finish":
-      return { finished_on: fields.finished_on };
-    case "gift":
-    case "sell":
-      return { on: fields.finished_on };
-    case "reopen":
-    case "unopen":
-      return {};
-  }
-}
 
 export const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
@@ -132,19 +67,14 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
     void queryClient.invalidateQueries({ queryKey: ["tastings"] });
   }
 
+  const [handOver, setHandOver] = useState<HandOverAction | null>(null);
   const transition = useMutation({
-    mutationFn: async (action: TransitionAction) => {
-      const current = await db.bottle.get(bottle.id);
-      if (!current) throw new Error("병을 찾을 수 없습니다");
-      const fields = await transitionFields(current, action);
-      await enqueue({
-        entity: "bottle",
-        op: "action",
-        entityId: bottle.id,
-        action,
-        fields: transitionOutboxFields(action, fields),
-        optimisticRow: { ...current, ...fields, updated_at: new Date().toISOString() },
-      });
+    mutationFn: async (
+      input: TransitionAction | { action: TransitionAction; options: TransitionOptions },
+    ) => {
+      const { action, options } =
+        typeof input === "string" ? { action: input, options: {} } : input;
+      await applyBottleTransition(bottle.id, action, options);
     },
     onSuccess: () => {
       setError(null);
@@ -154,13 +84,6 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
       setError(cause instanceof Error ? cause.message : "상태를 바꿀 수 없습니다");
     },
   });
-
-  function handOver(action: "gift" | "sell"): void {
-    const label = action === "gift" ? "증여" : "판매";
-    // 되돌리기가 번거로운 동작이므로 확인을 받는다.
-    if (!window.confirm(`이 병을 ${label} 처리할까요? 재고에서 빠집니다.`)) return;
-    transition.mutate(action);
-  }
 
   const deleteTasting = useMutation({
     mutationFn: (tastingId: string) => tastingsApi.remove(tastingId),
@@ -224,10 +147,20 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
         ) : null}
         {bottle.status === "unopened" || bottle.status === "open" ? (
           <>
-            <button type="button" onClick={() => handOver("gift")} disabled={transition.isPending}>
+            <button
+              type="button"
+              onClick={() => setHandOver("gift")}
+              disabled={transition.isPending}
+              aria-expanded={handOver === "gift"}
+            >
               증여
             </button>
-            <button type="button" onClick={() => handOver("sell")} disabled={transition.isPending}>
+            <button
+              type="button"
+              onClick={() => setHandOver("sell")}
+              disabled={transition.isPending}
+              aria-expanded={handOver === "sell"}
+            >
               판매
             </button>
           </>
@@ -242,6 +175,31 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
           </button>
         ) : null}
       </fieldset>
+
+      {handOver ? (
+        <HandOverSheet
+          action={handOver}
+          count={1}
+          pending={transition.isPending}
+          onCancel={() => setHandOver(null)}
+          onConfirm={({ on, note }) =>
+            transition.mutate(
+              { action: handOver, options: { on, note: note || undefined } },
+              { onSuccess: () => setHandOver(null) },
+            )
+          }
+        />
+      ) : null}
+
+      {bottle.status === "open" ? (
+        <RemainingEditor
+          bottle={bottle}
+          pending={transition.isPending}
+          onSet={(remainingMl) =>
+            transition.mutate({ action: "set_remaining", options: { remainingMl } })
+          }
+        />
+      ) : null}
 
       {error ? (
         <p className="bottle-error" role="alert">
@@ -357,9 +315,16 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
           bottleUpdates.remaining_ml = await bottleVolumeMl(bottleRow.purchase_id as string);
         }
 
+        // 기록된 개봉일보다 앞선 날 마셨다면 그날 이미 열려 있었다(서버 `record_tasting` 과 같다).
+        const openedOn = (bottleUpdates.opened_on ?? bottleRow.opened_on) as string | null;
+        if (openedOn === null || tastedOn < openedOn) bottleUpdates.opened_on = tastedOn;
+
         const pouredMlValue = pouredMl ? Number(pouredMl) : null;
         if (pouredMlValue !== null) {
-          let remaining = (bottleUpdates.remaining_ml ?? bottleRow.remaining_ml) as number | null;
+          let remaining = (bottleUpdates.remaining_ml ?? bottleRow.remaining_ml) as
+            | number
+            | null
+            | undefined;
           if (remaining === null || remaining === undefined) {
             remaining = (await bottleVolumeMl(bottleRow.purchase_id as string)) ?? 0;
           }
@@ -372,9 +337,6 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
           if (bottleUpdates.remaining_ml === 0) {
             bottleUpdates.status = "finished";
             bottleUpdates.finished_on = tastedOn;
-            if (bottleUpdates.opened_on === undefined && bottleRow.opened_on === null) {
-              bottleUpdates.opened_on = tastedOn;
-            }
           }
         }
 

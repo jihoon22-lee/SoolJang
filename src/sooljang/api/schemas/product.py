@@ -220,6 +220,8 @@ class PurchaseCreate(BaseModel):
 
 class PurchaseUpdate(BaseModel):
     vendor_id: uuid.UUID | None = None
+    #: 병수 변경. 늘리면 미개봉 병을 추가하고, 줄이면 번호가 큰 미개봉 병부터 지운다.
+    quantity: int | None = Field(default=None, gt=0, le=1000)
     purchased_on: datetime.date | None = None
     unit_list_price: Decimal | None = Field(default=None, ge=0)
     unit_paid_price: Decimal | None = Field(default=None, ge=0)

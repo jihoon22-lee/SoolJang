@@ -218,6 +218,16 @@ export interface Purchase {
   bottle_count: number;
 }
 
+/** `PATCH /purchases/{id}`. 생략한 필드는 바꾸지 않는다. */
+export interface PurchaseUpdateInput {
+  vendor_id?: string | null;
+  purchased_on?: string | null;
+  quantity?: number;
+  unit_list_price?: string | null;
+  unit_paid_price?: string | null;
+  discount_note?: string | null;
+}
+
 export interface PurchaseCreateInput {
   sku_id: string;
   vendor_id?: string | null;

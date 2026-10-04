@@ -889,6 +889,9 @@ async def _dispatch_purchase(
     if conflict is not None:
         return conflict
 
+    if "quantity" in fields:
+        # 병수 변경은 병 레코드 추가·삭제와 번호 배정이 따르는 온라인 전용 연산이다.
+        raise ValidationFailedError("병수 변경은 온라인에서 다시 시도하세요")
     if "vendor_id" in fields:
         vendor_id = _uuid(fields["vendor_id"])
         if vendor_id is not None:

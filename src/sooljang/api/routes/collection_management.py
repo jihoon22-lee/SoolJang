@@ -7,8 +7,10 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, UserDep
-from sooljang.api.errors import ConflictError
+from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
 from sooljang.api.schemas.collection_management import (
+    BatchScanInput,
+    BulkPlacementInput,
     CleanupInput,
     FoundInput,
     LocationInput,
@@ -19,8 +21,10 @@ from sooljang.api.schemas.collection_management import (
 )
 from sooljang.application.collection_cleanup import confirm_cleanup, preview_cleanup, quality_report
 from sooljang.application.collection_inventory import (
+    apply_observed_locations,
     list_bottles,
     move_bottle,
+    move_bottles,
     owned,
     scan_bottle,
     start_stocktake,
@@ -133,6 +137,14 @@ async def place(
     return {"saved": True}
 
 
+@router.put("/bottles:move")
+async def place_many(
+    payload: BulkPlacementInput, session: SessionDep, user_id: UserDep
+) -> dict[str, int]:
+    """선택한 여러 병을 한 위치(또는 미지정)로 한 번에 옮긴다. 전부 성공하거나 전부 취소."""
+    return await move_bottles(session, user_id, payload.bottle_ids, payload.location_id)
+
+
 @router.get("/bottles/{bottle_id}/movements")
 async def movements(
     bottle_id: uuid.UUID, session: SessionDep, user_id: UserDep
@@ -189,6 +201,36 @@ async def scan(
     return await scan_bottle(
         session, user_id, stocktake_id, payload.bottle_code, payload.observed_location_id
     )
+
+
+@router.post("/stocktakes/{stocktake_id}/scans:batch")
+async def scan_many(
+    stocktake_id: uuid.UUID, payload: BatchScanInput, session: SessionDep, user_id: UserDep
+) -> dict[str, Any]:
+    """여러 병 QR을 한 번에 확인한다. 항목마다 결과를 돌려주고 한 항목의 오류가 나머지를
+    되돌리지 않는다(오프라인으로 모아 둔 스캔·연속 스캔 화면이 쓴다)."""
+    results: list[dict[str, Any]] = []
+    for code in payload.bottle_codes:
+        try:
+            async with session.begin_nested():
+                outcome = await scan_bottle(
+                    session, user_id, stocktake_id, code, payload.observed_location_id
+                )
+            results.append({"bottle_code": code, "status": "ok", **outcome})
+        except (ConflictError, NotFoundError, ValidationFailedError) as error:
+            results.append({"bottle_code": code, "status": "error", "detail": error.detail})
+    row = await owned(session, Stocktake, user_id, stocktake_id)
+    return {"results": results, "stocktake": stocktake_out(row)}
+
+
+@router.post("/stocktakes/{stocktake_id}:apply-locations")
+async def apply_locations(
+    stocktake_id: uuid.UUID, session: SessionDep, user_id: UserDep
+) -> dict[str, Any]:
+    """기록과 다른 위치에서 확인된 병을 확인한 위치로 옮긴다(사용자가 명시적으로 요청)."""
+    moved = await apply_observed_locations(session, user_id, stocktake_id)
+    row = await owned(session, Stocktake, user_id, stocktake_id)
+    return {**moved, "stocktake": stocktake_out(row)}
 
 
 @router.post("/stocktakes/{stocktake_id}/found")

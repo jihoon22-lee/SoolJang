@@ -266,3 +266,97 @@ def test_deleting_product_removes_its_bottles_from_storage_list(
 
     assert api_client.get(f"{prefix}/collection/bottles").json() == []
     assert api_client.get(f"{prefix}/purchases", params={"product_id": product_id}).json() == []
+
+
+def test_bulk_move_places_every_selected_bottle_and_records_history(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, _, bottles = sample(api_client, prefix)
+    location = post(
+        api_client, prefix, "/collection/locations", {"name": "와인 셀러", "kind": "cabinet"}
+    )["id"]
+    ids = [bottle["id"] for bottle in bottles]
+
+    first = api_client.put(
+        f"{prefix}/collection/bottles:move", json={"bottle_ids": ids, "location_id": location}
+    ).json()
+    again = api_client.put(
+        f"{prefix}/collection/bottles:move", json={"bottle_ids": ids, "location_id": location}
+    ).json()
+
+    assert first == {"moved": 2, "unchanged": 0}
+    assert again == {"moved": 0, "unchanged": 2}
+    rows = api_client.get(f"{prefix}/collection/bottles").json()
+    assert {row["location_id"] for row in rows} == {location}
+
+
+def test_bulk_move_with_unknown_bottle_changes_nothing(api_client: TestClient, prefix: str) -> None:
+    _, _, bottles = sample(api_client, prefix)
+    location = post(api_client, prefix, "/collection/locations", {"name": "선반", "kind": "shelf"})[
+        "id"
+    ]
+
+    response = api_client.put(
+        f"{prefix}/collection/bottles:move",
+        json={"bottle_ids": [bottles[0]["id"], str(uuid.uuid4())], "location_id": location},
+    )
+
+    assert response.status_code == 404
+    assert all(
+        row["location_id"] is None for row in api_client.get(f"{prefix}/collection/bottles").json()
+    )
+
+
+def test_batch_scan_reports_each_code_and_apply_locations_moves_mismatches(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, _, bottles = sample(api_client, prefix)
+    shelf = post(api_client, prefix, "/collection/locations", {"name": "선반", "kind": "shelf"})[
+        "id"
+    ]
+    stocktake = post(api_client, prefix, "/collection/stocktakes", {"name": "가을 실사"})
+    codes = [bottle["bottle_code"] for bottle in bottles]
+
+    result = post(
+        api_client,
+        prefix,
+        f"/collection/stocktakes/{stocktake['id']}/scans:batch",
+        {"bottle_codes": [*codes, "sooljang:bottle:not-a-uuid"], "observed_location_id": shelf},
+    )
+
+    statuses = [item["status"] for item in result["results"]]
+    assert statuses == ["ok", "ok", "error"]
+    assert result["stocktake"]["observed_count"] == 2
+    assert result["stocktake"]["mismatch_count"] == 2
+
+    applied = post(
+        api_client, prefix, f"/collection/stocktakes/{stocktake['id']}:apply-locations", {}
+    )
+    assert applied["moved"] == 2
+    assert applied["stocktake"]["mismatch_count"] == 0
+    rows = api_client.get(f"{prefix}/collection/bottles").json()
+    assert {row["location_id"] for row in rows} == {shelf}
+
+
+def test_quality_labels_unnamed_purchases_and_ignores_deleted_products(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = post(
+        api_client, prefix, "/products", {"name": "라벨 술", "skus": [{"volume_ml": 700}]}
+    )
+    post(
+        api_client,
+        prefix,
+        "/purchases",
+        {"sku_id": product["skus"][0]["id"], "quantity": 2, "purchased_on": "2026-09-01"},
+    )
+    gone = post(api_client, prefix, "/products", {"name": "지운 술", "skus": [{"volume_ml": 700}]})
+    post(api_client, prefix, "/purchases", {"sku_id": gone["skus"][0]["id"], "quantity": 1})
+    api_client.delete(f"{prefix}/products/{gone['id']}")
+
+    report = api_client.get(f"{prefix}/collection/quality").json()
+
+    vendor_items = [item for item in report["items"] if item["reason"] == "vendor"]
+    assert [item["label"] for item in vendor_items] == ["라벨 술 · 2026-09-01 · 2병"]
+    assert report["coverage"]["zero_paid_purchases"] == 1
+    assert report["coverage"]["unassigned_stock_bottles"] == 2

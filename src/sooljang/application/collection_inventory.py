@@ -130,6 +130,80 @@ async def move_bottle(
     await session.flush()
 
 
+async def move_bottles(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    bottle_ids: list[uuid.UUID],
+    location_id: uuid.UUID | None,
+) -> dict[str, int]:
+    """여러 병을 한 위치로 옮긴다. 전부 성공하거나 전부 취소된다.
+
+    병 하나씩 `move_bottle` 을 부르면 선택 40병에 요청 40번이 오가고 중간 실패 시 일부만
+    옮겨진다. 한 트랜잭션에서 id 순서로 잠가 단건 경로·위치 삭제와 같은 순서를 지킨다.
+    """
+    if location_id:
+        await owned(session, StorageLocation, user_id, location_id)
+    bottles = await owned_many(session, Bottle, user_id, bottle_ids)
+    placements = {
+        row.bottle_id: row
+        for row in await session.scalars(
+            select(BottlePlacement)
+            .where(BottlePlacement.bottle_id.in_(list(bottles)))
+            .order_by(BottlePlacement.bottle_id)
+            .with_for_update()
+        )
+    }
+    moved = 0
+    for bottle_id in sorted(bottles):
+        placement = placements.get(bottle_id)
+        previous = placement.location_id if placement else None
+        if previous == location_id:
+            continue
+        if placement is None:
+            placement = BottlePlacement(user_id=user_id, bottle_id=bottle_id)
+            session.add(placement)
+        placement.location_id = location_id
+        session.add(
+            BottleMovement(
+                user_id=user_id,
+                bottle_id=bottle_id,
+                from_location_id=previous,
+                to_location_id=location_id,
+            )
+        )
+        moved += 1
+    await session.flush()
+    return {"moved": moved, "unchanged": len(bottles) - moved}
+
+
+async def apply_observed_locations(
+    session: AsyncSession, user_id: uuid.UUID, stocktake_id: uuid.UUID
+) -> dict[str, int]:
+    """실사에서 기록과 다른 위치로 관찰된 병을 관찰한 위치로 옮긴다.
+
+    실사는 재고 상태를 바꾸지 않는다는 원칙은 그대로다 — 위치만 사용자가 명시적으로 요청할
+    때 반영한다. 반영한 관찰은 결과를 `relocated` 로 바꿔 두 번 옮기지 않는다.
+    """
+    row = await owned(session, Stocktake, user_id, stocktake_id)
+    targets: dict[uuid.UUID | None, list[uuid.UUID]] = {}
+    for observation in row.observations.values():
+        if observation["result"] != "location_mismatch":
+            continue
+        observed = observation["observed_location_id"]
+        targets.setdefault(uuid.UUID(observed) if observed else None, []).append(
+            uuid.UUID(observation["bottle_id"])
+        )
+    moved = 0
+    for location_id, ids in targets.items():
+        moved += (await move_bottles(session, user_id, ids, location_id))["moved"]
+    row.observations = {
+        key: {**value, "result": "relocated"} if value["result"] == "location_mismatch" else value
+        for key, value in row.observations.items()
+    }
+    await session.flush()
+    return {"moved": moved}
+
+
 async def start_stocktake(
     session: AsyncSession, user_id: uuid.UUID, name: str, location_id: uuid.UUID | None
 ) -> Stocktake:
@@ -156,12 +230,17 @@ async def start_stocktake(
 
 
 def stocktake_out(row: Stocktake) -> dict[str, Any]:
+    results = [value["result"] for value in row.observations.values()]
     return {
         "id": str(row.id),
         "name": row.name,
         "status": row.status,
         "location_id": str(row.location_id) if row.location_id else None,
         "expected_count": len(row.expected),
+        # 진행률 표시용 요약. 화면이 관찰 목록 전체를 다시 세지 않게 한다.
+        "observed_count": len(results),
+        "mismatch_count": results.count("location_mismatch"),
+        "unexpected_count": results.count("unexpected"),
         "observations": list(row.observations.values()),
         "missing": [value for key, value in row.expected.items() if key not in row.observations],
         "found_notes": row.found_notes,

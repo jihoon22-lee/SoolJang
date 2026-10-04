@@ -9,11 +9,14 @@ import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/componen
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
 import { ProductList } from "@/components/ProductList";
+import type { EditPurchaseInput } from "@/components/PurchaseEditForm";
+import { useToast } from "@/components/Toast";
 import { setLastVendorName } from "@/lastVendor";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { db } from "@/sync/db";
 import { clearFormDraft } from "@/sync/drafts";
 import { enqueue } from "@/sync/outbox";
+import { enqueueProductDelete } from "@/sync/productDelete";
 import {
   filterAndSortProducts,
   getBottlesForProduct,
@@ -53,6 +56,21 @@ interface ProductsPageProps {
 }
 
 /** 술 목록 화면. 필터·정렬·더 보기와 등록 폼을 담는다. */
+/** 제품 주종 변경을 outbox 에 적재한다(낙관적 반영 포함). 일괄 편집·실행 취소가 함께 쓴다. */
+async function enqueueCategoryChange(productId: string, categoryId: string | null): Promise<void> {
+  const current = await db.product.get(productId);
+  if (!current || current.deleted_at !== null) return;
+  if ((current.category_id ?? null) === categoryId) return;
+  await enqueue({
+    entity: "product",
+    op: "update",
+    entityId: productId,
+    baseUpdatedAt: current.updated_at as string,
+    fields: { category_id: categoryId },
+    optimisticRow: { ...current, category_id: categoryId, updated_at: new Date().toISOString() },
+  });
+}
+
 export function ProductsPage({
   selectedProductId,
   onSelectProduct,
@@ -61,7 +79,8 @@ export function ProductsPage({
   initialVendorId,
   onOpenStoreMode,
 }: ProductsPageProps) {
-  const { state, triggerSync } = useSyncStatus();
+  const toast = useToast();
+  const { state } = useSyncStatus();
   const offline = state === "offline";
   const [filters, setFilters] = useState<ProductFilters>(() => {
     if (initialCategoryId) return { ...DEFAULT_FILTERS, category_id: initialCategoryId };
@@ -213,29 +232,82 @@ export function ProductsPage({
     setBulkCategoryId("");
   }
 
-  // 대량 편집: 선택한 제품들에 PATCH 를 반복한다(클라이언트 루프). 개인 규모(수백 건)에서는
-  // 벌크 엔드포인트의 부분 실패·오프라인 정합성 설계 비용이 루프보다 크다.
-  const [bulkResult, setBulkResult] = useState<{ succeeded: number; failed: number } | null>(null);
-  const bulkChange = useMutation({
-    mutationFn: async (input: { ids: string[]; categoryId: string }) => {
-      let succeeded = 0;
-      let failed = 0;
-      for (const id of input.ids) {
-        try {
-          await productsApi.update(id, { category_id: input.categoryId || null });
-          succeeded += 1;
-        } catch {
-          failed += 1;
-        }
+  function toggleAll(ids: string[], checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
       }
-      return { succeeded, failed };
+      return next;
+    });
+  }
+
+  // 선택은 현재 필터 결과 안에서만 유효하다. 필터를 바꿔 목록에서 사라진 제품이 보이지 않는
+  // 채로 함께 바뀌던 결함을 막는다(선택 상태 자체는 필터를 되돌리면 다시 살아난다).
+  const filteredIds = useMemo(
+    () => new Set((allProducts ?? []).map((product) => product.id)),
+    [allProducts],
+  );
+  const liveSelected = useMemo(
+    () => new Set([...selectedIds].filter((id) => filteredIds.has(id))),
+    [selectedIds, filteredIds],
+  );
+  const hiddenSelected = selectedIds.size - liveSelected.size;
+
+  // 일괄 편집은 제품마다 outbox 명령 하나다. 오프라인에서도 되고, 실패한 항목은 동기화 배지에
+  // 개별로 남아 수정·재시도할 수 있다. 끝나면 "실행 취소"로 원래 주종을 되돌린다.
+  const bulkChange = useMutation({
+    mutationFn: async (input: { ids: string[]; categoryId: string | null }) => {
+      const previous: { id: string; categoryId: string | null }[] = [];
+      for (const id of input.ids) {
+        const current = await db.product.get(id);
+        if (!current || current.deleted_at !== null) continue;
+        previous.push({ id, categoryId: (current.category_id as string | null) ?? null });
+        await enqueueCategoryChange(id, input.categoryId);
+      }
+      return previous;
     },
-    onSuccess: (result) => {
-      triggerSync();
-      setBulkResult(result);
+    onSuccess: (previous, input) => {
+      const name =
+        input.categoryId === null
+          ? "미분류"
+          : (categoryTree?.items.find((node) => node.id === input.categoryId)?.path.join(" > ") ??
+            "선택한 주종");
+      toast.show({
+        message: `${previous.length}건을 ${name}(으)로 옮겼습니다`,
+        actionLabel: "실행 취소",
+        onAction: async () => {
+          for (const item of previous) await enqueueCategoryChange(item.id, item.categoryId);
+          toast.show({ message: "주종을 되돌렸습니다" });
+        },
+      });
       exitSelection();
     },
   });
+
+  const bulkDelete = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) await enqueueProductDelete(id);
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      toast.show({ message: `${count}건을 삭제했습니다` });
+      exitSelection();
+    },
+  });
+
+  function confirmBulkDelete(): void {
+    const ids = [...liveSelected];
+    const chosen = (allProducts ?? []).filter((product) => liveSelected.has(product.id));
+    const bottleCount = chosen.reduce((sum, product) => sum + product.metrics.purchased_count, 0);
+    if (
+      window.confirm(
+        `선택한 술 ${ids.length}건과 그 구매·병 ${bottleCount}병 기록을 삭제할까요? 시음 기록은 남습니다.`,
+      )
+    )
+      bulkDelete.mutate(ids);
+  }
 
   if (selectedProductId !== null) {
     return (
@@ -296,58 +368,36 @@ export function ProductsPage({
             >
               {formOpen ? "폼 닫기" : "새 술 등록"}
             </button>
-            {!offline && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (selecting) exitSelection();
-                  else setSelecting(true);
-                }}
-              >
-                {selecting ? "선택 취소" : "선택"}
-              </button>
-            )}
+            <button
+              type="button"
+              aria-pressed={selecting}
+              onClick={() => {
+                if (selecting) exitSelection();
+                else setSelecting(true);
+              }}
+            >
+              {selecting ? "선택 끝내기" : "여러 개 선택"}
+            </button>
           </div>
         </div>
 
-        {/* 대량 편집(주종 일괄 변경) — 온라인 전용. 선택 모드에서만 보인다. */}
         {selecting && (
-          <div className="bulk-edit-bar">
-            <span>{selectedIds.size}건 선택됨</span>
-            <label htmlFor="bulk-category">주종 변경</label>
-            <select
-              id="bulk-category"
-              value={bulkCategoryId}
-              onChange={(event) => setBulkCategoryId(event.target.value)}
-            >
-              <option value="">주종 선택</option>
-              {(categoryTree?.items ?? []).map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.path.join(" > ")}
-                </option>
-              ))}
-            </select>
+          <div className="selection-toolbar">
+            <span>
+              {liveSelected.size}건 선택됨
+              {hiddenSelected > 0 ? ` · 필터 밖 ${hiddenSelected}건은 제외` : ""}
+            </span>
             <button
               type="button"
-              className="primary"
-              disabled={selectedIds.size === 0 || !bulkCategoryId || bulkChange.isPending}
-              onClick={() =>
-                bulkChange.mutate({
-                  ids: Array.from(selectedIds),
-                  categoryId: bulkCategoryId,
-                })
-              }
+              className="sort-button"
+              onClick={() => toggleAll([...filteredIds], true)}
             >
-              {bulkChange.isPending ? "변경 중…" : "변경"}
+              필터 결과 {filteredIds.size}건 모두 선택
+            </button>
+            <button type="button" className="sort-button" onClick={() => setSelectedIds(new Set())}>
+              선택 해제
             </button>
           </div>
-        )}
-
-        {bulkResult && (
-          <output className="muted text-sm">
-            주종 변경 완료 {bulkResult.succeeded}건
-            {bulkResult.failed > 0 ? ` · 실패 ${bulkResult.failed}건` : ""}
-          </output>
         )}
 
         {/* PC 에서는 표를 두 손가락으로 스캔하며 훑기 어렵고 카메라도 잘 안 쓴다 — 매장에서
@@ -400,9 +450,52 @@ export function ProductsPage({
               order={filters.order ?? "asc"}
               onSort={handleSort}
               selectable={selecting}
-              selectedIds={selectedIds}
+              selectedIds={liveSelected}
               onToggleSelect={toggleSelect}
+              onToggleAll={toggleAll}
             />
+            {selecting && liveSelected.size > 0 && (
+              <div className="bulk-bar" role="toolbar" aria-label="선택한 술 처리">
+                <span className="bulk-bar-count">{liveSelected.size}건</span>
+                <label htmlFor="bulk-category" className="sr-only">
+                  옮길 주종
+                </label>
+                <select
+                  id="bulk-category"
+                  value={bulkCategoryId}
+                  onChange={(event) => setBulkCategoryId(event.target.value)}
+                >
+                  <option value="">주종 선택</option>
+                  <option value="__none__">미분류로</option>
+                  {(categoryTree?.items ?? []).map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.path.join(" > ")}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!bulkCategoryId || bulkChange.isPending}
+                  onClick={() =>
+                    bulkChange.mutate({
+                      ids: [...liveSelected],
+                      categoryId: bulkCategoryId === "__none__" ? null : bulkCategoryId,
+                    })
+                  }
+                >
+                  {bulkChange.isPending ? "옮기는 중…" : "주종 변경"}
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={bulkDelete.isPending}
+                  onClick={confirmBulkDelete}
+                >
+                  삭제
+                </button>
+              </div>
+            )}
             {hasMore && (
               <div className="button-row mt-3">
                 <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
@@ -441,6 +534,7 @@ function ProductDetailView({
   onBack: () => void;
   vendorNames: string[];
 }) {
+  const toast = useToast();
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
   const product = useLiveQuery(() => getProduct(productId), [productId]);
@@ -450,31 +544,7 @@ function ProductDetailView({
   const [editing, setEditing] = useState(false);
 
   const remove = useMutation({
-    mutationFn: async () => {
-      // 서버는 제품 삭제를 규격·구매·병까지 전파한다. 동기화 전에도 재고·통계가 같은 결과를
-      // 보이게 하위 행을 함께 지우고, 이후 pull 이 덮어쓰지 않게 대상 id 를 보호한다.
-      const skuIds = (await db.sku.where("product_id").equals(productId).toArray())
-        .filter((row) => row.deleted_at === null)
-        .map((row) => row.id);
-      const purchaseIds = (await db.purchase.where("sku_id").anyOf(skuIds).toArray())
-        .filter((row) => row.deleted_at === null)
-        .map((row) => row.id);
-      const bottleIds = (await db.bottle.where("purchase_id").anyOf(purchaseIds).toArray())
-        .filter((row) => row.deleted_at === null)
-        .map((row) => row.id);
-      await enqueue({
-        entity: "product",
-        op: "delete",
-        entityId: productId,
-        fields: {},
-        touchedIds: [...skuIds, ...purchaseIds, ...bottleIds],
-        cascadeDeletes: [
-          { entity: "sku", ids: skuIds },
-          { entity: "purchase", ids: purchaseIds },
-          { entity: "bottle", ids: bottleIds },
-        ],
-      });
-    },
+    mutationFn: () => enqueueProductDelete(productId),
     onSuccess: () => {
       triggerSync();
       onBack();
@@ -557,6 +627,7 @@ function ProductDetailView({
       clearFormDraft(`purchase:${productId}`);
       if (input.vendorName) setLastVendorName(input.vendorName);
       triggerSync();
+      toast.show({ message: `구매 ${input.quantity}병을 추가했습니다` });
     },
   });
 
@@ -564,6 +635,21 @@ function ProductDetailView({
     mutationFn: (purchaseId: string) => purchasesApi.remove(purchaseId),
     onSuccess: () => triggerSync(),
   });
+
+  async function updatePurchase(purchaseId: string, input: EditPurchaseInput): Promise<void> {
+    const vendorId = input.vendorName ? await resolveVendorId(input.vendorName) : null;
+    await purchasesApi.update(purchaseId, {
+      vendor_id: vendorId,
+      purchased_on: input.purchasedOn || null,
+      quantity: input.quantity,
+      // 공란은 0원(D211) — 정가 공란은 할인율 계산에서 빠진다(D215).
+      unit_list_price: input.unitListPrice || "0",
+      unit_paid_price: input.unitPaidPrice || "0",
+    });
+    if (input.vendorName) setLastVendorName(input.vendorName);
+    triggerSync();
+    toast.show({ message: "구매 기록을 고쳤습니다" });
+  }
 
   const splitPurchase = useMutation({
     mutationFn: async ({ purchaseId, parts }: { purchaseId: string; parts: SplitPart[] }) => {
@@ -632,6 +718,7 @@ function ProductDetailView({
       addPurchaseError={addPurchase.error}
       vendorNames={vendorNames}
       onDeletePurchase={(purchaseId) => deletePurchase.mutate(purchaseId)}
+      onUpdatePurchase={offline ? undefined : updatePurchase}
       deletingPurchaseId={deletePurchase.isPending ? (deletePurchase.variables ?? null) : null}
       onSplitPurchase={(purchaseId, parts) => splitPurchase.mutate({ purchaseId, parts })}
       splittingPurchaseId={

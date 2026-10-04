@@ -955,3 +955,28 @@ async def _backdate_vendor(vendor_id: str, *, seconds: int) -> None:
             ),
             {"s": seconds, "id": vendor_id},
         )
+
+
+def test_purchase_quantity_change_is_online_only(api_client: TestClient, prefix: str) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "병수 술", "skus": [{"volume_ml": 500}]}
+    ).json()
+    purchase = api_client.post(
+        f"{prefix}/purchases", json={"sku_id": product["skus"][0]["id"], "quantity": 2}
+    ).json()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="purchase",
+                op="update",
+                entity_id=uuid.UUID(purchase["id"]),
+                fields={"quantity": 3},
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "온라인" in result["results"][0]["detail"]
