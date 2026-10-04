@@ -13,6 +13,9 @@ afterEach(async () => {
   await db.vendor.clear();
   await db.tasting_session.clear();
   await db.bottle.clear();
+  await db.purchase.clear();
+  await db.sku.clear();
+  await db.product.clear();
 });
 
 describe("enqueue", () => {
@@ -60,6 +63,36 @@ describe("enqueue", () => {
 
     const row = await db.vendor.get("v2");
     expect(row?.deleted_at).not.toBeNull();
+  });
+
+  it("delete 의 cascadeDeletes 는 하위 행도 함께 soft delete 한다", async () => {
+    const base = {
+      user_id: "u1",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+      deleted_at: null,
+    };
+    await db.product.put({ ...base, id: "p-del", name: "지울 술" });
+    await db.sku.put({ ...base, id: "s-del", product_id: "p-del", volume_ml: 700 });
+    await db.purchase.put({ ...base, id: "pu-del", sku_id: "s-del", quantity: 1 });
+    await db.bottle.put({ ...base, id: "b-del", purchase_id: "pu-del", status: "unopened" });
+
+    await enqueue({
+      entity: "product",
+      op: "delete",
+      entityId: "p-del",
+      fields: {},
+      touchedIds: ["s-del", "pu-del", "b-del"],
+      cascadeDeletes: [
+        { entity: "sku", ids: ["s-del"] },
+        { entity: "purchase", ids: ["pu-del"] },
+        { entity: "bottle", ids: ["b-del"] },
+      ],
+    });
+
+    expect((await db.bottle.get("b-del"))?.deleted_at).not.toBeNull();
+    expect((await db.purchase.get("pu-del"))?.deleted_at).not.toBeNull();
+    expect(await pendingEntityIds()).toEqual(new Set(["p-del", "s-del", "pu-del", "b-del"]));
   });
 
   it("pendingEntityIds 는 아직 전송되지 않은 대상 id 를 모은다", async () => {

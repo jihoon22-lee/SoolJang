@@ -217,6 +217,27 @@
         "price_per_100ml": "4000.00",
         "price_per_100ml_paid": "2666.67"
       }
+    },
+    {
+      "name": "discount_rate_ignores_lots_without_list_price",
+      "lots": [
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": "30000",
+          "unit_paid_price": "24000"
+        },
+        {
+          "quantity": 1,
+          "volume_ml": 750,
+          "unit_list_price": null,
+          "unit_paid_price": "25000"
+        }
+      ],
+      "expected": {
+        "discount_rate": "0.2000",
+        "avg_paid_price": "24500.00"
+      }
     }
   ],
   "bottle_tally_case": {

@@ -68,6 +68,8 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
         const controller = await scan(videoRef.current, (code) => {
           if (!active) return;
           active = false;
+          // 스캐너가 감지 시 스스로 카메라를 끄지만, 어떤 구현이든 남은 스트림을 확실히 닫는다.
+          stopRef.current?.();
           stopRef.current = null;
           void lookup(code);
         });

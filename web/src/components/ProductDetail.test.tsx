@@ -230,13 +230,26 @@ describe("ProductDetail", () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it("삭제를 알린다", async () => {
+  it("함께 지워질 구매·병 수를 확인받은 뒤 삭제를 알린다", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const { onDelete } = setup();
 
     // 구매 행에도 "삭제" 버튼이 있다 — 맨 위(제품 자체) 버튼이 DOM 순서상 항상 먼저다.
     await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[0] as Element);
 
+    expect(confirmSpy.mock.calls[0]?.[0]).toMatch(/구매 \d+건·병 \d+개/);
     expect(onDelete).toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("삭제 확인을 취소하면 지우지 않는다", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { onDelete } = setup();
+
+    await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[0] as Element);
+
+    expect(onDelete).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 
   it("삭제 중에는 버튼을 막는다", () => {

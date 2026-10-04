@@ -13,6 +13,7 @@ import {
   formatPercent,
   formatRating,
   formatVolume,
+  todayLocal,
 } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
 import { rankByQuery } from "@/search";
@@ -61,6 +62,13 @@ interface ProductDetailProps {
 
   onAddSku: (volumeMl: number) => void;
   addingSku: boolean;
+  /** 삭제·구매 삭제·규격 추가처럼 폼 밖에서 실패한 동작의 오류. */
+  actionError?: unknown;
+}
+
+function errorText(error: unknown): string | null {
+  if (!error) return null;
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -96,6 +104,7 @@ export function ProductDetail({
   splitError,
   onAddSku,
   addingSku,
+  actionError,
 }: ProductDetailProps) {
   const { metrics } = product;
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
@@ -110,10 +119,27 @@ export function ProductDetail({
         <button type="button" onClick={onEdit}>
           수정
         </button>
-        <button type="button" className="danger" onClick={onDelete} disabled={deleting}>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            const bottleCount = bottles.length;
+            const message =
+              purchases.length > 0
+                ? `"${product.name}"과 구매 ${purchases.length}건·병 ${bottleCount}개를 함께 삭제할까요?`
+                : `"${product.name}"을 삭제할까요?`;
+            if (window.confirm(message)) onDelete();
+          }}
+          disabled={deleting}
+        >
           {deleting ? "삭제 중…" : "삭제"}
         </button>
       </div>
+      {errorText(actionError) ? (
+        <p className="alert" role="alert">
+          {errorText(actionError)}
+        </p>
+      ) : null}
 
       <div className="panel">
         <h2 id="detail-heading" className="mb-1">
@@ -426,7 +452,7 @@ function AddPurchaseForm({
     getLastVendorName(),
   );
   const [purchasedOn, setPurchasedOn] = useDraftState(`purchase:${product.id}:purchasedOn`, () =>
-    new Date().toISOString().slice(0, 10),
+    todayLocal(),
   );
   const [unitListPrice, setUnitListPrice] = useDraftState(
     `purchase:${product.id}:unitListPrice`,

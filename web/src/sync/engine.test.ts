@@ -498,7 +498,11 @@ it("부모 실패 이후 자식 명령은 자동 재시도하지 않는다", asy
   await syncEngine.triggerSync();
   expect(await db.outbox.count()).toBe(2);
   await syncEngine.triggerSync();
-  expect(fetch).toHaveBeenCalledOnce();
+  // 받기(pull)는 계속 돌지만 실패한 부모 뒤의 명령은 다시 보내지 않는다.
+  const batches = (fetch.mock.calls as unknown[][]).filter((call) =>
+    String(call[0]).includes("/sync/batch"),
+  );
+  expect(batches).toHaveLength(1);
 });
 
 it("페이지를 다시 열지 않아도 동기화 직전에 늦은 구버전 명령을 가져온다", async () => {
@@ -534,4 +538,43 @@ it("페이지를 다시 열지 않아도 동기화 직전에 늦은 구버전 �
   await legacy.outbox.delete("legacy-late-key");
   await legacy.vendor.delete("legacy-late");
   legacy.close();
+});
+
+it("실패한 명령이 남아 있어도 다른 기기의 변경은 받는다", async () => {
+  const failed = await enqueue({ entity: "vendor", op: "create", entityId: "mine", fields: {} });
+  await db.outbox.update(failed, { status: "failed", error: "이름이 필요합니다" });
+  stubRoutes([
+    ...authenticatedRoutes(),
+    {
+      match: "/sync",
+      method: "GET",
+      body: {
+        changes: { vendor: [serverRow("other-device", "다른 기기 구매처")] },
+        next_cursor: null,
+        has_more: false,
+      },
+    },
+  ]);
+
+  await syncEngine.triggerSync();
+
+  expect((await db.vendor.get("other-device"))?.name).toBe("다른 기기 구매처");
+  expect(await db.outbox.count()).toBe(1);
+});
+
+it("첫 pull 페이지만 커서를 되감아 늦게 커밋된 행을 다시 읽는다", async () => {
+  await db.sync_meta.put({ key: "cursor", value: "c1" });
+  const { calls } = stubRoutes([
+    ...authenticatedRoutes(),
+    {
+      match: "/sync",
+      method: "GET",
+      body: { changes: {}, next_cursor: "c2", has_more: false },
+    },
+  ]);
+
+  await syncEngine.triggerSync();
+
+  const pulls = calls.filter((call) => call.method === "GET" && call.url.includes("/sync?"));
+  expect(pulls[0]?.url).toContain("rewind=true");
 });

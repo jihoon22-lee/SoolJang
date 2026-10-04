@@ -315,6 +315,9 @@ describe("getProducts", () => {
 
 describe("getBottles", () => {
   it("상태로 필터링한다", async () => {
+    await db.product.put(row({ id: "p1", name: "술" }));
+    await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 700 }));
+    await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 2 }));
     await db.bottle.bulkPut([
       row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "unopened" }),
       row({ id: "b2", purchase_id: "pu1", label_no: 2, status: "finished", remaining_ml: 0 }),
@@ -325,6 +328,16 @@ describe("getBottles", () => {
 
     const inStock = await getBottles({ in_stock: true });
     expect(inStock.map((b) => b.id)).toEqual(["b1"]);
+  });
+
+  it("삭제된 제품에 남은 병은 세지 않는다", async () => {
+    // 이전 버전은 제품만 지우고 하위 병을 남겼다. 재고 화면에 다시 나타나면 안 된다.
+    await db.product.put(row({ id: "gone", name: "지운 술", deleted_at: "2026-10-01T00:00:00Z" }));
+    await db.sku.put(row({ id: "s9", product_id: "gone", volume_ml: 700 }));
+    await db.purchase.put(row({ id: "pu9", sku_id: "s9", quantity: 1 }));
+    await db.bottle.put(row({ id: "b9", purchase_id: "pu9", label_no: 1, status: "unopened" }));
+
+    expect(await getBottles({ in_stock: true })).toEqual([]);
   });
 });
 
@@ -398,6 +411,21 @@ describe("통계", () => {
       // 평점은 p1 이 더 높지만 가격당으로 보면 p2 가 더 낫다 — 등수가 뒤집힌다.
       expect(rankings.by_value_for_money.map((e) => e.product_id)).toEqual(["p2", "p1"]);
       expect(rankings.by_value_for_money.map((e) => e.value)).toEqual(["0.60", "0.25"]);
+    });
+
+    it("0원(선물·공란) 제품은 가격 순위에 넣지 않는다", async () => {
+      await seedStatsFixture();
+      await db.product.put(row({ id: "gift", name: "선물 받은 술", personal_rating: "0.0" }));
+      await db.sku.put(row({ id: "s-gift", product_id: "gift", volume_ml: 700 }));
+      await db.purchase.put(row({ id: "pu-gift", sku_id: "s-gift", quantity: 1 }));
+
+      const rankings = await getStatsRankings();
+
+      expect(rankings.by_bottle_price.map((e) => e.product_id)).not.toContain("gift");
+      expect(rankings.by_price_per_100ml.map((e) => e.product_id)).not.toContain("gift");
+      expect(rankings.by_total_spend.map((e) => e.product_id)).not.toContain("gift");
+      // 평점 0점은 실제 평가라 평점 순위에는 남는다.
+      expect(rankings.by_personal_rating.map((e) => e.product_id)).toContain("gift");
     });
   });
 
@@ -508,6 +536,7 @@ it("가격 공란인 선물·포인트 구매도 0원으로 상세·평단가·�
   const vendors = await getVendors();
   expect(vendors[0]?.total_spend).toBe("60000.00");
   const dashboard = await getStatsDashboard();
-  expect(dashboard.coverage.paidPurchaseCount).toBe(3);
-  expect(dashboard.coverage.missingPriceProducts).toEqual([]);
+  expect(dashboard.coverage.purchaseCount).toBe(3);
+  // 공란·선물·포인트 구매는 미상이 아니라 0원으로 알린다.
+  expect(dashboard.coverage.zeroPaidPurchaseCount).toBe(2);
 });

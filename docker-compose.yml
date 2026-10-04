@@ -49,6 +49,7 @@ services:
       SOOLJANG_PRICE_WATCH_WORKER_ENABLED: ${SOOLJANG_PRICE_WATCH_WORKER_ENABLED:-true}
       SOOLJANG_PUSH_VAPID_PRIVATE_KEY: ${SOOLJANG_PUSH_VAPID_PRIVATE_KEY:-}
       SOOLJANG_PUSH_VAPID_SUBJECT: ${SOOLJANG_PUSH_VAPID_SUBJECT:-}
+      SOOLJANG_TIMEZONE: ${SOOLJANG_TIMEZONE:-Asia/Seoul}
       SOOLJANG_PUSH_ALLOWED_HOSTS: ${SOOLJANG_PUSH_ALLOWED_HOSTS:-fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com}
     volumes:
       - uploads:/app/uploads

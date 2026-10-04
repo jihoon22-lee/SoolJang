@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Tasting, TastingSummary } from "@/api/types";
 import { BottlePanel, formatRatingChange, formatRemaining } from "@/components/BottlePanel";
+import { todayLocal } from "@/format";
 import { db } from "@/sync/db";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -193,7 +194,7 @@ describe("BottlePanel", () => {
 
   describe("상태 전이", () => {
     it("개봉을 누르면 상태·개봉일·잔량이 규격 용량으로 바뀐다", async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
       const target = bottle({ status: "unopened" });
       await seedContext(target, { volumeMl: 700 });
       stubTastings(target.id);
@@ -226,7 +227,7 @@ describe("BottlePanel", () => {
     });
 
     it("소진을 누르면 상태가 finished 로 바뀌고 잔량이 0 이 된다", async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
       const target = bottle({ status: "open", opened_on: "2026-01-15", remaining_ml: 400 });
       await seedContext(target);
       stubTastings(target.id);
@@ -309,7 +310,7 @@ describe("BottlePanel", () => {
     });
 
     it("증여를 확인하면 상태가 gifted 로 바뀐다", async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
       const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
       const target = bottle({ status: "unopened" });
       await seedContext(target);

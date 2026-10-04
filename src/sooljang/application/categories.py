@@ -131,7 +131,11 @@ def tree_query(user_id: uuid.UUID) -> Select[tuple[uuid.UUID, uuid.UUID | None, 
         (base.c.depth + 1).label("depth"),
         cast(base.c.path + separator + Category.name, Text).label("path"),
         Category.sort_order,
-    ).where(Category.parent_id == base.c.id, Category.deleted_at.is_(None))
+    ).where(
+        Category.parent_id == base.c.id,
+        Category.user_id == user_id,
+        Category.deleted_at.is_(None),
+    )
     tree = base.union_all(child)
     return select(tree.c.id, tree.c.parent_id, tree.c.name, tree.c.depth, tree.c.path).order_by(
         tree.c.path
@@ -198,6 +202,8 @@ async def create_category(
     그대로 반영해야 재동기화 시 같은 레코드로 인식된다(`docs/architecture.md` §5.2).
     """
     if parent_id is not None:
+        # 다른 사용자의 주종이나 삭제된 주종 아래에 만들면 트리에서 보이지 않게 된다.
+        await _load_owned(session, user_id, parent_id, "상위")
         parent_depth = await _depth_of(session, parent_id)
         if parent_depth + 1 > MAX_CATEGORY_DEPTH:
             raise CategoryDepthError(
@@ -221,18 +227,21 @@ async def create_category(
 
 
 async def reparent_category(
-    session: AsyncSession, *, category_id: uuid.UUID, new_parent_id: uuid.UUID | None
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    category_id: uuid.UUID,
+    new_parent_id: uuid.UUID | None,
 ) -> Category:
     """부모를 바꾼다. 서브트리 전체가 함께 이동한다.
 
     자기 자신이나 후손을 부모로 지정하면 순환이 생겨 재귀 CTE 가 무한히 돈다. 반드시
-    먼저 막는다.
+    먼저 막는다. 새 부모도 같은 사용자의 살아 있는 주종이어야 한다.
     """
-    category = await session.get(Category, category_id)
-    if category is None:
-        raise CategoryError(f"카테고리를 찾을 수 없습니다: {category_id}")
+    category = await _load_owned(session, user_id, category_id, "대상")
 
     if new_parent_id is not None:
+        await _load_owned(session, user_id, new_parent_id, "새 상위")
         if new_parent_id == category_id:
             raise CategoryCycleError("자기 자신을 부모로 지정할 수 없습니다")
         descendants = await session.execute(descendant_ids_query(category_id))
@@ -471,6 +480,15 @@ async def merge_categories(
     descendants = await session.execute(descendant_ids_query(source_id))
     if target_id in set(descendants.scalars().all()):
         raise CategoryCycleError("후손 카테고리로 병합할 수 없습니다 (순환)")
+
+    # 원본의 하위가 대상 아래로 옮겨 가므로, 대상 깊이 + 하위 높이가 상한을 넘으면 안 된다.
+    child_height = await _subtree_height(session, source_id) - 1
+    if child_height > 0:
+        moved_depth = await _depth_of(session, target_id) + child_height
+        if moved_depth > MAX_CATEGORY_DEPTH:
+            raise CategoryDepthError(
+                f"병합하면 계층 깊이가 상한({MAX_CATEGORY_DEPTH})을 넘습니다: {moved_depth}"
+            )
 
     for child_id in await _child_ids(session, source_id):
         child = await session.get(Category, child_id)

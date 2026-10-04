@@ -48,6 +48,15 @@ class HandOverRequest(BaseModel):
     note: str | None = None
 
 
+class SetRemainingRequest(BaseModel):
+    """개봉 병 잔량 조정. 0 이면 소진 처리한다."""
+
+    remaining_ml: int = Field(ge=0, le=100_000)
+    on: datetime.date | None = Field(
+        default=None, description="0 으로 소진할 때의 날짜. 비우면 오늘"
+    )
+
+
 class TastingCreate(BaseModel):
     """시음 기록."""
 

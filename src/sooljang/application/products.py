@@ -7,6 +7,7 @@
 정렬한다. 파생값을 저장하지 않기로 했으므로(§9.5) 정렬을 위해 저장하는 예외를 두지 않는다.
 """
 
+import datetime
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -22,6 +23,7 @@ from sooljang.application.categories import descendant_ids_query, load_tree
 from sooljang.domain.metrics import quantize_money, quantize_ratio, value_for_money
 from sooljang.infrastructure.database.metrics_sql import product_metrics_query
 from sooljang.infrastructure.database.models import (
+    Bottle,
     Category,
     Producer,
     Product,
@@ -306,6 +308,62 @@ async def resolve_producer_id(session: AsyncSession, *, user_id: uuid.UUID, name
     session.add(producer)
     await session.flush()
     return producer.id
+
+
+async def ensure_producer_exists(
+    session: AsyncSession, *, user_id: uuid.UUID, producer_id: uuid.UUID | None
+) -> None:
+    """다른 사용자의 생산자 id 를 FK 로만 통과시키지 않는다."""
+    if producer_id is None:
+        return
+    found = await session.scalar(
+        select(Producer.id).where(
+            Producer.id == producer_id,
+            Producer.user_id == user_id,
+            Producer.deleted_at.is_(None),
+        )
+    )
+    if found is None:
+        raise NotFoundError(f"생산자를 찾을 수 없습니다: {producer_id}")
+
+
+async def soft_delete_product(session: AsyncSession, product: Product) -> None:
+    """제품과 그 아래 규격·구매·병을 같은 시각으로 함께 soft delete 한다.
+
+    제품만 지우면 하위 병이 재고·실사·병 목록에 계속 남고 통계에서만 빠져 화면마다 숫자가
+    달라진다. 구매 삭제가 병을 함께 지우는 것과 같은 규칙이다. 시음 기록은 지우지 않는다 —
+    마신 사실은 별개의 기록이며, 조회 쪽에서 삭제된 규격의 기록을 제외한다.
+    """
+    if product.deleted_at is not None:
+        return
+    now = datetime.datetime.now(datetime.UTC)
+    product.deleted_at = now
+    skus = list(
+        await session.scalars(
+            select(Sku).where(Sku.product_id == product.id, Sku.deleted_at.is_(None))
+        )
+    )
+    sku_ids = [sku.id for sku in skus]
+    for sku in skus:
+        sku.deleted_at = now
+    if sku_ids:
+        purchases = list(
+            await session.scalars(
+                select(Purchase).where(Purchase.sku_id.in_(sku_ids), Purchase.deleted_at.is_(None))
+            )
+        )
+        purchase_ids = [purchase.id for purchase in purchases]
+        for purchase in purchases:
+            purchase.deleted_at = now
+        if purchase_ids:
+            bottles = await session.scalars(
+                select(Bottle).where(
+                    Bottle.purchase_id.in_(purchase_ids), Bottle.deleted_at.is_(None)
+                )
+            )
+            for bottle in bottles:
+                bottle.deleted_at = now
+    await session.flush()
 
 
 async def ensure_category_exists(

@@ -39,8 +39,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import NotFoundError, ValidationFailedError
 from sooljang.api.pagination import Cursor
-from sooljang.application.categories import CategoryError, create_category, make_slug
-from sooljang.application.products import ensure_category_exists, normalized_name_of
+from sooljang.application.barcodes import InvalidBarcodeError, normalize_optional
+from sooljang.application.categories import (
+    CategoryError,
+    create_category,
+    delete_category,
+    make_slug,
+)
+from sooljang.application.products import (
+    ensure_category_exists,
+    ensure_producer_exists,
+    normalized_name_of,
+    soft_delete_product,
+)
 from sooljang.application.tastings import (
     BottleTransitionError,
     InsufficientRemainingError,
@@ -52,6 +63,7 @@ from sooljang.application.tastings import (
     open_bottle,
     record_tasting,
     reopen_bottle,
+    set_remaining,
     unopen_bottle,
 )
 from sooljang.infrastructure.database.base import Base
@@ -99,6 +111,10 @@ WRITABLE_ENTITIES = frozenset(
 
 #: 한 번에 풀할 엔티티당 최대 행 수.
 SYNC_PAGE_LIMIT = 500
+#: 첫 페이지에서 커서보다 이만큼 앞부터 다시 읽는다. `updated_at` 은 트랜잭션 시작
+#: 시각(`now()`)이라, 늦게 커밋된 트랜잭션의 행은 이미 지나간 커서보다 이른 시각을 가진다.
+#: 다시 받은 행은 클라이언트 병합이 멱등이라 무해하다.
+PULL_REWIND = timedelta(seconds=30)
 #: `outbox_receipt` 보관 기간(§5.2).
 OUTBOX_RECEIPT_RETENTION_DAYS = 30
 
@@ -167,6 +183,24 @@ def _bounded_str(value: Any, *, field_name: str, max_length: int) -> str:
     return stripped
 
 
+def _currency(value: Any) -> str:
+    """통화 코드를 검증한다. 문자열이 아니면 배치 전체가 500 으로 끝나지 않게 막는다."""
+    if not isinstance(value, str) or len(value.strip()) != 3:
+        raise ValidationFailedError("currency 는 3자리 통화 코드여야 합니다")
+    return value.strip().upper()
+
+
+def _barcode(value: Any) -> tuple[str | None, BarcodeType | None]:
+    """온라인 등록과 같은 규칙으로 바코드를 정규화한다(UPC-A → EAN-13 등)."""
+    if value is not None and not isinstance(value, str):
+        raise ValidationFailedError("barcode 는 문자열이어야 합니다")
+    try:
+        barcode, kind = normalize_optional(value)
+    except InvalidBarcodeError as error:
+        raise ValidationFailedError(str(error)) from error
+    return barcode, kind
+
+
 # --- 풀 --------------------------------------------------------------------
 
 
@@ -205,7 +239,7 @@ class SyncPullResult:
 
 
 async def pull_changes(
-    session: AsyncSession, *, user_id: uuid.UUID, cursor: Cursor | None
+    session: AsyncSession, *, user_id: uuid.UUID, cursor: Cursor | None, rewind: bool = False
 ) -> SyncPullResult:
     """`(updated_at, id)` 커서 이후 변경분을 엔티티별로 가져온다.
 
@@ -214,6 +248,10 @@ async def pull_changes(
     엔티티마다 페이지 상한을 넘으면 그 엔티티만 잘린다. 다음 커서는 잘린 엔티티들
     중 가장 이른 워터마크로 잡는다(보수적). 잘리지 않은 엔티티는 다음 풀에서 같은
     행을 다시 받을 수 있지만, 클라이언트 병합은 멱등이라 문제가 없다.
+
+    `rewind` 는 한 번의 동기화에서 첫 페이지에만 준다 — 커서보다 `PULL_REWIND` 앞부터
+    다시 읽어 늦게 커밋된 행을 놓치지 않는다. 이후 페이지는 정확한 커서로 이어 간다(같은
+    시각의 행이 페이지 상한보다 많아도 진행이 보장된다).
     """
     boundary_time: datetime | None = None
     boundary_id: uuid.UUID | None = None
@@ -221,6 +259,7 @@ async def pull_changes(
         raw = cursor.sort_value
         boundary_time = datetime.fromisoformat(raw) if isinstance(raw, str) else raw
         boundary_id = cursor.id
+    rewound = rewind and boundary_time is not None
 
     changes: dict[str, list[dict[str, Any]]] = {}
     truncated_watermarks: list[tuple[datetime, uuid.UUID]] = []
@@ -228,7 +267,9 @@ async def pull_changes(
 
     for name, model in SYNC_ENTITIES.items():
         statement: Select[Any] = select(model).where(model.user_id == user_id)
-        if boundary_time is not None:
+        if rewound and boundary_time is not None:
+            statement = statement.where(model.updated_at >= boundary_time - PULL_REWIND)
+        elif boundary_time is not None:
             statement = statement.where(
                 or_(
                     model.updated_at > boundary_time,
@@ -565,8 +606,9 @@ async def _dispatch_category(
 
     if op.op == "delete":
         if category.deleted_at is None:
-            category.deleted_at = datetime.now(UTC)
-            await session.flush()
+            # 온라인 삭제와 같은 규칙 — 하위 주종·소속 제품이 있으면 거부한다. 검사 없이
+            # 지우면 재귀 트리에서 하위 주종이 통째로 사라진다.
+            await delete_category(session, user_id=user_id, category_id=category.id)
         return await _applied(session, op, category)
 
     conflict = await _check_conflict(
@@ -602,6 +644,8 @@ async def _dispatch_product(
     if op.op == "create":
         category_id = _uuid(fields.get("category_id"))
         await ensure_category_exists(session, user_id=user_id, category_id=category_id)
+        producer_id = _uuid(fields.get("producer_id"))
+        await ensure_producer_exists(session, user_id=user_id, producer_id=producer_id)
         name = _bounded_str(fields["name"], field_name="name", max_length=300)
         product = Product(
             id=op.entity_id,
@@ -610,7 +654,7 @@ async def _dispatch_product(
             name_en=fields.get("name_en"),
             normalized_name=normalized_name_of(name),
             category_id=category_id,
-            producer_id=_uuid(fields.get("producer_id")),
+            producer_id=producer_id,
             country=fields.get("country"),
             region=fields.get("region"),
             abv=_decimal(fields.get("abv")),
@@ -628,9 +672,7 @@ async def _dispatch_product(
     )
 
     if op.op == "delete":
-        if product.deleted_at is None:
-            product.deleted_at = datetime.now(UTC)
-            await session.flush()
+        await soft_delete_product(session, product)
         return await _applied(session, op, product)
 
     conflict = await _check_conflict(session, user_id=user_id, entity="product", row=product, op=op)
@@ -642,7 +684,9 @@ async def _dispatch_product(
         await ensure_category_exists(session, user_id=user_id, category_id=category_id)
         product.category_id = category_id
     if "producer_id" in fields:
-        product.producer_id = _uuid(fields["producer_id"])
+        producer_id = _uuid(fields["producer_id"])
+        await ensure_producer_exists(session, user_id=user_id, producer_id=producer_id)
+        product.producer_id = producer_id
     if fields.get("name") is not None:
         product.name = _bounded_str(fields["name"], field_name="name", max_length=300)
         product.normalized_name = normalized_name_of(product.name)
@@ -674,15 +718,14 @@ async def _dispatch_sku(
             entity_id=_required_uuid(fields["product_id"], field_name="product_id"),
             op="create",
         )
+        barcode, barcode_type = _barcode(fields.get("barcode"))
         sku = Sku(
             id=op.entity_id,
             user_id=user_id,
             product_id=product.id,
             volume_ml=_bounded_int(fields["volume_ml"], field_name="volume_ml", le=100_000),
-            barcode=fields.get("barcode"),
-            barcode_type=BarcodeType(fields["barcode_type"])
-            if fields.get("barcode_type")
-            else None,
+            barcode=barcode,
+            barcode_type=barcode_type,
             package_note=fields.get("package_note"),
         )
         session.add(sku)
@@ -704,9 +747,8 @@ async def _dispatch_sku(
     if "volume_ml" in fields:
         sku.volume_ml = _bounded_int(fields["volume_ml"], field_name="volume_ml", le=100_000)
     if "barcode" in fields:
-        sku.barcode = fields["barcode"]
-    if "barcode_type" in fields:
-        sku.barcode_type = BarcodeType(fields["barcode_type"]) if fields["barcode_type"] else None
+        # 종류는 정규화가 바코드 자체에서 판정한다 — 클라이언트가 보낸 종류를 믿지 않는다.
+        sku.barcode, sku.barcode_type = _barcode(fields["barcode"])
     if "package_note" in fields:
         sku.package_note = fields["package_note"]
     await session.flush()
@@ -796,7 +838,7 @@ async def _dispatch_purchase(
             quantity=quantity,
             unit_list_price=_decimal(fields.get("unit_list_price")),
             unit_paid_price=_decimal(fields.get("unit_paid_price")),
-            currency=(fields.get("currency") or "KRW").upper(),
+            currency=_currency(fields.get("currency") or "KRW"),
             fx_rate=_decimal(fields.get("fx_rate")),
             foreign_unit_price=_decimal(fields.get("foreign_unit_price")),
             discount_note=fields.get("discount_note"),
@@ -860,7 +902,7 @@ async def _dispatch_purchase(
     if "discount_note" in fields:
         purchase.discount_note = fields["discount_note"]
     if "currency" in fields and fields["currency"]:
-        purchase.currency = fields["currency"].upper()
+        purchase.currency = _currency(fields["currency"])
     await session.flush()
     return await _applied(session, op, purchase)
 
@@ -918,8 +960,36 @@ async def _dispatch_bottle_action(
     session: AsyncSession, *, user_id: uuid.UUID, op: SyncOperation
 ) -> OperationResult:
     bottle = await _load_bottle(session, user_id=user_id, bottle_id=op.entity_id)
-    fields = op.fields
+    try:
+        await _apply_bottle_action(session, bottle, op)
+    except BottleTransitionError as error:
+        # 다른 기기가 먼저 상태를 바꾼 경우(예: 오프라인에서 개봉하는 사이 다른 기기에서
+        # 소진)다. 사용자 입력의 결함이 아니므로 대기열 전체를 멈추지 않고, 서버 상태를
+        # 유지한 채 충돌로 기록·반환한다. 뒤따르는 다른 병의 작업은 계속 적용된다.
+        session.add(
+            ConflictLog(
+                user_id=user_id,
+                entity="bottle",
+                entity_id=bottle.id,
+                server_updated_at=bottle.updated_at,
+                client_updated_at=op.base_updated_at,
+                client_snapshot={"action": op.action, **op.fields},
+                idempotency_key=op.idempotency_key,
+            )
+        )
+        await session.flush()
+        await session.refresh(bottle)
+        return OperationResult(
+            idempotency_key=op.idempotency_key,
+            status="conflict",
+            detail=f"다른 기기의 변경이 먼저 반영돼 서버 상태를 유지했습니다: {error}",
+            snapshot=serialize_row(bottle),
+        )
+    return await _applied(session, op, bottle)
 
+
+async def _apply_bottle_action(session: AsyncSession, bottle: Bottle, op: SyncOperation) -> None:
+    fields = op.fields
     if op.action == "open":
         await open_bottle(
             session,
@@ -942,10 +1012,17 @@ async def _dispatch_bottle_action(
         await reopen_bottle(session, bottle)
     elif op.action == "unopen":
         await unopen_bottle(session, bottle)
+    elif op.action == "set_remaining":
+        await set_remaining(
+            session,
+            bottle,
+            remaining_ml=_bounded_int(
+                fields.get("remaining_ml"), field_name="remaining_ml", gt=-1, le=100_000
+            ),
+            on=_date(fields.get("on")),
+        )
     else:
         raise ValidationFailedError(f"알 수 없는 병 action 입니다: {op.action}")
-
-    return await _applied(session, op, bottle)
 
 
 async def _dispatch_tasting_action(
@@ -971,6 +1048,8 @@ async def _dispatch_tasting_action(
 
     if sku_id is None:
         raise ValidationFailedError("bottle_id 또는 sku_id 중 하나는 있어야 합니다")
+    if bottle is None:
+        await _load_writable(session, Sku, user_id=user_id, entity_id=sku_id, op="create")
 
     try:
         record = await record_tasting(
@@ -979,6 +1058,8 @@ async def _dispatch_tasting_action(
             sku_id=sku_id,
             bottle=bottle,
             id=op.entity_id,
+            # 오프라인에서 이미 마신 기록이다. 그 사이 다른 기기가 잔량을 줄였어도 버리지 않는다.
+            reconcile=True,
             data=TastingInput(
                 tasted_on=_date(fields["tasted_on"]),
                 poured_ml=_bounded_int(fields["poured_ml"], field_name="poured_ml", le=2**31 - 1)

@@ -143,7 +143,13 @@ def _top(rows: list[Any], *, key: str, limit: int, transform: Any) -> list[Ranki
 
     동점이면 새로고침마다 순서가 바뀌지 않도록 id 로 순서를 고정한다.
     """
-    candidates = [row for row in rows if getattr(row, key) is not None]
+    # 가격 순위는 0원(공란·선물·포인트)을 넣지 않는다. 비교 기준이 없는 값이 맨 끝을
+    # 채우면 "가장 싼 술" 처럼 읽힌다. 평점은 0점도 실제 평가라 그대로 둔다.
+    candidates = [
+        row
+        for row in rows
+        if getattr(row, key) is not None and (key == "personal_rating" or getattr(row, key) > 0)
+    ]
     candidates.sort(key=lambda row: (-getattr(row, key), str(row.product_id)))
     return [
         RankingEntry(

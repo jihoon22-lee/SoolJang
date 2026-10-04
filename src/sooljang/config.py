@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1, le=50)
     database_echo: bool = False
 
+    # 사용자가 기록하는 "오늘"의 기준 시간대. 컨테이너 기본값(UTC)을 따르면 한국 시간
+    # 00~09시의 개봉·소진 기록이 전날로 저장된다.
+    timezone: str = "Asia/Seoul"
+
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65535)
 

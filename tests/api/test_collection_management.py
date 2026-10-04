@@ -218,3 +218,51 @@ def test_blank_gifts_and_points_prices_are_zero_in_purchase_product_and_statisti
     report = api_client.get(f"{prefix}/collection/quality").json()
     assert report["coverage"]["unknown_price_purchases"] == 0
     assert not any(item["reason"] == "price" for item in report["items"])
+
+
+def test_cleanup_reports_which_ids_are_missing(api_client: TestClient, prefix: str) -> None:
+    sample(api_client, prefix)
+    product_id = api_client.get(f"{prefix}/collection/bottles").json()[0]["product_id"]
+    category = post(api_client, prefix, "/categories", {"name": "새 주종"})["id"]
+    ghost = str(uuid.uuid4())
+
+    response = api_client.post(
+        f"{prefix}/collection/cleanup/preview",
+        json={"kind": "product_category", "ids": [product_id, ghost], "target_id": category},
+    )
+
+    assert response.status_code == 404
+    assert ghost in response.json()["detail"]
+    assert "1건" in response.json()["detail"]
+
+
+def test_location_count_excludes_bottles_no_longer_in_stock(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, _, bottles = sample(api_client, prefix)
+    location = post(
+        api_client, prefix, "/collection/locations", {"name": "선반 B", "kind": "shelf"}
+    )["id"]
+    for bottle in bottles:
+        path = f"{prefix}/collection/bottles/{bottle['id']}/location"
+        assert api_client.put(path, json={"location_id": location}).status_code == 200
+    api_client.post(f"{prefix}/bottles/{bottles[0]['id']}:finish", json={})
+
+    counts = {
+        row["id"]: row["bottle_count"]
+        for row in api_client.get(f"{prefix}/collection/locations").json()
+    }
+
+    assert counts[location] == 1
+
+
+def test_deleting_product_removes_its_bottles_from_storage_list(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, _, bottles = sample(api_client, prefix)
+    product_id = bottles[0]["product_id"]
+
+    assert api_client.delete(f"{prefix}/products/{product_id}").status_code == 204
+
+    assert api_client.get(f"{prefix}/collection/bottles").json() == []
+    assert api_client.get(f"{prefix}/purchases", params={"product_id": product_id}).json() == []

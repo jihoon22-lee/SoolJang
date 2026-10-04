@@ -36,6 +36,33 @@ async def owned[T: EntityMixin](
     return row
 
 
+async def owned_many[T: EntityMixin](
+    session: AsyncSession, model: type[T], user_id: uuid.UUID, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, T]:
+    """여러 행을 한 번에 id 순서로 잠근다. 없는 id 가 있으면 어떤 것인지 알려 준다.
+
+    행마다 `owned()` 를 부르면 200건 선택에 잠금 쿼리가 200번 나간다. id 순서 잠금은
+    단건 경로와 같아 서로 다른 일괄 작업 사이의 교착을 막는다.
+    """
+    unique = sorted(set(ids))
+    if not unique:
+        return {}
+    rows = await session.scalars(
+        select(model)
+        .where(model.id.in_(unique), model.user_id == user_id, model.deleted_at.is_(None))
+        .order_by(model.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    found = {row.id: row for row in rows}
+    missing = [entity_id for entity_id in unique if entity_id not in found]
+    if missing:
+        sample = ", ".join(str(entity_id) for entity_id in missing[:3])
+        more = f" 외 {len(missing) - 3}건" if len(missing) > 3 else ""
+        raise NotFoundError(f"기록 {len(missing)}건을 찾을 수 없습니다: {sample}{more}")
+    return found
+
+
 async def list_bottles(session: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
     rows = await session.execute(
         select(Bottle, Product, BottlePlacement)
@@ -43,7 +70,14 @@ async def list_bottles(session: AsyncSession, user_id: uuid.UUID) -> list[dict[s
         .join(Sku, Purchase.sku_id == Sku.id)
         .join(Product, Sku.product_id == Product.id)
         .outerjoin(BottlePlacement, BottlePlacement.bottle_id == Bottle.id)
-        .where(Bottle.user_id == user_id, Bottle.deleted_at.is_(None))
+        .where(
+            Bottle.user_id == user_id,
+            Bottle.deleted_at.is_(None),
+            # 이전 버전에서 제품만 삭제되고 하위 병이 남은 기록도 목록에서 뺀다.
+            Purchase.deleted_at.is_(None),
+            Sku.deleted_at.is_(None),
+            Product.deleted_at.is_(None),
+        )
         .order_by(Product.name, Bottle.label_no)
     )
     return [

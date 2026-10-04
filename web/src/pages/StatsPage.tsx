@@ -186,10 +186,11 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
           전체·제품별 평단가는 0원 구매를 포함한 구매 병수로 나눕니다. 평균 100ml가는 정가 합계와 총
           용량 기준입니다.
         </p>
+        <p>할인율은 정가가 기록된 구매만으로 계산하고, 가격 순위에는 0원 제품을 넣지 않습니다.</p>
         <p>
-          실구매가 확인 {dashboard?.coverage.paidPurchaseCount}/{dashboard?.coverage.purchaseCount}
-          건 · 정가 확인 {dashboard?.coverage.pricedPurchaseCount}/
-          {dashboard?.coverage.purchaseCount}건 · 규격 미등록 제품{" "}
+          구매 {dashboard?.coverage.purchaseCount}건 · 0원(공란·선물·포인트){" "}
+          {dashboard?.coverage.zeroPaidPurchaseCount}건 포함 · 할인율 기준(정가 기록){" "}
+          {dashboard?.coverage.listPricedPurchaseCount}건 · 규격 미등록 제품{" "}
           {dashboard?.coverage.missingVolumeProducts.length}개
         </p>
         <ul>

@@ -33,6 +33,7 @@ from sooljang.application.products import (
     build_product_query,
     category_path_map,
     ensure_category_exists,
+    ensure_producer_exists,
     load_product,
     load_sku,
     metrics_from_row,
@@ -40,6 +41,7 @@ from sooljang.application.products import (
     producer_name_map,
     resolve_producer_id,
     resolve_variety_ids,
+    soft_delete_product,
     sort_column_for,
 )
 from sooljang.infrastructure.database.metrics_sql import single_product_metrics_query
@@ -194,6 +196,7 @@ async def create_product(
     await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
     producer_id = payload.producer_id
+    await ensure_producer_exists(session, user_id=user_id, producer_id=producer_id)
     if payload.producer_name is not None and payload.producer_name.strip():
         producer_id = await resolve_producer_id(
             session, user_id=user_id, name=payload.producer_name
@@ -218,8 +221,11 @@ async def create_product(
     await session.flush()
 
     await _replace_varieties(session, user_id, product, payload.variety_names)
-    for sku in payload.skus:
-        session.add(_new_sku(user_id, product.id, sku))
+    try:
+        for sku in payload.skus:
+            session.add(_new_sku(user_id, product.id, sku))
+    except InvalidBarcodeError as error:
+        raise ValidationFailedError(str(error)) from error
     await session.flush()
 
     return await _detail(session, user_id, product.id)
@@ -238,6 +244,8 @@ async def update_product(
 
     if payload.category_id is not None:
         await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
+    if payload.producer_id is not None:
+        await ensure_producer_exists(session, user_id=user_id, producer_id=payload.producer_id)
 
     fields = payload.model_dump(exclude_unset=True, exclude={"variety_names", "producer_name"})
     for key, value in fields.items():
@@ -261,12 +269,12 @@ async def update_product(
     "/{product_id}", status_code=status.HTTP_204_NO_CONTENT, summary="제품 삭제 (soft delete)"
 )
 async def delete_product(product_id: uuid.UUID, session: SessionDep, user_id: UserDep) -> None:
-    """soft delete 한다. 복구 가능해야 실수로 지운 기록을 되살릴 수 있다."""
-    import datetime
+    """하위 규격·구매·병과 함께 soft delete 한다.
 
+    복구 가능해야 실수로 지운 기록을 되살릴 수 있다.
+    """
     product = await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
-    product.deleted_at = datetime.datetime.now(datetime.UTC)
-    await session.flush()
+    await soft_delete_product(session, product)
 
 
 @router.post(

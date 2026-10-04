@@ -18,6 +18,7 @@ from sooljang.api.schemas.tasting import (
     FinishBottleRequest,
     HandOverRequest,
     OpenBottleRequest,
+    SetRemainingRequest,
     TastingCreate,
     TastingOut,
     TastingSummaryOut,
@@ -34,10 +35,11 @@ from sooljang.application.tastings import (
     open_bottle,
     record_tasting,
     reopen_bottle,
+    set_remaining,
     summarize_tastings,
     unopen_bottle,
 )
-from sooljang.infrastructure.database.models import Bottle, BottleStatus, Purchase
+from sooljang.infrastructure.database.models import Bottle, BottleStatus, Purchase, Sku
 
 bottles_router = APIRouter(prefix="/bottles", tags=["bottles"])
 tastings_router = APIRouter(prefix="/tastings", tags=["tastings"])
@@ -68,8 +70,9 @@ async def list_bottles(
     bottle_status: Annotated[BottleStatus | None, Query(alias="status")] = None,
     in_stock: Annotated[bool | None, Query(description="true 면 미개봉·개봉만")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0, description="이전 페이지까지 받은 개수")] = 0,
 ) -> list[BottleOut]:
-    """병 목록. 상태로 필터할 수 있다."""
+    """병 목록. 상태로 필터할 수 있다. 500병을 넘으면 offset 으로 이어 받는다."""
     filters = [Bottle.user_id == user_id, Bottle.deleted_at.is_(None)]
     if bottle_status is not None:
         filters.append(Bottle.status == bottle_status)
@@ -79,7 +82,11 @@ async def list_bottles(
         filters.append(Bottle.status.not_in([BottleStatus.UNOPENED, BottleStatus.OPEN]))
 
     records = await session.scalars(
-        select(Bottle).where(*filters).order_by(Bottle.created_at.desc()).limit(limit)
+        select(Bottle)
+        .where(*filters)
+        .order_by(Bottle.created_at.desc(), Bottle.id.desc())
+        .offset(offset)
+        .limit(limit)
     )
     return [BottleOut.model_validate(record) for record in records]
 
@@ -164,6 +171,20 @@ async def reopen_bottle_endpoint(
     return BottleOut.model_validate(record)
 
 
+@bottles_router.post("/{bottle_id}:remaining", response_model=BottleOut, summary="잔량 조정")
+async def set_remaining_endpoint(
+    session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID, payload: SetRemainingRequest
+) -> BottleOut:
+    """개봉 병의 잔량을 직접 맞춘다. 0 이면 소진 처리한다."""
+    record = await _get_bottle(session, user_id, bottle_id, for_update=True)
+    try:
+        await set_remaining(session, record, remaining_ml=payload.remaining_ml, on=payload.on)
+    except BottleTransitionError as error:
+        raise ConflictError(str(error)) from error
+    await session.refresh(record)
+    return BottleOut.model_validate(record)
+
+
 @bottles_router.post("/{bottle_id}:unopen", response_model=BottleOut, summary="개봉 취소")
 async def unopen_bottle_endpoint(
     session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
@@ -212,6 +233,12 @@ async def create_tasting(
 
     if sku_id is None:
         raise ValidationFailedError("bottle_id 또는 sku_id 중 하나는 있어야 합니다")
+    if bottle is None:
+        owned_sku = await session.scalar(
+            select(Sku.id).where(Sku.id == sku_id, Sku.user_id == user_id, Sku.deleted_at.is_(None))
+        )
+        if owned_sku is None:
+            raise NotFoundError(f"규격을 찾을 수 없습니다: {sku_id}")
 
     try:
         record = await record_tasting(

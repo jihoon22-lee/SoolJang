@@ -23,14 +23,19 @@ import { parseHash, type Route, routeToHash, type View } from "@/router";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { syncEngine } from "@/sync/engine";
 import {
+  clearPendingLogout,
   forgetLocalSession,
+  hasPendingLogout,
   LOCAL_SESSION_KEY,
+  markPendingLogout,
   offlineSession,
   rememberLocalSession,
 } from "@/sync/localSession";
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { UpdateNotice } from "@/sync/UpdateNotice";
+
+const SKIP_LINK_HASH = "#main";
 
 /** 자주 쓰는 화면만 주 탭에 남긴다(항목 3·6). "매장 모드" 는 nav 에서 빠졌지만 `#scan`
  * 라우트·화면은 그대로 있다 — `ProductsPage` 의 모바일 전용 진입 버튼으로만 들어간다. */
@@ -72,6 +77,7 @@ export function App() {
   const queryClient = useQueryClient();
   const [localOwner, setLocalOwner] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [logoutNotice, setLogoutNotice] = useState<string | null>(null);
 
   // 메뉴 바깥을 클릭하거나 Esc 를 누르면 닫는다 — 드물게 여는 `SyncStatusBadge` 패널과 달리
   // 이건 자주 여닫는 상시 내비게이션이라 닫는 방법이 트리거 버튼 재클릭뿐이면 불편하다.
@@ -93,12 +99,26 @@ export function App() {
     };
   }, [settingsOpen]);
 
+  const routeRef = useRef(route);
+  routeRef.current = route;
+
   useEffect(() => {
     function onPopState(): void {
+      if (window.location.hash === SKIP_LINK_HASH) {
+        // "본문으로 건너뛰기" 는 화면 이동이 아니다. 해시를 원래 화면으로 되돌리고 본문에
+        // 초점만 옮긴다 — 그대로 두면 해시 라우터가 알 수 없는 화면으로 보고 홈으로 보낸다.
+        window.history.replaceState(null, "", routeToHash(routeRef.current));
+        document.getElementById("main")?.focus();
+        return;
+      }
       setRoute(parseHash(window.location.hash));
     }
     window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    window.addEventListener("hashchange", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("hashchange", onPopState);
+    };
   }, []);
 
   const navigate = useCallback((next: Route) => {
@@ -117,6 +137,18 @@ export function App() {
         if (!cached)
           throw new Error("오프라인으로 열 수 있는 계정이 없습니다. 온라인에서 로그인하세요");
         return cached;
+      }
+      if (hasPendingLogout()) {
+        // 오프라인에서 누른 로그아웃을 서버에도 마저 반영한다. 실패하면 다시 로그인된
+        // 화면으로 넘어가지 않게 로그아웃 상태로 둔다.
+        try {
+          await authApi.logout();
+          clearPendingLogout();
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 401)) return null;
+          clearPendingLogout();
+        }
+        return null;
       }
       const user = await authApi.me(signal);
       rememberLocalSession(user);
@@ -208,13 +240,18 @@ export function App() {
 
   if (isUnauthenticated) {
     return (
-      <LoginScreen
-        onAuthenticated={(result) => {
-          rememberLocalSession(result.user);
-          queryClient.setQueryData(["auth", "me"], result.user);
-          void queryClient.invalidateQueries();
-        }}
-      />
+      <>
+        {logoutNotice ? <output className="app-notice">{logoutNotice}</output> : null}
+        <LoginScreen
+          onAuthenticated={(result) => {
+            rememberLocalSession(result.user);
+            queryClient.setQueryData(["auth", "me"], result.user);
+            clearPendingLogout();
+            setLogoutNotice(null);
+            void queryClient.invalidateQueries();
+          }}
+        />
+      </>
     );
   }
 
@@ -285,12 +322,25 @@ export function App() {
                       setSettingsOpen(false);
                       handleUnauthorized();
                       void clearBrowserPush().catch(() => undefined);
-                      void authApi.logout().finally(() => {
-                        queryClient.setQueryData(["auth", "me"], null);
-                        queryClient.removeQueries({
-                          predicate: (query) => query.queryKey[0] !== "auth",
+                      void authApi
+                        .logout()
+                        .then(() => {
+                          clearPendingLogout();
+                          setLogoutNotice(null);
+                        })
+                        .catch((error: unknown) => {
+                          if (error instanceof ApiError && error.status === 401) return;
+                          markPendingLogout();
+                          setLogoutNotice(
+                            "서버 로그아웃을 확인하지 못했습니다. 다음에 온라인으로 열 때 마저 로그아웃합니다",
+                          );
+                        })
+                        .finally(() => {
+                          queryClient.setQueryData(["auth", "me"], null);
+                          queryClient.removeQueries({
+                            predicate: (query) => query.queryKey[0] !== "auth",
+                          });
                         });
-                      });
                     }}
                   >
                     로그아웃
@@ -301,7 +351,7 @@ export function App() {
           </div>
         </header>
 
-        <main className="app-main" id="main">
+        <main className="app-main" id="main" tabIndex={-1}>
           {route.view === "price-watch" && <PriceWatchPage key={user?.id} />}
           {route.view === "discover" && <DiscoverPage key={user?.id} />}
           {route.view === "home" && (

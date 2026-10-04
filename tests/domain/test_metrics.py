@@ -143,6 +143,17 @@ def test_discount_rate_includes_points_purchase() -> None:
     assert metrics.discount_rate == Decimal("0.6000")
 
 
+def test_discount_rate_ignores_lots_without_list_price() -> None:
+    # 정가 공란(0원)에 실구매가만 적은 구매가 섞여도 할인율이 음수가 되지 않는다.
+    metrics = compute_price_metrics(
+        [
+            _lot(1, 750, "30000", "24000"),
+            _lot(1, 750, None, "25000"),
+        ]
+    )
+    assert metrics.discount_rate == Decimal("0.2000")
+
+
 def test_empty_lots_produce_zero_counts_and_none_prices() -> None:
     metrics = compute_price_metrics([])
 

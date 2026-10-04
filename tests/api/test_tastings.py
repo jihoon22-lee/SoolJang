@@ -288,3 +288,62 @@ class TestTastingApi:
         assert anon_client.get(f"{prefix}/bottles").status_code == 401
         assert anon_client.get(f"{prefix}/tastings").status_code == 401
         assert anon_client.post(f"{prefix}/tastings", json={}).status_code == 401
+
+
+def test_reopened_finished_bottle_accepts_new_tasting(api_client: TestClient, prefix: str) -> None:
+    data = _create_product_with_bottle(api_client, prefix, volume_ml=700)
+    bottle_id = data["bottles"][0]["id"]
+    api_client.post(f"{prefix}/bottles/{bottle_id}:finish", json={})
+
+    reopened = api_client.post(f"{prefix}/bottles/{bottle_id}:reopen").json()
+    tasting = api_client.post(
+        f"{prefix}/tastings",
+        json={"bottle_id": bottle_id, "tasted_on": "2026-10-04", "poured_ml": 50},
+    )
+
+    assert reopened["remaining_ml"] is None
+    assert tasting.status_code == 201, tasting.text
+
+
+def test_remaining_can_be_adjusted_and_zero_finishes_the_bottle(
+    api_client: TestClient, prefix: str
+) -> None:
+    data = _create_product_with_bottle(api_client, prefix, volume_ml=700)
+    bottle_id = data["bottles"][0]["id"]
+    api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={})
+
+    half = api_client.post(f"{prefix}/bottles/{bottle_id}:remaining", json={"remaining_ml": 350})
+    too_much = api_client.post(
+        f"{prefix}/bottles/{bottle_id}:remaining", json={"remaining_ml": 701}
+    )
+    empty = api_client.post(f"{prefix}/bottles/{bottle_id}:remaining", json={"remaining_ml": 0})
+
+    assert half.json()["remaining_ml"] == 350
+    assert too_much.status_code == 409
+    assert empty.json()["status"] == "finished"
+
+
+def test_tasting_before_recorded_open_date_moves_open_date_back(
+    api_client: TestClient, prefix: str
+) -> None:
+    data = _create_product_with_bottle(api_client, prefix, volume_ml=100)
+    bottle_id = data["bottles"][0]["id"]
+    api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={"opened_on": "2026-10-04"})
+
+    tasting = api_client.post(
+        f"{prefix}/tastings",
+        json={"bottle_id": bottle_id, "tasted_on": "2026-10-01", "poured_ml": 100},
+    )
+
+    assert tasting.status_code == 201, tasting.text
+    bottle = api_client.get(f"{prefix}/bottles/{bottle_id}").json()
+    assert (bottle["opened_on"], bottle["finished_on"]) == ("2026-10-01", "2026-10-01")
+
+
+def test_tasting_for_unknown_sku_is_rejected(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(
+        f"{prefix}/tastings",
+        json={"sku_id": "00000000-0000-4000-8000-000000000000", "tasted_on": "2026-10-04"},
+    )
+
+    assert response.status_code == 404

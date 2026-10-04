@@ -202,7 +202,26 @@ export class SyncEngine {
     this.assertCurrent(run);
     await importLegacyChanges(run.store, run.userId);
     this.assertCurrent(run);
-    await this.flushOutbox(run);
+    // 실패한 명령이 남아 있어도 다른 기기의 변경은 받아야 한다. 대기 중인 행은 pull 이
+    // 보호하므로(`pendingIds`) 먼저 받아도 사용자의 미전송 입력을 덮지 않는다.
+    let flushError: unknown = null;
+    try {
+      await this.flushOutbox(run);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      if (error instanceof ApiError && (error.status === 401 || error.status === 409)) throw error;
+      flushError = error;
+    }
+    if (flushError) {
+      // 전송 실패를 먼저 알린다. 받기까지 실패해도 원래 원인을 가리지 않는다.
+      try {
+        await this.pullDeltas(run);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+      }
+      this.assertCurrent(run);
+      throw flushError;
+    }
     await this.pullDeltas(run);
     this.assertCurrent(run);
     this.lastSyncedAt = new Date().toISOString();
@@ -310,7 +329,8 @@ export class SyncEngine {
     let cursor = startCursor;
     const accumulated = new Map<(typeof SYNC_ENTITIES)[number], SyncRow[]>();
     for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
-      const response = await syncApi.pull(cursor, run.userId, run.signal);
+      // 첫 페이지는 커서 조금 앞부터 다시 읽어 늦게 커밋된 행을 놓치지 않는다(서버 rewind).
+      const response = await syncApi.pull(cursor, run.userId, run.signal, page === 0);
       this.assertCurrent(run);
       for (const entity of SYNC_ENTITIES) {
         const rows = (response.changes[entity] ?? []) as SyncRow[];

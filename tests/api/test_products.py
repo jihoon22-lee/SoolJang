@@ -588,3 +588,23 @@ def test_patch_sku_updates_volume_without_touching_barcode(
     body = response.json()
     assert body["volume_ml"] == 1000
     assert body["barcode"] == "8801234567890"
+
+
+def test_invalid_barcode_on_create_is_a_validation_error(
+    api_client: TestClient, prefix: str
+) -> None:
+    response = api_client.post(
+        f"{prefix}/products",
+        json={"name": "잘못된 바코드", "skus": [{"volume_ml": 750, "barcode": "ABC-DEF"}]},
+    )
+
+    assert response.status_code == 422
+
+
+def test_unknown_producer_id_is_rejected(api_client: TestClient, prefix: str) -> None:
+    response = api_client.post(
+        f"{prefix}/products",
+        json={"name": "생산자 없음", "producer_id": "00000000-0000-4000-8000-000000000000"},
+    )
+
+    assert response.status_code == 404

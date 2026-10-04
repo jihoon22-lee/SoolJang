@@ -38,10 +38,13 @@ async def pull(
     user_id: UserDep,
     expected_user_id: Annotated[uuid.UUID, Query(description="로컬 저장소 소유자")],
     since: Annotated[str | None, Query(description="이전 응답의 next_cursor")] = None,
+    rewind: Annotated[
+        bool, Query(description="동기화의 첫 페이지에서 늦게 커밋된 행까지 다시 읽기")
+    ] = False,
 ) -> SyncPullOut:
     _check_owner(user_id, expected_user_id)
     cursor = Cursor.decode(since) if since else None
-    result = await pull_changes(session, user_id=user_id, cursor=cursor)
+    result = await pull_changes(session, user_id=user_id, cursor=cursor, rewind=rewind)
     return SyncPullOut(
         changes=result.changes, next_cursor=result.next_cursor, has_more=result.has_more
     )

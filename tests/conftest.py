@@ -25,7 +25,7 @@ from sooljang.infrastructure.database import session as session_module
 from sooljang.infrastructure.database.base import Base
 from sooljang.infrastructure.database.session import reset_database_state
 
-TEST_DATABASE_URL = "postgresql+psycopg://sooljang:sooljang@127.0.0.1:5432/sooljang_test"
+TEST_DATABASE_URL = "postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_test"
 #: Fernet 은 32바이트 urlsafe base64 키를 요구한다. 테스트 전용 고정값 — 운영 키가 아니다.
 TEST_SECRET_KEY = "b_hsHWsTUYKT4jxk9bNuJ7Q8gl_3Fg7AVm4GzMntuEg="
 

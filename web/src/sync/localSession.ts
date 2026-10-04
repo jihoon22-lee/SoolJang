@@ -37,3 +37,31 @@ export function offlineSession(): User | null {
     return null;
   }
 }
+
+/**
+ * 서버 로그아웃을 확인하지 못한 상태. 오프라인에서 로그아웃하면 화면은 잠기지만 서버 쿠키는
+ * 남아, 다음 온라인 실행에서 `/auth/me` 가 성공해 다시 로그인된 것처럼 보인다. 이 표시가
+ * 있으면 다음 온라인 실행에서 먼저 서버 로그아웃을 마친다.
+ */
+const PENDING_LOGOUT_KEY = "sooljang-pending-logout-v1";
+export function markPendingLogout(): void {
+  try {
+    localStorage.setItem(PENDING_LOGOUT_KEY, "1");
+  } catch {
+    /* 저장소가 막혀 있으면 다음 실행에서 다시 로그인된 상태로 보일 수 있다. */
+  }
+}
+export function clearPendingLogout(): void {
+  try {
+    localStorage.removeItem(PENDING_LOGOUT_KEY);
+  } catch {
+    /* 무시한다. */
+  }
+}
+export function hasPendingLogout(): boolean {
+  try {
+    return localStorage.getItem(PENDING_LOGOUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}

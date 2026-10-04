@@ -27,6 +27,7 @@ from sooljang.application.collection_inventory import (
     stocktake_out,
 )
 from sooljang.infrastructure.database.models import (
+    IN_STOCK_STATUSES,
     BottleMovement,
     CleanupPreview,
     Stocktake,
@@ -80,7 +81,11 @@ async def locations(session: SessionDep, user_id: UserDep) -> list[dict[str, Any
         .where(StorageLocation.user_id == user_id)
         .order_by(StorageLocation.name)
     )
-    bottles = await list_bottles(session, user_id)
+    # 위치 점유는 재고(미개봉·개봉)만 센다. 이미 마시거나 내보낸 병은 자리에 없다.
+    counts: dict[str, int] = {}
+    for bottle in await list_bottles(session, user_id):
+        if bottle["location_id"] and bottle["status"] in IN_STOCK_STATUSES:
+            counts[bottle["location_id"]] = counts.get(bottle["location_id"], 0) + 1
     return [
         {
             "id": str(row.id),
@@ -88,7 +93,7 @@ async def locations(session: SessionDep, user_id: UserDep) -> list[dict[str, Any
             "kind": row.kind,
             "note": row.note,
             "deleted": row.deleted_at is not None,
-            "bottle_count": sum(bottle["location_id"] == str(row.id) for bottle in bottles),
+            "bottle_count": counts.get(str(row.id), 0),
         }
         for row in rows
     ]
