@@ -14,11 +14,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-10-05 — v1.8.0 최종 코드 리뷰 7건을 v1.8.1 패치로 수정·릴리스([기록](../workthrough/2026-10-05-v181-review-fixes.md)) |
+| 최종 갱신 | 2026-10-05 — v1.8.1 릴리스·운영 배포 완료(v1.8.0 최종 리뷰 7건 수정, [릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.8.1), [기록](../workthrough/2026-10-05-v181-review-fixes.md)) |
 | 현재 마일스톤 | 없음. 직전 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) 완료(메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
-| 진행 브랜치 | `feature/v181-review-fixes`(머지 후 태그·운영 배포). 새 작업은 `feature/<task-slug>` 로 시작한다 |
-| 버전 | 코드·패키지 `1.8.1`, schema head `0019_record_event`(v1.8.1은 migration 없음) |
-| 운영 | API·웹 `1.8.0`, schema `0019_record_event`(2026-10-05 배포, 백업 `sooljang-20261005T062319028992Z-aad7df30`) |
+| 진행 브랜치 | 없음. 새 작업은 `feature/<task-slug>` 로 시작한다 |
+| 버전 | 코드·패키지 `1.8.1`, schema head `0019_record_event` |
+| 운영 | API·웹 `1.8.1`, schema `0019_record_event`(2026-10-05 배포, 백업 `sooljang-20261005T075522111604Z-16fe607e`) |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
 
 ## 2. 직전 마일스톤: v1.8.0 (완료)
