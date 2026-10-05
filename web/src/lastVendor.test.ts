@@ -1,5 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getLastVendorName, setLastVendorName } from "@/lastVendor";
+import { activateDatabase } from "@/sync/db";
+
+beforeEach(async () => {
+  await activateDatabase("u1");
+});
 
 afterEach(() => {
   window.localStorage.clear();
@@ -24,5 +29,12 @@ describe("lastVendor", () => {
     setLastVendorName("이마트");
     setLastVendorName("   ");
     expect(getLastVendorName()).toBe("이마트");
+  });
+
+  it("다른 계정의 구매처를 미리 채우지 않는다", async () => {
+    setLastVendorName("u1의 단골 매장");
+    await activateDatabase("u2");
+
+    expect(getLastVendorName()).toBe("");
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
 
 const NOW = "2026-01-01T00:00:00Z";
@@ -75,9 +75,13 @@ describe("recordTasting", () => {
 });
 
 describe("장소·동석자 기억", () => {
-  it("직전 값을 기억하고, 없으면 빈 값이다", () => {
+  it("직전 값을 계정별로 기억하고 다른 계정에는 보이지 않는다", async () => {
+    await activateDatabase("u1");
     expect(lastTastingContext()).toEqual({ place: "", companions: "" });
     rememberTastingContext({ place: "집", companions: "친구" });
     expect(lastTastingContext()).toEqual({ place: "집", companions: "친구" });
+
+    await activateDatabase("u2");
+    expect(lastTastingContext()).toEqual({ place: "", companions: "" });
   });
 });

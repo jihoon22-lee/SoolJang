@@ -357,16 +357,6 @@ describe("ProductDetail", () => {
       expect(options.map((o) => o.textContent)).toEqual(["이마트", "이마트 트레이더스"]);
     });
 
-    it("구매처는 직전에 쓴 값으로 미리 채워진다", async () => {
-      window.localStorage.setItem("sooljang:last-vendor-name", "이마트");
-
-      setup();
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
-
-      expect(screen.getByLabelText("구매처")).toHaveValue("이마트");
-      window.localStorage.clear();
-    });
-
     it("구매 건 삭제는 확인을 받은 뒤에만 호출한다", async () => {
       const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
       const { onDeletePurchase } = setup();

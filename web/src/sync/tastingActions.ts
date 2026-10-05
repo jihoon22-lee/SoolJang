@@ -131,18 +131,29 @@ export async function recordTasting(input: TastingRecordInput): Promise<string> 
 
 // --- 직전 장소·동석자 기억 ---------------------------------------------------------
 
-const CONTEXT_KEY = "sooljang:last-tasting-context";
+const CONTEXT_PREFIX = "sooljang:last-tasting-context:";
 
 export interface TastingContext {
   place: string;
   companions: string;
 }
 
-/** 같은 자리에서 여러 병을 기록할 때 장소·동석자를 다시 치지 않게 한다(기기별). */
+/**
+ * 장소·동석자는 개인 기록이라 계정별로 둔다. 같은 기기에서 다른 계정으로 로그인하면 이전
+ * 계정의 값이 미리 채워지면 안 된다. 로컬 저장소 소유자가 정해지지 않았으면 기억하지 않는다.
+ */
+function contextKey(): string | null {
+  const userId = databaseIdentity().userId;
+  return userId ? `${CONTEXT_PREFIX}${encodeURIComponent(userId)}` : null;
+}
+
+/** 같은 자리에서 여러 병을 기록할 때 장소·동석자를 다시 치지 않게 한다(계정·기기별). */
 export function lastTastingContext(): TastingContext {
+  const key = contextKey();
+  if (!key) return { place: "", companions: "" };
   try {
     const raw = JSON.parse(
-      window.localStorage.getItem(CONTEXT_KEY) ?? "null",
+      window.localStorage.getItem(key) ?? "null",
     ) as Partial<TastingContext> | null;
     return { place: raw?.place ?? "", companions: raw?.companions ?? "" };
   } catch {
@@ -151,8 +162,10 @@ export function lastTastingContext(): TastingContext {
 }
 
 export function rememberTastingContext(context: TastingContext): void {
+  const key = contextKey();
+  if (!key) return;
   try {
-    window.localStorage.setItem(CONTEXT_KEY, JSON.stringify(context));
+    window.localStorage.setItem(key, JSON.stringify(context));
   } catch {
     // 기억하지 못할 뿐 기록은 이미 저장됐다.
   }
