@@ -7,8 +7,10 @@
  */
 
 import { useId, useState } from "react";
+import { purchasesApi } from "@/api/client";
 import type { Purchase } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
+import { HistoryDetails } from "@/components/HistoryList";
 import { rankByQuery } from "@/search";
 
 export interface EditPurchaseInput {
@@ -149,6 +151,12 @@ export function PurchaseEditForm({
           {message}
         </p>
       ) : null}
+      <HistoryDetails
+        title="이 구매의 수정 이력"
+        queryKey={["purchases", purchase.id, "history"]}
+        load={(signal) => purchasesApi.history(purchase.id, signal)}
+        online
+      />
       <div className="button-row">
         <button type="submit" className="primary" disabled={submitting || !quantityValid}>
           {submitting ? "저장 중…" : "수정 저장"}

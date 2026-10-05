@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/sync/db";
 import { OUTBOX_CHANGED, syncEvents } from "@/sync/events";
-import { discardFailedEntry, enqueue, pendingEntityIds, replaceFailedEntry } from "@/sync/outbox";
+import {
+  discardAllFailedEntries,
+  discardFailedEntry,
+  enqueue,
+  pendingEntityIds,
+  replaceFailedEntry,
+  retryFailedEntries,
+} from "@/sync/outbox";
 
 beforeEach(async () => {
   await db.open();
@@ -256,4 +263,26 @@ it("실패 명령을 수정하면 FIFO 위치와 대상은 보존하고 새 멱�
   expect(replacement?.fields.name).toBe("fixed");
   expect(replacement?.status).toBe("pending");
   expect(await db.outbox.get(oldKey)).toBeUndefined();
+});
+
+describe("실패 명령 일괄 처리", () => {
+  it("모두 다시 보내기는 새 키의 대기 명령으로 바꾸고, 모두 건너뛰기는 의존 명령까지 버린다", async () => {
+    const parent = await enqueue({ entity: "vendor", op: "create", entityId: "pv", fields: {} });
+    await enqueue({
+      entity: "purchase",
+      op: "create",
+      entityId: "child",
+      fields: { vendor_id: "pv" },
+    });
+    await db.outbox.update(parent, { status: "failed", error: "이름이 필요합니다" });
+
+    expect(await retryFailedEntries()).toBe(1);
+    expect(await db.outbox.get(parent)).toBeUndefined();
+    expect((await db.outbox.toArray()).every((entry) => entry.status === "pending")).toBe(true);
+
+    const [retried] = (await db.outbox.toArray()).filter((entry) => entry.entity === "vendor");
+    await db.outbox.update(retried?.idempotency_key as string, { status: "failed" });
+    expect(await discardAllFailedEntries()).toBe(2);
+    expect(await db.outbox.count()).toBe(0);
+  });
 });

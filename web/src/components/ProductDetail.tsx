@@ -6,6 +6,7 @@ import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { ProductAttachments } from "@/components/ProductAttachments";
 import { type EditPurchaseInput, PurchaseEditForm } from "@/components/PurchaseEditForm";
+import { SkuMetricsTable } from "@/components/SkuMetricsTable";
 import {
   formatAbv,
   formatCategoryPath,
@@ -233,6 +234,8 @@ export function ProductDetail({
           </p>
         </details>
       </section>
+
+      <SkuMetricsTable product={product} purchases={purchases} bottles={bottles} />
 
       <PurchaseSection
         product={product}

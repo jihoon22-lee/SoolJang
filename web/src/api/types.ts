@@ -218,6 +218,13 @@ export interface Purchase {
   bottle_count: number;
 }
 
+/** 변경 이력 한 줄. `detail` 은 바뀐 칸의 [이전, 이후] 또는 부가 정보다. */
+export interface HistoryEntry {
+  at: string;
+  action: string;
+  detail: Record<string, unknown>;
+}
+
 /** `PATCH /purchases/{id}`. 생략한 필드는 바꾸지 않는다. */
 export interface PurchaseUpdateInput {
   vendor_id?: string | null;

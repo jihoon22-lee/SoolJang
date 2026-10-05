@@ -46,6 +46,7 @@ from sooljang.application.categories import (
     delete_category,
     make_slug,
 )
+from sooljang.application.history import changes, log_event
 from sooljang.application.products import (
     ensure_category_exists,
     ensure_producer_exists,
@@ -892,6 +893,8 @@ async def _dispatch_purchase(
     if "quantity" in fields:
         # 병수 변경은 병 레코드 추가·삭제와 번호 배정이 따르는 온라인 전용 연산이다.
         raise ValidationFailedError("병수 변경은 온라인에서 다시 시도하세요")
+    tracked = ("vendor_id", "purchased_on", "unit_list_price", "unit_paid_price", "discount_note")
+    before = {key: getattr(purchase, key) for key in tracked}
     if "vendor_id" in fields:
         vendor_id = _uuid(fields["vendor_id"])
         if vendor_id is not None:
@@ -906,6 +909,15 @@ async def _dispatch_purchase(
         purchase.discount_note = fields["discount_note"]
     if "currency" in fields and fields["currency"]:
         purchase.currency = _currency(fields["currency"])
+    if changed := changes(before, {key: getattr(purchase, key) for key in tracked}):
+        log_event(
+            session,
+            user_id=user_id,
+            entity="purchase",
+            entity_id=purchase.id,
+            action="update",
+            detail=changed,
+        )
     await session.flush()
     return await _applied(session, op, purchase)
 

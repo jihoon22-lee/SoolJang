@@ -6,7 +6,7 @@
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, status
 from sqlalchemy import select
@@ -23,6 +23,7 @@ from sooljang.api.schemas.tasting import (
     TastingOut,
     TastingSummaryOut,
 )
+from sooljang.application.history import bottle_history
 from sooljang.application.tastings import (
     BottleTransitionError,
     InsufficientRemainingError,
@@ -197,6 +198,15 @@ async def unopen_bottle_endpoint(
         raise ConflictError(str(error)) from error
     await session.refresh(record)
     return BottleOut.model_validate(record)
+
+
+@bottles_router.get("/{bottle_id}/history", summary="병 변경 이력")
+async def bottle_history_endpoint(
+    session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """상태 전이·잔량 조정·시음으로 인한 변화와 위치 이동을 최신순으로 합쳐 돌려준다."""
+    await _get_bottle(session, user_id, bottle_id)
+    return await bottle_history(session, user_id=user_id, bottle_id=bottle_id)
 
 
 @bottles_router.get(

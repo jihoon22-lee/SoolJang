@@ -162,4 +162,19 @@ describe("HomePage", () => {
     expect(await screen.findByText("열린 위스키 시음을 기록했습니다")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("권장 기간이 지난 열린 와인을 '빨리 마시면 좋은 병'으로 알린다", async () => {
+    await db.category.put(row({ id: "wine", parent_id: null, name: "와인" }));
+    await db.product.put(row({ id: "p1", name: "열어 둔 와인", category_id: "wine" }));
+    await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 750 }));
+    await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 1 }));
+    await db.bottle.put(
+      row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "open", opened_on: "2020-01-01" }),
+    );
+
+    renderHomePage();
+
+    expect(await screen.findByRole("heading", { name: "빨리 마시면 좋은 병" })).toBeInTheDocument();
+    expect(screen.getByText(/와인 권장 7일/)).toBeInTheDocument();
+  });
 });

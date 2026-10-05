@@ -21,6 +21,8 @@ import {
 import { BottleQr, BottleQrCamera } from "@/components/BottleQr";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
 import { useToast } from "@/components/Toast";
+import { downloadCsv } from "@/csvExport";
+import { todayLocal } from "@/format";
 import { matchesQuery } from "@/search";
 import { applyBottleTransitions, undoBottleTransitions } from "@/sync/bottleActions";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
@@ -770,6 +772,35 @@ function StocktakePanel({
               </button>
             </div>
           ) : null}
+          <div className="button-row">
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsv(
+                  `sooljang-stocktake-${active.name}-${todayLocal()}.csv`,
+                  ["구분", "술", "기록된 위치", "확인한 위치"],
+                  [
+                    ...active.missing.map((bottle) => [
+                      "미확인",
+                      `${bottle.name} #${bottle.label_no}`,
+                      locationName(bottle.location_id),
+                      "",
+                    ]),
+                    ...active.observations
+                      .filter((row) => row.result !== "checked")
+                      .map((row) => [
+                        RESULTS[row.result] ?? row.result,
+                        bottleName(row.bottle_id),
+                        locationName(row.recorded_location_id),
+                        locationName(row.observed_location_id),
+                      ]),
+                  ],
+                )
+              }
+            >
+              미확인·불일치 CSV
+            </button>
+          </div>
           <details>
             <summary>확인한 병 {active.observations.length}개</summary>
             <ul>

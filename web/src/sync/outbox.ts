@@ -217,3 +217,27 @@ export async function pendingEntityIds(): Promise<Set<string>> {
   }
   return ids;
 }
+
+/**
+ * 실패한 명령을 모두 같은 입력으로 다시 보낸다. 서버는 실패 결과를 멱등하게 돌려주므로 같은
+ * 키로는 다시 실행되지 않는다 — 새 키의 명령으로 바꿔 대기열 맨 앞 자리에 둔다. 부모가 그
+ * 사이 만들어졌거나 다른 기기의 변경이 풀려 이번에는 통과할 수 있다.
+ */
+export async function retryFailedEntries(): Promise<number> {
+  const failed = (await db.outbox.where("status").equals("failed").toArray()).sort((a, b) =>
+    a.created_at.localeCompare(b.created_at),
+  );
+  for (const entry of failed) await replaceFailedEntry(entry.idempotency_key, entry.fields);
+  return failed.length;
+}
+
+/** 실패한 명령과 그에 의존하는 대기 명령을 모두 버린다. */
+export async function discardAllFailedEntries(): Promise<number> {
+  let discarded = 0;
+  for (;;) {
+    const [next] = await db.outbox.where("status").equals("failed").toArray();
+    if (!next) return discarded;
+    discarded += 1 + dependentEntries(next, await db.outbox.toArray()).length;
+    await discardFailedEntry(next.idempotency_key, true);
+  }
+}

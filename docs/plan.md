@@ -21,7 +21,7 @@
 | 현재 마일스톤 / 후속 | **[v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2)** — 메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)의 PR 묶음 ①~⑥. 기능 확대 후속 #142/#143은 별도 유지 |
 | 진행 브랜치 | ①#148·②#149 머지. ③ `feature/v180-design`(디자인·빠른 기록) 진행. 이후 ② `feature/v180-bulk-records` → ③ `feature/v180-design` → ④ `feature/v180-insights` → ⑤ `feature/v180-docs` → ⑥ `feature/v180-release`. 재개 시 Git/열린 PR 확인 |
 | 진행 중 잔여 항목 | B01~B08 머지(B05 #139, B07 #140). B09 Python1322/91.22%·웹634/81.09%, 실제 복구·401/SW·Docker no-recreate 통과. 실가격/실기 푸시 수용은 사용자 승인 후속 #142/#143. 운영 백업/실복원·0018 전환·HTTPS/실브라우저·설정/기록 보존 확인 완료. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
-| 버전 상태 | 코드·패키지 `1.7.1`, schema `0018_price_watch` 유지. [패치 검증](../workthrough/2026-09-07-v171-price-vintage.md)·[릴리스/배포 원장](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.7.1) |
+| 버전 상태 | 코드·패키지 `1.7.1`(v1.8.0 진행 중), schema `0019_record_event`(④에서 추가, 운영 미적용). [패치 검증](../workthrough/2026-09-07-v171-price-vintage.md)·[릴리스/배포 원장](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.7.1) |
 
 - 완료된 WP #119/#120/#122/#123/#129/#130은 실행 근거와 함께 종료했다.
   구현·검증 PR9개 머지와 GitHub closed 이슈 비율·최종 수용은 다른 지표다.
@@ -197,7 +197,7 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 | ① 정확성 `feature/v180-correctness` | ✅ [#148](https://github.com/jihoon22-lee/SoolJang/pull/148) CI 통과·머지 | [기록](../workthrough/2026-10-05-v180-correctness.md) |
 | ② 일괄 처리 `feature/v180-bulk-records` | ✅ [#149](https://github.com/jihoon22-lee/SoolJang/pull/149) CI 통과·머지 | [기록](../workthrough/2026-10-05-v180-bulk-records.md) |
 | ③ 디자인·빠른 기록 `feature/v180-design` | 🟡 PR 진행 | [기록](../workthrough/2026-10-05-v180-design.md) |
-| ④ 부가 기능 `feature/v180-insights` | ⬜ | — |
+| ④ 부가 기능 `feature/v180-insights` | 🟡 PR 진행 | [기록](../workthrough/2026-10-05-v180-insights.md) |
 | ⑤ 문서 정리 `feature/v180-docs` | ⬜ | — |
 | ⑥ 직접 테스트 보강·릴리스 `feature/v180-release` | ⬜ | — |
 
@@ -2291,6 +2291,8 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D219 | 구매 병수 변경은 온라인 PATCH로만 하며, 줄일 때는 번호가 큰 미개봉 병만 지운다(부족하면 409). 동기화 update의 `quantity`는 거부한다 | 이미 마시거나 내보낸 병의 시음·이력을 조용히 지우지 않는다. 병 추가·삭제·번호는 서버 기준이어야 한다 |
 | D220 | 모바일(<600px)은 주 탭을 하단 탭바로, 통계는 탭으로 나누고, 화면마다 핵심 지표 3개만 크게 보인다. 본문 글꼴은 시스템 한글 글꼴(내려받지 않는 Pretendard 선언 제거), 숫자는 고정폭 숫자로 쓴다 | 모바일 헤더가 화면의 20%, 통계가 세로 4,600px이었다. 웹 글꼴 내려받기(약 2MB)를 오프라인 precache에 넣지 않는다 |
 | D221 | "오늘 마셨어요"는 홈에서 병 고르기 → 별점·따른 양 → 저장 두 단계다. 시음 입력은 날짜·별점(0.5 단위)·양 프리셋을 먼저, 향·맛 등은 접어 두며 직전 장소·동석자를 기기에 기억한다 | 한 잔 기록에 제품→병→8칸 폼을 거치던 흐름을 줄인다. 저장 규칙은 기존 `record_tasting` 과 같다 |
+| D222 | 병 상태 전이·잔량 조정·시음으로 인한 병 변화와 구매 수정을 `record_event`(0019, additive)에 바뀐 칸만 [이전, 이후]로 쌓는다. 온라인·동기화가 같은 서비스 함수를 거쳐 한 번만 남고, 과거 이력은 소급하지 않는다 | 실행 취소·실수 확인의 근거. 재계산할 수 없는 1차 사실이라 저장한다. 위치 이동은 기존 `bottle_movement` 와 합쳐 보인다 |
+| D223 | 개봉 후 권장 기간 알림은 서버 푸시가 아니라 홈 위젯으로 하고, 주종 경로 이름(와인 7일·맥주/막걸리 3일·청주/사케 30일·주정강화/리큐르 90일, 증류주 없음)으로 고른다. 규격별 지표·CSV 내보내기는 오프라인 계산으로 한다 | 새 서버 작업·알림 동의 없이 바로 쓸 수 있다. 푸시 확장은 실제 사용 뒤 판단한다 |
 
 ## 6. 열린 질문
 

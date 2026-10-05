@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import type { RankingEntry } from "@/api/types";
 import { QuickTastingSheet } from "@/components/QuickTastingSheet";
 import { LoadingState } from "@/components/StatusViews";
-import { formatDate, formatMoney, formatRating, formatVolume } from "@/format";
+import { daysSince, openedShelfLife } from "@/domain/openedShelfLife";
+import { formatDate, formatMoney, formatRating, formatVolume, todayLocal } from "@/format";
 import type { View } from "@/router";
 import {
   getDrinkableBottles,
@@ -51,6 +52,16 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
   const topCategories = [...categories].sort((a, b) => b.bottle_count - a.bottle_count).slice(0, 6);
   const maxCategory = Math.max(1, ...topCategories.map((stat) => stat.bottle_count));
   const openBottles = drinkable.filter((item) => item.status === "open");
+  const today = todayLocal();
+  // 권장 기간을 넘긴 열린 병. 오래 지난 순으로.
+  const overdue = openBottles
+    .map((item) => {
+      const life = openedShelfLife(item.categoryPath);
+      const days = item.openedOn ? daysSince(item.openedOn, today) : null;
+      return life && days !== null && days >= life.days ? { item, life, days } : null;
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null)
+    .sort((a, b) => b.days - a.days);
 
   return (
     <div className="home-page">
@@ -93,6 +104,28 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
           {totals.vendor_count.toLocaleString("ko-KR")}곳
         </p>
       </section>
+
+      {overdue.length > 0 ? (
+        <section aria-labelledby="home-overdue-heading" className="home-overdue">
+          <h3 id="home-overdue-heading">빨리 마시면 좋은 병</h3>
+          <ul className="activity-list">
+            {overdue.slice(0, 5).map(({ item, life, days }) => (
+              <li key={item.bottleId}>
+                <button
+                  type="button"
+                  className="link-like"
+                  onClick={() => onSelectProduct(item.productId)}
+                >
+                  {item.productName} #{item.labelNo}
+                </button>
+                <span className="muted">
+                  개봉 {days}일째 · {life.label} 권장 {life.days}일
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section aria-labelledby="home-open-heading">
         <h3 id="home-open-heading">지금 열려 있는 병</h3>
