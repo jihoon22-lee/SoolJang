@@ -798,6 +798,34 @@ def test_bottle_transition_conflict_keeps_server_state_and_continues_batch(
     assert [row["entity_id"] for row in logged] == [finished_bottle]
 
 
+def test_invalid_bottle_input_fails_instead_of_becoming_a_conflict(
+    api_client: TestClient, prefix: str
+) -> None:
+    # 소진일이 개봉일보다 앞서는 것은 다른 기기와의 충돌이 아니라 고쳐야 할 입력이다.
+    bottle_id = _one_bottle(api_client, prefix, "날짜를 잘못 고른 술")
+    api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={"opened_on": "2026-10-03"})
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="bottle",
+                op="action",
+                entity_id=uuid.UUID(bottle_id),
+                action="finish",
+                fields={"finished_on": "2026-10-01"},
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert "개봉일" in result["results"][0]["detail"]
+    assert result["stopped"] is True
+    assert _pull(api_client, prefix)["changes"]["conflict_log"] == []
+    assert api_client.get(f"{prefix}/bottles/{bottle_id}").json()["status"] == "open"
+
+
 def test_offline_tasting_beyond_remaining_is_kept_and_finishes_bottle(
     api_client: TestClient, prefix: str
 ) -> None:

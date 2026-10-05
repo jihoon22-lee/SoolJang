@@ -1,7 +1,7 @@
 # 작업 계획과 진행 현황
 
 **작업을 재개할 때 §1부터 읽는다.** 이 문서는 지금 진행 중인 일과 남은 결정만 담는다.
-지난 릴리스·Task·결정 로그(D1~D225)는 [history.md](history.md), 동작 설계는
+지난 릴리스·Task·결정 로그(D1~D227)는 [history.md](history.md), 동작 설계는
 [architecture.md](architecture.md)·[external-data.md](external-data.md), 개발·검증 절차는
 [development.md](development.md), 운영·배포는 [operations.md](operations.md)를 따른다.
 
@@ -14,10 +14,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-10-05 — v1.8.0 릴리스·운영 배포 완료([릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.8.0), [기록](../workthrough/2026-10-05-v180-release.md)) |
+| 최종 갱신 | 2026-10-05 — v1.8.0 최종 코드 리뷰 7건을 v1.8.1 패치로 수정·릴리스([기록](../workthrough/2026-10-05-v181-review-fixes.md)) |
 | 현재 마일스톤 | 없음. 직전 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) 완료(메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
-| 진행 브랜치 | 없음. 새 작업은 `feature/<task-slug>` 로 시작한다 |
-| 버전 | 코드·패키지 `1.8.0`, schema head `0019_record_event` |
+| 진행 브랜치 | `feature/v181-review-fixes`(머지 후 태그·운영 배포). 새 작업은 `feature/<task-slug>` 로 시작한다 |
+| 버전 | 코드·패키지 `1.8.1`, schema head `0019_record_event`(v1.8.1은 migration 없음) |
 | 운영 | API·웹 `1.8.0`, schema `0019_record_event`(2026-10-05 배포, 백업 `sooljang-20261005T062319028992Z-aad7df30`) |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
 
@@ -44,8 +44,8 @@
 
 ## 4. 결정(진행 중 마일스톤)
 
-진행 중인 마일스톤이 없다. 다음 마일스톤의 결정은 D226부터 여기에 쓰고 릴리스 후
-[history.md](history.md) §6으로 옮긴다. v1.8.0 결정(D212~D225)은 이미 옮겼다.
+진행 중인 마일스톤이 없다. 다음 마일스톤의 결정은 D228부터 여기에 쓰고 릴리스 후
+[history.md](history.md) §6으로 옮긴다. v1.8.0(D212~D225)·v1.8.1(D226~D227) 결정은 이미 옮겼다.
 
 ## 5. 열린 질문
 

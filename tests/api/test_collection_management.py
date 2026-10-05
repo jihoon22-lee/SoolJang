@@ -307,35 +307,71 @@ def test_bulk_move_with_unknown_bottle_changes_nothing(api_client: TestClient, p
     )
 
 
-def test_batch_scan_reports_each_code_and_apply_locations_moves_mismatches(
-    api_client: TestClient, prefix: str
+def _scan_all_to(
+    client: TestClient, prefix: str, stocktake_id: str, codes: list[str], location_id: str
 ) -> None:
+    for code in codes:
+        post(
+            client,
+            prefix,
+            f"/collection/stocktakes/{stocktake_id}/scan",
+            {"bottle_code": code, "observed_location_id": location_id},
+        )
+
+
+def test_apply_locations_moves_mismatched_bottles(api_client: TestClient, prefix: str) -> None:
     _, _, bottles = sample(api_client, prefix)
     shelf = post(api_client, prefix, "/collection/locations", {"name": "선반", "kind": "shelf"})[
         "id"
     ]
     stocktake = post(api_client, prefix, "/collection/stocktakes", {"name": "가을 실사"})
-    codes = [bottle["bottle_code"] for bottle in bottles]
-
-    result = post(
-        api_client,
-        prefix,
-        f"/collection/stocktakes/{stocktake['id']}/scans:batch",
-        {"bottle_codes": [*codes, "sooljang:bottle:not-a-uuid"], "observed_location_id": shelf},
+    _scan_all_to(
+        api_client, prefix, stocktake["id"], [bottle["bottle_code"] for bottle in bottles], shelf
     )
-
-    statuses = [item["status"] for item in result["results"]]
-    assert statuses == ["ok", "ok", "error"]
-    assert result["stocktake"]["observed_count"] == 2
-    assert result["stocktake"]["mismatch_count"] == 2
 
     applied = post(
         api_client, prefix, f"/collection/stocktakes/{stocktake['id']}:apply-locations", {}
     )
+
     assert applied["moved"] == 2
+    assert applied["skipped"] == 0
     assert applied["stocktake"]["mismatch_count"] == 0
     rows = api_client.get(f"{prefix}/collection/bottles").json()
     assert {row["location_id"] for row in rows} == {shelf}
+
+
+def test_apply_locations_skips_bottles_deleted_after_the_scan(
+    api_client: TestClient, prefix: str
+) -> None:
+    # 실사 뒤 한 병의 구매를 지워도 나머지 병의 위치 반영은 막히지 않는다.
+    _, _, bottles = sample(api_client, prefix)
+    other = post(api_client, prefix, "/products", {"name": "지울 술", "skus": [{"volume_ml": 500}]})
+    purchase = post(
+        api_client, prefix, "/purchases", {"sku_id": other["skus"][0]["id"], "quantity": 1}
+    )
+    doomed = api_client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()[0]
+    doomed_code = next(
+        row["bottle_code"]
+        for row in api_client.get(f"{prefix}/collection/bottles").json()
+        if row["id"] == doomed["id"]
+    )
+    shelf = post(api_client, prefix, "/collection/locations", {"name": "선반", "kind": "shelf"})[
+        "id"
+    ]
+    stocktake = post(api_client, prefix, "/collection/stocktakes", {"name": "겨울 실사"})
+    codes = [bottle["bottle_code"] for bottle in bottles] + [doomed_code]
+    _scan_all_to(api_client, prefix, stocktake["id"], codes, shelf)
+    assert api_client.delete(f"{prefix}/purchases/{purchase['id']}").status_code == 204
+
+    applied = post(
+        api_client, prefix, f"/collection/stocktakes/{stocktake['id']}:apply-locations", {}
+    )
+
+    assert applied["moved"] == 2
+    assert applied["skipped"] == 1
+    assert applied["stocktake"]["mismatch_count"] == 0
+    results = {row["bottle_id"]: row["result"] for row in applied["stocktake"]["observations"]}
+    assert results[doomed["id"]] == "relocation_skipped"
 
 
 def test_quality_labels_unnamed_purchases_and_ignores_deleted_products(

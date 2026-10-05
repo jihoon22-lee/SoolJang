@@ -72,13 +72,9 @@ export interface Stocktake {
   missing: InventoryBottle[];
   found_notes: string[];
 }
-export interface BatchScanResult {
-  bottle_code: string;
-  status: "ok" | "error";
-  duplicate?: boolean;
-  observation?: { result: string };
-  detail?: string;
-}
+/** 서버 `BulkPlacementInput.bottle_ids` 의 최대 길이와 같다. */
+export const MOVE_BATCH_LIMIT = 500;
+
 export const collectionApi = {
   quality: () => request<QualityReport>("/collection/quality"),
   preview: (kind: string, ids: string[], target_id: string | null = null) =>
@@ -98,11 +94,26 @@ export const collectionApi = {
   move: (id: string, location_id: string | null) =>
     request(`/collection/bottles/${id}/location`, { method: "PUT", body: { location_id } }),
   /** 여러 병을 한 위치로. 전부 성공하거나 전부 취소된다. */
-  moveMany: (bottle_ids: string[], location_id: string | null) =>
-    request<{ moved: number; unchanged: number }>("/collection/bottles:move", {
-      method: "PUT",
-      body: { bottle_ids, location_id },
-    }),
+  /**
+   * 여러 병을 한 위치로 옮긴다. 서버는 요청당 `MOVE_BATCH_LIMIT` 병까지 받으므로 나눠 보낸다.
+   * 묶음마다 전부 성공 또는 전부 취소이며, 앞 묶음이 성공한 뒤 뒤 묶음이 실패하면 앞 묶음은
+   * 옮겨진 채로 남는다(오류는 그대로 던진다).
+   */
+  moveMany: async (bottle_ids: string[], location_id: string | null) => {
+    const total = { moved: 0, unchanged: 0 };
+    for (let start = 0; start < bottle_ids.length; start += MOVE_BATCH_LIMIT) {
+      const result = await request<{ moved: number; unchanged: number }>(
+        "/collection/bottles:move",
+        {
+          method: "PUT",
+          body: { bottle_ids: bottle_ids.slice(start, start + MOVE_BATCH_LIMIT), location_id },
+        },
+      );
+      total.moved += result.moved;
+      total.unchanged += result.unchanged;
+    }
+    return total;
+  },
   movements: (id: string) =>
     request<
       {
@@ -122,13 +133,8 @@ export const collectionApi = {
       `/collection/stocktakes/${id}/scan`,
       { method: "POST", body: { bottle_code, observed_location_id } },
     ),
-  scanMany: (id: string, bottle_codes: string[], observed_location_id: string | null) =>
-    request<{ results: BatchScanResult[]; stocktake: Stocktake }>(
-      `/collection/stocktakes/${id}/scans:batch`,
-      { method: "POST", body: { bottle_codes, observed_location_id } },
-    ),
   applyLocations: (id: string) =>
-    request<{ moved: number; stocktake: Stocktake }>(
+    request<{ moved: number; skipped: number; stocktake: Stocktake }>(
       `/collection/stocktakes/${id}:apply-locations`,
       { method: "POST" },
     ),

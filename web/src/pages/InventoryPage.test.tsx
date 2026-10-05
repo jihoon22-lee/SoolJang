@@ -250,7 +250,7 @@ it("실사를 시작·중지·재개하고 위치 불일치를 반영하며 미�
   });
   const apply = vi.spyOn(collectionApi, "applyLocations").mockImplementation(async () => {
     stocktake.mismatch_count = 0;
-    return { moved: 1, stocktake: { ...stocktake } };
+    return { moved: 1, skipped: 0, stocktake: { ...stocktake } };
   });
   renderPage();
   await userEvent.click(screen.getByRole("tab", { name: "재고 실사" }));

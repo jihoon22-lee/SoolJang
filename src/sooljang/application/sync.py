@@ -54,6 +54,7 @@ from sooljang.application.products import (
     soft_delete_product,
 )
 from sooljang.application.tastings import (
+    BottleInputError,
     BottleTransitionError,
     InsufficientRemainingError,
     InvalidRatingError,
@@ -977,6 +978,10 @@ async def _dispatch_bottle_action(
     bottle = await _load_bottle(session, user_id=user_id, bottle_id=op.entity_id)
     try:
         await _apply_bottle_action(session, bottle, op)
+    except BottleInputError as error:
+        # 날짜 순서·잔량 범위처럼 입력 자체가 틀린 경우는 충돌이 아니다. 실패로 남겨 사용자가
+        # 동기화 창에서 고쳐 다시 보내게 한다(서버 상태로 조용히 되돌리지 않는다).
+        raise ValidationFailedError(str(error)) from error
     except BottleTransitionError as error:
         # 다른 기기가 먼저 상태를 바꾼 경우(예: 오프라인에서 개봉하는 사이 다른 기기에서
         # 소진)다. 사용자 입력의 결함이 아니므로 대기열 전체를 멈추지 않고, 서버 상태를

@@ -32,6 +32,14 @@ class BottleTransitionError(Exception):
     """허용되지 않는 상태 전이."""
 
 
+class BottleInputError(BottleTransitionError):
+    """병의 현재 상태와 무관하게 입력 자체가 틀렸다(날짜 순서·잔량 범위).
+
+    동기화는 상태가 어긋난 전이를 다른 기기와의 충돌로 다루지만, 이 오류는 사용자가 고쳐서
+    다시 보내야 하는 실패다(`application/sync.py`).
+    """
+
+
 class InsufficientRemainingError(Exception):
     """잔량보다 많이 따르려 했다."""
 
@@ -155,7 +163,7 @@ async def finish_bottle(
     # 지역 변수로 받아 둔다. 속성에 대입한 뒤에는 타입이 좁혀지지 않는다.
     opened_on = bottle.opened_on if bottle.opened_on is not None else when
     if when < opened_on:
-        raise BottleTransitionError("소진일이 개봉일보다 앞설 수 없습니다")
+        raise BottleInputError("소진일이 개봉일보다 앞설 수 없습니다")
     bottle.opened_on = opened_on
 
     bottle.status = BottleStatus.FINISHED
@@ -186,7 +194,7 @@ async def hand_over_bottle(
 
     when = on or local_today()
     if bottle.opened_on is not None and when < bottle.opened_on:
-        raise BottleTransitionError("증여·판매일이 개봉일보다 앞설 수 없습니다")
+        raise BottleInputError("증여·판매일이 개봉일보다 앞설 수 없습니다")
 
     before = _state(bottle)
     bottle.status = status
@@ -235,10 +243,10 @@ async def set_remaining(
             f"개봉한 병만 잔량을 조정할 수 있습니다 (현재 상태: {bottle.status})"
         )
     if remaining_ml < 0:
-        raise BottleTransitionError("잔량은 0 이상이어야 합니다")
+        raise BottleInputError("잔량은 0 이상이어야 합니다")
     volume = await _bottle_volume_ml(session, bottle)
     if volume is not None and remaining_ml > volume:
-        raise BottleTransitionError(f"잔량이 병 용량({volume}ml)보다 클 수 없습니다")
+        raise BottleInputError(f"잔량이 병 용량({volume}ml)보다 클 수 없습니다")
     if remaining_ml == 0:
         return await finish_bottle(session, bottle, finished_on=on)
     before = _state(bottle)
