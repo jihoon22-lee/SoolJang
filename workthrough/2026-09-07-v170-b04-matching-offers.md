@@ -53,7 +53,7 @@ B03 통합 후 전체 Python **1117 passed/30 opt-in skipped**, branch 포함 co
 데일리샷 프리셋 v3의 product/seller 필드는 B01에서 공개 응답의 구조만 확인했다.
 이 PR에서 실제 판매 가격을 수집·저장하거나 운영 소스를 갱신하지 않았다. 데일리샷/키햐
 자료 취득·재표시·장기 보관 허용과 독립 국내 가격 출처 2곳의 실제 수용은 미확정이다.
-[source 원장](../docs/plans/v1.7.0/sources.md)의 필수 외부 입력을 해결하거나 사용자의
+[source 원장](https://github.com/jihoon22-lee/SoolJang/blob/4e154c5/docs/plans/v1.7.0/sources.md)의 필수 외부 입력을 해결하거나 사용자의
 명시적 범위 결정이 있어야 한다. 합성 3판매처·mock 통과로 실제 2출처 수용을 대체하지 않는다.
 
 ![복수 판매 모바일](assets/v170-b04-mobile.png)

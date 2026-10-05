@@ -45,7 +45,8 @@
   - `api/` — FastAPI 라우터, 스키마, 의존성
 - `tests/` — 자동화 테스트. `src/` 계층을 미러링한다
 - `web/` — Vite + React + TypeScript 프론트엔드와 그 테스트
-- `docs/` — 아키텍처·작업 계획·레거시 스키마 문서
+- `docs/` — 계획(plan)·개발(development)·아키텍처·외부 정보(external-data)·운영·레거시
+  스키마·이력(history) 문서. 새 문서를 늘리기보다 기존 문서의 해당 절에 합친다
 - `scripts/` — 개발 유틸리티와 일회성 유지보수 명령
 - `assets/` — 코드가 아닌 fixture, 템플릿, 샘플 미디어
 
@@ -57,7 +58,7 @@
 
 - `uv sync --frozen` — `.venv` 생성 및 락된 의존성 설치
 - `make db-local-setup` / `make db-local-start` — 격리 PostgreSQL 최초 준비 / 재개
-- `make api` / `make web` — 로컬 API / 웹 기동 (포트 설정은 `docs/handoff.md` §1)
+- `make api` / `make web` — 로컬 API / 웹 기동 (포트 설정은 `docs/development.md` §1)
 - `make test` — 격리 테스트 DB의 Python 테스트(85%)와 웹 커버리지 검사(80%)
 - `uv run ruff check .` / `uv run ruff format --check .` — 린트와 포맷 검사
 - `uv run ty check` — 정적 타입 분석

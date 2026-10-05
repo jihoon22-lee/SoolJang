@@ -22,24 +22,29 @@ PC와 안드로이드에서 같은 데이터를 보며, 오프라인에서도 �
 | 영역 | 내용 |
 |---|---|
 | 기록 | 제품·구매 건·개별 병·시음 세션 4계층. 같은 술의 서로 다른 구매처·가격을 각각 보존 |
-| 파생 지표 | 평단가, 실평단가, 100ml당 가격, 구매/소비/재고/미개봉/개봉 병수, 할인율, 재고 자산가치를 자동 계산 |
-| 검색 | 한글 부분 문자열 검색, 주종 계층·도수·가격·재고·평점 다중 필터, 임의 정렬 |
+| 빠른 기록 | 홈의 "오늘 마셨어요"(열린 병 우선·별점·양 프리셋), 여러 병·여러 술 일괄 개봉/소진/위치 이동과 실행 취소 |
+| 파생 지표 | 평단가, 실평단가, 100ml당 가격, 구매/소비/재고/미개봉/개봉 병수, 할인율, 재고 자산가치, 용량별 지표 |
+| 검색 | 한글 부분 문자열 검색, 주종 계층·도수·가격·재고·평점 다중 필터, 임의 정렬, CSV 내보내기 |
 | 모바일 입력 | 라벨·영수증 사진 첨부, 바코드 스캔 제품 매칭, 라벨 OCR 폼 자동 채우기 |
 | 외부 정보 | 선택한 Naver·Brave·Exa 연결과 등록 소스에서 제품 정보·후기를 탐색하고 출처·판매 조건별로 비교 |
 | 관심·가격 감시 | 비보유 관심 대상, 허용된 가격 관측 이력·목표가, 정기 조회와 웹 푸시 각각 동의 |
-| 정리·재고 실사 | 구매처 병합 미리보기, 병별 위치·QR·실사, 통계의 결측·집계 근거 |
+| 정리·재고 실사 | 구매처 병합 미리보기, 병별 위치·QR·연속 스캔 실사, 개봉 후 오래된 병 알림, 병·구매 변경 이력 |
 | 통계 | 기존 엑셀 통계 전부 재현 + 시계열·취향 분석 + 사용자 커스텀 피벗 |
-| 오프라인 | PWA 서비스워커 + IndexedDB 로컬 미러, outbox 큐 기반 재동기화 |
+| 오프라인 | PWA 서비스워커 + IndexedDB 로컬 미러, outbox 큐 기반 재동기화와 대기열 확인·재시도 |
 
 ## 문서
 
 | 문서 | 용도 |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | 시스템 아키텍처, 데이터 모델, API·동기화 규약, 배포 토폴로지, 기술 선택 근거 |
-| [docs/operations.md](docs/operations.md) | **운영 가이드** — `.env` 변수 레퍼런스, 로컬 개발 환경, 프로덕션 재배포 절차, 백업, 트러블슈팅 |
-| [docs/plan.md](docs/plan.md) | 작업 계획과 진행 현황. **작업을 재개할 때 여기부터 읽는다** |
+| [docs/plan.md](docs/plan.md) | 현재 위치·진행 중인 마일스톤·최근 결정. **작업을 재개할 때 여기부터 읽는다** |
+| [docs/development.md](docs/development.md) | 개발 환경·앱 실행·변경별 검사 선택·검증 증거·자주 겪는 함정 |
+| [docs/architecture.md](docs/architecture.md) | 시스템 구조, 데이터 모델, API 목록, 동기화 규약, 배포 토폴로지 |
+| [docs/external-data.md](docs/external-data.md) | 외부 소스·통합 연결·탐색·관심·가격 감시의 동작과 안전 경계 |
+| [docs/operations.md](docs/operations.md) | 운영 가이드 — `.env` 변수, 배포·마이그레이션·백업·복구, Tailscale, 문제 해결 |
 | [docs/legacy-schema.md](docs/legacy-schema.md) | 기존 엑셀 시트 실측 분석과 임포트 매핑 규칙 |
+| [docs/history.md](docs/history.md) | 릴리스 연표, v1.7 이전 Task 기록, 결정 로그 D1–D211, 정리된 옛 문서 링크 |
 | [AGENTS.md](AGENTS.md) | 개발 관례, 커밋·브랜치 규칙, 품질 게이트 |
+| [workthrough/](workthrough/) | PR 묶음별 실제 검증 기록 |
 
 ## 기술 스택
 
@@ -60,32 +65,24 @@ make check        # lint·typecheck·test·secret scan
 make help         # 전체 명령 목록
 ```
 
-**이미 이 저장소를 `docker compose up -d` 로 운영 배포해 둔 기기에서는 `make db-up` 을
-쓰지 않는다** — `docker-compose.yml` 의 `db` 서비스가 그 운영 배포와 같은 컨테이너·같은
-실사용자 데이터라서, 개발용으로 별도로 뜨는 게 아니라 운영 DB에 그대로 연결된다. 이
-경우엔 [docs/operations.md](docs/operations.md) §2 의 격리된 개발용 DB(`scripts/dev-db.sh`)
-를 쓴다. 그 외 항목(`.env` 변수 의미, 프로덕션 재배포 절차, 백업, 트러블슈팅)도 전부
-그 문서에 있다.
-
-개발 기본 경로는 micromamba 기반의 격리 PostgreSQL 17이다. `make check`에 포함되지 않는
-웹 build·migration·추가 CI 검사와 대상 DB 확인은 [docs/development.md](docs/development.md)를
-따른다. 운영과 겹치지 않는 API 포트 설정은 [docs/handoff.md](docs/handoff.md) §1을 참조한다.
-
-전체 스택의 Compose 기동·재배포는 [운영 절차](docs/operations.md)를 따른다.
+**운영 배포가 있는 기기에서는 `make db-up`·`docker compose up/down`을 개발에 쓰지 않는다.**
+`docker-compose.yml`의 `db`는 실사용자 데이터가 든 운영 DB다. 개발은 micromamba 기반 격리
+PostgreSQL 17(`make db-local-*`)을 쓰고, 포트·대상 DB 확인·웹 build·migration 같은 `make check`
+밖의 검사는 [docs/development.md](docs/development.md)를 따른다. Compose 기동·재배포·백업은
+[docs/operations.md](docs/operations.md)를 따른다.
 
 ## 개발 현황
 
-현재 패치 버전은 **v1.7.1**이다. 구매 가격 공란을 선물·포인트 구매의 0원으로 계산하고,
-등록 빈티지와 외부 관측의 식별 근거를 보존한다. [패치 검증](workthrough/2026-09-07-v171-price-vintage.md)·
-[릴리스·배포 결과](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.7.1)를 확인한다. 기반 기능의 구현·수용 결과는
-[v1.7.0 마일스톤](https://github.com/jihoon22-lee/SoolJang/milestone/1)에서 확인한다.
-현재 위치와 기존 Task/WP 대응은 [docs/plan.md](docs/plan.md),
-작업 진입점은 [v1.7.0 로드맵](docs/roadmap/v1.7.0.md)에서 확인한다.
-패키지 버전과 마지막 확인한 배포 버전은 계획 문서에서 구분한다.
-국내 가격 2출처의 실제 허용 사례와 기기 푸시 수용은 사용자 결정으로 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142)·[#143](https://github.com/jihoon22-lee/SoolJang/issues/143)에 이연했다. 구현·실연결·
-릴리스 상태와 제한은 [수용 원장](docs/plans/v1.7.0/acceptance.md)에서 구분한다.
-검색 API 키는 앱의 통합 연결 화면에서 관리하며, 새 탐색은 생성형 답변·요약을 호출하지 않는다.
-기존 OCR·선택형 AI 설정은 보존한다. 가격은 같은 규격·통화·판매 조건의 실제 관측끼리 비교한다.
+v1.8.0은 코드 리뷰 반영 릴리스다. 날짜를 사용자 시간대로 기록하고, 동기화 충돌·삭제 전파를
+바로잡았으며, 여러 병을 한 번에 처리하는 도구와 빠른 시음 기록, 변경 이력·용량별 지표·CSV
+내보내기·동기화 대기열 화면을 더했다. 진행 상태와 결정은 [docs/plan.md](docs/plan.md),
+마일스톤은 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2), 배포 결과는
+[Releases](https://github.com/jihoon22-lee/SoolJang/releases)에서 확인한다.
+
+국내 가격 2출처의 실제 허용 사례와 실기기 푸시 수용은 사용자 결정으로
+[#142](https://github.com/jihoon22-lee/SoolJang/issues/142)·[#143](https://github.com/jihoon22-lee/SoolJang/issues/143)에
+이연돼 있다. 검색 API 키는 앱의 통합 연결 화면에서 관리하며, 새 탐색은 생성형 답변·요약을
+호출하지 않는다.
 
 ## 라이선스
 

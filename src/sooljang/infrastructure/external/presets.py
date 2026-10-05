@@ -37,10 +37,11 @@ class SourcePreset:
     adapter_spec: dict[str, Any] = field(default_factory=dict)
 
 
-#: 데일리샷 프리셋(사용자 제공 원본, plan-external-v2.md PR5 절 "데일리샷 프리셋 원본"
-#: 참조). `result_fields` 를 표준 키(Task 34 PR3: `price_krw`·`rating`·`rating_scale`·
-#: `review_count`)로 매핑했다 — 원본은 한글 키(`가격`·`평점`·`리뷰수`)라 비교 뷰에 안
-#: 잡혔다. `rating_scale` 은 원본에 없었고 D147 실측(평점 4.9)으로 5점 만점을 상수로 둔다.
+#: 데일리샷 프리셋(사용자 제공 원본, 옛 plan-external-v2.md PR5 절 "데일리샷 프리셋 원본" —
+#: docs/history.md 옛 문서 표 참조). `result_fields` 를 표준 키(Task 34 PR3:
+#: `price_krw`·`rating`·`rating_scale`·`review_count`)로 매핑했다 — 원본은 한글 키
+#: (`가격`·`평점`·`리뷰수`)라 비교 뷰에 안 잡혔다. `rating_scale` 은 원본에 없었고
+#: D147 실측(평점 4.9)으로 5점 만점을 상수로 둔다.
 #:
 #: `base_url` 이 `https://dailyshot.co`(검색 자체는 `api.dailyshot.co`)인 이유는
 #: `_same_host` 가 검색 결과 링크(`dailyshot.co/m/item/...`)와 비교하기 때문이다 — 두
@@ -50,7 +51,8 @@ class SourcePreset:
 #:
 #: `exclude_keywords`(Task 34 PR7, 버전 2)는 데일리샷 실사용으로 확인된 비주류 상품
 #: 초안 목록이다 — 잔·글라스 등은 술 이름 검색에 곧잘 같이 걸리는 굿즈다. 목록은
-#: 소스 편집 화면에서 사용자가 언제든 고칠 수 있다(`plan-external-v2.md` PR7 절 참고).
+#: 소스 편집 화면에서 사용자가 언제든 고칠 수 있다(옛 `plan-external-v2.md` PR7 절,
+#: docs/history.md 옛 문서 표 참고).
 _DAILYSHOT = SourcePreset(
     key="dailyshot",
     name="데일리샷",

@@ -1,9 +1,8 @@
 # 운영 가이드
 
-**이 저장소를 실제로 운영하는 사람(계정 소유자)을 위한 참고 문서다.** `docs/handoff.md`
-는 "다음 작업 세션이 이어받기 위한" 메모(진행 상황, 최근 결정, 함정)라 이 문서와 성격이
-다르다 — 환경 변수 의미, 로컬 개발 띄우는 법, 운영 재배포 절차처럼 **세션이 바뀌어도 안
-바뀌는 절차**는 여기 둔다.
+이 기기(홈 PC, WSL2)에서 상시 운영하는 술장의 설정·백업·배포·복구 절차다. 개발 환경은
+[development.md](development.md), 현재 진행은 [plan.md](plan.md), 지난 배포 기록은
+[history.md](history.md)와 `workthrough/`를 본다.
 
 ## 1. `.env` 변수 레퍼런스
 
@@ -17,6 +16,7 @@
 |---|---|---|---|
 | `SOOLJANG_ENVIRONMENT` | `local`\|`test`\|`production`. **Docker Compose로 띄우는 `api` 컨테이너는 이 값을 안 읽는다** — `docker-compose.yml` 이 `production` 을 하드코딩한다. 이 값은 `uv run sooljang-api` 로 직접 실행할 때만 적용된다 | `local` | 아니오 (기본 `local`) |
 | `SOOLJANG_DEBUG` | 디버그 로그 활성화 | `false` | 아니오 |
+| `SOOLJANG_TIMEZONE` | 사용자가 기록하는 "오늘"의 기준 시간대(개봉·소진·증여 날짜를 비웠을 때). Compose `api`는 `${SOOLJANG_TIMEZONE:-Asia/Seoul}`을 넘긴다 | `Asia/Seoul` | 아니오 (기본 `Asia/Seoul`) |
 | `SOOLJANG_DATABASE_URL` | `uv run sooljang-api`/`alembic`/`pytest` 를 **직접(도커 밖에서)** 실행할 때 쓰는 DB 접속 문자열. Docker Compose 로 띄운 `api` 컨테이너는 이 값도 안 읽는다 — `docker-compose.yml` 이 `POSTGRES_*` 값으로 직접 조립한다 | `postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev` (로컬 개발용 격리 DB, §2 참조) | 도커 밖에서 실행할 때만 |
 | `SOOLJANG_DATABASE_POOL_SIZE` | DB 커넥션 풀 크기 | `5` | 아니오 |
 | `SOOLJANG_DATABASE_ECHO` | SQL 쿼리 로깅 | `false` | 아니오 |
@@ -25,7 +25,7 @@
 | `SOOLJANG_SECRET_KEY` | LLM API 키 등 **DB 에 저장되는 비밀값을 암호화하는 Fernet 마스터 키**. 이 값 자체를 잃어버리면 이미 저장된 비밀값을 전부 다시 입력해야 한다 | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` 로 생성 | **필수** — 없으면 앱이 기동을 거부한다 |
 | `POSTGRES_USER` / `POSTGRES_DB` | Docker Compose `db` 서비스 초기화 값(운영 DB) | `sooljang` | 아니오 (기본값 있음) |
 | `POSTGRES_PASSWORD` | 운영 DB 비밀번호 | — | **필수** — 비우면 `docker compose up` 이 기동을 거부한다 |
-| `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.6.0` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
+| `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.8.0` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
 | `SOOLJANG_SEARCH_API_KEY` | Task 18 원 사양의 "검색 API로 아무 주종이나 조회" 기능용. **이 기능 자체가 현재 범위 밖**(`adapter` 방식으로 대체됨, `docs/plan.md` 참조)이라 지금은 안 쓰인다 | — | 아니오 (미사용) |
 
 **로그인 후 "설정" 화면에서 관리하는 값**(`.env` 에 넣지 않는다):
@@ -36,46 +36,10 @@
 - 관심 저장은 구매·재고 합계를 늘리지 않는다. 검색 응답/원문은 장기 보관하지 않으며 가격 관측은 소스의 `price_history_allowed`가 켜진 경우만 저장한다. 자료 취득·표시·보관 조건을 확인한 뒤 설정한다.
 - 표시 이름·비밀번호 — 계정 정보.
 
-## 2. 로컬 개발 환경 띄우기
+## 2. 로컬 개발 환경
 
-**`v1.0.0` 부터 이 기기에 운영 배포가 상시 떠 있다.** `docker-compose.yml` 의 `db`
-서비스는 이제 **실사용자 데이터가 든 운영 DB** 다 — `docker compose up -d db` 로 로컬
-개발용 DB를 얻을 수 있다는 옛 가정은 더 이상 맞지 않는다. 반드시 운영과 분리된 DB를
-쓴다.
-
-```bash
-# 1) 격리된 개발용 Postgres (최초 1회만 setup)
-bash scripts/dev-db.sh setup   # micromamba 로 홈 디렉토리에 PostgreSQL 17 설치, root 불필요
-bash scripts/dev-db.sh start   # 포트 54329, DB 이름 sooljang_dev/sooljang_test
-
-# 2) 마이그레이션
-SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev \
-  uv run alembic upgrade head
-
-# 3) API (운영 컨테이너가 8000 을 쓰고 있으니 다른 포트로)
-SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev \
-SOOLJANG_API_PORT=8210 \
-  uv run sooljang-api
-
-# 4) 프론트엔드 (다른 터미널)
-cd web && SOOLJANG_API_URL=http://127.0.0.1:8210 npm run dev
-# → http://localhost:5173
-```
-
-이 DB는 비어 있다. `POST /api/v1/auth/setup` 으로 첫 계정을 만들어야 로그인할 수 있다
-(운영 계정과 완전히 별개).
-
-```bash
-curl -s http://127.0.0.1:8210/api/v1/auth/setup   # {"needs_setup":true} 면 정상
-curl -c /tmp/j -X POST http://127.0.0.1:8210/api/v1/auth/setup \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"me@example.com","password":"열자이상비밀번호","display_name":"나"}'
-```
-
-**Docker 그룹이 이 셸에 반영 안 됐다면**(`permission denied ... docker.sock`) 새 셸을
-열거나 `/usr/bin/sg docker -c "docker ..."` 로 감싼다 — 반드시 절대 경로로. 이 기기엔
-`ast-grep` 이 `sg` 라는 이름으로 `PATH` 앞쪽(`~/.local/bin`)에 설치돼 있어, 절대 경로 없이
-`sg` 만 쓰면 그룹 전환 대신 `ast-grep` 이 대신 실행된다.
+운영과 분리된 격리 DB(54329)·별도 포트로 띄우는 방법은 [development.md](development.md) §1에 있다.
+운영 Compose `db`는 실사용자 데이터라 개발·테스트에 쓰지 않는다.
 
 ## 3. 백업과 격리 복구
 
@@ -241,7 +205,8 @@ gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
 /usr/bin/sg docker -c "docker compose up -d --no-deps web"
 ```
 
-`uvicorn` 시작은 migration을 자동 수행하지 않는다. migration 실패 시 다음 명령으로
+`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.8.0은 `0019_record_event`(새 테이블만
+추가하는 additive 변경)를 적용한다. migration 실패 시 다음 명령으로
 넘어가지 않는다. PostgreSQL 트랜잭션 밖에서 실행되는 변경이 있으면 해당 migration의
 별도 복구 절차가 필요하다. 이전 앱은 **그 앱에 포함된 schema head와 DB가 정확히 같은
 경우에만** 재개한다. 현재는 구·미래·복수 불일치 리비전의 호환성을 가정하지 않는다.
@@ -288,7 +253,13 @@ tail -40 /var/log/devbox-wsl-service-recovery.log
 docker compose ps
 ```
 
-## 5. 자주 겪는 문제
+## 5. 접속(Tailscale HTTPS)
+
+홈 PC는 여러 서비스를 함께 공개한다. 술장은 `https://main.tail30f401.ts.net:8080`이다(무포트 443은
+다른 서비스). 상태는 `tailscale serve status`와 `curl -fsS https://main.tail30f401.ts.net:8080/api/v1/health`로
+확인한다. 카메라·서비스 워커는 secure context가 필요해 HTTPS로만 동작한다.
+
+## 6. 자주 겪는 문제
 
 | 증상 | 원인/대응 |
 |---|---|
@@ -298,7 +269,7 @@ docker compose ps
 | 로컬에서 `make api`/`make web` 실행이 이상함 | `.env` 의 `SOOLJANG_DATABASE_URL`/`SOOLJANG_API_PORT` 가 운영 값(도커 `db`/`8000`)을 가리키고 있지 않은지 확인 — §2 의 격리된 값으로 덮어써서 실행한다 |
 | 헤더의 계정 이름이 이상하게 보임 | 버그 아님 — 그 자리는 환경 표시가 아니라 **현재 로그인된 계정의 표시 이름**이다(`app.tsx`). "설정 → 프로필"에서 바꾼다 |
 
-## 6. GitHub 저장소 설정
+## 7. GitHub 저장소 설정
 
 - 저장소는 **public** 이다(2026-08-09 전환 확인). 협업자는 소유자 계정 하나뿐이라 남이
   `main`에 push/머지할 방법이 원래도 없었지만, `main-protection` ruleset 으로 명시적으로
@@ -307,7 +278,7 @@ docker compose ps
 - Secret scanning + push protection, CodeQL(Default setup) 활성화됨.
 - 변경하려면 `https://github.com/jihoon22-lee/SoolJang/settings` → `Rules`/`Code security`.
 
-## 6. 개발 감시와 운영 복구 검증 범위
+## 8. 개발 감시와 운영 복구 검증 범위
 
 WSL ext4 저장소에서는 기본 파일 감시를 쓴다. Windows 마운트에서 이벤트 누락이 실제로
 확인됐을 때만 `SOOLJANG_WATCH_POLLING=1 npm --prefix web run dev`로 해당 프로세스의 polling을 선택한다. 저장소 전체에 polling을 강제하지 않는다.
@@ -316,32 +287,13 @@ WSL 자동 복구는 §4.7의 `--no-recreate`·health 대기이며 이미지 pul
 이 명령 구성 검토와 Windows 로그온/cold start 실기 확인은 별도 증거다. 실기 확인을 하지
 않았으면 미실행으로 남기며 운영 컨테이너 ID·volume 보존까지 확인한 뒤 완료 처리한다.
 
+## 9. 비밀 보관과 운영 연결 상태
 
-## 7. v1.7.0 운영 확인 (2026-09-07)
+실제 환경 파일은 Windows 계정별 DPAPI로 별도 암호화해 `E:\SoolJangPrivateRecovery`에 보관하고
+복호화 대조를 확인했다(2026-09-07, v1.7.0 배포). 파일 ACL은 해당 사용자와 SYSTEM이며 일반 DB
+백업에 평문 비밀을 넣지 않는다. 복호화에는 해당 Windows 계정의 DPAPI 프로필이 필요하므로,
+Windows 사용자 프로필까지 잃는 경우를 대비해 기존 계정 복구 수단을 함께 보존한다.
 
-API/web1.7.0·schema0018·release SHA `f1c5bbc`를 대조하고 백업/실복원과 HTTPS 앱을
-확인했다. [실행 기록](../workthrough/2026-09-07-v170-release.md)을 따른다. 실제 환경 파일은
-Windows 계정별 DPAPI로 별도 암호화해 `E:\SoolJangPrivateRecovery`에 보관하고 복호화 대조를
-확인했다. 파일 ACL은 해당 사용자와 SYSTEM이며 일반 DB 백업에 평문 비밀을 포함하지 않는다.
-복호화에는 해당 Windows 계정의 DPAPI 프로필이 필요하다. Windows 사용자 프로필까지 잃은
-경우의 복구를 보장하는 별도 암호화 매체는 아니므로 기존 계정 복구 수단을 함께 보존한다.
-
-Exa는 앱에서 암호화 등록·검증·사용 상태를 확인했다. 초기 한도는 분6회·UTC 하루20회이며
-설정에서 사용자가 조정할 수 있다. 기존 OCR와 사용자 설정은 유지했다. 실제 국내 가격 출처
-확대는 #142, 실제 기기 푸시 수용은 #143의 승인 후속이며 자동 활성화하지 않는다.
-
-## 8. v1.7.1 가격·빈티지 패치
-
-v1.7.1은 구매 가격 공란을 0원으로 해석하고 등록 빈티지·관측 근거를 보존한다.
-DB schema는0018을 유지하며 기존 구매/병/키/설정의 원본을 일괄 수정하지 않는다.
-백업과 기존1.7.0 이미지를 유지하고 API/web만1.7.1로 전환한다. 직전 백업·격리 복원,
-이미지 version/revision과 readiness, 인증 조회·HTTPS 화면을 대조한다.
-
-기존 NULL 구매가도 제품/통계/오프라인 화면에서 0원으로 계산한다. 가격 공란을
-데이터 품질의 미상 가격이나 수정 대상으로 집계하지 않는다. 별도로 등록한 빈티지를
-상품명의 연도보다 우선하며, 새 외부 관측에는 상세 빈티지·도수·숙성·생산자 근거를 보존한다.
-이미 저장되지 않았던 외부 관측의 상세 필드를 임의로 만들어 채우지는 않는다.
-
-[변경·검증 기록](../workthrough/2026-09-07-v171-price-vintage.md) ·
-[실제 배포 결과](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.7.1).
-동일 PR에서 준비한 코드·문서 이후의 배포 실행 증거는 해당 릴리스 노트에 기록한다.
+외부 연결(Exa 등)은 앱에서 암호화 등록·검증·사용 상태를 확인한다. 초기 Exa 한도는 분 6회·UTC
+하루 20회이며 설정에서 조정한다. 국내 가격 출처 확대(#142)와 실제 기기 푸시 수용(#143)은
+승인 후속이며 자동 활성화하지 않는다. 자세한 동작은 [external-data.md](external-data.md).

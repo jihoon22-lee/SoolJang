@@ -38,7 +38,7 @@ class LlmProvider(enum.StrEnum):
 
 #: Vision 입력을 지원하는 합리적인 기본 모델. 사용자가 설정 화면에서 바꿀 수 있다.
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-#: LLM 재판정(PR6) 월 호출 상한 기본값. 근거는 `docs/plan-external-v2.md` PR6 절
+#: LLM 재판정(PR6) 월 호출 상한 기본값. 근거는 `docs/history.md` D191·D192
 #: "비용 상한을 설정값으로 두는 이유" 참고 — 개인 규모 조회량에서 넉넉하되 설정을
 #: 잘못 켜 뒀을 때의 폭주를 막는 선.
 DEFAULT_REMATCH_MONTHLY_CAP = 200
