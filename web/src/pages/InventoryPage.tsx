@@ -648,7 +648,11 @@ function StocktakePanel({
           onSubmit={(event) => {
             event.preventDefault();
             void run(async () => {
-              const row = await collectionApi.start(sessionName, scope || null);
+              // 이름은 나중에 목록에서 구분하려는 용도라 비워 두면 날짜로 채운다.
+              const row = await collectionApi.start(
+                sessionName.trim() || `${todayLocal()} 실사`,
+                scope || null,
+              );
               setSessionId(row.id);
               setSessionName("");
               clearFormDraft("stocktake-name");
@@ -658,8 +662,8 @@ function StocktakePanel({
           <label>
             실사 이름
             <input
-              required
               maxLength={200}
+              placeholder={`비워 두면 "${todayLocal()} 실사"`}
               value={sessionName}
               onChange={(event) => setSessionName(event.target.value)}
             />

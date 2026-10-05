@@ -223,6 +223,8 @@ export interface HistoryEntry {
   at: string;
   action: string;
   detail: Record<string, unknown>;
+  /** detail 이 id 로 가리키는 구매처·보관 위치의 지금 이름. 지워졌거나 모르면 빠진다. */
+  labels?: Record<string, string>;
 }
 
 /** `PATCH /purchases/{id}`. 생략한 필드는 바꾸지 않는다. */
@@ -457,7 +459,7 @@ export interface OfflineRankings extends Rankings {
 
 export interface CategoryStat {
   category_id: string | null;
-  /** 카테고리가 없으면 "미분류". */
+  /** 카테고리가 없으면 "주종 미지정". */
   name: string;
   bottle_count: number;
   total_spend: Money;

@@ -465,3 +465,23 @@ def test_purchase_history_records_only_changed_fields(api_client: TestClient, pr
 
     assert len(history) == 1
     assert history[0]["detail"] == {"unit_paid_price": ["10000", "9000"], "quantity": [1, 2]}
+
+
+def test_purchase_history_names_vendors_by_their_current_name(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "구매처 이력 술", "skus": [{"volume_ml": 500}]}
+    ).json()
+    vendor = api_client.post(f"{prefix}/vendors", json={"name": "동네 마트"}).json()
+    purchase = api_client.post(
+        f"{prefix}/purchases", json={"sku_id": product["skus"][0]["id"], "quantity": 1}
+    ).json()
+
+    api_client.patch(f"{prefix}/purchases/{purchase['id']}", json={"vendor_id": vendor["id"]})
+    api_client.patch(f"{prefix}/vendors/{vendor['id']}", json={"name": "동네 마트 본점"})
+
+    history = api_client.get(f"{prefix}/purchases/{purchase['id']}/history").json()
+
+    assert history[0]["detail"] == {"vendor_id": [None, vendor["id"]]}
+    assert history[0]["labels"] == {vendor["id"]: "동네 마트 본점"}

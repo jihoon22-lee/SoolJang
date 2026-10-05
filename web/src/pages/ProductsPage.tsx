@@ -275,7 +275,7 @@ export function ProductsPage({
     onSuccess: (previous, input) => {
       const name =
         input.categoryId === null
-          ? "미분류"
+          ? "주종 미지정"
           : (categoryTree?.items.find((node) => node.id === input.categoryId)?.path.join(" > ") ??
             "선택한 주종");
       toast.show({
@@ -488,7 +488,7 @@ export function ProductsPage({
                   onChange={(event) => setBulkCategoryId(event.target.value)}
                 >
                   <option value="">주종 선택</option>
-                  <option value="__none__">미분류로</option>
+                  <option value="__none__">주종 미지정으로</option>
                   {(categoryTree?.items ?? []).map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.path.join(" > ")}

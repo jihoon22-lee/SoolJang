@@ -163,6 +163,26 @@ describe("HomePage", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("남은 양을 모두 마시면 소진으로 기록하고 그렇다고 알린다", async () => {
+    await db.product.put(row({ id: "p1", name: "캔맥주" }));
+    await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 355 }));
+    await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 1 }));
+    await db.bottle.put(row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "unopened" }));
+    renderHomePage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "오늘 마셨어요" }));
+    const dialog = await screen.findByRole("dialog", { name: "무엇을 마셨나요?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /캔맥주/ }));
+    await userEvent.click(screen.getByRole("button", { name: "남은 양 전부(355ml)" }));
+    await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+
+    expect(
+      await screen.findByText("캔맥주 시음을 기록했습니다 (다 마셔 소진 처리)"),
+    ).toBeInTheDocument();
+    const bottle = await db.bottle.get("b1");
+    expect(bottle).toMatchObject({ status: "finished", remaining_ml: 0 });
+  });
+
   it("권장 기간이 지난 열린 와인을 '빨리 마시면 좋은 병'으로 알린다", async () => {
     await db.category.put(row({ id: "wine", parent_id: null, name: "와인" }));
     await db.product.put(row({ id: "p1", name: "열어 둔 와인", category_id: "wine" }));

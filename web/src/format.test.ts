@@ -129,8 +129,8 @@ describe("formatCategoryPath", () => {
     );
   });
 
-  it("비어 있으면 미분류로 표시한다", () => {
-    expect(formatCategoryPath([])).toBe("미분류");
+  it("비어 있으면 주종 미지정으로 표시한다", () => {
+    expect(formatCategoryPath([])).toBe("주종 미지정");
   });
 });
 

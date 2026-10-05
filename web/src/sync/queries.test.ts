@@ -444,14 +444,14 @@ describe("통계", () => {
       expect(stats[0]?.discount_rate).toBe("0.1333");
     });
 
-    it("카테고리가 없으면 미분류로 묶는다", async () => {
+    it("카테고리가 없으면 주종 미지정으로 묶는다", async () => {
       await db.product.put(row({ id: "p1", name: "미분류 술", category_id: null }));
 
       const stats = await getCategoryRollup();
 
       expect(stats).toHaveLength(1);
       expect(stats[0]?.category_id).toBeNull();
-      expect(stats[0]?.name).toBe("미분류");
+      expect(stats[0]?.name).toBe("주종 미지정");
     });
   });
 

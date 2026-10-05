@@ -311,7 +311,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
             <>
               {/* 기준(주종)은 이 절에서는 고정이지만 측정값은 바꿀 수 있다 — 바꾸면 차트가
                 바로 다시 그려진다. 주종을 누르면 그 주종 필터가 걸린 "내 술" 탭으로
-                이동한다("미분류" 는 실제 카테고리가 아니라 건너뛸 곳이 없어 비활성이다). */}
+                이동한다("주종 미지정" 은 실제 카테고리가 아니라 건너뛸 곳이 없어 비활성이다). */}
               <div className="chart-controls">
                 <label htmlFor="category-measure">
                   측정값

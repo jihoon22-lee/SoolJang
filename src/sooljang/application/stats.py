@@ -39,7 +39,7 @@ from sooljang.infrastructure.database.models import Product, Purchase, Sku, Vend
 #: 랭킹 하나당 기본 상위 건수.
 DEFAULT_RANKING_LIMIT = 10
 #: 주종이 없는 제품(카테고리 미지정)을 묶는 이름.
-UNCATEGORIZED_LABEL = "미분류"
+UNCATEGORIZED_LABEL = "주종 미지정"
 #: 구매처·국가·빈티지가 없는 구매 건을 묶는 이름(Task 20 피벗).
 UNKNOWN_LABEL = "미상"
 
@@ -367,7 +367,7 @@ async def _vendor_name_map(session: AsyncSession, user_id: uuid.UUID) -> dict[uu
 async def _dimension_resolver(
     session: AsyncSession, user_id: uuid.UUID, dimension: GroupDimension
 ) -> Callable[[Any], tuple[str | None, str]]:
-    """구매 건 행 → (그룹 키, 표시 이름). 그룹 키가 `None` 이면 "미상"/"미분류" 묶음이다."""
+    """구매 건 행 → (그룹 키, 표시 이름). 그룹 키가 `None` 이면 "미상"/"주종 미지정" 묶음이다."""
     if dimension == "category":
         nodes = await load_tree(session, user_id)
         top_of = _top_ancestor_map(nodes)

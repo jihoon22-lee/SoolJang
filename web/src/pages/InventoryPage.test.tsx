@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { collectionApi, type InventoryBottle, type Stocktake } from "@/api/collection";
 import { ToastProvider } from "@/components/Toast";
+import { todayLocal } from "@/format";
 import { InventoryPage } from "@/pages/InventoryPage";
 import { db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
@@ -205,6 +206,17 @@ it("병 QR과 이동 이력을 열어 본다", async () => {
   expect(await screen.findByText(/이전 상자 → 검증 선반/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "닫기" }));
   expect(screen.queryByText(/이전 상자 → 검증 선반/)).not.toBeInTheDocument();
+});
+
+it("실사 이름을 비워 두면 오늘 날짜로 시작한다", async () => {
+  vi.spyOn(collectionApi, "stocktakes").mockResolvedValue([]);
+  const start = vi
+    .spyOn(collectionApi, "start")
+    .mockResolvedValue(stocktakeOf({ name: `${todayLocal()} 실사` }));
+  renderPage();
+  await userEvent.click(screen.getByRole("tab", { name: "재고 실사" }));
+  await userEvent.click(await screen.findByRole("button", { name: "실사 시작" }));
+  await waitFor(() => expect(start).toHaveBeenCalledWith(`${todayLocal()} 실사`, null));
 });
 
 it("실사를 시작·중지·재개하고 위치 불일치를 반영하며 미확인 병을 골라 소진 처리한다", async () => {

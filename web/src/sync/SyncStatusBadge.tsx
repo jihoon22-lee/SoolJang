@@ -33,6 +33,20 @@ const ENTITY_LABELS: Record<string, string> = {
   attachment: "첨부파일",
 };
 
+/** outbox `action` 명령의 사람이 읽는 이름. 모르는 명령은 "처리"로 보인다. */
+const ACTION_LABELS: Record<string, string> = {
+  open: "개봉",
+  finish: "소진",
+  gift: "증여",
+  sell: "판매",
+  reopen: "되돌리기",
+  unopen: "개봉 취소",
+  set_remaining: "잔량 조정",
+  move: "위치 이동",
+  update: "수정",
+  record_tasting: "기록",
+};
+
 const FIELD_LABELS: Record<string, string> = {
   name: "이름",
   quantity: "병수",
@@ -156,7 +170,11 @@ function describeEntry(entry: OutboxEntry): string {
   const entityLabel = ENTITY_LABELS[entry.entity] ?? entry.entity;
   const name = entry.fields.name;
   if (typeof name === "string" && name.trim()) return `${entityLabel} · ${name}`;
-  if (entry.action) return `${entityLabel} · ${entry.action}`;
+  const tastedOn = entry.fields.tasted_on;
+  if (entry.action === "record_tasting" && typeof tastedOn === "string") {
+    return `${entityLabel} · ${tastedOn}`;
+  }
+  if (entry.action) return `${entityLabel} ${ACTION_LABELS[entry.action] ?? "처리"}`;
   const opLabel = { create: "등록", update: "수정", delete: "삭제", action: "처리" }[entry.op];
   return `${entityLabel} ${opLabel}`;
 }
@@ -264,6 +282,8 @@ function SyncIssuesPanel({
     }
   }
 
+  const hasProblems = (conflicts?.length ?? 0) > 0 || (failedEntries?.length ?? 0) > 0;
+  const title = hasProblems ? "동기화 문제" : "동기화 상태";
   const nothingToShow =
     (!conflicts || conflicts.length === 0) &&
     (!failedEntries || failedEntries.length === 0) &&
@@ -277,10 +297,10 @@ function SyncIssuesPanel({
       tabIndex={-1}
       role="dialog"
       aria-modal="true"
-      aria-label="동기화 문제"
+      aria-label={title}
     >
       <div className="sync-conflict-panel-header">
-        <h3>동기화 문제</h3>
+        <h3>{title}</h3>
         <button type="button" onClick={onClose}>
           닫기
         </button>

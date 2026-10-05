@@ -282,14 +282,14 @@ describe("StatsPage", () => {
       expect(onSelectCategory).toHaveBeenCalledWith("liquor");
     });
 
-    it("미분류 행은 이동할 곳이 없어 클릭할 수 없다", async () => {
+    it("주종 미지정 행은 이동할 곳이 없어 클릭할 수 없다", async () => {
       await seedTwoCategories();
       renderStatsPage();
       await openSection("주종별");
 
       const table = await screen.findByRole("table", { name: /주종별 통계 표/ });
-      expect(within(table).getByText("미분류")).toBeInTheDocument();
-      expect(within(table).queryByRole("button", { name: "미분류" })).not.toBeInTheDocument();
+      expect(within(table).getByText("주종 미지정")).toBeInTheDocument();
+      expect(within(table).queryByRole("button", { name: "주종 미지정" })).not.toBeInTheDocument();
     });
   });
 

@@ -12,7 +12,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.infrastructure.database.models import BottleMovement, RecordEvent
+from sooljang.infrastructure.database.models import (
+    BottleMovement,
+    RecordEvent,
+    StorageLocation,
+    Vendor,
+)
 
 
 def _plain(value: Any) -> Any:
@@ -48,6 +53,52 @@ def log_event(
             detail={key: _plain(value) for key, value in detail.items()},
         )
     )
+
+
+#: 이력 detail 안에서 다른 기록을 id 로 가리키는 칸과 그 이름을 찾을 모델.
+_REFERENCES: dict[str, type[Vendor] | type[StorageLocation]] = {
+    "vendor_id": Vendor,
+    "from_location_id": StorageLocation,
+    "to_location_id": StorageLocation,
+}
+
+
+def _referenced_ids(detail: dict[str, Any], field: str) -> list[str]:
+    value = detail.get(field)
+    values = value if isinstance(value, list) else [value]
+    return [item for item in values if isinstance(item, str)]
+
+
+async def _with_labels(
+    session: AsyncSession, user_id: uuid.UUID, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """id 로 남은 구매처·보관 위치에 지금 이름을 붙인다.
+
+    이력에는 id 만 저장한다(이름을 바꾸면 과거 이력도 새 이름으로 읽히는 편이 덜 헷갈린다).
+    남의 기록 id 가 섞여 있어도 이름은 이 사용자 소유에서만 찾는다.
+    """
+    wanted: dict[type[Vendor] | type[StorageLocation], set[uuid.UUID]] = {}
+    for row in rows:
+        for field, model in _REFERENCES.items():
+            for raw in _referenced_ids(row["detail"], field):
+                try:
+                    wanted.setdefault(model, set()).add(uuid.UUID(raw))
+                except ValueError:
+                    continue
+    names: dict[str, str] = {}
+    for model, ids in wanted.items():
+        result = await session.execute(
+            select(model.id, model.name).where(model.user_id == user_id, model.id.in_(ids))
+        )
+        names.update({str(row_id): name for row_id, name in result.tuples()})
+    for row in rows:
+        row["labels"] = {
+            raw: names[raw]
+            for field in _REFERENCES
+            for raw in _referenced_ids(row["detail"], field)
+            if raw in names
+        }
+    return rows
 
 
 def changes(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
@@ -89,7 +140,8 @@ async def bottle_history(
         }
         for move in moves
     ]
-    return sorted(rows, key=lambda row: row["at"], reverse=True)
+    rows.sort(key=lambda row: row["at"], reverse=True)
+    return await _with_labels(session, user_id, rows)
 
 
 async def entity_history(
@@ -104,6 +156,7 @@ async def entity_history(
         )
         .order_by(RecordEvent.created_at.desc())
     )
-    return [
+    rows = [
         {"at": event.created_at, "action": event.action, "detail": event.detail} for event in events
     ]
+    return await _with_labels(session, user_id, rows)
