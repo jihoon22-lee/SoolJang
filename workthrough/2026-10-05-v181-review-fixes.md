@@ -31,4 +31,32 @@ v1.8.0 배포 뒤 `v1.7.1..main` 전체를 다시 리뷰해 찾은 7건을 한 �
 ## 미실행
 
 - 실브라우저로 1,000병 이상 일괄 이동은 하지 않았다(분할은 단위 테스트로 확인).
-- 운영 배포 결과는 머지 후 operations.md §4로 진행하고 이 기록에 이어서 남긴다.
+
+## 릴리스와 운영 배포(2026-10-05)
+
+[operations.md](../docs/operations.md) §3·§4 순서. 비밀값은 출력하지 않았다.
+
+1. 배포 전: API·웹 `1.8.0`, `0019_record_event`. 이전 이미지 api `sha256:e593c120…`,
+   web `sha256:ceb24f91…`(보존).
+2. API 정지 → 백업 `sooljang-20261005T073925833066Z-dc650bab`(`--app-version 1.8.0`), `--verify`
+   통과 → 개발 PostgreSQL 17.10(54329) 빈 DB에 `--local --restore` "복원 및 대조 완료" → 복원 DB·
+   uploads 사본 즉시 삭제 → API 재개.
+3. [#155](https://github.com/jihoon22-lee/SoolJang/pull/155) 머지 커밋 `b641690`에 `v1.8.1` 태그 →
+   `release.yml` 성공([릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.8.1)).
+4. `.env` `SOOLJANG_VERSION=1.8.1`, `pull api web`: api `sha256:f959adc7…`, web `sha256:3ca0886f…`.
+5. API 정지 → 전환 직전 백업 `sooljang-20261005T075522111604Z-16fe607e`, `--verify` 통과.
+   2의 복원 검증 백업과 manifest `state` 동일(데이터 변화 없음).
+6. `alembic upgrade head` — 적용할 migration 없음(head 그대로 0019). `up --wait api`(healthy) → `up web`.
+
+검증:
+
+- `/health/live` `1.8.1`, `/health/ready` 200(`0019_record_event`, `schema_ready true`,
+  `price_watch_worker_ready true`). 새 시간대 검증기를 통과해 정상 기동(운영 값 Asia/Seoul).
+- 비로그인 `/auth/me` 401, 제거한 `scans:batch` 경로 404.
+- 웹(8080) 새 번들에 v1.8.1 문구("반영 못 함", 주정강화 규칙) 포함.
+- 운영 44개 테이블 행 수가 전환 직전 백업 manifest와 모두 같다.
+- 읽기 전용 스모크(API 컨테이너, 숫자 미출력): 통계·주종별·랭킹·보관 병 목록(1,140병) 정상.
+- 배포 후 10분 API 로그에 error·traceback 없음.
+
+미실행(배포): 사용자 계정 실제 로그인 화면 확인(비밀번호 미보유), 실기기·Tailscale 경유 접속,
+운영에서 실제 일괄 이동·실사 위치 반영 쓰기(사용자 데이터를 바꾸므로 하지 않음).
