@@ -54,7 +54,7 @@ export function DonutChart({
     });
 
   return (
-    <div className="donut-chart" role="img" aria-label={title}>
+    <figure className="donut-chart" aria-label={title}>
       <svg viewBox="0 0 40 40" className="donut-chart-svg" aria-hidden="true">
         <circle cx="20" cy="20" r={RADIUS} fill="none" stroke="var(--border)" strokeWidth="7" />
         {segments.map((segment) => (
@@ -82,7 +82,12 @@ export function DonutChart({
               style={{ backgroundColor: datum.color ?? colorFor(index) }}
             />
             <span className="donut-chart-legend-label">{datum.label}</span>
-            <span className="numeric">{formatValue(datum.value)}</span>
+            <span className="numeric">
+              {formatValue(datum.value)}
+              {total > 0 ? (
+                <span className="muted"> · {Math.round((datum.value / total) * 100)}%</span>
+              ) : null}
+            </span>
           </li>
         ))}
       </ul>
@@ -104,6 +109,6 @@ export function DonutChart({
           ))}
         </tbody>
       </table>
-    </div>
+    </figure>
   );
 }

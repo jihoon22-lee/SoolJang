@@ -1,8 +1,10 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { ToastProvider } from "@/components/Toast";
 import { HomePage } from "@/pages/HomePage";
 import { db } from "@/sync/db";
+import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery } from "@/testing";
 
 const NOW = "2026-01-01T00:00:00Z";
@@ -21,10 +23,19 @@ function row(overrides: Record<string, unknown>) {
 function renderHomePage() {
   const onSelectProduct = vi.fn();
   const onSelectCategory = vi.fn();
+  const onNavigate = vi.fn();
   renderWithQuery(
-    <HomePage onSelectProduct={onSelectProduct} onSelectCategory={onSelectCategory} />,
+    <SyncStatusProvider>
+      <ToastProvider>
+        <HomePage
+          onSelectProduct={onSelectProduct}
+          onSelectCategory={onSelectCategory}
+          onNavigate={onNavigate}
+        />
+      </ToastProvider>
+    </SyncStatusProvider>,
   );
-  return { onSelectProduct, onSelectCategory };
+  return { onSelectProduct, onSelectCategory, onNavigate };
 }
 
 beforeEach(async () => {
@@ -41,6 +52,7 @@ afterEach(async () => {
     db.bottle.clear(),
     db.vendor.clear(),
     db.tasting_session.clear(),
+    db.outbox.clear(),
   ]);
 });
 
@@ -115,5 +127,39 @@ describe("HomePage", () => {
     expect(screen.getByText("양주")).toBeInTheDocument();
     // 랭킹·최근 등록·최근 시음 어디서든 제품 이름이 보인다.
     expect(screen.getAllByText("글렌고인 25y").length).toBeGreaterThan(0);
+  });
+
+  it("'오늘 마셨어요'로 열린 병을 골라 별점·양을 기록하고 바로가기로 이동한다", async () => {
+    await db.product.put(row({ id: "p1", name: "열린 위스키" }));
+    await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 700 }));
+    await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 1 }));
+    await db.bottle.put(
+      row({
+        id: "b1",
+        purchase_id: "pu1",
+        label_no: 1,
+        status: "open",
+        opened_on: "2026-01-02",
+        remaining_ml: 400,
+      }),
+    );
+    const { onNavigate } = renderHomePage();
+
+    expect(await screen.findByText("400ml 남음 · 2026-01-02 개봉")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "보관·실사 병 위치와 재고 확인" }));
+    expect(onNavigate).toHaveBeenCalledWith("inventory");
+
+    await userEvent.click(screen.getByRole("button", { name: "오늘 마셨어요" }));
+    const dialog = await screen.findByRole("dialog", { name: "무엇을 마셨나요?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /열린 위스키/ }));
+    await userEvent.click(screen.getByRole("button", { name: "4점" }));
+    await userEvent.click(screen.getByRole("button", { name: "50ml" }));
+    await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+
+    await waitFor(async () => expect((await db.bottle.get("b1"))?.remaining_ml).toBe(350));
+    const [entry] = await db.outbox.toArray();
+    expect(entry?.fields).toMatchObject({ bottle_id: "b1", poured_ml: 50, rating: "4.0" });
+    expect(await screen.findByText("열린 위스키 시음을 기록했습니다")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

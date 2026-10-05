@@ -6,6 +6,7 @@ import type { User } from "@/api/types";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
 import { ToastProvider } from "@/components/Toast";
+import { type Density, DISPLAY_PREFERENCES_CHANGED, getDensity } from "@/displayPreferences";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { CollectionQualityPage } from "@/pages/CollectionQualityPage";
 import { DiscoverPage } from "@/pages/DiscoverPage";
@@ -75,6 +76,14 @@ export function App() {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const [density, setDensityState] = useState<Density>(getDensity);
+
+  useEffect(() => {
+    const onChange = () => setDensityState(getDensity());
+    window.addEventListener(DISPLAY_PREFERENCES_CHANGED, onChange);
+    return () => window.removeEventListener(DISPLAY_PREFERENCES_CHANGED, onChange);
+  }, []);
   const queryClient = useQueryClient();
   const [localOwner, setLocalOwner] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -90,8 +99,14 @@ export function App() {
       }
     }
     function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") setSettingsOpen(false);
+      if (event.key === "Escape") {
+        setSettingsOpen(false);
+        // 닫은 뒤 초점이 사라지지 않게 메뉴를 연 버튼으로 돌려준다.
+        settingsTriggerRef.current?.focus();
+      }
     }
+    // 열면 첫 항목으로 초점을 옮겨 키보드로 바로 고를 수 있게 한다.
+    settingsMenuRef.current?.querySelector<HTMLElement>(".settings-menu-panel a")?.focus();
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -121,6 +136,21 @@ export function App() {
       window.removeEventListener("hashchange", onPopState);
     };
   }, []);
+
+  // 화면이 바뀌면 탭 제목을 바꾸고 본문으로 초점을 옮긴다 — 스크린리더·키보드 사용자가
+  // 이동했다는 사실을 알 수 있게. 첫 로드는 건드리지 않는다.
+  const firstRoute = useRef(true);
+  useEffect(() => {
+    const label =
+      [...VIEWS, ...SETTINGS_VIEWS].find((item) => item.id === route.view)?.label ??
+      (route.view === "scan" ? "매장 모드" : "술장");
+    document.title = route.productId ? "술 상세 · 술장" : `${label} · 술장`;
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
+    document.getElementById("main")?.focus({ preventScroll: true });
+  }, [route]);
 
   const navigate = useCallback((next: Route) => {
     const hash = routeToHash(next);
@@ -262,7 +292,7 @@ export function App() {
   return (
     <SyncStatusProvider key={user?.id} userId={user?.id}>
       <ToastProvider>
-        <div className="app-shell">
+        <div className={`app-shell${density === "compact" ? " density-compact" : ""}`}>
           <a className="skip-link" href="#main">
             본문으로 건너뛰기
           </a>
@@ -291,20 +321,24 @@ export function App() {
               <div className="settings-menu" ref={settingsMenuRef}>
                 <button
                   type="button"
+                  ref={settingsTriggerRef}
                   className="settings-menu-trigger"
                   aria-expanded={settingsOpen}
-                  aria-haspopup="true"
+                  aria-controls="settings-menu-panel"
                   aria-current={isSettingsView ? "page" : undefined}
                   onClick={() => setSettingsOpen((open) => !open)}
                 >
                   설정
                 </button>
                 {settingsOpen && (
-                  <div className="settings-menu-panel" role="menu" aria-label="설정 메뉴">
+                  <nav
+                    id="settings-menu-panel"
+                    className="settings-menu-panel"
+                    aria-label="설정 메뉴"
+                  >
                     {SETTINGS_VIEWS.map((item) => (
                       <a
                         key={item.id}
-                        role="menuitem"
                         href={`#${item.id}`}
                         aria-current={route.view === item.id ? "page" : undefined}
                         onClick={(event) => {
@@ -318,7 +352,6 @@ export function App() {
                     ))}
                     <button
                       type="button"
-                      role="menuitem"
                       className="settings-menu-logout"
                       onClick={() => {
                         setSettingsOpen(false);
@@ -347,7 +380,7 @@ export function App() {
                     >
                       로그아웃
                     </button>
-                  </div>
+                  </nav>
                 )}
               </div>
             </div>
@@ -360,6 +393,7 @@ export function App() {
               <HomePage
                 onSelectProduct={(id) => navigate({ view: "products", productId: id })}
                 onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+                onNavigate={(view) => navigate({ view })}
               />
             )}
             {route.view === "products" && (

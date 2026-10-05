@@ -16,6 +16,8 @@
  */
 
 :root {
+  /* 네이티브 날짜 선택기·select 팝업·스크롤바도 어두운 테마로 그린다. */
+  color-scheme: dark;
   --bg: #131f1a;
   --bg-raised: #17251f;
   --surface: #1b2b24;
@@ -31,11 +33,16 @@
   --danger-surface: #3a2220;
   --ok: #7fbf95;
   --ok-surface: #1c2f22;
+  /* "확인 필요"(경고)는 "실패"(위험)와 다른 색이어야 한다 — 예전엔 둘 다 --danger 였다. */
+  --warn: #e0b04f;
+  --warn-surface: #33291a;
 
   --font-display: "Gowun Batang", "AppleMyungjo", "Batang", "바탕", Georgia, serif;
+  /* 본문은 시스템 한글 글꼴을 쓴다. 내려받지 않는 웹 글꼴(예전 Pretendard)을 선언하면
+     기기마다 결과가 달라지고 오프라인 첫 실행과도 어긋난다. */
   --font-body:
-    "Pretendard", -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo",
-    "Segoe UI", "Noto Sans KR", sans-serif;
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI",
+    "Noto Sans KR", sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --radius-sm: 6px;
@@ -44,7 +51,12 @@
   --space-xs: 4px;
   --space-sm: 8px;
   --space: 12px;
+  --space-md: 16px;
   --space-lg: 20px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  /* 모바일 하단 탭바 높이. 탭바가 있을 때만 값을 갖고, 고정 요소(알림·일괄 막대)가 그 위에 뜬다. */
+  --bottom-nav-h: 0px;
 
   /*
    * 타입 스케일. 같은 역할(예: "카드 안 소제목")은 항상 같은 토큰을 쓴다 — 예전에는
@@ -80,7 +92,7 @@
    */
   --chart-1: #ddb161; /* 골드 (accent-strong) */
   --chart-2: #7fbf95; /* 세이지 (ok) */
-  --chart-3: #e8837a; /* 코랄 (danger) */
+  --chart-3: #d9987a; /* 살구 (의미색 danger 와 구분) */
   --chart-4: #7aa7e8; /* 블루 */
   --chart-5: #b98ae0; /* 퍼플 */
   --chart-6: #5fb8b0; /* 틸 */
@@ -590,6 +602,22 @@ button.danger {
   border-color: var(--danger);
 }
 
+button.danger:hover:not(:disabled) {
+  background: var(--danger-surface);
+}
+
+/* 보조 동작. 테두리 없이 글자만 — 버튼이 여러 개 나란할 때 시선이 주 동작에 먼저 간다. */
+button.btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+button.btn-quiet:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface);
+}
+
 /* 모바일 카드에서 제품 상세로 들어가는 주 진입점 등으로 쓰인다 — 문장 안에 섞인
    보조 링크가 아니라 실질적인 탐색 컨트롤이라 다른 버튼과 같은 터치 타깃을 확보한다. */
 button.link-like {
@@ -630,7 +658,7 @@ button:disabled {
 
 .product-table th,
 .product-table td {
-  padding: 6px 10px;
+  padding: var(--cell-pad-y, 9px) var(--cell-pad-x, 12px);
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
@@ -651,8 +679,7 @@ button:disabled {
   background: var(--surface-raised);
   color: var(--text-muted);
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   /* 405행을 스크롤해도 어느 열인지 알 수 있게 헤더를 고정한다. */
   position: sticky;
@@ -689,21 +716,6 @@ button:disabled {
 .select-card {
   display: block;
   margin-bottom: 0.4rem;
-}
-
-/* 대량 편집(주종 일괄 변경) 액션 바. */
-.bulk-edit-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.6rem 0;
-  margin: 0.4rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.bulk-edit-bar label {
-  font-weight: 600;
 }
 
 .sort-button {
@@ -859,10 +871,11 @@ button:disabled {
   color: var(--text-muted);
 }
 
+/* 숫자는 본문 글꼴의 고정폭 숫자로 — 명조 표제 글꼴은 숫자 폭이 들쭉날쭉해 비교가 어렵다. */
 .metric dd {
   margin: 4px 0 0;
   font-size: var(--text-lg);
-  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1030,9 +1043,35 @@ button:disabled {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.4rem 0;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
   border-bottom: 1px solid var(--border);
+}
+
+/* 주종별 보유: 이름 · 비율 막대 · 병수. 행 높이는 낮추고 비율은 막대로 바로 읽는다. */
+.home-category-list li {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 1fr auto;
+  align-items: center;
+}
+
+.home-category-list .link-like {
+  min-height: var(--control-h-sm);
+  text-align: left;
+}
+
+.home-category-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.home-category-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
 }
 
 .home-activity-grid {
@@ -1346,6 +1385,60 @@ button:disabled {
 
 /* --- 동기화 상태 ---------------------------------------------------------- */
 
+/* --- 공통 입력 ------------------------------------------------------------
+ * 입력 스타일을 한 벌로 둔다. 예전엔 `.field`·`.collection-page`·`.discovery-panel` 안에서만
+ * 정의돼, 그 밖의 폼(시음 기록·동기화 수정 등)은 브라우저 기본(흰 배경) 입력으로 보였다.
+ */
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+select,
+textarea {
+  min-width: 0;
+  min-height: var(--control-h-md);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):hover,
+select:hover,
+textarea:hover {
+  border-color: var(--border-strong);
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--accent);
+}
+
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-sm) var(--space);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+legend {
+  padding-inline: var(--space-xs);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 .sync-status {
   position: relative;
 }
@@ -1368,7 +1461,11 @@ button:disabled {
   color: var(--text-muted);
 }
 
-.sync-status-warn,
+.sync-status-warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
 .sync-status-danger {
   border-color: var(--danger);
   color: var(--danger);
@@ -1733,11 +1830,8 @@ button:disabled {
 /* "내 술" 목록 위에 두는 매장 모드 진입 버튼(Task 24 PR4, 항목 6). PC 에서는 매장 모드
    자체가 쓰기 어려워(카메라 없음, 표를 스캔하며 훑는 게 더 빠름) 900px 이상에서는 숨긴다. */
 .store-mode-entry {
-  display: block;
-  width: 100%;
-  min-height: var(--control-h-lg);
-  margin: 0 0 var(--space);
-  font-size: var(--text-md);
+  display: inline-flex;
+  align-items: center;
 }
 
 @media (min-width: 900px) {
@@ -1967,18 +2061,11 @@ button:disabled {
   padding: var(--space-xs) 0;
 }
 
+/* 입력의 모양은 공통 규칙(위 "공통 입력")이 맡는다. 여기서는 폭만 채운다. */
 .collection-page input:not([type="checkbox"]),
 .collection-page select,
 .collection-page textarea {
   width: 100%;
-  min-width: 0;
-  min-height: var(--control-h-md);
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  color: var(--text);
-  font: inherit;
 }
 
 .collection-page input[type="checkbox"] {
@@ -2067,21 +2154,13 @@ button:disabled {
 }
 .discovery-panel input:not([type="checkbox"]):not([type="radio"]),
 .discovery-panel select {
-  min-height: var(--control-h-md);
-  margin-top: 0.35rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  color: var(--text);
-  font: inherit;
+  margin-top: var(--space-xs);
 }
 .discovery-panel input:read-only {
   color: var(--text-muted);
 }
 .discovery-panel input[type="checkbox"],
 .discovery-panel input[type="radio"] {
-  accent-color: var(--accent);
   width: 1.05rem;
   height: 1.05rem;
 }
@@ -2331,4 +2410,586 @@ button:disabled {
 .inventory-table select {
   min-height: var(--control-h-sm);
   padding-block: 4px;
+}
+
+/* --- v1.8.0 디자인 정비: 위계·밀도·모바일 ---------------------------------------- */
+
+/* 화면 제목은 패널 제목보다 분명히 크게. 아래 경계선으로 화면의 시작을 표시한다. */
+.page-title,
+.app-main h1 {
+  margin: 0 0 var(--space);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xl);
+}
+
+/* 표 밀도. 설정에서 고르며 기본은 넉넉하게(comfortable). */
+.density-compact {
+  --cell-pad-y: 4px;
+  --cell-pad-x: 8px;
+}
+
+/* 터치 기기에서는 `all: unset` 으로 만든 작은 버튼도 손가락 크기를 보장한다. */
+@media (pointer: coarse) {
+  .sort-button,
+  .category-manage-toggle {
+    min-height: var(--control-h-md);
+    padding-inline: var(--space-xs);
+  }
+}
+
+/* 동작 줄이기 설정을 켠 사용자에게는 전환 효과를 끈다. 개별 규칙의 transition 보다 항상
+   이겨야 해서 !important 가 필요하다(이 용도가 유일한 예외다). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: 사용자 접근성 설정이 모든 전환보다 우선한다 */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 위와 같다 */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 위와 같다 */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 위와 같다 */
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 모바일에서는 목록 안에 또 스크롤을 두지 않고 페이지 스크롤 하나로 읽는다. 하단 탭바·
+   일괄 막대(sticky)와 겹치는 이중 스크롤을 없앤다. */
+@media (max-width: 899px) {
+  .product-cards,
+  .stats-cards,
+  .category-tree,
+  .vendor-list,
+  .bottle-list,
+  .tasting-timeline ul,
+  .store-mode-results {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* 모바일 하단 탭바. 헤더에는 제목·동기화·설정만 남겨 세로 공간을 돌려준다. */
+@media (max-width: 599px) {
+  :root {
+    --bottom-nav-h: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-header {
+    padding: var(--space-sm) var(--space);
+    align-items: center;
+  }
+
+  .app-header h1 {
+    font-size: var(--text-lg);
+  }
+
+  .app-account {
+    margin-left: auto;
+  }
+
+  .app-account-name {
+    display: none;
+  }
+
+  .app-nav {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+    padding: 4px 4px env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+
+  .app-nav a {
+    justify-content: center;
+    min-height: 56px;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+  }
+
+  .app-nav a[aria-current="page"] {
+    box-shadow: none;
+  }
+
+  .app-main {
+    padding-bottom: calc(var(--bottom-nav-h) + var(--space-lg));
+  }
+}
+.section-header .page-title {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* --- 홈·빠른 시음 ------------------------------------------------------------ */
+
+.home-page {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.home-page h3 {
+  margin: 0 0 var(--space-sm);
+}
+
+.metrics-grid--hero {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metrics-grid--hero .metric dd {
+  font-size: var(--text-xl);
+}
+
+.home-summary-secondary {
+  margin: var(--space-sm) 0 0;
+}
+
+.home-notice {
+  display: block;
+  padding: var(--space-sm) var(--space);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-surface);
+  color: var(--text);
+}
+
+.home-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: var(--space-sm);
+}
+
+.home-shortcuts button {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  text-align: left;
+}
+
+.rating-stars {
+  border: none;
+  padding: 0;
+}
+
+.rating-stars-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.rating-star {
+  min-width: var(--control-h-md);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--border-strong);
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.rating-star-full {
+  color: var(--accent-strong);
+}
+
+/* 반 별: 왼쪽 절반만 채운다. */
+.rating-star-half span {
+  background: linear-gradient(90deg, var(--accent-strong) 50%, var(--border-strong) 50%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.rating-clear {
+  margin-left: var(--space-sm);
+  font-size: var(--text-sm);
+}
+
+.pour-presets {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.pour-presets button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tasting-fields {
+  display: grid;
+  gap: var(--space);
+}
+
+.tasting-details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  min-height: var(--control-h-sm);
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+/* 모바일은 화면 아래에서 올라오는 시트, 넓은 화면은 가운데 카드. */
+.bottom-sheet {
+  display: grid;
+  gap: var(--space);
+  width: min(640px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: var(--space-lg) var(--space-lg) calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-float);
+}
+
+@media (min-width: 600px) {
+  .sheet-backdrop {
+    align-items: center;
+  }
+
+  .bottom-sheet {
+    border-radius: var(--radius-lg);
+  }
+}
+
+.pick-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pick-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  text-align: left;
+}
+
+/* --- 제품 상세 --------------------------------------------------------------- */
+
+.detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space);
+}
+
+.overflow-menu {
+  position: relative;
+}
+
+.overflow-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-xs));
+  z-index: 10;
+  display: grid;
+  min-width: 10rem;
+  padding: var(--space-xs);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-float);
+}
+
+.product-hero {
+  display: grid;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.product-hero-title {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  font-size: var(--text-sm);
+}
+
+.metrics-more {
+  margin-top: var(--space-sm);
+}
+
+.metrics-more summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  min-height: var(--control-h-sm);
+}
+
+/* --- 내 술 목록(모바일 압축) ------------------------------------------------- */
+
+.product-card {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space);
+}
+
+.product-card h3 {
+  margin: 0;
+}
+
+.product-card h3 .link-like {
+  min-height: var(--control-h-sm);
+  padding: 0;
+  text-align: left;
+}
+
+.product-card > p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.product-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* 평단가·100ml당·평점을 한 줄에 "이름 값" 쌍으로 흘려 보낸다. */
+.product-card dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space);
+  margin: 0;
+}
+
+.product-card dl dt {
+  font-size: var(--text-xs);
+}
+
+.product-card dl dd {
+  margin-right: var(--space-sm);
+}
+
+/* 도구 막대가 화면 폭을 넘으면 여러 줄로 쌓이지 않고 가로로 넘긴다(모바일 세로 공간 확보). */
+@media (max-width: 599px) {
+  .products-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .products-toolbar > * {
+    flex: none;
+  }
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.load-more-sentinel {
+  height: 1px;
+}
+
+/* 막대 행은 손가락으로 누르는 주종 링크이기도 하다 — 행 높이를 터치 크기로. */
+.bar-chart {
+  margin: 0;
+}
+
+.bar-chart-row {
+  min-height: var(--control-h-md);
+}
+
+.bar-chart-row .sort-button.bar-chart-label {
+  min-height: var(--control-h-md);
+}
+
+.bar-chart-track {
+  height: 12px;
+}
+
+.donut-chart {
+  margin: 0;
+}
+
+.sync-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.sync-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.sync-status-count {
+  display: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 599px) {
+  .sync-status-text {
+    display: none;
+  }
+
+  .sync-status-count {
+    display: inline;
+  }
+}
+
+/* --- 공통 상태 표시 --------------------------------------------------------- */
+
+.loading-state {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.skeleton-line {
+  display: block;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-raised) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line:nth-child(3n) {
+  width: 70%;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.empty-state {
+  display: grid;
+  gap: var(--space-xs);
+  justify-items: start;
+  padding: var(--space-lg);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.empty-state-title {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.inline-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+}
+
+.sort-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-xs);
+}
+
+.sort-order-toggle {
+  min-width: var(--control-h-md);
+  padding: 0;
+  font-size: var(--text-md);
+}
+
+/* 좁은 화면에서도 핵심 지표 금액이 한 줄에 들어오게 글자 크기를 화면 폭에 맞춘다. */
+.metrics-grid--hero .metric dd {
+  font-size: clamp(1.05rem, 4.6vw, var(--text-xl));
+  white-space: nowrap;
+}
+
+.metrics-grid--hero .metric {
+  min-width: 0;
+  padding: var(--space-sm) var(--space);
+}
+
+@media (max-width: 599px) {
+  /* 가로로 넘기는 도구 막대에서도 주 동작(새 술 등록)이 맨 앞에 보이게 한다. */
+  .products-toolbar > .primary {
+    order: -1;
+  }
+
+  .products-toolbar {
+    scrollbar-width: none;
+  }
+
+  .products-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.panel .product-hero-title {
+  font-size: var(--text-xl);
+}
+
+/* 구매 이력 표는 칸이 짧은 값뿐이라 줄바꿈 대신 가로 스크롤로 읽는다. 날짜가 "2026-/09-/20"
+   으로 쪼개지고 관리 버튼이 세로로 쌓여 한 행이 화면 절반을 차지하던 문제를 막는다. */
+.purchase-table td,
+.purchase-table th {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.purchase-table .button-row {
+  flex-wrap: nowrap;
+}
+
+.purchase-table td[colspan] {
+  white-space: normal;
 }

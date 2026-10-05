@@ -38,7 +38,9 @@ export function ImportPage() {
 
   return (
     <section aria-labelledby="import-heading">
-      <h2 id="import-heading">엑셀 기록 가져오기</h2>
+      <h2 id="import-heading" className="page-title">
+        엑셀 기록 가져오기
+      </h2>
       <p className="muted mt-0">
         엑셀에서 CSV 로 저장한 파일을 올리면 내용을 먼저 분석해 보여줍니다. 확인한 뒤에 적재하세요.
         같은 파일을 두 번 넣어도 중복이 생기지 않습니다.

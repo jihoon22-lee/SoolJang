@@ -8,12 +8,13 @@
  */
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, barcodesApi, productsApi, skusApi } from "@/api/client";
 import type { BarcodeLookupResponse } from "@/api/types";
 import { startScanning } from "@/barcode/scanner";
 import { getProducts } from "@/sync/queries";
+import { useModalDialog } from "@/useModalDialog";
 
 type Phase =
   | { kind: "idle" }
@@ -32,6 +33,7 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopRef = useRef<(() => void) | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   // 바코드 조회 응답이 늦게 오면, 그 사이 사용자가 패널을 닫거나(close) 컴포넌트가
   // 언마운트돼도 이 setPhase 는 막을 방법이 없었다 — 이미 닫은 다이얼로그가 다시
   // 열리는 것으로 보였다(B9). 스캔 세션이 여전히 "살아 있는지" 를 이 ref 로 추적한다.
@@ -99,27 +101,35 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
     setPhase({ kind: "idle" });
   }
 
+  function rescan() {
+    stopRef.current?.();
+    stopRef.current = null;
+    liveRef.current = true;
+    setPhase({ kind: "scanning" });
+  }
+
   if (phase.kind === "idle") {
     return (
-      <button
-        type="button"
-        onClick={() => {
-          liveRef.current = true;
-          setPhase({ kind: "scanning" });
-        }}
-      >
+      <button type="button" ref={triggerRef} onClick={rescan}>
         바코드로 스캔
       </button>
     );
   }
 
   return (
-    <div className="panel barcode-scan-panel" role="dialog" aria-label="바코드 스캔">
+    <ScanDialog onClose={close} returnFocusRef={triggerRef}>
       <div className="section-header">
-        <h2>바코드 스캔</h2>
-        <button type="button" onClick={close}>
-          닫기
-        </button>
+        <h2 id="barcode-scan-heading">바코드 스캔</h2>
+        <div className="button-row">
+          {phase.kind === "error" || phase.kind === "result" ? (
+            <button type="button" onClick={rescan}>
+              다시 스캔
+            </button>
+          ) : null}
+          <button type="button" onClick={close}>
+            닫기
+          </button>
+        </div>
       </div>
 
       {(phase.kind === "scanning" || phase.kind === "looking_up") && (
@@ -140,6 +150,40 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
       {phase.kind === "result" && (
         <BarcodeResult result={phase.result} onDone={close} onSelectProduct={onSelectProduct} />
       )}
+    </ScanDialog>
+  );
+}
+
+/** 스캔 창. 열리면 초점을 옮기고 Tab 을 창 안에 가두며, Esc 로 닫고 연 버튼으로 돌아간다. */
+function ScanDialog({
+  children,
+  onClose,
+  returnFocusRef,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const dialogRef = useModalDialog(returnFocusRef);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") closeRef.current();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+  return (
+    <div
+      ref={dialogRef}
+      className="panel barcode-scan-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="barcode-scan-heading"
+      tabIndex={-1}
+    >
+      {children}
     </div>
   );
 }

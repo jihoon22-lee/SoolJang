@@ -198,7 +198,8 @@ export function ProductFilterPanel({
         return (
           <div className="field">
             <label htmlFor="filter-sort">정렬</label>
-            <div className="field-row">
+            {/* 좁은 필터 패널에서 "오름차순" select 가 잘리던 것을 화살표 토글로 바꾼다. */}
+            <div className="sort-row">
               <select
                 id="filter-sort"
                 value={filters.sort ?? "name"}
@@ -210,14 +211,19 @@ export function ProductFilterPanel({
                   </option>
                 ))}
               </select>
-              <select
-                aria-label="정렬 방향"
-                value={filters.order ?? "asc"}
-                onChange={(event) => update({ order: event.target.value as SortOrder })}
+              <button
+                type="button"
+                className="sort-order-toggle"
+                aria-label={`정렬 방향: ${(filters.order ?? "asc") === "asc" ? "오름차순" : "내림차순"}`}
+                title="정렬 방향 바꾸기"
+                onClick={() =>
+                  update({
+                    order: ((filters.order ?? "asc") === "asc" ? "desc" : "asc") as SortOrder,
+                  })
+                }
               >
-                <option value="asc">오름차순</option>
-                <option value="desc">내림차순</option>
-              </select>
+                {(filters.order ?? "asc") === "asc" ? "↑" : "↓"}
+              </button>
             </div>
           </div>
         );

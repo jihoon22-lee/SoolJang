@@ -489,7 +489,7 @@ describe("BottlePanel", () => {
 
       expect(await screen.findByText("2026-01-10")).toBeInTheDocument();
       expect(screen.getByText("4.5점")).toBeInTheDocument();
-      expect(screen.getByText("30ml")).toBeInTheDocument();
+      expect(screen.getByText("30ml", { selector: ".tasting-poured" })).toBeInTheDocument();
       expect(screen.getByText("향: 바닐라")).toBeInTheDocument();
       expect(screen.getByText("맛: 꿀")).toBeInTheDocument();
       expect(screen.getByText("피니시: 긴 여운")).toBeInTheDocument();
@@ -578,7 +578,7 @@ describe("BottlePanel", () => {
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
-      await userEvent.type(screen.getByLabelText("따른 양 (ml)"), "200");
+      await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "200");
       await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
 
       await waitFor(async () => {
@@ -594,7 +594,7 @@ describe("BottlePanel", () => {
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
-      await userEvent.type(screen.getByLabelText("따른 양 (ml)"), "50");
+      await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "50");
       await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
 
       await waitFor(async () => {
@@ -625,7 +625,7 @@ describe("BottlePanel", () => {
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
-      await userEvent.type(screen.getByLabelText("따른 양 (ml)"), "50");
+      await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "50");
       await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
 
       await waitFor(async () => {
@@ -641,7 +641,7 @@ describe("BottlePanel", () => {
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
-      await userEvent.type(screen.getByLabelText("따른 양 (ml)"), "150");
+      await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "150");
       await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
 
       expect(await screen.findByText(/잔량이 부족합니다/)).toBeInTheDocument();
@@ -677,13 +677,17 @@ describe("BottlePanel", () => {
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
-      await userEvent.type(screen.getByLabelText("따른 양 (ml)"), "30");
-      await userEvent.selectOptions(screen.getByLabelText("평점 (6점 만점)"), "4.5");
+      await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "30");
+      // 별 5개를 두 번 누르면 4.5점이다(같은 별을 다시 누르면 반 점 내림).
+      await userEvent.click(screen.getByRole("button", { name: "5점" }));
+      await userEvent.click(screen.getByRole("button", { name: "5점" }));
+      expect(screen.getByText("(4.5 / 6)")).toBeInTheDocument();
+      await userEvent.click(screen.getByText(/자세히 기록/));
       await userEvent.type(screen.getByLabelText("향"), "바닐라");
       await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
 
       await waitFor(() => {
-        expect(screen.getByLabelText("따른 양 (ml)")).toHaveValue(null);
+        expect(screen.getByLabelText(/직접 입력\(ml\)/)).toHaveValue(null);
         expect(screen.getByLabelText("향")).toHaveValue("");
       });
     });

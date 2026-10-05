@@ -164,7 +164,7 @@ describe("ProductDetail", () => {
     // 사용자가 직접 입력해야 하는 값으로 오해하면 엑셀 시절 습관이 이어진다.
     setup();
 
-    expect(screen.getByText(/자동 계산됩니다/)).toBeInTheDocument();
+    expect(screen.getByText(/모두 구매 기록에서 계산합니다/)).toBeInTheDocument();
   });
 
   it("병수와 금액 지표를 표시한다", () => {
@@ -235,7 +235,9 @@ describe("ProductDetail", () => {
     const { onDelete } = setup();
 
     // 구매 행에도 "삭제" 버튼이 있다 — 맨 위(제품 자체) 버튼이 DOM 순서상 항상 먼저다.
-    await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[0] as Element);
+    // 삭제는 수정 옆이 아니라 "더 보기" 메뉴 안에 있다.
+    await userEvent.click(screen.getByRole("button", { name: "더 보기" }));
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
 
     expect(confirmSpy.mock.calls[0]?.[0]).toMatch(/구매 \d+건·병 \d+개/);
     expect(onDelete).toHaveBeenCalled();
@@ -246,15 +248,17 @@ describe("ProductDetail", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { onDelete } = setup();
 
-    await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[0] as Element);
+    await userEvent.click(screen.getByRole("button", { name: "더 보기" }));
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
 
     expect(onDelete).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 
-  it("삭제 중에는 버튼을 막는다", () => {
+  it("삭제 중에는 버튼을 막는다", async () => {
     setup({ deleting: true });
 
+    await userEvent.click(screen.getByRole("button", { name: "더 보기" }));
     expect(screen.getByRole("button", { name: "삭제 중…" })).toBeDisabled();
   });
 
@@ -323,7 +327,7 @@ describe("ProductDetail", () => {
       expect(screen.queryByRole("button", { name: "구매 추가" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "분할" })).not.toBeInTheDocument();
       // 제품 자체의 "삭제" 버튼(항상 보임)만 남고, 구매 행별 "삭제" 버튼은 없다.
-      expect(screen.getAllByRole("button", { name: "삭제" })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "구매 기록 삭제" })).not.toBeInTheDocument();
       expect(
         screen.getByText("구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다."),
       ).toBeInTheDocument();
@@ -367,12 +371,13 @@ describe("ProductDetail", () => {
       const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
       const { onDeletePurchase } = setup();
 
-      // index 0 은 제품 자체의 "삭제" 버튼 — 구매 행(pu1)의 삭제는 index 1 이다.
-      await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[1] as Element);
+      // 구매 행마다 "구매 기록 삭제" 가 있다 — 첫 행(pu1)을 고른다.
+      const [firstDelete] = screen.getAllByRole("button", { name: "구매 기록 삭제" });
+      await userEvent.click(firstDelete as Element);
       expect(onDeletePurchase).not.toHaveBeenCalled();
 
       confirmSpy.mockReturnValue(true);
-      await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[1] as Element);
+      await userEvent.click(firstDelete as Element);
       expect(onDeletePurchase).toHaveBeenCalledWith("pu1");
 
       confirmSpy.mockRestore();

@@ -65,14 +65,11 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "주종 관리" }));
+    await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "설정" }));
-    expect(screen.getByRole("menuitem", { name: "주종 관리" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByRole("link", { name: "주종 관리" })).toHaveAttribute("aria-current", "page");
   });
 
   it("구매처 관리로 전환한다", async () => {
@@ -80,14 +77,11 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "구매처" }));
+    await userEvent.click(await screen.findByRole("link", { name: "구매처" }));
 
     expect(await screen.findByRole("heading", { name: "구매처 관리" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "설정" }));
-    expect(screen.getByRole("menuitem", { name: "구매처" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByRole("link", { name: "구매처" })).toHaveAttribute("aria-current", "page");
   });
 
   it("설정 메뉴를 열어 API·외부 연결을 관리한다", async () => {
@@ -105,11 +99,11 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("link", { name: "설정" }));
 
     expect(await screen.findByRole("heading", { name: "API·외부 연결" })).toBeInTheDocument();
     // 메뉴 항목을 고르면 패널도 닫힌다.
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "설정 메뉴" })).not.toBeInTheDocument();
   });
 
   it("매장 모드 진입 버튼으로 전환한다(항목 6 — 이제 nav 가 아니라 목록 화면 안에 있다)", async () => {
@@ -118,7 +112,7 @@ describe("App", () => {
 
     // 홈이 기본 화면이므로 "내 술" 탭으로 먼저 이동한다.
     await userEvent.click(await screen.findByRole("link", { name: "내 술" }));
-    await userEvent.click(await screen.findByRole("button", { name: "매장 모드로 전환" }));
+    await userEvent.click(await screen.findByRole("button", { name: "매장 모드" }));
 
     expect(await screen.findByRole("heading", { name: "매장 모드" })).toBeInTheDocument();
   });
@@ -128,7 +122,7 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "서비스 상태" }));
+    await userEvent.click(await screen.findByRole("link", { name: "서비스 상태" }));
 
     expect(await screen.findByText("0002_domain_model")).toBeInTheDocument();
   });
@@ -153,7 +147,7 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "서비스 상태" }));
+    await userEvent.click(await screen.findByRole("link", { name: "서비스 상태" }));
 
     expect(await screen.findByText("일부 구성 요소에 문제가 있습니다.")).toBeInTheDocument();
     expect(screen.getByText("연결 안 됨")).toBeInTheDocument();
@@ -171,11 +165,15 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "설정 메뉴" })).toBeInTheDocument();
+    // 열면 첫 항목으로 초점이 간다.
+    expect(screen.getByRole("link", { name: "주종 관리" })).toHaveFocus();
 
     await userEvent.keyboard("{Escape}");
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "설정 메뉴" })).not.toBeInTheDocument();
+    // 닫으면 메뉴를 연 버튼으로 초점이 돌아온다.
+    expect(screen.getByRole("button", { name: "설정" })).toHaveFocus();
   });
 
   it("통계·가져오기 화면으로도 전환된다", async () => {
@@ -186,7 +184,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "통계" })).toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "가져오기" }));
+    await userEvent.click(await screen.findByRole("link", { name: "가져오기" }));
     expect(await screen.findByRole("heading", { name: "엑셀 기록 가져오기" })).toBeInTheDocument();
   });
 
@@ -198,7 +196,7 @@ describe("App", () => {
 
     // 탭을 바꿔도 배지는 그대로 보인다.
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "주종 관리" }));
+    await userEvent.click(await screen.findByRole("link", { name: "주종 관리" }));
     expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
   });
 

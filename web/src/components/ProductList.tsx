@@ -56,8 +56,9 @@ export function ProductList({
 }: ProductListProps) {
   if (products.length === 0) {
     return (
-      <output className="notice">
-        조건에 맞는 술이 없습니다. 필터를 조정하거나 새 술을 등록해 보세요.
+      <output className="empty-state">
+        <span className="empty-state-title">조건에 맞는 술이 없습니다</span>
+        <span className="muted">필터를 조정하거나 새 술을 등록해 보세요.</span>
       </output>
     );
   }
@@ -156,11 +157,13 @@ export function ProductList({
               {formatCategoryPath(product.category_path)}
               {product.vintage !== null && ` · ${product.vintage}`}
               {product.skus.length > 0 && ` · ${formatVolume(product.skus[0]?.volume_ml)}`}
+              {product.abv !== null && ` · ${formatAbv(product.abv)}`}
             </p>
-            <StockBadge metrics={product.metrics} />
+            {/* 모바일 카드는 두 줄 요약 — 재고와 가격·평점을 한 줄에 모아 한 화면에 더 많이 본다. */}
+            <div className="product-card-meta">
+              <StockBadge metrics={product.metrics} />
+            </div>
             <dl>
-              <dt>도수</dt>
-              <dd>{formatAbv(product.abv)}</dd>
               <dt>평단가</dt>
               <dd>{formatMoney(product.metrics.avg_list_price)}</dd>
               <dt>100ml당</dt>

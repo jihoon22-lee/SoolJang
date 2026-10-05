@@ -4,6 +4,7 @@ import type { Purchase } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { ProductForm } from "@/components/ProductForm";
+import { LoadingState } from "@/components/StatusViews";
 import { formatCategoryPath, formatMoney, formatRating } from "@/format";
 import { rankByQuery } from "@/search";
 import {
@@ -83,7 +84,9 @@ export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: stri
 
   return (
     <section aria-labelledby="store-mode-heading" className="panel">
-      <h2 id="store-mode-heading">매장 모드</h2>
+      <h2 id="store-mode-heading" className="page-title">
+        매장 모드
+      </h2>
       <p className="muted">
         바코드를 스캔하거나 이름을 검색하면, 전에 얼마에 샀는지·평점이 어땠는지 바로 보여줍니다.
         처음 보는 술이면 외부 평점·판매처 시세를 확인할 수 있습니다.
@@ -195,7 +198,7 @@ function StoreModeSummary({
   const purchases = useLiveQuery(() => getPurchasesForProduct(productId), [productId]);
 
   if (product === undefined || purchases === undefined) {
-    return <output aria-live="polite">불러오는 중…</output>;
+    return <LoadingState label="불러오는 중…" />;
   }
 
   if (product === null) {

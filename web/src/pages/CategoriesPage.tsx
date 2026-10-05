@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { categoriesApi } from "@/api/client";
 import type { DeleteStrategy, User } from "@/api/types";
 import { CategoryManager } from "@/components/CategoryManager";
+import { LoadingState } from "@/components/StatusViews";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { getCategoryTree } from "@/sync/queries";
@@ -117,7 +118,7 @@ export function CategoriesPage({
   });
 
   if (!tree) {
-    return <output aria-live="polite">주종 계층을 불러오고 있습니다…</output>;
+    return <LoadingState label="주종 계층을 불러오고 있습니다…" />;
   }
 
   return (

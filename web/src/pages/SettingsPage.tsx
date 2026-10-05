@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { ApiError, authApi } from "@/api/client";
 import { ConnectionsPanel } from "@/components/ConnectionsPanel";
+import { type Density, getDensity, setDensity } from "@/displayPreferences";
 
 /** 프로필·비밀번호와 API·외부 연결의 단일 설정 진입점. */
 export function SettingsPage() {
+  const [density, setDensityState] = useState<Density>(getDensity);
   const queryClient = useQueryClient();
   // 헤더의 계정 표시 이름과 같은 캐시 키를 써서, 여기서 바꾸면 재조회 없이 헤더도 즉시
   // 갱신된다(`App.tsx` 가 이미 로그인 단계에서 채워 둔 캐시를 그대로 재사용).
@@ -75,7 +77,9 @@ export function SettingsPage() {
 
   return (
     <section aria-labelledby="settings-heading" className="panel">
-      <h2 id="settings-heading">설정</h2>
+      <h2 id="settings-heading" className="page-title">
+        설정
+      </h2>
 
       <div className="field">
         <h3>프로필</h3>
@@ -112,6 +116,38 @@ export function SettingsPage() {
             </button>
           </div>
         </form>
+      </div>
+
+      <div className="field">
+        <h3>화면 표시</h3>
+        <p className="muted">이 기기에서만 적용됩니다.</p>
+        <fieldset>
+          <legend>표 밀도</legend>
+          <label className="checkbox-field">
+            <input
+              type="radio"
+              name="table-density"
+              checked={density === "comfortable"}
+              onChange={() => {
+                setDensity("comfortable");
+                setDensityState("comfortable");
+              }}
+            />{" "}
+            넉넉하게(기본)
+          </label>
+          <label className="checkbox-field">
+            <input
+              type="radio"
+              name="table-density"
+              checked={density === "compact"}
+              onChange={() => {
+                setDensity("compact");
+                setDensityState("compact");
+              }}
+            />{" "}
+            촘촘하게 — 한 화면에 더 많은 행
+          </label>
+        </fieldset>
       </div>
 
       <div className="field">

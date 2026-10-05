@@ -6,6 +6,7 @@ import { type CleanupPreview, collectionApi } from "@/api/collection";
 import type { Vendor, VendorKind } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
+import { LoadingState } from "@/components/StatusViews";
 import { formatMoney, formatVendorKind } from "@/format";
 import { matchesQuery, rankByQuery } from "@/search";
 import { db } from "@/sync/db";
@@ -123,7 +124,7 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
   );
 
   if (vendors === undefined) {
-    return <output aria-live="polite">구매처를 불러오고 있습니다…</output>;
+    return <LoadingState label="구매처를 불러오고 있습니다…" />;
   }
 
   const sorted = [...vendors].sort((a, b) => a.name.localeCompare(b.name));
@@ -133,7 +134,9 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
 
   return (
     <section aria-labelledby="vendors-heading" className="panel">
-      <h2 id="vendors-heading">구매처 관리</h2>
+      <h2 id="vendors-heading" className="page-title">
+        구매처 관리
+      </h2>
 
       {sorted.length > 0 && (
         <div className="field">

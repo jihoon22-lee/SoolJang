@@ -17,6 +17,7 @@ import type { CategoryStat, RankingEntry } from "@/api/types";
 import { BarChart, type BarChartDatum } from "@/components/charts/BarChart";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { PivotExplorer } from "@/components/PivotExplorer";
+import { LoadingState } from "@/components/StatusViews";
 import {
   formatAbv,
   formatBottleStatus,
@@ -130,6 +131,15 @@ interface StatsPageProps {
   onOpenQuality?: () => void;
 }
 
+type StatsSection = "summary" | "categories" | "rankings" | "explore";
+
+const STATS_SECTIONS: { id: StatsSection; label: string }[] = [
+  { id: "summary", label: "요약" },
+  { id: "categories", label: "주종별" },
+  { id: "rankings", label: "랭킹" },
+  { id: "explore", label: "피벗·추이" },
+];
+
 export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: StatsPageProps) {
   const { state } = useSyncStatus();
   const offline = state === "offline";
@@ -144,9 +154,10 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
   const [categorySort, setCategorySort] = useState<CategorySortKey>(DEFAULT_CATEGORY_SORT);
   const [categoryOrder, setCategoryOrder] = useState<SortOrder>(DEFAULT_CATEGORY_ORDER);
   const [categoryMeasure, setCategoryMeasure] = useState<CategoryMeasureKey>("bottle_count");
+  const [section, setSection] = useState<StatsSection>("summary");
 
   if (rankings === undefined || categoriesRaw === undefined || totals === undefined) {
-    return <output aria-live="polite">통계를 불러오고 있습니다…</output>;
+    return <LoadingState label="통계를 불러오고 있습니다…" />;
   }
 
   function handleCategorySort(key: CategorySortKey) {
@@ -175,7 +186,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
 
   return (
     <div className="stats-page">
-      <h2>통계</h2>
+      <h2 className="page-title">통계</h2>
       <details className="card">
         <summary>통계에 포함된 기록과 계산 기준</summary>
         <p>
@@ -209,137 +220,185 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
         )}
       </details>
 
-      <section aria-labelledby="stats-summary-heading">
-        <h3 id="stats-summary-heading">전체 합계</h3>
-        <dl className="metrics-grid">
-          <Metric label="구매 병수" value={`${totals.purchased_count.toLocaleString("ko-KR")}병`} />
-          <Metric
-            label="소비 / 재고"
-            value={`${totals.consumed_count.toLocaleString("ko-KR")} / ${totals.in_stock_count.toLocaleString("ko-KR")}병`}
-          />
-          <Metric
-            label="미개봉 / 개봉"
-            value={`${totals.unopened_count.toLocaleString("ko-KR")} / ${totals.opened_count.toLocaleString("ko-KR")}병`}
-          />
-          <Metric
-            label="증여 / 판매"
-            value={`${totals.gifted_count.toLocaleString("ko-KR")} / ${totals.sold_count.toLocaleString("ko-KR")}병`}
-          />
-          <Metric label="총 용량" value={formatVolume(totals.total_volume_ml)} />
-          <Metric label="정가 총액" value={formatMoney(totals.list_total)} />
-          <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
-          <Metric label="병당 평균 정가" value={formatMoney(totals.avg_list_price)} />
-          <Metric label="병당 평균 실구매가" value={formatMoney(totals.avg_paid_price)} />
-          <Metric label="평균 100ml당 가격" value={formatMoney(totals.avg_price_per_100ml)} />
-          <Metric label="평균 할인율" value={formatPercent(totals.discount_rate)} />
-          <Metric label="평균 내 평점" value={formatRating(totals.avg_personal_rating)} />
-          <Metric label="평균 개봉→소진 일수" value={formatDays(totals.avg_days_to_finish)} />
-          <Metric label="평균 가성비" value={formatValueForMoney(totals.avg_value_for_money)} />
-          <Metric label="고유 구매처" value={`${totals.vendor_count.toLocaleString("ko-KR")}곳`} />
-        </dl>
+      {/* 한 화면에 지표 16개·랭킹 5종·피벗이 세로로 이어지던 것을 탭으로 나눈다. */}
+      <div className="tab-list" role="tablist" aria-label="통계 구간">
+        {STATS_SECTIONS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            id={`stats-tab-${item.id}`}
+            aria-selected={section === item.id}
+            aria-controls={`stats-panel-${item.id}`}
+            onClick={() => setSection(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
 
-        <h4>병 상태 분포</h4>
-        <DonutChart
-          title="병 상태 분포"
-          data={[
-            { label: formatBottleStatus("unopened"), value: totals.unopened_count },
-            { label: formatBottleStatus("open"), value: totals.opened_count },
-            { label: formatBottleStatus("finished"), value: totals.consumed_count },
-            { label: formatBottleStatus("gifted"), value: totals.gifted_count },
-            { label: formatBottleStatus("sold"), value: totals.sold_count },
-          ]}
-          formatValue={(value) => `${value.toLocaleString("ko-KR")}병`}
-        />
-      </section>
+      {section === "summary" && (
+        <section aria-labelledby="stats-summary-heading" id="stats-panel-summary" role="tabpanel">
+          <h3 id="stats-summary-heading" className="sr-only">
+            전체 합계
+          </h3>
+          <dl className="metrics-grid metrics-grid--hero">
+            <Metric label="재고" value={`${totals.in_stock_count.toLocaleString("ko-KR")}병`} />
+            <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
+            <Metric label="평균 100ml당 가격" value={formatMoney(totals.avg_price_per_100ml)} />
+          </dl>
+          <details className="metrics-more">
+            <summary>지표 더 보기</summary>
+            <dl className="metrics-grid">
+              <Metric
+                label="구매 병수"
+                value={`${totals.purchased_count.toLocaleString("ko-KR")}병`}
+              />
+              <Metric
+                label="소비 / 재고"
+                value={`${totals.consumed_count.toLocaleString("ko-KR")} / ${totals.in_stock_count.toLocaleString("ko-KR")}병`}
+              />
+              <Metric
+                label="미개봉 / 개봉"
+                value={`${totals.unopened_count.toLocaleString("ko-KR")} / ${totals.opened_count.toLocaleString("ko-KR")}병`}
+              />
+              <Metric
+                label="증여 / 판매"
+                value={`${totals.gifted_count.toLocaleString("ko-KR")} / ${totals.sold_count.toLocaleString("ko-KR")}병`}
+              />
+              <Metric label="총 용량" value={formatVolume(totals.total_volume_ml)} />
+              <Metric label="정가 총액" value={formatMoney(totals.list_total)} />
+              <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
+              <Metric label="병당 평균 정가" value={formatMoney(totals.avg_list_price)} />
+              <Metric label="병당 평균 실구매가" value={formatMoney(totals.avg_paid_price)} />
+              <Metric label="평균 할인율" value={formatPercent(totals.discount_rate)} />
+              <Metric label="평균 내 평점" value={formatRating(totals.avg_personal_rating)} />
+              <Metric label="평균 개봉→소진 일수" value={formatDays(totals.avg_days_to_finish)} />
+              <Metric label="평균 가성비" value={formatValueForMoney(totals.avg_value_for_money)} />
+              <Metric
+                label="고유 구매처"
+                value={`${totals.vendor_count.toLocaleString("ko-KR")}곳`}
+              />
+            </dl>
+          </details>
 
-      <section aria-labelledby="stats-category-heading">
-        <h3 id="stats-category-heading">주종별 집계</h3>
+          <h4>병 상태 분포</h4>
+          <DonutChart
+            title="병 상태 분포"
+            data={[
+              { label: formatBottleStatus("unopened"), value: totals.unopened_count },
+              { label: formatBottleStatus("open"), value: totals.opened_count },
+              { label: formatBottleStatus("finished"), value: totals.consumed_count },
+              { label: formatBottleStatus("gifted"), value: totals.gifted_count },
+              { label: formatBottleStatus("sold"), value: totals.sold_count },
+            ]}
+            formatValue={(value) => `${value.toLocaleString("ko-KR")}병`}
+          />
+        </section>
+      )}
 
-        {categories.length === 0 ? (
-          <p className="muted">등록된 술이 없습니다.</p>
-        ) : (
-          <>
-            {/* 기준(주종)은 이 절에서는 고정이지만 측정값은 바꿀 수 있다 — 바꾸면 차트가
+      {section === "categories" && (
+        <section
+          aria-labelledby="stats-category-heading"
+          id="stats-panel-categories"
+          role="tabpanel"
+        >
+          <h3 id="stats-category-heading">주종별 집계</h3>
+
+          {categories.length === 0 ? (
+            <p className="muted">등록된 술이 없습니다.</p>
+          ) : (
+            <>
+              {/* 기준(주종)은 이 절에서는 고정이지만 측정값은 바꿀 수 있다 — 바꾸면 차트가
                 바로 다시 그려진다. 주종을 누르면 그 주종 필터가 걸린 "내 술" 탭으로
                 이동한다("미분류" 는 실제 카테고리가 아니라 건너뛸 곳이 없어 비활성이다). */}
-            <div className="chart-controls">
-              <label htmlFor="category-measure">
-                측정값
-                <select
-                  id="category-measure"
-                  value={categoryMeasure}
-                  onChange={(event) => setCategoryMeasure(event.target.value as CategoryMeasureKey)}
-                >
-                  {CATEGORY_MEASURES.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <BarChart
-              title={`주종별 ${measure?.label ?? ""}`}
-              data={chartData}
-              formatValue={measure?.formatValue}
-            />
+              <div className="chart-controls">
+                <label htmlFor="category-measure">
+                  측정값
+                  <select
+                    id="category-measure"
+                    value={categoryMeasure}
+                    onChange={(event) =>
+                      setCategoryMeasure(event.target.value as CategoryMeasureKey)
+                    }
+                  >
+                    {CATEGORY_MEASURES.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <BarChart
+                title={`주종별 ${measure?.label ?? ""}`}
+                data={chartData}
+                formatValue={measure?.formatValue}
+              />
 
-            <CategoryTable
-              categories={categories}
-              sort={categorySort}
-              order={categoryOrder}
-              onSort={handleCategorySort}
-              onSelectCategory={onSelectCategory}
-            />
-          </>
-        )}
-      </section>
+              <CategoryTable
+                categories={categories}
+                sort={categorySort}
+                order={categoryOrder}
+                onSort={handleCategorySort}
+                onSelectCategory={onSelectCategory}
+              />
+            </>
+          )}
+        </section>
+      )}
 
-      <section aria-labelledby="stats-rankings-heading">
-        <h3 id="stats-rankings-heading">랭킹</h3>
-        <div className="ranking-grid">
-          <RankingList
-            title="병당 가격"
-            hint="실구매 기준"
-            entries={rankings.by_bottle_price}
-            formatValue={formatMoney}
-            onSelectProduct={onSelectProduct}
-          />
-          <RankingList
-            title="총 구매액"
-            hint="실구매 기준"
-            entries={rankings.by_total_spend}
-            formatValue={formatMoney}
-            onSelectProduct={onSelectProduct}
-          />
-          <RankingList
-            title="100ml당 가격"
-            hint="정가 기준"
-            entries={rankings.by_price_per_100ml}
-            formatValue={formatMoney}
-            onSelectProduct={onSelectProduct}
-          />
-          <RankingList
-            title="개인 평점"
-            entries={rankings.by_personal_rating}
-            formatValue={formatRating}
-            onSelectProduct={onSelectProduct}
-          />
-          <RankingList
-            title="가성비"
-            hint="평점 ÷ 100ml당 가격"
-            entries={rankings.by_value_for_money}
-            formatValue={formatValueForMoney}
-            onSelectProduct={onSelectProduct}
-          />
-        </div>
-      </section>
+      {section === "rankings" && (
+        <section aria-labelledby="stats-rankings-heading" id="stats-panel-rankings" role="tabpanel">
+          <h3 id="stats-rankings-heading">랭킹</h3>
+          <div className="ranking-grid">
+            <RankingList
+              title="병당 가격"
+              hint="실구매 기준"
+              entries={rankings.by_bottle_price}
+              formatValue={formatMoney}
+              onSelectProduct={onSelectProduct}
+            />
+            <RankingList
+              title="총 구매액"
+              hint="실구매 기준"
+              entries={rankings.by_total_spend}
+              formatValue={formatMoney}
+              onSelectProduct={onSelectProduct}
+            />
+            <RankingList
+              title="100ml당 가격"
+              hint="정가 기준"
+              entries={rankings.by_price_per_100ml}
+              formatValue={formatMoney}
+              onSelectProduct={onSelectProduct}
+            />
+            <RankingList
+              title="개인 평점"
+              entries={rankings.by_personal_rating}
+              formatValue={formatRating}
+              onSelectProduct={onSelectProduct}
+            />
+            <RankingList
+              title="가성비"
+              hint="평점 ÷ 100ml당 가격"
+              entries={rankings.by_value_for_money}
+              formatValue={formatValueForMoney}
+              onSelectProduct={onSelectProduct}
+            />
+          </div>
+        </section>
+      )}
 
       {/* 커스텀 피벗·시계열·저장된 뷰는 서버 DB 조회를 전제해 온라인 전용이다(Task 20). */}
-      {offline ? (
-        <p className="muted">커스텀 피벗과 월별 시계열은 온라인일 때만 볼 수 있습니다.</p>
-      ) : (
-        <PivotExplorer categories={categoryTree?.items ?? []} />
+      {section === "explore" && (
+        <section id="stats-panel-explore" role="tabpanel" aria-labelledby="stats-tab-explore">
+          {offline ? (
+            <p className="muted">커스텀 피벗과 월별 시계열은 온라인일 때만 볼 수 있습니다.</p>
+          ) : (
+            <PivotExplorer categories={categoryTree?.items ?? []} />
+          )}
+        </section>
       )}
     </div>
   );
