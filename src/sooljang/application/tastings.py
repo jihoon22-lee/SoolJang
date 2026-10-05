@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sooljang.application.history import changes, log_event
 from sooljang.clock import local_today
 from sooljang.infrastructure.database.models import (
     Bottle,
@@ -61,6 +62,29 @@ def validate_rating(rating: Decimal | None) -> Decimal | None:
     return rating
 
 
+def _state(bottle: Bottle) -> dict[str, Any]:
+    return {
+        "status": bottle.status,
+        "opened_on": bottle.opened_on,
+        "finished_on": bottle.finished_on,
+        "remaining_ml": bottle.remaining_ml,
+    }
+
+
+def _log_transition(
+    session: AsyncSession, bottle: Bottle, action: str, before: dict[str, Any], **extra: Any
+) -> None:
+    """상태 전이 이력. 바뀐 칸만 [이전, 이후] 로 남긴다(병 위치 이동은 `BottleMovement`)."""
+    log_event(
+        session,
+        user_id=bottle.user_id,
+        entity="bottle",
+        entity_id=bottle.id,
+        action=action,
+        detail={**changes(before, _state(bottle)), **extra},
+    )
+
+
 async def load_bottle_for_write(
     session: AsyncSession, *, user_id: uuid.UUID, bottle_id: uuid.UUID
 ) -> Bottle | None:
@@ -91,6 +115,7 @@ async def open_bottle(
     *,
     opened_on: datetime.date | None = None,
     remaining_ml: int | None = None,
+    log: bool = True,
 ) -> Bottle:
     """병을 개봉한다.
 
@@ -99,12 +124,15 @@ async def open_bottle(
     if bottle.status != BottleStatus.UNOPENED:
         raise BottleTransitionError(f"미개봉 병만 개봉할 수 있습니다 (현재 상태: {bottle.status})")
 
+    before = _state(bottle)
     bottle.status = BottleStatus.OPEN
     bottle.opened_on = opened_on or local_today()
     if remaining_ml is not None:
         bottle.remaining_ml = remaining_ml
     else:
         bottle.remaining_ml = await _bottle_volume_ml(session, bottle)
+    if log:
+        _log_transition(session, bottle, "open", before)
     await session.flush()
     return bottle
 
@@ -122,6 +150,7 @@ async def finish_bottle(
             f"이미 내보낸 병은 소진할 수 없습니다 (현재 상태: {bottle.status})"
         )
 
+    before = _state(bottle)
     when = finished_on or local_today()
     # 지역 변수로 받아 둔다. 속성에 대입한 뒤에는 타입이 좁혀지지 않는다.
     opened_on = bottle.opened_on if bottle.opened_on is not None else when
@@ -132,6 +161,7 @@ async def finish_bottle(
     bottle.status = BottleStatus.FINISHED
     bottle.finished_on = when
     bottle.remaining_ml = 0
+    _log_transition(session, bottle, "finish", before)
     await session.flush()
     return bottle
 
@@ -158,10 +188,13 @@ async def hand_over_bottle(
     if bottle.opened_on is not None and when < bottle.opened_on:
         raise BottleTransitionError("증여·판매일이 개봉일보다 앞설 수 없습니다")
 
+    before = _state(bottle)
     bottle.status = status
     bottle.finished_on = when
     if note:
         bottle.note = f"{bottle.note}\n{note}" if bottle.note else note
+    action = "gift" if status == BottleStatus.GIFTED else "sell"
+    _log_transition(session, bottle, action, before, **({"note": note} if note else {}))
     await session.flush()
     return bottle
 
@@ -177,12 +210,14 @@ async def reopen_bottle(session: AsyncSession, bottle: Bottle) -> Bottle:
     if bottle.status == BottleStatus.UNOPENED:
         raise BottleTransitionError("미개봉 병은 되돌릴 상태가 없습니다")
 
+    before = _state(bottle)
     bottle.status = BottleStatus.OPEN
     bottle.finished_on = None
     if bottle.remaining_ml == 0:
         bottle.remaining_ml = None
     if bottle.opened_on is None:
         bottle.opened_on = local_today()
+    _log_transition(session, bottle, "reopen", before)
     await session.flush()
     return bottle
 
@@ -206,7 +241,9 @@ async def set_remaining(
         raise BottleTransitionError(f"잔량이 병 용량({volume}ml)보다 클 수 없습니다")
     if remaining_ml == 0:
         return await finish_bottle(session, bottle, finished_on=on)
+    before = _state(bottle)
     bottle.remaining_ml = remaining_ml
+    _log_transition(session, bottle, "set_remaining", before)
     await session.flush()
     return bottle
 
@@ -222,9 +259,11 @@ async def unopen_bottle(session: AsyncSession, bottle: Bottle) -> Bottle:
             f"개봉 상태만 미개봉으로 되돌릴 수 있습니다 (현재 상태: {bottle.status})"
         )
 
+    before = _state(bottle)
     bottle.status = BottleStatus.UNOPENED
     bottle.opened_on = None
     bottle.remaining_ml = None
+    _log_transition(session, bottle, "unopen", before)
     await session.flush()
     return bottle
 
@@ -271,10 +310,12 @@ async def record_tasting(
     """
     validate_rating(data.rating)
 
+    bottle_before = _state(bottle) if bottle is not None else None
     if bottle is not None:
         handed_over = bottle.status in {BottleStatus.GIFTED, BottleStatus.SOLD}
         if bottle.status == BottleStatus.UNOPENED:
-            await open_bottle(session, bottle, opened_on=data.tasted_on)
+            # 시음 이력 한 줄에 개봉까지 함께 남긴다(개봉 이력을 따로 쌓지 않는다).
+            await open_bottle(session, bottle, opened_on=data.tasted_on, log=False)
         elif handed_over and not reconcile:
             raise BottleTransitionError(
                 f"내보낸 병은 시음을 기록할 수 없습니다 (현재 상태: {bottle.status})"
@@ -317,6 +358,15 @@ async def record_tasting(
         kwargs["id"] = id
     record = TastingSession(**kwargs)
     session.add(record)
+    if bottle is not None and bottle_before is not None:
+        _log_transition(
+            session,
+            bottle,
+            "tasting",
+            bottle_before,
+            tasted_on=data.tasted_on,
+            **({"poured_ml": data.poured_ml} if data.poured_ml is not None else {}),
+        )
     await session.flush()
     return record
 

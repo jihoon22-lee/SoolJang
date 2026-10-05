@@ -21,6 +21,7 @@ import type {
   ExternalSourceInput,
   FieldError,
   HealthStatus,
+  HistoryEntry,
   ImportAnalysis,
   ImportCommitResult,
   LabelExtractionResponse,
@@ -305,6 +306,9 @@ export const purchasesApi = {
 
   remove: (id: string) => request<void>(`/purchases/${id}`, { method: "DELETE" }),
 
+  history: (id: string, signal?: AbortSignal) =>
+    request<HistoryEntry[]>(`/purchases/${id}/history`, signal ? { signal } : {}),
+
   /** 구매처·날짜·가격·병수 수정. 병수는 미개봉 병만 줄일 수 있다(서버 409). */
   update: (id: string, input: PurchaseUpdateInput) =>
     request<Purchase>(`/purchases/${id}`, { method: "PATCH", body: input }),
@@ -397,6 +401,10 @@ export const bottlesApi = {
 
   get: (id: string, signal?: AbortSignal) =>
     request<Bottle>(`/bottles/${id}`, signal ? { signal } : {}),
+
+  /** 상태 전이·잔량 조정·시음으로 인한 변화와 위치 이동(최신순). */
+  history: (id: string, signal?: AbortSignal) =>
+    request<HistoryEntry[]>(`/bottles/${id}/history`, signal ? { signal } : {}),
 
   open: (id: string, body: { opened_on?: string; remaining_ml?: number } = {}) =>
     request<Bottle>(`/bottles/${id}:open`, { method: "POST", body }),

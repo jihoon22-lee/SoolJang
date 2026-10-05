@@ -8,7 +8,7 @@
 import datetime
 import uuid
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, select
@@ -28,6 +28,7 @@ from sooljang.api.schemas.product import (
 )
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
+from sooljang.application.history import changes, entity_history, log_event
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
@@ -307,11 +308,22 @@ async def update_purchase(
     purchase = await _owned_purchase(session, user_id, purchase_id)
     if "currency" in fields and fields["currency"]:
         fields["currency"] = fields["currency"].upper()
+    before = {key: getattr(purchase, key) for key in [*fields, "quantity"]}
     quantity = fields.pop("quantity", None)
     if quantity is not None and quantity != purchase.quantity:
         await _resize_bottles(session, user_id, purchase, quantity)
     for key, value in fields.items():
         setattr(purchase, key, value)
+    after = {key: getattr(purchase, key) for key in before}
+    if changed := changes(before, after):
+        log_event(
+            session,
+            user_id=user_id,
+            entity="purchase",
+            entity_id=purchase.id,
+            action="update",
+            detail=changed,
+        )
     await session.flush()
     return await _to_purchase_out(session, purchase)
 
@@ -347,6 +359,15 @@ async def _resize_bottles(
         for bottle in removable[:excess]:
             bottle.deleted_at = now
     purchase.quantity = quantity
+
+
+@purchases_router.get("/{purchase_id}/history", summary="구매 건 변경 이력")
+async def purchase_history(
+    purchase_id: uuid.UUID, session: SessionDep, user_id: UserDep
+) -> list[dict[str, Any]]:
+    """구매일·구매처·가격·병수를 언제 어떻게 고쳤는지 최신순으로 돌려준다."""
+    await _owned_purchase(session, user_id, purchase_id)
+    return await entity_history(session, user_id=user_id, entity="purchase", entity_id=purchase_id)
 
 
 @purchases_router.delete(

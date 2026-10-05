@@ -12,6 +12,8 @@ import { ProductList } from "@/components/ProductList";
 import type { EditPurchaseInput } from "@/components/PurchaseEditForm";
 import { LoadingState } from "@/components/StatusViews";
 import { useToast } from "@/components/Toast";
+import { downloadCsv } from "@/csvExport";
+import { todayLocal } from "@/format";
 import { setLastVendorName } from "@/lastVendor";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { db } from "@/sync/db";
@@ -379,6 +381,13 @@ export function ProductsPage({
               }}
             >
               {selecting ? "선택 끝내기" : "여러 개 선택"}
+            </button>
+            <button
+              type="button"
+              disabled={!allProducts || allProducts.length === 0}
+              onClick={() => allProducts && exportProducts(allProducts)}
+            >
+              CSV 내보내기
             </button>
             {/* 매장에서 술을 앞에 두고 쓰는 모바일 흐름이라 좁은 화면에서만 보인다(항목 6). */}
             <button type="button" className="store-mode-entry" onClick={onOpenStoreMode}>
@@ -792,4 +801,35 @@ function LoadMoreSentinel({ onVisible }: { onVisible: () => void }) {
     return () => observer.disconnect();
   }, []);
   return <div ref={ref} className="load-more-sentinel" aria-hidden="true" />;
+}
+
+/** 지금 필터·정렬된 목록 그대로 내보낸다(백업·엑셀 정리용). */
+function exportProducts(products: Product[]): void {
+  downloadCsv(
+    `sooljang-products-${todayLocal()}.csv`,
+    [
+      "이름",
+      "주종",
+      "빈티지",
+      "도수(%)",
+      "재고(병)",
+      "구매(병)",
+      "평단가",
+      "실평단가",
+      "100ml당",
+      "내 평점",
+    ],
+    products.map((product) => [
+      product.name,
+      product.category_path.join(" > "),
+      product.vintage,
+      product.abv,
+      product.metrics.in_stock_count,
+      product.metrics.purchased_count,
+      product.metrics.avg_list_price,
+      product.metrics.avg_paid_price,
+      product.metrics.price_per_100ml,
+      product.personal_rating,
+    ]),
+  );
 }

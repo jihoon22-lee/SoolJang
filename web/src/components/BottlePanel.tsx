@@ -10,6 +10,7 @@ import { type FormEvent, useState } from "react";
 import { bottlesApi, tastingsApi } from "@/api/client";
 import type { Bottle, BottleStatus, User } from "@/api/types";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
+import { HistoryDetails } from "@/components/HistoryList";
 import { RemainingEditor } from "@/components/RemainingEditor";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { todayLocal } from "@/format";
@@ -213,6 +214,12 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
           <dd>{summary.data.total_poured_ml.toLocaleString("ko-KR")}ml</dd>
         </dl>
       ) : null}
+
+      <HistoryDetails
+        queryKey={["bottles", bottle.id, "history"]}
+        load={(signal) => bottlesApi.history(bottle.id, signal)}
+        online={!offline}
+      />
 
       <TastingForm
         bottleId={bottle.id}

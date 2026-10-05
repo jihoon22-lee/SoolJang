@@ -746,14 +746,18 @@ export interface DrinkableBottle {
   openedOn: string | null;
   remainingMl: number | null;
   volumeMl: number | null;
+  /** 주종 경로(예: ["와인", "레드와인"]). 미분류면 빈 배열. */
+  categoryPath: string[];
 }
 
 export async function getDrinkableBottles(): Promise<DrinkableBottle[]> {
-  const [{ purchases, bottles }, skus, products] = await Promise.all([
+  const [{ purchases, bottles }, skus, products, tree] = await Promise.all([
     liveRecordChain(),
     liveTable("sku"),
     liveTable("product"),
+    getCategoryTree(),
   ]);
+  const pathById = new Map(tree.items.map((node) => [node.id, node.path]));
   const purchaseById = new Map(purchases.map((row) => [row.id, row]));
   const skuById = new Map(skus.map((row) => [row.id, row]));
   const productById = new Map(products.map((row) => [row.id, row]));
@@ -773,6 +777,7 @@ export async function getDrinkableBottles(): Promise<DrinkableBottle[]> {
       openedOn: (bottle.opened_on as string | null) ?? null,
       remainingMl: (bottle.remaining_ml as number | null) ?? null,
       volumeMl: (sku.volume_ml as number | null) ?? null,
+      categoryPath: pathById.get(product.category_id as string) ?? [],
     });
   }
   return result.sort(

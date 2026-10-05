@@ -347,3 +347,24 @@ def test_tasting_for_unknown_sku_is_rejected(api_client: TestClient, prefix: str
     )
 
     assert response.status_code == 404
+
+
+def test_bottle_history_lists_transitions_and_tasting_changes(
+    api_client: TestClient, prefix: str
+) -> None:
+    data = _create_product_with_bottle(api_client, prefix, volume_ml=700)
+    bottle_id = data["bottles"][0]["id"]
+    api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={"opened_on": "2026-10-01"})
+    api_client.post(
+        f"{prefix}/tastings",
+        json={"bottle_id": bottle_id, "tasted_on": "2026-10-02", "poured_ml": 100},
+    )
+    api_client.post(f"{prefix}/bottles/{bottle_id}:finish", json={"finished_on": "2026-10-03"})
+    api_client.post(f"{prefix}/bottles/{bottle_id}:reopen")
+
+    history = api_client.get(f"{prefix}/bottles/{bottle_id}/history").json()
+
+    assert [row["action"] for row in history] == ["reopen", "finish", "tasting", "open"]
+    assert history[3]["detail"]["status"] == ["unopened", "open"]
+    assert history[2]["detail"]["remaining_ml"] == [700, 600]
+    assert history[0]["detail"]["status"] == ["finished", "open"]

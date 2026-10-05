@@ -444,3 +444,24 @@ def test_quantity_change_adds_or_removes_only_unopened_bottles(
     assert blocked.status_code == 409
     remaining = api_client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()
     assert [bottle["status"] for bottle in remaining] == ["open", "open"]
+
+
+def test_purchase_history_records_only_changed_fields(api_client: TestClient, prefix: str) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "이력 술", "skus": [{"volume_ml": 500}]}
+    ).json()
+    purchase = api_client.post(
+        f"{prefix}/purchases",
+        json={"sku_id": product["skus"][0]["id"], "quantity": 1, "unit_paid_price": "10000"},
+    ).json()
+
+    api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}",
+        json={"unit_paid_price": "9000", "quantity": 2, "purchased_on": None},
+    )
+    api_client.patch(f"{prefix}/purchases/{purchase['id']}", json={"quantity": 2})
+
+    history = api_client.get(f"{prefix}/purchases/{purchase['id']}/history").json()
+
+    assert len(history) == 1
+    assert history[0]["detail"] == {"unit_paid_price": ["10000", "9000"], "quantity": [1, 2]}

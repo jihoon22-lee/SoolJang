@@ -10,7 +10,13 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { syncApi } from "@/api/client";
 import { db, type OutboxEntry } from "@/sync/db";
-import { dependentEntries, discardFailedEntry, replaceFailedEntry } from "@/sync/outbox";
+import {
+  dependentEntries,
+  discardAllFailedEntries,
+  discardFailedEntry,
+  replaceFailedEntry,
+  retryFailedEntries,
+} from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { useModalDialog } from "@/useModalDialog";
 
@@ -88,7 +94,8 @@ export function SyncStatusBadge() {
         : state === "offline"
           ? "muted"
           : "ok";
-  const opensPanel = hasConflicts || hasFailed || Boolean(lastError);
+  // 보낼 기록이 남아 있으면 무엇이 기다리는지도 볼 수 있게 패널을 연다.
+  const opensPanel = hasConflicts || hasFailed || Boolean(lastError) || pendingCount > 0;
 
   return (
     <div className="sync-status" ref={statusRef}>
@@ -170,6 +177,12 @@ function SyncIssuesPanel({
     () => db.outbox.where("status").equals("failed").toArray(),
     [],
   );
+  const pendingEntries = useLiveQuery(
+    () => db.outbox.where("status").equals("pending").sortBy("created_at"),
+    [],
+  );
+  const { state, triggerSync } = useSyncStatus();
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [discardingKey, setDiscardingKey] = useState<string | null>(null);
@@ -220,8 +233,41 @@ function SyncIssuesPanel({
     }
   }
 
+  async function retryAll() {
+    setBulkBusy(true);
+    setResolveError(null);
+    try {
+      await retryFailedEntries();
+      triggerSync();
+    } catch (error) {
+      setResolveError(error instanceof Error ? error.message : "다시 보내지 못했습니다");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function discardAll() {
+    if (
+      !window.confirm(
+        `실패한 ${failedEntries?.length ?? 0}건과 그 뒤에 연결된 대기 기록을 모두 버릴까요? 서버에 반영되지 않은 입력이 사라집니다.`,
+      )
+    )
+      return;
+    setBulkBusy(true);
+    setResolveError(null);
+    try {
+      await discardAllFailedEntries();
+    } catch (error) {
+      setResolveError(error instanceof Error ? error.message : "버리지 못했습니다");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   const nothingToShow =
-    (!conflicts || conflicts.length === 0) && (!failedEntries || failedEntries.length === 0);
+    (!conflicts || conflicts.length === 0) &&
+    (!failedEntries || failedEntries.length === 0) &&
+    (!pendingEntries || pendingEntries.length === 0);
 
   return (
     <div
@@ -284,6 +330,21 @@ function SyncIssuesPanel({
           <p className="muted text-sm">
             서버가 이 작업을 거부했습니다. 뒤에 쌓인 항목은 이 항목을 정리해야 다시 흐릅니다.
           </p>
+          {failedEntries.length > 1 ? (
+            <div className="button-row">
+              <button type="button" disabled={bulkBusy} onClick={() => void retryAll()}>
+                모두 다시 보내기
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={bulkBusy}
+                onClick={() => void discardAll()}
+              >
+                모두 건너뛰기
+              </button>
+            </div>
+          ) : null}
           <ul>
             {failedEntries.map((entry) => (
               <li key={entry.idempotency_key}>
@@ -309,6 +370,31 @@ function SyncIssuesPanel({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {pendingEntries && pendingEntries.length > 0 && (
+        <section aria-labelledby="sync-pending-heading">
+          <h4 id="sync-pending-heading">보낼 기록 {pendingEntries.length}건</h4>
+          <p className="muted text-sm">
+            {state === "offline"
+              ? "오프라인입니다. 연결되면 순서대로 보냅니다."
+              : "연결돼 있으면 곧 보냅니다. 오래 남아 있으면 지금 동기화를 눌러 보세요."}
+          </p>
+          <ul>
+            {pendingEntries.slice(0, 20).map((entry) => (
+              <li key={entry.idempotency_key}>
+                <span>{describeEntry(entry)}</span>
+                <span className="muted">{new Date(entry.created_at).toLocaleString("ko-KR")}</span>
+              </li>
+            ))}
+          </ul>
+          {pendingEntries.length > 20 ? (
+            <p className="muted text-sm">외 {pendingEntries.length - 20}건</p>
+          ) : null}
+          <button type="button" disabled={state === "offline"} onClick={() => triggerSync()}>
+            지금 동기화
+          </button>
         </section>
       )}
 

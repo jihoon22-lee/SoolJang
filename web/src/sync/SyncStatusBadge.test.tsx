@@ -337,3 +337,52 @@ describe("SyncStatusBadge", () => {
     expect(confirmButton).toHaveFocus();
   });
 });
+
+describe("SyncStatusBadge 대기열", () => {
+  it("오프라인 대기 기록을 패널에서 목록으로 보여준다", async () => {
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+    await db.outbox.put({
+      idempotency_key: "op-q",
+      entity: "vendor",
+      op: "create",
+      entity_id: "v1",
+      fields: { name: "대기 중 구매처" },
+      created_at: NOW,
+      status: "pending",
+      error: null,
+    });
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "오프라인 (대기 1건)" }));
+
+    expect(await screen.findByRole("heading", { name: "보낼 기록 1건" })).toBeInTheDocument();
+    expect(screen.getByText("구매처 · 대기 중 구매처")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "지금 동기화" })).toBeDisabled();
+  });
+
+  it("실패가 여러 건이면 모두 다시 보내기로 새 명령을 만든다", async () => {
+    for (const key of ["f1", "f2"]) {
+      await db.outbox.put({
+        idempotency_key: key,
+        entity: "vendor",
+        op: "create",
+        entity_id: `v-${key}`,
+        fields: { name: `실패 ${key}` },
+        created_at: NOW,
+        status: "failed",
+        error: "거부됨",
+      });
+    }
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: /동기화 실패 2건/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "모두 다시 보내기" }));
+
+    await waitFor(async () => {
+      const entries = await db.outbox.toArray();
+      expect(entries.map((entry) => entry.status)).toEqual(["pending", "pending"]);
+      expect(entries.some((entry) => ["f1", "f2"].includes(entry.idempotency_key))).toBe(false);
+    });
+  });
+});
