@@ -9,6 +9,22 @@ afterEach(() => {
 });
 
 describe("SettingsPage", () => {
+  it("표 밀도를 바꾸면 이 기기에 기억한다", async () => {
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/connections/providers", body: [] },
+      { match: "/connections", method: "GET", body: [] },
+    ]);
+    renderWithQuery(<SettingsPage />);
+
+    expect(screen.getByRole("radio", { name: "넉넉하게(기본)" })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /촘촘하게/ }));
+
+    expect(screen.getByRole("radio", { name: /촘촘하게/ })).toBeChecked();
+    expect(window.localStorage.getItem("sooljang:table-density")).toBe("compact");
+    window.localStorage.clear();
+  });
+
   describe("프로필", () => {
     function stubLlmSettings() {
       return {

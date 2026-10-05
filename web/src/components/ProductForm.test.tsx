@@ -181,14 +181,6 @@ describe("ProductForm", () => {
     expect(screen.getByLabelText("구매일")).toHaveValue(today);
   });
 
-  it("구매처는 직전에 쓴 값으로 미리 채워진다", () => {
-    window.localStorage.setItem("sooljang:last-vendor-name", "이마트");
-
-    setup();
-
-    expect(screen.getByLabelText("구매처")).toHaveValue("이마트");
-  });
-
   it("이름 자동완성 후보를 순위대로 보여준다", async () => {
     setup({
       existingProducts: [

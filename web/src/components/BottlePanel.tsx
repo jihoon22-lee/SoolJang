@@ -11,19 +11,16 @@ import { bottlesApi, tastingsApi } from "@/api/client";
 import type { Bottle, BottleStatus, User } from "@/api/types";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
 import { RemainingEditor } from "@/components/RemainingEditor";
+import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { todayLocal } from "@/format";
 import {
   applyBottleTransition,
-  bottleVolumeMl,
   type TransitionAction,
   type TransitionOptions,
 } from "@/sync/bottleActions";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
-import { databaseIdentity, db } from "@/sync/db";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
-import { validNumericInput } from "@/sync/inputContract";
-import { enqueue } from "@/sync/outbox";
-import { newId } from "@/sync/uuid7";
+import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
 
 export const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
@@ -32,9 +29,6 @@ export const STATUS_LABELS: Record<BottleStatus, string> = {
   gifted: "증여",
   sold: "판매",
 };
-
-/** 평점 선택지. 6점 만점 0.5 단위 — 레거시 시트와 같은 척도다. */
-const RATING_OPTIONS = Array.from({ length: 13 }, (_, index) => (index * 0.5).toFixed(1));
 
 export function formatRemaining(bottle: Bottle): string {
   if (bottle.status === "unopened") return "미개봉 (전량)";
@@ -220,7 +214,11 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
         </dl>
       ) : null}
 
-      <TastingForm bottleId={bottle.id} onSaved={refresh} />
+      <TastingForm
+        bottleId={bottle.id}
+        remainingMl={bottle.status === "open" ? bottle.remaining_ml : null}
+        onSaved={refresh}
+      />
 
       <div className="tasting-timeline">
         <h4>시음 기록</h4>
@@ -275,137 +273,63 @@ export function formatRatingChange(change: string | null): string {
 
 interface TastingFormProps {
   bottleId: string;
+  remainingMl?: number | null | undefined;
   onSaved: () => void;
 }
 
-function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element {
+function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): React.JSX.Element {
   const queryClient = useQueryClient();
+  const context = lastTastingContext();
   const [tastedOn, setTastedOn] = useDraftState(`tasting:${bottleId}:tastedOn`, () => todayLocal());
   const [pouredMl, setPouredMl] = useDraftState(`tasting:${bottleId}:pouredMl`, "");
   const [rating, setRating] = useDraftState(`tasting:${bottleId}:rating`, "");
   const [nose, setNose] = useDraftState(`tasting:${bottleId}:nose`, "");
   const [palate, setPalate] = useDraftState(`tasting:${bottleId}:palate`, "");
   const [finish, setFinish] = useDraftState(`tasting:${bottleId}:finish`, "");
-  const [place, setPlace] = useDraftState(`tasting:${bottleId}:place`, "");
-  const [companions, setCompanions] = useDraftState(`tasting:${bottleId}:companions`, "");
+  const [place, setPlace] = useDraftState(`tasting:${bottleId}:place`, context.place);
+  const [companions, setCompanions] = useDraftState(
+    `tasting:${bottleId}:companions`,
+    context.companions,
+  );
   const [error, setError] = useState<string | null>(null);
 
+  const values: TastingFieldValues = {
+    tastedOn,
+    pouredMl,
+    rating,
+    nose,
+    palate,
+    finish,
+    place,
+    companions,
+  };
+  const setters: Record<keyof TastingFieldValues, (value: string) => void> = {
+    tastedOn: setTastedOn,
+    pouredMl: setPouredMl,
+    rating: setRating,
+    nose: setNose,
+    palate: setPalate,
+    finish: setFinish,
+    place: setPlace,
+    companions: setCompanions,
+  };
+
   const mutation = useMutation({
-    mutationFn: async () => {
-      const store = db;
-      const generation = databaseIdentity().generation;
-      return await store.transaction("rw", store.tables, async () => {
-        if (
-          !validNumericInput("poured_ml", pouredMl) ||
-          !validNumericInput("tasting_rating", rating)
-        )
-          throw new Error("시음량은 양의 정수, 평점은 0~6점의 0.5 단위로 입력하세요");
-        const bottleRow = await db.bottle.get(bottleId);
-        if (!bottleRow) throw new Error("병을 찾을 수 없습니다");
-        if (bottleRow.status === "gifted" || bottleRow.status === "sold") {
-          throw new Error(`내보낸 병은 시음을 기록할 수 없습니다 (현재 상태: ${bottleRow.status})`);
-        }
-
-        // `application/tastings.py::record_tasting` 의 병 부작용(미개봉 자동 개봉, 잔량 차감,
-        // 0 이 되면 자동 소진)을 오프라인 낙관적 갱신용으로 옮긴 것.
-        const bottleUpdates: Record<string, unknown> = {};
-        if (bottleRow.status === "unopened") {
-          bottleUpdates.status = "open";
-          bottleUpdates.opened_on = tastedOn;
-          bottleUpdates.remaining_ml = await bottleVolumeMl(bottleRow.purchase_id as string);
-        }
-
-        // 기록된 개봉일보다 앞선 날 마셨다면 그날 이미 열려 있었다(서버 `record_tasting` 과 같다).
-        const openedOn = (bottleUpdates.opened_on ?? bottleRow.opened_on) as string | null;
-        if (openedOn === null || tastedOn < openedOn) bottleUpdates.opened_on = tastedOn;
-
-        const pouredMlValue = pouredMl ? Number(pouredMl) : null;
-        if (pouredMlValue !== null) {
-          let remaining = (bottleUpdates.remaining_ml ?? bottleRow.remaining_ml) as
-            | number
-            | null
-            | undefined;
-          if (remaining === null || remaining === undefined) {
-            remaining = (await bottleVolumeMl(bottleRow.purchase_id as string)) ?? 0;
-          }
-          if (pouredMlValue > remaining) {
-            throw new Error(
-              `잔량이 부족합니다. 남은 양 ${remaining}ml, 따르려는 양 ${pouredMlValue}ml`,
-            );
-          }
-          bottleUpdates.remaining_ml = remaining - pouredMlValue;
-          if (bottleUpdates.remaining_ml === 0) {
-            bottleUpdates.status = "finished";
-            bottleUpdates.finished_on = tastedOn;
-          }
-        }
-
-        const purchase = await db.purchase.get(bottleRow.purchase_id as string);
-        const skuId = purchase?.sku_id as string | undefined;
-        if (!skuId) throw new Error("무엇을 마셨는지 확인할 수 없습니다");
-
-        const now = new Date().toISOString();
-        const tastingId = newId();
-        const currentUser = queryClient.getQueryData<User>(["auth", "me"]);
-        const trimmedNose = nose.trim() || null;
-        const trimmedPalate = palate.trim() || null;
-        const trimmedFinish = finish.trim() || null;
-        const trimmedPlace = place.trim() || null;
-        const trimmedCompanions = companions.trim() || null;
-
-        await enqueue({
-          entity: "tasting_session",
-          op: "action",
-          entityId: tastingId,
-          action: "record_tasting",
-          fields: {
-            bottle_id: bottleId,
-            sku_id: skuId,
-            tasted_on: tastedOn,
-            ...(pouredMlValue !== null ? { poured_ml: pouredMlValue } : {}),
-            ...(rating ? { rating } : {}),
-            ...(trimmedNose ? { nose: trimmedNose } : {}),
-            ...(trimmedPalate ? { palate: trimmedPalate } : {}),
-            ...(trimmedFinish ? { finish: trimmedFinish } : {}),
-            ...(trimmedPlace ? { place: trimmedPlace } : {}),
-            ...(trimmedCompanions ? { companions: trimmedCompanions } : {}),
-          },
-          // 이 오퍼레이션은 시음 기록 생성만이 아니라 병의 상태·잔량도 부작용으로
-          // 바꾼다(아래 db.bottle.update). 그 사실을 outbox 항목에 남겨 둬야
-          // `pendingEntityIds()` 가 이 병도 "아직 서버에 안 보낸 로컬 변경이 있음"으로
-          // 보고, 동시에 도는 풀이 방금 바꾼 잔량을 스테일한 서버 값으로 덮지 않는다.
-          touchedIds: Object.keys(bottleUpdates).length > 0 ? [bottleId] : undefined,
-          optimisticRow: {
-            id: tastingId,
-            user_id: currentUser?.id ?? "",
-            created_at: now,
-            updated_at: now,
-            deleted_at: null,
-            bottle_id: bottleId,
-            sku_id: skuId,
-            tasted_on: tastedOn,
-            poured_ml: pouredMlValue,
-            rating: rating || null,
-            nose: trimmedNose,
-            palate: trimmedPalate,
-            finish: trimmedFinish,
-            note: null,
-            place: trimmedPlace,
-            companions: trimmedCompanions,
-          },
-        });
-
-        // 병의 잔량·상태 변화는 시음 기록의 부작용일 뿐 별도 outbox 항목이 아니다 — 서버도
-        // `record_tasting` 안에서 같은 오퍼레이션으로 처리하고 병 스냅샷은 돌려주지 않는다.
-        // 다음 풀에서 정확한 서버 값으로 덮어써진다.
-        if (Object.keys(bottleUpdates).length > 0) {
-          await db.bottle.update(bottleId, { ...bottleUpdates, updated_at: now });
-        }
-        if (databaseIdentity().generation !== generation || db !== store)
-          throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
-      });
-    },
+    mutationFn: () =>
+      recordTasting({
+        bottleId,
+        tastedOn,
+        pouredMl: pouredMl ? Number(pouredMl) : null,
+        rating: rating || null,
+        nose,
+        palate,
+        finish,
+        place,
+        companions,
+        userId: queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
+      }),
     onSuccess: () => {
+      rememberTastingContext({ place: place.trim(), companions: companions.trim() });
       clearFormDraft(`tasting:${bottleId}`);
       setError(null);
       setPouredMl("");
@@ -430,90 +354,15 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
       <DraftRecoveryButton form={`tasting:${bottleId}`} />
       <h4>시음 기록하기</h4>
 
-      <label htmlFor={`tasted-on-${bottleId}`}>
-        마신 날
-        <input
-          id={`tasted-on-${bottleId}`}
-          type="date"
-          required
-          value={tastedOn}
-          onChange={(event) => setTastedOn(event.target.value)}
-        />
-      </label>
-
-      <label htmlFor={`poured-${bottleId}`}>
-        따른 양 (ml)
-        <input
-          id={`poured-${bottleId}`}
-          type="number"
-          min={1}
-          inputMode="numeric"
-          placeholder="기억나지 않으면 비워 두세요"
-          value={pouredMl}
-          onChange={(event) => setPouredMl(event.target.value)}
-        />
-      </label>
-
-      <label htmlFor={`rating-${bottleId}`}>
-        평점 (6점 만점)
-        <select
-          id={`rating-${bottleId}`}
-          value={rating}
-          onChange={(event) => setRating(event.target.value)}
-        >
-          <option value="">평점 없음</option>
-          {RATING_OPTIONS.map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label htmlFor={`nose-${bottleId}`}>
-        향
-        <input
-          id={`nose-${bottleId}`}
-          value={nose}
-          onChange={(event) => setNose(event.target.value)}
-        />
-      </label>
-
-      <label htmlFor={`palate-${bottleId}`}>
-        맛
-        <input
-          id={`palate-${bottleId}`}
-          value={palate}
-          onChange={(event) => setPalate(event.target.value)}
-        />
-      </label>
-
-      <label htmlFor={`finish-${bottleId}`}>
-        피니시
-        <input
-          id={`finish-${bottleId}`}
-          value={finish}
-          onChange={(event) => setFinish(event.target.value)}
-        />
-      </label>
-
-      <label htmlFor={`place-${bottleId}`}>
-        장소
-        <input
-          id={`place-${bottleId}`}
-          value={place}
-          onChange={(event) => setPlace(event.target.value)}
-        />
-      </label>
-
-      <label htmlFor={`companions-${bottleId}`}>
-        동석자
-        <input
-          id={`companions-${bottleId}`}
-          value={companions}
-          onChange={(event) => setCompanions(event.target.value)}
-        />
-      </label>
+      <TastingFields
+        values={values}
+        remainingMl={remainingMl}
+        onChange={(patch) => {
+          for (const [key, value] of Object.entries(patch)) {
+            setters[key as keyof TastingFieldValues](value as string);
+          }
+        }}
+      />
 
       {error ? (
         <p className="bottle-error" role="alert">
@@ -521,7 +370,7 @@ function TastingForm({ bottleId, onSaved }: TastingFormProps): React.JSX.Element
         </p>
       ) : null}
 
-      <button type="submit" disabled={mutation.isPending}>
+      <button type="submit" className="primary" disabled={mutation.isPending}>
         {mutation.isPending ? "저장 중…" : "기록 저장"}
       </button>
     </form>

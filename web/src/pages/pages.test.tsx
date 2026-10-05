@@ -290,7 +290,7 @@ describe("ProductsPage", () => {
     await screen.findByLabelText("정렬");
 
     await userEvent.selectOptions(screen.getByLabelText("정렬"), "price_per_100ml");
-    await userEvent.selectOptions(screen.getByLabelText("정렬 방향"), "desc");
+    await userEvent.click(screen.getByRole("button", { name: "정렬 방향: 오름차순" }));
 
     await waitFor(() => {
       const table = screen.getByRole("table");
@@ -710,7 +710,7 @@ describe("ProductsPage", () => {
     );
     // 상단 "삭제"(제품 자체)와 구별하려고 구매 행 안에서 버튼을 찾는다.
     const table = await screen.findByRole("table");
-    await userEvent.click(within(table).getByRole("button", { name: "삭제" }));
+    await userEvent.click(within(table).getByRole("button", { name: "구매 기록 삭제" }));
 
     await waitFor(() => {
       expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/purchases/p1-pu"))).toBe(
@@ -930,6 +930,17 @@ describe("ProductsPage", () => {
     expect(await screen.findByText("2건 선택됨")).toBeInTheDocument();
     await userEvent.click(all);
     expect(await screen.findByText("0건 선택됨")).toBeInTheDocument();
+  });
+
+  it("결과가 없으면 적용 중인 조건을 보여 주고 한 번에 해제한다", async () => {
+    await seedProduct("p1", "위스키 하나");
+
+    renderProductsPage();
+
+    await userEvent.type((await screen.findAllByLabelText(/이름 검색/))[0] as Element, "없는술");
+    expect(await screen.findByText('이름 "없는술"')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "조건 모두 해제" }));
+    expect((await screen.findAllByText("위스키 하나")).length).toBeGreaterThan(0);
   });
 
   it("필터에서 빠진 선택은 일괄 동작 대상에서 제외한다", async () => {

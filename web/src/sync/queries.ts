@@ -736,6 +736,54 @@ export async function getBottlesForProduct(productId: string): Promise<Bottle[]>
   }));
 }
 
+/** "오늘 마셨어요" 에서 고를 수 있는 병(재고). 개봉 병을 먼저, 최근 개봉 순. */
+export interface DrinkableBottle {
+  bottleId: string;
+  productId: string;
+  productName: string;
+  labelNo: number;
+  status: "open" | "unopened";
+  openedOn: string | null;
+  remainingMl: number | null;
+  volumeMl: number | null;
+}
+
+export async function getDrinkableBottles(): Promise<DrinkableBottle[]> {
+  const [{ purchases, bottles }, skus, products] = await Promise.all([
+    liveRecordChain(),
+    liveTable("sku"),
+    liveTable("product"),
+  ]);
+  const purchaseById = new Map(purchases.map((row) => [row.id, row]));
+  const skuById = new Map(skus.map((row) => [row.id, row]));
+  const productById = new Map(products.map((row) => [row.id, row]));
+  const result: DrinkableBottle[] = [];
+  for (const bottle of bottles) {
+    const status = bottle.status as string;
+    if (status !== "open" && status !== "unopened") continue;
+    const sku = skuById.get(purchaseById.get(bottle.purchase_id as string)?.sku_id as string);
+    const product = sku ? productById.get(sku.product_id as string) : undefined;
+    if (!sku || !product) continue;
+    result.push({
+      bottleId: bottle.id,
+      productId: product.id,
+      productName: String(product.name),
+      labelNo: bottle.label_no as number,
+      status,
+      openedOn: (bottle.opened_on as string | null) ?? null,
+      remainingMl: (bottle.remaining_ml as number | null) ?? null,
+      volumeMl: (sku.volume_ml as number | null) ?? null,
+    });
+  }
+  return result.sort(
+    (a, b) =>
+      (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) ||
+      (b.openedOn ?? "").localeCompare(a.openedOn ?? "") ||
+      a.productName.localeCompare(b.productName, "ko") ||
+      a.labelNo - b.labelNo,
+  );
+}
+
 // --- 구매처 -----------------------------------------------------------------
 
 export async function getVendors(): Promise<Vendor[]> {

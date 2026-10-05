@@ -15,7 +15,7 @@ describe("DonutChart", () => {
     );
 
     expect(screen.getByText("데이터가 없습니다.")).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByRole("figure")).not.toBeInTheDocument();
   });
 
   it("범례와 표 대체 텍스트에 각 항목·값을 보여준다", () => {
@@ -30,7 +30,7 @@ describe("DonutChart", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "병 상태" })).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "병 상태" })).toBeInTheDocument();
     // 범례엔 값이 0인 항목도 나온다(전체를 구성하는 항목이라는 걸 알 수 있어야 한다).
     expect(document.querySelector(".donut-chart-legend")).toHaveTextContent("소진");
     const table = screen.getByRole("table");

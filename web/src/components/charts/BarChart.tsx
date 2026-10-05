@@ -41,7 +41,7 @@ export function BarChart({
   const max = Math.max(1, ...data.map((datum) => Math.abs(datum.value)));
 
   return (
-    <div className="bar-chart" role="img" aria-label={title}>
+    <figure className="bar-chart" aria-label={title}>
       <ul className="bar-chart-rows">
         {data.map((datum, index) => {
           const pct = (Math.abs(datum.value) / max) * 100;
@@ -90,6 +90,6 @@ export function BarChart({
           ))}
         </tbody>
       </table>
-    </div>
+    </figure>
   );
 }

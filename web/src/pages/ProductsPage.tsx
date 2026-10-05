@@ -10,6 +10,7 @@ import { ProductFilterPanel } from "@/components/ProductFilterPanel";
 import { ProductForm, type ProductFormValues } from "@/components/ProductForm";
 import { ProductList } from "@/components/ProductList";
 import type { EditPurchaseInput } from "@/components/PurchaseEditForm";
+import { LoadingState } from "@/components/StatusViews";
 import { useToast } from "@/components/Toast";
 import { setLastVendorName } from "@/lastVendor";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
@@ -152,6 +153,7 @@ export function ProductsPage({
   const allProductsUnfiltered = catalog?.products;
 
   const items = allProducts?.slice(0, visibleCount) ?? [];
+  const activeFilters = describeActiveFilters(filters, categoryTree?.items ?? [], vendors ?? []);
   const hasMore = (allProducts?.length ?? 0) > visibleCount;
 
   // 상세로 들어가기 직전 스크롤 위치를 기억해 뒤로 왔을 때 되돌린다. `visibleCount`
@@ -335,10 +337,10 @@ export function ProductsPage({
 
       <section aria-labelledby="products-heading">
         <div className="section-header">
-          <h2 id="products-heading">
+          <h2 id="products-heading" className="page-title">
             내 술 {(allProducts?.length ?? 0) > 0 && `(${allProducts?.length})`}
           </h2>
-          <div className="button-row">
+          <div className="button-row products-toolbar">
             {/* 스캔·라벨 인식 모두 온라인 전용 외부 호출이 필요하다(카메라+Open Food
             Facts, Vision LLM). */}
             {!offline && <BarcodeScanPanel onSelectProduct={selectProduct} />}
@@ -378,6 +380,10 @@ export function ProductsPage({
             >
               {selecting ? "선택 끝내기" : "여러 개 선택"}
             </button>
+            {/* 매장에서 술을 앞에 두고 쓰는 모바일 흐름이라 좁은 화면에서만 보인다(항목 6). */}
+            <button type="button" className="store-mode-entry" onClick={onOpenStoreMode}>
+              매장 모드
+            </button>
           </div>
         </div>
 
@@ -399,12 +405,6 @@ export function ProductsPage({
             </button>
           </div>
         )}
-
-        {/* PC 에서는 표를 두 손가락으로 스캔하며 훑기 어렵고 카메라도 잘 안 쓴다 — 매장에서
-            술을 앞에 두고 쓰는 모바일 전용 흐름이라 좁은 화면에서만 보인다(항목 6). */}
-        <button type="button" className="store-mode-entry primary" onClick={onOpenStoreMode}>
-          매장 모드로 전환
-        </button>
 
         {formOpen && (
           <ProductForm
@@ -439,10 +439,23 @@ export function ProductsPage({
           />
         )}
 
-        {allProducts === undefined && <output aria-live="polite">목록을 불러오고 있습니다…</output>}
+        {allProducts === undefined && <LoadingState label="목록을 불러오고 있습니다…" />}
 
         {allProducts !== undefined && (
           <>
+            {allProducts.length === 0 && activeFilters.length > 0 ? (
+              <div className="filter-chips">
+                <span className="muted text-sm">조건:</span>
+                {activeFilters.map((label) => (
+                  <span key={label} className="chip">
+                    {label}
+                  </span>
+                ))}
+                <button type="button" onClick={() => setFilters(DEFAULT_FILTERS)}>
+                  조건 모두 해제
+                </button>
+              </div>
+            ) : null}
             <ProductList
               products={items}
               onSelect={selectProduct}
@@ -495,6 +508,9 @@ export function ProductsPage({
                   삭제
                 </button>
               </div>
+            )}
+            {hasMore && (
+              <LoadMoreSentinel onVisible={() => setVisibleCount((count) => count + PAGE_SIZE)} />
             )}
             {hasMore && (
               <div className="button-row mt-3">
@@ -673,7 +689,7 @@ function ProductDetailView({
   });
 
   if (product === undefined) {
-    return <output aria-live="polite">상세 정보를 불러오고 있습니다…</output>;
+    return <LoadingState label="상세 정보를 불러오고 있습니다…" />;
   }
 
   if (product === null) {
@@ -730,4 +746,50 @@ function ProductDetailView({
       addingSku={addSku.isPending}
     />
   );
+}
+
+/** 결과가 없을 때 무엇 때문에 비었는지 보이도록 적용 중인 필터를 짧은 문구로 만든다. */
+function describeActiveFilters(
+  filters: ProductFilters,
+  categories: { id: string; name: string }[],
+  vendors: { id: string; name: string }[],
+): string[] {
+  const labels: string[] = [];
+  if (filters.q) labels.push(`이름 "${filters.q}"`);
+  if (filters.category_id)
+    labels.push(`주종 ${categories.find((item) => item.id === filters.category_id)?.name ?? ""}`);
+  if (filters.vendor_id)
+    labels.push(`구매처 ${vendors.find((item) => item.id === filters.vendor_id)?.name ?? ""}`);
+  if (filters.country) labels.push(`국가 ${filters.country}`);
+  if (filters.variety) labels.push(`품종 ${filters.variety}`);
+  if (filters.in_stock !== undefined) labels.push(filters.in_stock ? "재고 있음" : "재고 없음");
+  if (filters.abv_min || filters.abv_max)
+    labels.push(`도수 ${filters.abv_min ?? ""}~${filters.abv_max ?? ""}%`);
+  if (filters.vintage_min || filters.vintage_max)
+    labels.push(`빈티지 ${filters.vintage_min ?? ""}~${filters.vintage_max ?? ""}`);
+  if (filters.rating_min) labels.push(`평점 ${filters.rating_min} 이상`);
+  if (filters.price_per_100ml_min || filters.price_per_100ml_max)
+    labels.push(
+      `100ml당 ${filters.price_per_100ml_min ?? ""}~${filters.price_per_100ml_max ?? ""}원`,
+    );
+  if (filters.purchased_on_min || filters.purchased_on_max)
+    labels.push(`구매일 ${filters.purchased_on_min ?? ""}~${filters.purchased_on_max ?? ""}`);
+  return labels;
+}
+
+/** 목록 끝이 화면에 들어오면 다음 묶음을 자동으로 펼친다. "더 보기" 버튼은 보조로 남긴다. */
+function LoadMoreSentinel({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const callback = useRef(onVisible);
+  callback.current = onVisible;
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) callback.current();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={ref} className="load-more-sentinel" aria-hidden="true" />;
 }

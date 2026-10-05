@@ -96,6 +96,8 @@ export function SyncStatusBadge() {
         type="button"
         ref={badgeRef}
         className={`sync-status-badge sync-status-${tone}`}
+        aria-label={label}
+        title={label}
         aria-expanded={opensPanel ? panelOpen : undefined}
         aria-haspopup={opensPanel ? "dialog" : undefined}
         aria-controls={opensPanel ? "sync-issues-panel" : undefined}
@@ -107,7 +109,14 @@ export function SyncStatusBadge() {
           }
         }}
       >
-        {label}
+        <span className="sync-status-dot" aria-hidden="true" />
+        <span className="sync-status-text">{label}</span>
+        {/* 좁은 화면에서는 문구 대신 점과 건수만 보인다(접근성 이름은 문구 그대로). */}
+        {failedCount + conflictCount + pendingCount > 0 ? (
+          <span className="sync-status-count" aria-hidden="true">
+            {failedCount || conflictCount || pendingCount}
+          </span>
+        ) : null}
       </button>
       {/* 마지막 항목을 확인/건너뛴 직후에도 "확인할 게 없습니다" 를 보여줘야 하므로
           opensPanel 이 아니라 panelOpen 에만 걸어 둔다. */}

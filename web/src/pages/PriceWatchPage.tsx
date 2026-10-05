@@ -100,7 +100,7 @@ export function PriceWatchPage() {
   };
   return (
     <section className="panel" aria-label="가격 감시와 알림">
-      <h2>가격 감시·알림</h2>
+      <h2 className="page-title">가격 감시·알림</h2>
       <p className="muted">
         관심 대상의 가격 이력에서 판매 조건을 선택해 목표가를 저장하세요. 정기 조회와 웹 푸시는 각각
         직접 켜야 합니다.

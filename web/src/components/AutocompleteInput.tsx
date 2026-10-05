@@ -10,6 +10,8 @@ interface AutocompleteInputProps {
   placeholder?: string | undefined;
   required?: boolean | undefined;
   "aria-describedby"?: string | undefined;
+  "aria-invalid"?: boolean | undefined;
+  "aria-required"?: boolean | "true" | undefined;
 }
 
 /**
@@ -90,6 +92,8 @@ export function AutocompleteInput({
         aria-autocomplete="list"
         aria-activedescendant={activeId}
         aria-describedby={describedBy}
+        aria-invalid={rest["aria-invalid"]}
+        aria-required={rest["aria-required"]}
         autoComplete="off"
         placeholder={placeholder}
         required={required}

@@ -113,31 +113,51 @@ export function ProductDetail({
   const { metrics } = product;
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [externalInfoOpen, setExternalInfoOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   return (
     <article aria-labelledby="detail-heading">
-      <div className="button-row mb-3">
-        <button type="button" onClick={onBack}>
+      <div className="detail-toolbar">
+        <button type="button" className="btn-quiet" onClick={onBack}>
           ← 목록으로
         </button>
-        <button type="button" onClick={onEdit}>
-          수정
-        </button>
-        <button
-          type="button"
-          className="danger"
-          onClick={() => {
-            const bottleCount = bottles.length;
-            const message =
-              purchases.length > 0
-                ? `"${product.name}"과 구매 ${purchases.length}건·병 ${bottleCount}개를 함께 삭제할까요?`
-                : `"${product.name}"을 삭제할까요?`;
-            if (window.confirm(message)) onDelete();
-          }}
-          disabled={deleting}
-        >
-          {deleting ? "삭제 중…" : "삭제"}
-        </button>
+        <div className="button-row">
+          <button type="button" onClick={onEdit}>
+            수정
+          </button>
+          <div className="overflow-menu">
+            <button
+              type="button"
+              aria-label="더 보기"
+              aria-expanded={moreOpen}
+              aria-controls="product-more-menu"
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              ⋯
+            </button>
+            {moreOpen ? (
+              <div id="product-more-menu" className="overflow-menu-panel">
+                {/* 삭제는 자주 쓰지 않고 되돌리기 어렵다 — 수정 바로 옆에 두지 않는다. */}
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    const bottleCount = bottles.length;
+                    const message =
+                      purchases.length > 0
+                        ? `"${product.name}"과 구매 ${purchases.length}건·병 ${bottleCount}개를 함께 삭제할까요?`
+                        : `"${product.name}"을 삭제할까요?`;
+                    setMoreOpen(false);
+                    if (window.confirm(message)) onDelete();
+                  }}
+                  disabled={deleting}
+                >
+                  {deleting ? "삭제 중…" : "삭제"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
       {errorText(actionError) ? (
         <p className="alert" role="alert">
@@ -145,8 +165,8 @@ export function ProductDetail({
         </p>
       ) : null}
 
-      <div className="panel">
-        <h2 id="detail-heading" className="mb-1">
+      <header className="panel product-hero">
+        <h2 id="detail-heading" className="product-hero-title">
           {product.name}
           {product.vintage !== null && <span className="muted"> ({product.vintage})</span>}
         </h2>
@@ -155,60 +175,64 @@ export function ProductDetail({
           {product.producer_name && ` · ${product.producer_name}`}
           {product.country && ` · ${product.country}`}
         </p>
+        <ul className="chip-row" aria-label="제품 정보">
+          <li className="chip">
+            <span className="muted">도수</span> {formatAbv(product.abv)}
+          </li>
+          <li className="chip">
+            <span className="muted">규격</span>{" "}
+            {product.skus.length === 0
+              ? "등록된 규격 없음"
+              : product.skus.map((sku) => formatVolume(sku.volume_ml)).join(", ")}
+          </li>
+          {product.varieties.length > 0 ? (
+            <li className="chip">
+              <span className="muted">품종·스타일</span> {product.varieties.join(", ")}
+            </li>
+          ) : null}
+          <li className="chip">
+            <span className="muted">내 평점</span> {formatRating(product.personal_rating)}
+          </li>
+        </ul>
+        {product.note && <p className="pre-wrap mb-0">{product.note}</p>}
+      </header>
 
-        <dl className="product-card-dl">
-          <div>
-            <dt className="muted">도수</dt>
-            <dd>{formatAbv(product.abv)}</dd>
-          </div>
-          <div>
-            <dt className="muted">규격</dt>
-            <dd>
-              {product.skus.length === 0
-                ? "등록된 규격 없음"
-                : product.skus.map((sku) => formatVolume(sku.volume_ml)).join(", ")}
-            </dd>
-          </div>
-          <div>
-            <dt className="muted">품종·스타일</dt>
-            <dd>{product.varieties.length === 0 ? "—" : product.varieties.join(", ")}</dd>
-          </div>
-          <div>
-            <dt className="muted">내 평점</dt>
-            <dd>{formatRating(product.personal_rating)}</dd>
-          </div>
+      <section aria-labelledby="detail-metrics-heading">
+        <h3 id="detail-metrics-heading" className="sr-only">
+          구매 기록에서 계산한 지표
+        </h3>
+        <dl className="metrics-grid metrics-grid--hero">
+          <Metric
+            label="재고"
+            value={`${metrics.in_stock_count}병`}
+            hint={`미개봉 ${metrics.unopened_count} · 개봉 ${metrics.opened_count}`}
+          />
+          <Metric label="실평단가" value={formatMoney(metrics.avg_paid_price)} />
+          <Metric
+            label="100ml당 가격"
+            value={formatMoney(metrics.price_per_100ml)}
+            hint="정가 기준"
+          />
         </dl>
-
-        {product.note && <p className="pre-wrap">{product.note}</p>}
-      </div>
-
-      <h3>파생 지표</h3>
-      <p className="muted text-sm mt-0">
-        모두 구매 기록에서 자동 계산됩니다. 직접 입력하거나 수정할 필요가 없습니다.
-      </p>
-      <dl className="metrics-grid">
-        <Metric label="구매 병수" value={`${metrics.purchased_count}병`} />
-        <Metric label="재고 병수" value={`${metrics.in_stock_count}병`} />
-        <Metric
-          label="미개봉 / 개봉"
-          value={`${metrics.unopened_count} / ${metrics.opened_count}병`}
-        />
-        <Metric label="소진 병수" value={`${metrics.consumed_count}병`} />
-        <Metric label="평단가" value={formatMoney(metrics.avg_list_price)} />
-        <Metric label="실평단가" value={formatMoney(metrics.avg_paid_price)} />
-        <Metric
-          label="100ml당 가격"
-          value={formatMoney(metrics.price_per_100ml)}
-          hint="정가 기준"
-        />
-        <Metric label="할인율" value={formatPercent(metrics.discount_rate)} />
-        <Metric label="총 지출" value={formatMoney(metrics.paid_total)} />
-        <Metric
-          label="재고 자산가치"
-          value={formatMoney(metrics.inventory_value_at_cost)}
-          hint="실평단가 기준"
-        />
-      </dl>
+        <details className="metrics-more">
+          <summary>지표 더 보기</summary>
+          <dl className="metrics-grid">
+            <Metric label="구매 병수" value={`${metrics.purchased_count}병`} />
+            <Metric label="소진 병수" value={`${metrics.consumed_count}병`} />
+            <Metric label="평단가" value={formatMoney(metrics.avg_list_price)} hint="정가" />
+            <Metric label="할인율" value={formatPercent(metrics.discount_rate)} />
+            <Metric label="총 지출" value={formatMoney(metrics.paid_total)} />
+            <Metric
+              label="재고 자산가치"
+              value={formatMoney(metrics.inventory_value_at_cost)}
+              hint="실평단가 기준"
+            />
+          </dl>
+          <p className="muted text-sm">
+            모두 구매 기록에서 계산합니다. 가격 공란은 0원, 할인율은 정가가 기록된 구매만 씁니다.
+          </p>
+        </details>
+      </section>
 
       <PurchaseSection
         product={product}
@@ -353,7 +377,7 @@ function PurchaseSection({
         </output>
       ) : (
         <div className="table-scroll table-scroll--always">
-          <table className="product-table">
+          <table className="product-table purchase-table">
             <caption className="sr-only">구매 이력</caption>
             <thead>
               <tr>
@@ -417,6 +441,7 @@ function PurchaseSection({
                           <button
                             type="button"
                             className="danger"
+                            aria-label="구매 기록 삭제"
                             disabled={deletingPurchaseId === purchase.id}
                             onClick={() => {
                               if (

@@ -8,10 +8,10 @@ describe("BarChart", () => {
     render(<BarChart title="주종별 병수" data={[]} />);
 
     expect(screen.getByText("데이터가 없습니다.")).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByRole("figure")).not.toBeInTheDocument();
   });
 
-  it("role=img 접근성 이름과 표 대체 텍스트를 함께 제공한다", () => {
+  it("figure 접근성 이름과 표 대체 텍스트를 함께 제공한다", () => {
     render(
       <BarChart
         title="주종별 병수"
@@ -22,7 +22,7 @@ describe("BarChart", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "주종별 병수" })).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "주종별 병수" })).toBeInTheDocument();
     const table = screen.getByRole("table");
     expect(table).toHaveTextContent("위스키");
     expect(table).toHaveTextContent("75");

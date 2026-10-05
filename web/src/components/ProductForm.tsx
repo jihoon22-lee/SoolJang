@@ -107,6 +107,8 @@ export function ProductForm({
     },
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  /** 로컬 검증에 걸린 칸. 그 칸에 `aria-invalid` 와 칸 아래 오류 문구를 붙이고 초점을 옮긴다. */
+  const [invalidField, setInvalidField] = useState<string | null>(null);
 
   const apiError = error instanceof ApiError ? error : null;
   // outbox 경로는 일반 Error 를 던진다(서버 왕복 없이 로컬에서 바로 검증하는 경우).
@@ -132,28 +134,51 @@ export function ProductForm({
         )
       : undefined;
 
+  const fail = (field: string, message: string) => {
+    setLocalError(message);
+    setInvalidField(field);
+    document.getElementById(field)?.focus();
+  };
+
+  /** 칸 하나의 오류 속성. 서버 필드 오류(`errorFor`)와 로컬 검증을 같은 방식으로 붙인다. */
+  const errorProps = (field: string, apiField?: string) => {
+    const message =
+      invalidField === field ? localError : apiField ? apiError?.errorFor(apiField) : undefined;
+    return message ? { "aria-invalid": true as const, "aria-describedby": `${field}-error` } : {};
+  };
+  const errorText = (field: string, apiField?: string) => {
+    const message =
+      invalidField === field ? localError : apiField ? apiError?.errorFor(apiField) : undefined;
+    return message ? (
+      <span className="field-error" id={`${field}-error`}>
+        {message}
+      </span>
+    ) : null;
+  };
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!values.name.trim()) {
-      setLocalError("이름을 입력하세요");
+      fail("form-name", "이름을 입력하세요");
       return;
     }
     if (values.quantity.trim() && !values.volumeMl.trim()) {
-      setLocalError("구매 정보를 입력하려면 용량이 필요합니다");
+      fail("form-volume", "구매 정보를 입력하려면 용량이 필요합니다");
       return;
     }
     // 정수가 아닌 병수(예: "2.5")는 낙관적 병 id 개수와 서버가 저장하는 병수가
     // 어긋나 오프라인 동기화 큐가 영구히 막히는 결함으로 실사용 중 발견됐다 —
     // `step={1}` 만으로는 브라우저 기본 검증에만 의존하게 되므로 여기서도 확실히 막는다.
     if (values.quantity.trim() && !isPositiveInteger(values.quantity)) {
-      setLocalError("병수는 1 이상의 정수를 입력하세요");
+      fail("form-quantity", "병수는 1 이상의 정수를 입력하세요");
       return;
     }
     if (values.volumeMl.trim() && !isPositiveInteger(values.volumeMl)) {
-      setLocalError("용량(ml)은 1 이상의 정수를 입력하세요");
+      fail("form-volume", "용량(ml)은 1 이상의 정수를 입력하세요");
       return;
     }
     setLocalError(null);
+    setInvalidField(null);
     onSubmit(values);
   };
 
@@ -187,13 +212,10 @@ export function ProductForm({
           value={values.name}
           onChange={(name) => set({ name })}
           suggestions={nameSuggestions}
-          aria-describedby={apiError?.errorFor("name") ? "form-name-error" : undefined}
+          aria-required="true"
+          {...errorProps("form-name", "name")}
         />
-        {apiError?.errorFor("name") && (
-          <span className="field-error" id="form-name-error">
-            {apiError.errorFor("name")}
-          </span>
-        )}
+        {errorText("form-name", "name")}
         {duplicateProduct && (
           <output className="muted">
             이미 등록된 술입니다 —{" "}
@@ -230,6 +252,7 @@ export function ProductForm({
           <input
             id="form-abv"
             type="number"
+            inputMode="decimal"
             min={0}
             max={100}
             step="0.1"
@@ -243,12 +266,15 @@ export function ProductForm({
             <input
               id="form-volume"
               type="number"
+              inputMode="numeric"
               min={1}
               max={100_000}
               step={1}
               value={values.volumeMl}
               onChange={(event) => set({ volumeMl: event.target.value })}
+              {...errorProps("form-volume")}
             />
+            {errorText("form-volume")}
           </div>
         )}
       </div>
@@ -259,6 +285,7 @@ export function ProductForm({
           <input
             id="form-vintage"
             type="number"
+            inputMode="numeric"
             min={1800}
             max={2200}
             value={values.vintage}
@@ -270,15 +297,15 @@ export function ProductForm({
           <input
             id="form-rating"
             type="number"
+            inputMode="decimal"
             min={0.5}
             max={6}
             step="0.5"
             value={values.personalRating}
             onChange={(event) => set({ personalRating: event.target.value })}
+            {...errorProps("form-rating", "personal_rating")}
           />
-          {apiError?.errorFor("personal_rating") && (
-            <span className="field-error">{apiError.errorFor("personal_rating")}</span>
-          )}
+          {errorText("form-rating", "personal_rating")}
         </div>
       </div>
 
@@ -338,12 +365,15 @@ export function ProductForm({
               <input
                 id="form-quantity"
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={1000}
                 step={1}
                 value={values.quantity}
                 onChange={(event) => set({ quantity: event.target.value })}
+                {...errorProps("form-quantity")}
               />
+              {errorText("form-quantity")}
             </div>
             <div className="field">
               <label htmlFor="form-purchased-on">구매일</label>
@@ -361,6 +391,8 @@ export function ProductForm({
               <input
                 id="form-list-price"
                 type="number"
+                inputMode="decimal"
+                step="any"
                 min={0}
                 placeholder="0"
                 value={values.unitListPrice}
@@ -372,6 +404,8 @@ export function ProductForm({
               <input
                 id="form-paid-price"
                 type="number"
+                inputMode="decimal"
+                step="any"
                 min={0}
                 placeholder="0"
                 value={values.unitPaidPrice}

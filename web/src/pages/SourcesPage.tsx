@@ -205,7 +205,9 @@ export function SourcesPage({ connectionsManaged = false }: { connectionsManaged
 
   return (
     <section aria-labelledby="sources-heading" className="panel">
-      <h2 id="sources-heading">외부 소스 관리</h2>
+      <h2 id="sources-heading" className="page-title">
+        외부 소스 관리
+      </h2>
       <p className="muted">
         등록한 사이트에서 술 평점·가격을 조회합니다. 조회는 제품 상세에서 버튼을 눌렀을 때만
         일어납니다 — 이 화면에서는 사이트 목록과 파싱 규칙(`adapter_spec`)만 관리합니다.
