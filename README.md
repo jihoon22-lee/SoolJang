@@ -42,7 +42,7 @@ PC와 안드로이드에서 같은 데이터를 보며, 오프라인에서도 �
 | [docs/external-data.md](docs/external-data.md) | 외부 소스·통합 연결·탐색·관심·가격 감시의 동작과 안전 경계 |
 | [docs/operations.md](docs/operations.md) | 운영 가이드 — `.env` 변수, 배포·마이그레이션·백업·복구, Tailscale, 문제 해결 |
 | [docs/legacy-schema.md](docs/legacy-schema.md) | 기존 엑셀 시트 실측 분석과 임포트 매핑 규칙 |
-| [docs/history.md](docs/history.md) | 릴리스 연표, v1.7 이전 Task 기록, 결정 로그 D1–D211, 정리된 옛 문서 링크 |
+| [docs/history.md](docs/history.md) | 릴리스 연표, v1.7 이전 Task 기록, 결정 로그 D1–D225, 정리된 옛 문서 링크 |
 | [AGENTS.md](AGENTS.md) | 개발 관례, 커밋·브랜치 규칙, 품질 게이트 |
 | [workthrough/](workthrough/) | PR 묶음별 실제 검증 기록 |
 
