@@ -1,10 +1,11 @@
-import { Fragment, useMemo, useState } from "react";
-import type { Bottle, BottleStatus, Product, Purchase } from "@/api/types";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { Bottle, Product, Purchase } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { BottlePanel, formatRemaining, STATUS_LABELS } from "@/components/BottlePanel";
+import { BottleSection } from "@/components/BottleSection";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { ProductAttachments } from "@/components/ProductAttachments";
+import { type EditPurchaseInput, PurchaseEditForm } from "@/components/PurchaseEditForm";
 import {
   formatAbv,
   formatCategoryPath,
@@ -56,6 +57,8 @@ interface ProductDetailProps {
   onDeletePurchase: (purchaseId: string) => void;
   deletingPurchaseId: string | null;
 
+  onUpdatePurchase?: ((purchaseId: string, input: EditPurchaseInput) => Promise<void>) | undefined;
+
   onSplitPurchase: (purchaseId: string, parts: SplitPart[]) => void;
   splittingPurchaseId: string | null;
   splitError: unknown;
@@ -99,6 +102,7 @@ export function ProductDetail({
   vendorNames,
   onDeletePurchase,
   deletingPurchaseId,
+  onUpdatePurchase,
   onSplitPurchase,
   splittingPurchaseId,
   splitError,
@@ -216,6 +220,7 @@ export function ProductDetail({
         vendorNames={vendorNames}
         onDeletePurchase={onDeletePurchase}
         deletingPurchaseId={deletingPurchaseId}
+        onUpdatePurchase={onUpdatePurchase}
         onSplitPurchase={onSplitPurchase}
         splittingPurchaseId={splittingPurchaseId}
         splitError={splitError}
@@ -223,7 +228,7 @@ export function ProductDetail({
         addingSku={addingSku}
       />
 
-      <BottleSection bottles={bottles} offline={offline} />
+      <BottleSection bottles={bottles} purchases={purchases} offline={offline} />
 
       <ProductAttachments key={product.id} productId={product.id} offline={offline} />
 
@@ -276,6 +281,7 @@ function PurchaseSection({
   vendorNames,
   onDeletePurchase,
   deletingPurchaseId,
+  onUpdatePurchase,
   onSplitPurchase,
   splittingPurchaseId,
   splitError,
@@ -291,6 +297,7 @@ function PurchaseSection({
   vendorNames: string[];
   onDeletePurchase: (purchaseId: string) => void;
   deletingPurchaseId: string | null;
+  onUpdatePurchase?: ((purchaseId: string, input: EditPurchaseInput) => Promise<void>) | undefined;
   onSplitPurchase: (purchaseId: string, parts: SplitPart[]) => void;
   splittingPurchaseId: string | null;
   splitError: unknown;
@@ -299,6 +306,17 @@ function PurchaseSection({
 }) {
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [splittingId, setSplittingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ pending: boolean; error: unknown }>({
+    pending: false,
+    error: null,
+  });
+  // 구매 추가가 성공해 끝나면 폼을 닫는다(실패면 열어 둔 채 오류를 보인다).
+  const wasAdding = useRef(false);
+  useEffect(() => {
+    if (wasAdding.current && !addingPurchase && !addPurchaseError) setAddFormOpen(false);
+    wasAdding.current = addingPurchase;
+  }, [addingPurchase, addPurchaseError]);
 
   return (
     <>
@@ -373,6 +391,19 @@ function PurchaseSection({
                     {!offline && (
                       <td>
                         <div className="button-row">
+                          {onUpdatePurchase ? (
+                            <button
+                              type="button"
+                              aria-label="구매 기록 수정"
+                              aria-expanded={editingId === purchase.id}
+                              onClick={() => {
+                                setEditing({ pending: false, error: null });
+                                setEditingId(editingId === purchase.id ? null : purchase.id);
+                              }}
+                            >
+                              수정
+                            </button>
+                          ) : null}
                           {purchase.quantity > 1 && (
                             <button
                               type="button"
@@ -403,6 +434,28 @@ function PurchaseSection({
                       </td>
                     )}
                   </tr>
+                  {editingId === purchase.id && onUpdatePurchase && (
+                    <tr>
+                      <td colSpan={7}>
+                        <PurchaseEditForm
+                          purchase={purchase}
+                          vendorNames={vendorNames}
+                          submitting={editing.pending}
+                          error={editing.error}
+                          onCancel={() => setEditingId(null)}
+                          onSubmit={(input) => {
+                            setEditing({ pending: true, error: null });
+                            onUpdatePurchase(purchase.id, input)
+                              .then(() => {
+                                setEditing({ pending: false, error: null });
+                                setEditingId(null);
+                              })
+                              .catch((error: unknown) => setEditing({ pending: false, error }));
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {splittingId === purchase.id && (
                     <tr>
                       <td colSpan={7}>
@@ -557,6 +610,8 @@ function AddPurchaseForm({
           <input
             id="purchase-quantity"
             type="number"
+            inputMode="numeric"
+            step={1}
             min={1}
             value={quantity}
             onChange={(event) => setQuantity(event.target.value)}
@@ -579,6 +634,8 @@ function AddPurchaseForm({
           <input
             id="purchase-list-price"
             type="number"
+            inputMode="decimal"
+            step="any"
             min={0}
             value={unitListPrice}
             onChange={(event) => setUnitListPrice(event.target.value)}
@@ -589,6 +646,8 @@ function AddPurchaseForm({
           <input
             id="purchase-paid-price"
             type="number"
+            inputMode="decimal"
+            step="any"
             min={0}
             value={unitPaidPrice}
             onChange={(event) => setUnitPaidPrice(event.target.value)}
@@ -719,53 +778,3 @@ function SplitPurchaseForm({
 }
 
 // --- 병 ---------------------------------------------------------------------
-
-const IN_STOCK_STATUSES: readonly BottleStatus[] = ["unopened", "open"];
-
-function BottleSection({ bottles, offline }: { bottles: Bottle[]; offline: boolean }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  if (bottles.length === 0) {
-    return (
-      <>
-        <h3>병</h3>
-        <output className="notice">
-          등록된 병이 없습니다. 구매 건을 추가하면 병이 자동으로 만들어집니다.
-        </output>
-      </>
-    );
-  }
-
-  // 재고(미개봉·개봉)를 먼저, 소진·증여·판매는 아래로 — "지금 마실 수 있는 게 뭔지"가
-  // 더 자주 찾는 정보다.
-  const sorted = [...bottles].sort((a, b) => {
-    const rankOf = (status: BottleStatus) => (IN_STOCK_STATUSES.includes(status) ? 0 : 1);
-    const rankDiff = rankOf(a.status) - rankOf(b.status);
-    return rankDiff !== 0 ? rankDiff : a.label_no - b.label_no;
-  });
-
-  return (
-    <>
-      <h3>병 ({bottles.length}개)</h3>
-      <ul className="bottle-list">
-        {sorted.map((bottle) => (
-          <li key={bottle.id}>
-            <button
-              type="button"
-              className="bottle-list-item"
-              aria-expanded={expandedId === bottle.id}
-              onClick={() => setExpandedId(expandedId === bottle.id ? null : bottle.id)}
-            >
-              <span className="bottle-list-label">{bottle.label_no}번 병</span>
-              <span className={`bottle-badge bottle-badge-${bottle.status}`}>
-                {STATUS_LABELS[bottle.status]}
-              </span>
-              <span className="bottle-list-remaining">{formatRemaining(bottle)}</span>
-            </button>
-            {expandedId === bottle.id ? <BottlePanel bottle={bottle} offline={offline} /> : null}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}

@@ -295,62 +295,81 @@ describe("BottlePanel", () => {
       });
     });
 
-    it("증여는 확인을 취소하면 상태가 바뀌지 않는다", async () => {
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    it("증여 시트를 취소하면 상태가 바뀌지 않는다", async () => {
       const target = bottle({ status: "unopened" });
       await seedContext(target);
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
       await userEvent.click(screen.getByRole("button", { name: "증여" }));
+      await userEvent.click(screen.getByRole("button", { name: "취소" }));
 
       const updated = await db.bottle.get(target.id);
       expect(updated?.status).toBe("unopened");
-      confirmSpy.mockRestore();
+      expect(screen.queryByRole("button", { name: "증여 기록" })).not.toBeInTheDocument();
     });
 
-    it("증여를 확인하면 상태가 gifted 로 바뀐다", async () => {
+    it("개봉 병의 잔량을 절반으로 맞추면 set_remaining 명령을 남긴다", async () => {
+      const target = bottle({ status: "open", opened_on: "2026-01-15", remaining_ml: 700 });
+      await seedContext(target, { volumeMl: 700 });
+      stubTastings(target.id);
+      renderWithQuery(<BottlePanel bottle={target} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "잔량 조정" }));
+      await userEvent.click(await screen.findByRole("button", { name: "절반 (350ml)" }));
+
+      await waitFor(async () => {
+        const [entry] = await db.outbox.toArray();
+        expect(entry?.action).toBe("set_remaining");
+        expect(entry?.fields.remaining_ml).toBe(350);
+      });
+      expect((await db.bottle.get(target.id))?.remaining_ml).toBe(350);
+    });
+
+    it("증여 시트에서 날짜를 확인하고 기록하면 상태가 gifted 로 바뀐다", async () => {
       const today = todayLocal();
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
       const target = bottle({ status: "unopened" });
       await seedContext(target);
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
       await userEvent.click(screen.getByRole("button", { name: "증여" }));
+      expect(screen.getByLabelText("증여한 날")).toHaveValue(today);
+      await userEvent.type(screen.getByLabelText("받은 사람·메모 (선택)"), "친구 생일");
+      await userEvent.click(screen.getByRole("button", { name: "증여 기록" }));
 
       await waitFor(async () => {
         const updated = await db.bottle.get(target.id);
         expect(updated?.status).toBe("gifted");
         expect(updated?.finished_on).toBe(today);
       });
-      confirmSpy.mockRestore();
+      const [entry] = await db.outbox.toArray();
+      expect(entry?.fields).toEqual({ on: today, note: "친구 생일" });
     });
 
-    it("판매를 확인하면 상태가 sold 로 바뀐다", async () => {
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    it("판매를 기록하면 상태가 sold 로 바뀐다", async () => {
       const target = bottle({ status: "open" });
       await seedContext(target);
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
       await userEvent.click(screen.getByRole("button", { name: "판매" }));
+      await userEvent.click(screen.getByRole("button", { name: "판매 기록" }));
 
       await waitFor(async () => {
         const updated = await db.bottle.get(target.id);
         expect(updated?.status).toBe("sold");
       });
-      confirmSpy.mockRestore();
     });
 
     it("증여 outbox 항목은 서버가 읽는 on 필드에 날짜를 담는다(finished_on이 아니다)", async () => {
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
       const target = bottle({ status: "unopened" });
       await seedContext(target);
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);
 
       await userEvent.click(screen.getByRole("button", { name: "증여" }));
+      await userEvent.click(screen.getByRole("button", { name: "증여 기록" }));
 
       await waitFor(async () => {
         const [entry] = await db.outbox.toArray();
@@ -358,7 +377,6 @@ describe("BottlePanel", () => {
         expect(entry?.fields.on).toBeTruthy();
         expect(entry?.fields.finished_on).toBeUndefined();
       });
-      confirmSpy.mockRestore();
     });
 
     it("로컬에 병 정보가 없으면 오류를 보여준다", async () => {
@@ -587,7 +605,7 @@ describe("BottlePanel", () => {
     });
 
     it("병 상태에 영향 없는 시음 기록(따른 양 없음)은 touched_ids 를 남기지 않는다", async () => {
-      const target = bottle({ status: "open", remaining_ml: 200 });
+      const target = bottle({ status: "open", opened_on: "2026-01-01", remaining_ml: 200 });
       await seedContext(target);
       stubTastings(target.id);
       renderWithQuery(<BottlePanel bottle={target} />);

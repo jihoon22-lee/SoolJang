@@ -19,7 +19,7 @@
 | 최종 갱신 | 2026-10-05 — v1.8.0 진행. 2026-10-04 코드 리뷰 전 항목 반영·문서 정리·직접 테스트 보강·v1.8.0 태그와 운영 배포까지 사용자 승인 ([#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
 | 완료된 Task | **Task 1 ~ Task 17, Task 20 ~ Task 34**(Task 24~28 은 v1.1.x 실사용 피드백 개선, Task 29 는 접근성·릴리스 가드, Task 30~33 은 백로그 정리·실사용 개선, Task 34 는 외부 정보 조회 v2 — PR1~PR7). Task 18 은 `adapter` 전략 + JSON 모드로 확장, 외부 소스 7곳 중 1곳(데일리샷) 실등록. Q5(웹 푸시 채널) 는 웹 푸시로 결정됨 — Task 19 본 사양(시세 이력·목표가 알림)은 B07 #140으로 구현·검증 완료(실가격·기기 수용 후속). Task 23(첫 릴리스·배포)은 완료 |
 | 현재 마일스톤 / 후속 | **[v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2)** — 메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)의 PR 묶음 ①~⑥. 기능 확대 후속 #142/#143은 별도 유지 |
-| 진행 브랜치 | ① `feature/v180-correctness`(정확성). 이후 ② `feature/v180-bulk-records` → ③ `feature/v180-design` → ④ `feature/v180-insights` → ⑤ `feature/v180-docs` → ⑥ `feature/v180-release`. 재개 시 Git/열린 PR 확인 |
+| 진행 브랜치 | ① 머지(#148). ② `feature/v180-bulk-records`(일괄 처리) 진행. 이후 ② `feature/v180-bulk-records` → ③ `feature/v180-design` → ④ `feature/v180-insights` → ⑤ `feature/v180-docs` → ⑥ `feature/v180-release`. 재개 시 Git/열린 PR 확인 |
 | 진행 중 잔여 항목 | B01~B08 머지(B05 #139, B07 #140). B09 Python1322/91.22%·웹634/81.09%, 실제 복구·401/SW·Docker no-recreate 통과. 실가격/실기 푸시 수용은 사용자 승인 후속 #142/#143. 운영 백업/실복원·0018 전환·HTTPS/실브라우저·설정/기록 보존 확인 완료. 사용자 승인: 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 릴리스·배포(2026-09-07). 유료 계약/신규 키 발급은 자동 수행하지 않음 |
 | 버전 상태 | 코드·패키지 `1.7.1`, schema `0018_price_watch` 유지. [패치 검증](../workthrough/2026-09-07-v171-price-vintage.md)·[릴리스/배포 원장](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.7.1) |
 
@@ -194,8 +194,8 @@ CI 는 `services: postgres`(`postgres:17-alpine`)를 쓰므로 로컬 Docker 부
 
 | 묶음 | 상태 | 근거 |
 |---|---|---|
-| ① 정확성 `feature/v180-correctness` | 🟡 PR 진행 | [기록](../workthrough/2026-10-05-v180-correctness.md) |
-| ② 일괄 처리 `feature/v180-bulk-records` | ⬜ | — |
+| ① 정확성 `feature/v180-correctness` | ✅ [#148](https://github.com/jihoon22-lee/SoolJang/pull/148) CI 통과·머지 | [기록](../workthrough/2026-10-05-v180-correctness.md) |
+| ② 일괄 처리 `feature/v180-bulk-records` | 🟡 PR 진행 | [기록](../workthrough/2026-10-05-v180-bulk-records.md) |
 | ③ 디자인·빠른 기록 `feature/v180-design` | ⬜ | — |
 | ④ 부가 기능 `feature/v180-insights` | ⬜ | — |
 | ⑤ 문서 정리 `feature/v180-docs` | ⬜ | — |
@@ -2286,6 +2286,9 @@ Postgres·Dexie(fake-indexeddb) 로 재현해 확인한 뒤 고쳤다.
 | D214 | 제품 삭제는 하위 규격·구매·병을 같은 시각으로 soft delete 한다(시음은 보존). 이전 버전에서 남은 하위 행은 조회 경계에서 부모 삭제를 함께 확인해 제외한다 | 구매 삭제와 같은 규칙. 운영 원본을 일괄 수정하는 migration 대신 조회를 바로잡는다 |
 | D215 | 할인율은 정가가 기록된(0원 초과) 구매만으로 계산한다. 가격 순위(병당·총액·100ml당)에는 0원 제품을 넣지 않는다. 합계·평단가의 0원 포함(D211)은 유지한다 | 정가 공란+실구매가만 있는 구매가 할인율을 음수로 만들고, 선물 0원이 "가장 싼 술"처럼 순위를 채웠다. D211의 순위 포함 기대를 이 결정으로 대체한다 |
 | D216 | 소진 되돌리기는 0이 된 잔량을 미기록으로 돌리고, 개봉 병 잔량을 직접 맞추는 `:remaining`/`set_remaining`을 둔다(0이면 소진). 개봉일보다 앞선 시음은 개봉일을 그날로 당긴다 | 되돌린 병에 시음하면 "잔량 부족"으로 막히고 고칠 UI가 없었다. 앞선 시음으로 소진되면 소진일<개봉일 제약에 걸려 저장이 거부됐다 |
+| D217 | 여러 병 상태 전이는 병마다 outbox 명령 하나로 적재한다(별도 batch API 없음). 확인창 대신 즉시 반영 + 실행 취소(역방향 전이)를 쓰고, 증여·판매만 날짜·메모 시트로 한 번 더 받는다 | 오프라인 지원·충돌 처리(D213)를 그대로 재사용한다. 서버 batch API는 부분 실패·오프라인 정합성을 새로 설계해야 해 이득이 적다 |
+| D218 | 보관 위치 일괄 이동(`PUT /collection/bottles:move`)은 전부 성공 또는 전부 취소, 실사 일괄 스캔(`scans:batch`)은 항목별 결과다. 실사 위치 반영(`:apply-locations`)은 사용자가 누를 때만 한다. 실사 관찰은 JSONB 저장을 유지한다 | 위치 이동은 중간 실패 시 일부만 옮겨지면 확인이 어렵다. 관찰 테이블 분리는 개인 규모(재고 수백 병)에서 행 재작성 비용이 작아 운영 데이터 migration 위험이 더 크다 |
+| D219 | 구매 병수 변경은 온라인 PATCH로만 하며, 줄일 때는 번호가 큰 미개봉 병만 지운다(부족하면 409). 동기화 update의 `quantity`는 거부한다 | 이미 마시거나 내보낸 병의 시음·이력을 조용히 지우지 않는다. 병 추가·삭제·번호는 서버 기준이어야 한다 |
 
 ## 6. 열린 질문
 

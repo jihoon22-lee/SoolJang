@@ -23,6 +23,16 @@ class PlacementInput(BaseModel):
     location_id: uuid.UUID | None
 
 
+class BulkPlacementInput(BaseModel):
+    bottle_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    location_id: uuid.UUID | None
+
+
+class BatchScanInput(BaseModel):
+    bottle_codes: list[str] = Field(min_length=1, max_length=200)
+    observed_location_id: uuid.UUID | None = None
+
+
 class StocktakeInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     location_id: uuid.UUID | None = None

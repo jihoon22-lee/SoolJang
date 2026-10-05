@@ -204,22 +204,35 @@ async def quality_report(session: AsyncSession, user_id: uuid.UUID) -> dict[str,
             )
         )
 
-    products, skus, purchases, vendors = (
+    products, all_skus, all_purchases, vendors = (
         await rows(Product),
         await rows(Sku),
         await rows(Purchase),
         await rows(Vendor),
     )
-    bottles = await rows(Bottle)
+    # 이전 버전에서 제품만 삭제되고 남은 하위 행은 품질 대상에서 뺀다(D214).
+    product_names = {row.id: row.name for row in products}
+    skus = [row for row in all_skus if row.product_id in product_names]
     sku_products = {row.id: row.product_id for row in skus}
+    purchases = [row for row in all_purchases if row.sku_id in sku_products]
+    live_purchase_ids = {row.id for row in purchases}
+    bottles = [row for row in await rows(Bottle) if row.purchase_id in live_purchase_ids]
     items: list[dict[str, Any]] = []
 
-    def add(kind: str, row: Any, reason: str, product_id: uuid.UUID | None = None) -> None:
+    def add(
+        kind: str,
+        row: Any,
+        reason: str,
+        product_id: uuid.UUID | None = None,
+        label: str | None = None,
+    ) -> None:
         items.append(
             {
                 "kind": kind,
                 "id": str(row.id),
                 "name": getattr(row, "name", None),
+                # 이름이 없는 구매·규격도 사람이 알아볼 수 있게 제품명과 날짜·병수를 붙인다.
+                "label": label or getattr(row, "name", None) or "기록",
                 "reason": reason,
                 "product_id": str(product_id) if product_id else None,
             }
@@ -235,10 +248,20 @@ async def quality_report(session: AsyncSession, user_id: uuid.UUID) -> dict[str,
             add("product", product, "category", product.id)
     for sku in skus:
         if sku.volume_ml is None:
-            add("sku", sku, "volume", sku.product_id)
+            add("sku", sku, "volume", sku.product_id, product_names.get(sku.product_id))
     for purchase in purchases:
         if purchase.vendor_id is None:
-            add("purchase", purchase, "vendor", sku_products.get(purchase.sku_id))
+            product_id = sku_products.get(purchase.sku_id)
+            day = purchase.purchased_on.isoformat() if purchase.purchased_on else "날짜 미기록"
+            add(
+                "purchase",
+                purchase,
+                "vendor",
+                product_id,
+                f"{product_names.get(product_id, '알 수 없는 술')} · {day} · {purchase.quantity}병"
+                if product_id
+                else None,
+            )
     duplicates: list[dict[str, Any]] = []
     for kind, candidates in (("product", products), ("vendor", vendors)):
         groups: dict[str, list[Any]] = defaultdict(list)
@@ -263,6 +286,10 @@ async def quality_report(session: AsyncSession, user_id: uuid.UUID) -> dict[str,
             "purchases": len(purchases),
             "known_price_purchases": len(purchases),
             "unknown_price_purchases": 0,
+            # 미상이 아니라 0원(공란·선물·포인트)으로 계산된 구매 수. 정보로만 보인다(D211).
+            "zero_paid_purchases": sum(
+                not (p.unit_paid_price and p.unit_paid_price > 0) for p in purchases
+            ),
             "known_paid_total": str(
                 sum(
                     (

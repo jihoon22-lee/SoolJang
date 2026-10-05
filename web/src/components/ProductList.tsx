@@ -10,6 +10,8 @@ interface ProductListProps {
   /** 선택 모드(대량 편집)일 때 체크박스를 보여준다. */
   selectable?: boolean;
   selectedIds?: ReadonlySet<string>;
+  /** 보이는 항목 전체 선택/해제(표 머리글 체크박스). */
+  onToggleAll?: ((ids: string[], checked: boolean) => void) | undefined;
   onToggleSelect?: (productId: string) => void;
 }
 
@@ -50,6 +52,7 @@ export function ProductList({
   selectable = false,
   selectedIds,
   onToggleSelect,
+  onToggleAll,
 }: ProductListProps) {
   if (products.length === 0) {
     return (
@@ -68,7 +71,21 @@ export function ProductList({
           </caption>
           <thead>
             <tr>
-              {selectable && <th scope="col" className="select-col" />}
+              {selectable && (
+                <th scope="col" className="select-col">
+                  <input
+                    type="checkbox"
+                    aria-label="보이는 술 모두 선택"
+                    checked={products.every((product) => selectedIds?.has(product.id) ?? false)}
+                    onChange={(event) =>
+                      onToggleAll?.(
+                        products.map((product) => product.id),
+                        event.currentTarget.checked,
+                      )
+                    }
+                  />
+                </th>
+              )}
               {COLUMNS.map((column) => (
                 <ColumnHeader
                   key={column.label}

@@ -1,13 +1,28 @@
+/**
+ * 보관 위치와 재고 실사.
+ *
+ * 세 가지 일을 탭으로 나눈다 — 병을 골라 위치로 옮기기(가장 잦음), 위치 목록 관리, 실사.
+ * 예전에는 한 페이지에 병마다 위치 선택 상자를 늘어놓아 재고 수백 병이면 끝없이 길어졌다.
+ * 이제 표에서 여러 병을 골라 한 번에 옮기고, 실사는 카메라를 켠 채 연속으로 확인한다.
+ *
+ * 위치·실사 기록은 서버 기록을 직접 쓰므로 온라인 전용이다. 실사는 재고 상태를 스스로
+ * 바꾸지 않는다 — 미확인 병의 소진 처리나 위치 반영은 사용자가 명시적으로 고른다.
+ */
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   type CleanupPreview,
   collectionApi,
   type InventoryBottle,
+  type Location,
   type Stocktake,
 } from "@/api/collection";
 import { BottleQr, BottleQrCamera } from "@/components/BottleQr";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
+import { useToast } from "@/components/Toast";
+import { matchesQuery } from "@/search";
+import { applyBottleTransitions, undoBottleTransitions } from "@/sync/bottleActions";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
@@ -15,11 +30,32 @@ const RESULTS: Record<string, string> = {
   checked: "확인",
   unexpected: "예정 목록 밖의 병",
   location_mismatch: "위치 불일치",
+  relocated: "위치 반영함",
 };
+
+const KIND_LABELS: Record<Location["kind"], string> = {
+  cabinet: "찬장",
+  shelf: "선반",
+  box: "상자",
+};
+
+type Tab = "bottles" | "locations" | "stocktake";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "bottles", label: "병 위치" },
+  { id: "locations", label: "위치 관리" },
+  { id: "stocktake", label: "재고 실사" },
+];
+
+function isInStock(bottle: InventoryBottle): boolean {
+  return bottle.status === "open" || bottle.status === "unopened";
+}
+
 export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: string) => void }) {
   const { state } = useSyncStatus();
   const online = state !== "offline";
   const cache = useQueryClient();
+  const [tab, setTab] = useState<Tab>("bottles");
   const locations = useQuery({
     queryKey: ["collection", "locations"],
     queryFn: collectionApi.locations,
@@ -35,24 +71,6 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
     queryFn: collectionApi.stocktakes,
     enabled: online,
   });
-  const [form, setForm] = useDraftState("storage-location", { name: "", kind: "shelf" });
-  const [editId, setEditId] = useState<string | undefined>();
-  const [filter, setFilter] = useState("");
-  const [selectedBottle, setSelectedBottle] = useState<InventoryBottle | null>(null);
-  const [preview, setPreview] = useState<CleanupPreview | null>(null);
-  const [sessionId, setSessionId] = useState("");
-  const [sessionName, setSessionName] = useDraftState("stocktake-name", "");
-  const [code, setCode] = useState("");
-  const [observed, setObserved] = useState("");
-  const [camera, setCamera] = useState(false);
-  const [foundNote, setFoundNote] = useDraftState("stocktake-found", "");
-  const [notice, setNotice] = useState("");
-  const active = (stocktakes.data ?? []).find((row) => row.id === sessionId);
-  const movements = useQuery({
-    queryKey: ["collection", "movements", selectedBottle?.id],
-    queryFn: () => collectionApi.movements(selectedBottle?.id ?? ""),
-    enabled: online && !!selectedBottle,
-  });
   const action = useMutation({
     mutationFn: async (work: () => Promise<unknown>) => {
       if (!online) throw new Error("온라인에서 저장하세요");
@@ -60,31 +78,19 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
       await cache.invalidateQueries({ queryKey: ["collection"] });
     },
   });
+
   const activeLocations = (locations.data ?? []).filter((row) => !row.deleted);
   const locationName = (id: string | null) =>
     (locations.data ?? []).find((row) => row.id === id)?.name ?? "미지정";
-  const scan = (raw: string) => {
-    if (!active) return;
-    setCamera(false);
-    action.mutate(async () => {
-      const result = await collectionApi.scan(active.id, raw, observed || null);
-      setNotice(
-        result.duplicate
-          ? "이미 확인한 병입니다"
-          : (RESULTS[result.observation.result] ?? result.observation.result),
-      );
-      setCode("");
-    });
-  };
-  const changeStatus = (status: Stocktake["status"]) => {
-    if (active) action.mutate(() => collectionApi.status(active.id, status));
-  };
+  const running = (stocktakes.data ?? []).find((row) => row.status === "active");
+  const [sessionId, setSessionId] = useState("");
+
   return (
     <section className="collection-page">
       <h1>보관 위치 · 재고 실사</h1>
-      <p>
-        병별 위치와 관찰을 온라인에서 기록합니다. 실사에서 미확인된 병도 자동 소진·증여 처리하지
-        않습니다.
+      <p className="muted">
+        병별 위치와 실사 관찰을 온라인에서 기록합니다. 실사에서 확인하지 못한 병도 자동으로
+        소진·증여 처리하지 않습니다.
       </p>
       {!online && <output>오프라인입니다. 연결한 뒤 보관·실사를 기록하세요.</output>}
       {[locations.error, bottles.error, stocktakes.error, action.error]
@@ -94,12 +100,368 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
             {error?.message}
           </p>
         ))}
-      <fieldset disabled={!online || action.isPending}>
-        <legend>보관 위치</legend>
+
+      {running && tab !== "stocktake" ? (
+        <button
+          type="button"
+          className="stocktake-banner"
+          onClick={() => {
+            setSessionId(running.id);
+            setTab("stocktake");
+          }}
+        >
+          실사 진행 중: {running.name} · 확인 {running.observed_count}/{running.expected_count}병
+        </button>
+      ) : null}
+
+      <div className="tab-list" role="tablist" aria-label="보관·실사 화면">
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            id={`inventory-tab-${item.id}`}
+            aria-selected={tab === item.id}
+            aria-controls={`inventory-panel-${item.id}`}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id={`inventory-panel-${tab}`} aria-labelledby={`inventory-tab-${tab}`}>
+        {tab === "bottles" && (
+          <BottleLocations
+            bottles={bottles.data ?? []}
+            locations={activeLocations}
+            online={online}
+            pending={action.isPending}
+            run={(work) => action.mutateAsync(work)}
+            onSelectProduct={onSelectProduct}
+            locationName={locationName}
+          />
+        )}
+        {tab === "locations" && (
+          <LocationManager
+            locations={activeLocations}
+            online={online}
+            pending={action.isPending}
+            run={(work) => action.mutate(work)}
+          />
+        )}
+        {tab === "stocktake" && (
+          <StocktakePanel
+            stocktakes={stocktakes.data ?? []}
+            bottles={bottles.data ?? []}
+            locations={activeLocations}
+            online={online}
+            pending={action.isPending}
+            run={(work) => action.mutateAsync(work)}
+            sessionId={sessionId}
+            setSessionId={setSessionId}
+            onSelectProduct={onSelectProduct}
+            locationName={locationName}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+// --- 병 위치 ---------------------------------------------------------------------
+
+function BottleLocations({
+  bottles,
+  locations,
+  online,
+  pending,
+  run,
+  onSelectProduct,
+  locationName,
+}: {
+  bottles: InventoryBottle[];
+  locations: Location[];
+  online: boolean;
+  pending: boolean;
+  run: (work: () => Promise<unknown>) => Promise<void>;
+  onSelectProduct: (id: string) => void;
+  locationName: (id: string | null) => string;
+}) {
+  const toast = useToast();
+  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [target, setTarget] = useState("");
+  const [qrBottle, setQrBottle] = useState<InventoryBottle | null>(null);
+
+  const visible = useMemo(
+    () =>
+      bottles
+        .filter(isInStock)
+        .filter(
+          (row) =>
+            !filter || (filter === "unassigned" ? !row.location_id : row.location_id === filter),
+        )
+        .filter((row) => !query.trim() || matchesQuery(row.name, query)),
+    [bottles, filter, query],
+  );
+  const visibleIds = visible.map((row) => row.id);
+  const chosen = visibleIds.filter((id) => selected.has(id));
+  const unassigned = bottles.filter(isInStock).filter((row) => !row.location_id).length;
+
+  function toggle(id: string): void {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function moveChosen(): Promise<void> {
+    const locationId = target === "__none__" ? null : target;
+    const previous = new Map(bottles.map((row) => [row.id, row.location_id]));
+    const ids = [...chosen];
+    let moved = 0;
+    await run(async () => {
+      moved = (await collectionApi.moveMany(ids, locationId)).moved;
+    });
+    setSelected(new Set());
+    toast.show({
+      message: `${moved}병을 ${locationName(locationId)}(으)로 옮겼습니다`,
+      actionLabel: "실행 취소",
+      onAction: () =>
+        run(async () => {
+          const groups = new Map<string | null, string[]>();
+          for (const id of ids) {
+            const from = previous.get(id) ?? null;
+            groups.set(from, [...(groups.get(from) ?? []), id]);
+          }
+          for (const [from, group] of groups) await collectionApi.moveMany(group, from);
+        }),
+    });
+  }
+
+  return (
+    <>
+      <div className="filter-row">
+        <label>
+          위치
+          <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+            <option value="">전체 재고</option>
+            <option value="unassigned">미지정 ({unassigned})</option>
+            {locations.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name} ({row.bottle_count})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          이름 검색
+          <input
+            type="search"
+            value={query}
+            placeholder="한글·초성 검색"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+      </div>
+
+      {visible.length === 0 ? (
+        <output className="notice">조건에 맞는 재고 병이 없습니다.</output>
+      ) : (
+        <div className="table-scroll">
+          <table className="product-table inventory-table">
+            <caption className="sr-only">재고 병과 보관 위치</caption>
+            <thead>
+              <tr>
+                <th scope="col" className="select-col">
+                  <input
+                    type="checkbox"
+                    aria-label="보이는 병 모두 선택"
+                    checked={chosen.length === visible.length}
+                    onChange={(event) =>
+                      setSelected(event.currentTarget.checked ? new Set(visibleIds) : new Set())
+                    }
+                  />
+                </th>
+                <th scope="col">술</th>
+                <th scope="col">위치</th>
+                <th scope="col">QR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((bottle) => (
+                <tr key={bottle.id}>
+                  <td className="select-col">
+                    <input
+                      type="checkbox"
+                      aria-label={`${bottle.name} ${bottle.label_no}번 병 선택`}
+                      checked={selected.has(bottle.id)}
+                      onChange={() => toggle(bottle.id)}
+                    />
+                  </td>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      className="link-like"
+                      onClick={() => onSelectProduct(bottle.product_id)}
+                    >
+                      {bottle.name} #{bottle.label_no}
+                    </button>
+                    {bottle.legacy_location ? (
+                      <span className="muted text-sm"> · 기존 메모: {bottle.legacy_location}</span>
+                    ) : null}
+                  </th>
+                  <td>
+                    <select
+                      aria-label={`${bottle.name} ${bottle.label_no}번 병 위치`}
+                      disabled={!online || pending}
+                      value={bottle.location_id ?? ""}
+                      onChange={(event) => {
+                        const locationId = event.currentTarget.value || null;
+                        void run(() => collectionApi.move(bottle.id, locationId));
+                      }}
+                    >
+                      <option value="">미지정</option>
+                      {locations.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="sort-button"
+                      aria-label={`${bottle.name} ${bottle.label_no}번 병 QR · 이동 이력`}
+                      onClick={() => setQrBottle(bottle)}
+                    >
+                      QR
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {chosen.length > 0 ? (
+        <div className="bulk-bar" role="toolbar" aria-label="선택한 병 옮기기">
+          <span className="bulk-bar-count">{chosen.length}병</span>
+          <label htmlFor="bulk-location" className="sr-only">
+            옮길 위치
+          </label>
+          <select
+            id="bulk-location"
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+          >
+            <option value="">옮길 위치 선택</option>
+            {locations.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+            <option value="__none__">미지정으로</option>
+          </select>
+          <button
+            type="button"
+            className="primary"
+            disabled={!online || pending || !target}
+            onClick={() => void moveChosen()}
+          >
+            옮기기
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())}>
+            선택 해제
+          </button>
+        </div>
+      ) : null}
+
+      {qrBottle ? (
+        <BottleQrCard
+          bottle={qrBottle}
+          locationName={locationName}
+          online={online}
+          onClose={() => setQrBottle(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function BottleQrCard({
+  bottle,
+  locationName,
+  online,
+  onClose,
+}: {
+  bottle: InventoryBottle;
+  locationName: (id: string | null) => string;
+  online: boolean;
+  onClose: () => void;
+}) {
+  const movements = useQuery({
+    queryKey: ["collection", "movements", bottle.id],
+    queryFn: () => collectionApi.movements(bottle.id),
+    enabled: online,
+  });
+  return (
+    <section className="card">
+      <h3>
+        {bottle.name} #{bottle.label_no}
+      </h3>
+      <BottleQr code={bottle.bottle_code} />
+      <button type="button" onClick={() => window.print()}>
+        QR 인쇄
+      </button>
+      <h4>이동 이력</h4>
+      <ul>
+        {movements.data?.map((move) => (
+          <li key={move.id}>
+            {locationName(move.from_location_id)} → {locationName(move.to_location_id)} ·{" "}
+            {new Date(move.created_at).toLocaleString()}
+          </li>
+        ))}
+      </ul>
+      {movements.data?.length === 0 ? <p className="muted">이동 기록이 없습니다.</p> : null}
+      <button type="button" onClick={onClose}>
+        닫기
+      </button>
+    </section>
+  );
+}
+
+// --- 위치 관리 ---------------------------------------------------------------------
+
+function LocationManager({
+  locations,
+  online,
+  pending,
+  run,
+}: {
+  locations: Location[];
+  online: boolean;
+  pending: boolean;
+  run: (work: () => Promise<unknown>) => void;
+}) {
+  const [form, setForm] = useDraftState("storage-location", { name: "", kind: "shelf" });
+  const [editId, setEditId] = useState<string | undefined>();
+  const [preview, setPreview] = useState<CleanupPreview | null>(null);
+  return (
+    <>
+      <fieldset disabled={!online || pending}>
+        <legend>{editId ? "위치 수정" : "새 위치"}</legend>
         <form
+          className="inline-form"
           onSubmit={(event) => {
             event.preventDefault();
-            action.mutate(async () => {
+            run(async () => {
               await collectionApi.saveLocation(form, editId);
               setEditId(undefined);
               setForm({ name: "", kind: "shelf" });
@@ -140,42 +502,53 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
             </button>
           )}
         </form>
-        <ul>
-          {activeLocations.map((location) => (
+      </fieldset>
+      {locations.length === 0 ? (
+        <output className="notice">아직 위치가 없습니다. 찬장·선반·상자를 먼저 추가하세요.</output>
+      ) : (
+        <ul className="location-list">
+          {locations.map((location) => (
             <li key={location.id}>
-              {location.name} · {location.bottle_count}병{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  setEditId(location.id);
-                  setForm({ name: location.name, kind: location.kind });
-                }}
-              >
-                수정
-              </button>{" "}
-              <button
-                type="button"
-                onClick={() =>
-                  action.mutate(async () =>
-                    setPreview(await collectionApi.preview("location_delete", [location.id])),
-                  )
-                }
-              >
-                삭제 영향 확인
-              </button>
+              <span>
+                {location.name} · {location.bottle_count}병{" "}
+                <span className="muted text-sm">({KIND_LABELS[location.kind]})</span>
+              </span>
+              <span className="button-row">
+                <button
+                  type="button"
+                  disabled={!online || pending}
+                  onClick={() => {
+                    setEditId(location.id);
+                    setForm({ name: location.name, kind: location.kind });
+                  }}
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  disabled={!online || pending}
+                  onClick={() =>
+                    run(async () =>
+                      setPreview(await collectionApi.preview("location_delete", [location.id])),
+                    )
+                  }
+                >
+                  삭제 영향 확인
+                </button>
+              </span>
             </li>
           ))}
         </ul>
-      </fieldset>
+      )}
       {preview && (
         <>
           <p>위치를 삭제하면 현재 배치된 병은 미지정으로 옮기며 이동·실사 이력은 보존합니다.</p>
           <CleanupConfirmation
             preview={preview}
-            pending={!online || action.isPending}
+            pending={!online || pending}
             onCancel={() => setPreview(null)}
             onConfirm={() =>
-              action.mutate(async () => {
+              run(async () => {
                 await collectionApi.confirm(preview.id);
                 setPreview(null);
               })
@@ -183,90 +556,97 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
           />
         </>
       )}
-      <h2>개별 병 위치</h2>
-      <label>
-        위치 필터
-        <select value={filter} onChange={(event) => setFilter(event.target.value)}>
-          <option value="">전체</option>
-          <option value="unassigned">미지정</option>
-          {activeLocations.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <ul>
-        {(bottles.data ?? [])
-          .filter((row) => row.status === "open" || row.status === "unopened")
-          .filter(
-            (row) =>
-              !filter || (filter === "unassigned" ? !row.location_id : row.location_id === filter),
-          )
-          .map((bottle) => (
-            <li key={bottle.id}>
-              <button type="button" onClick={() => onSelectProduct(bottle.product_id)}>
-                {bottle.name} #{bottle.label_no}
-              </button>{" "}
-              <label>
-                현재 위치
-                <select
-                  aria-label={`${bottle.name} ${bottle.label_no}번 병 위치`}
-                  disabled={!online || action.isPending}
-                  value={bottle.location_id ?? ""}
-                  onChange={(event) => {
-                    const locationId = event.currentTarget.value || null;
-                    action.mutate(() => collectionApi.move(bottle.id, locationId));
-                  }}
-                >
-                  <option value="">미지정</option>
-                  {activeLocations.map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {row.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {bottle.legacy_location && <span>기존 메모: {bottle.legacy_location}</span>}{" "}
-              <button type="button" onClick={() => setSelectedBottle(bottle)}>
-                병 QR · 이동 이력
-              </button>
-            </li>
-          ))}
-      </ul>
-      {selectedBottle && (
-        <section className="card">
-          <h3>
-            {selectedBottle.name} #{selectedBottle.label_no}
-          </h3>
-          <BottleQr code={selectedBottle.bottle_code} />
-          <button type="button" onClick={() => window.print()}>
-            QR 인쇄
-          </button>
-          <ul>
-            {movements.data?.map((move) => (
-              <li key={move.id}>
-                {locationName(move.from_location_id)} → {locationName(move.to_location_id)} ·{" "}
-                {new Date(move.created_at).toLocaleString()}
-              </li>
-            ))}
-          </ul>
-          <button type="button" onClick={() => setSelectedBottle(null)}>
-            닫기
-          </button>
-        </section>
-      )}
-      <h2>재고 실사</h2>
-      <fieldset disabled={!online || action.isPending}>
+    </>
+  );
+}
+
+// --- 재고 실사 ---------------------------------------------------------------------
+
+function StocktakePanel({
+  stocktakes,
+  bottles,
+  locations,
+  online,
+  pending,
+  run,
+  sessionId,
+  setSessionId,
+  onSelectProduct,
+  locationName,
+}: {
+  stocktakes: Stocktake[];
+  bottles: InventoryBottle[];
+  locations: Location[];
+  online: boolean;
+  pending: boolean;
+  run: (work: () => Promise<unknown>) => Promise<void>;
+  sessionId: string;
+  setSessionId: (id: string) => void;
+  onSelectProduct: (id: string) => void;
+  locationName: (id: string | null) => string;
+}) {
+  const toast = useToast();
+  const [sessionName, setSessionName] = useDraftState("stocktake-name", "");
+  const [scope, setScope] = useState("");
+  const [code, setCode] = useState("");
+  const [observed, setObserved] = useState("");
+  const [camera, setCamera] = useState(false);
+  const [foundNote, setFoundNote] = useDraftState("stocktake-found", "");
+  const [notice, setNotice] = useState("");
+  const [missingSelected, setMissingSelected] = useState<ReadonlySet<string>>(new Set());
+  const active = stocktakes.find((row) => row.id === sessionId);
+  const bottleName = (id: string) => {
+    const bottle = bottles.find((row) => row.id === id);
+    return bottle ? `${bottle.name} #${bottle.label_no}` : id;
+  };
+
+  async function scan(raw: string): Promise<void> {
+    if (!active) return;
+    const value = raw.trim();
+    if (!value) return;
+    await run(async () => {
+      const result = await collectionApi.scan(active.id, value, observed || null);
+      const prefix = "sooljang:bottle:";
+      const name = value.startsWith(prefix) ? bottleName(value.slice(prefix.length)) : value;
+      setNotice(
+        result.duplicate
+          ? `이미 확인한 병입니다 · ${name}`
+          : `${RESULTS[result.observation.result] ?? result.observation.result} · ${name}`,
+      );
+      setCode("");
+    }).catch((error: unknown) => {
+      setNotice(error instanceof Error ? error.message : "확인하지 못했습니다");
+    });
+  }
+
+  const changeStatus = (status: Stocktake["status"]) => {
+    if (active) void run(() => collectionApi.status(active.id, status));
+  };
+
+  async function finishMissing(): Promise<void> {
+    const ids = [...missingSelected];
+    const result = await applyBottleTransitions(ids, "finish");
+    setMissingSelected(new Set());
+    toast.show({
+      message: `미확인 ${result.applied.length}병을 소진 처리했습니다`,
+      actionLabel: "실행 취소",
+      onAction: () => undoBottleTransitions(result.applied),
+    });
+  }
+
+  const progress =
+    active && active.expected_count > 0 ? active.observed_count / active.expected_count : 0;
+
+  return (
+    <>
+      <fieldset disabled={!online || pending}>
         <legend>새 실사</legend>
         <form
+          className="inline-form"
           onSubmit={(event) => {
             event.preventDefault();
-            action.mutate(async () => {
-              const row = await collectionApi.start(
-                sessionName,
-                filter && filter !== "unassigned" ? filter : null,
-              );
+            void run(async () => {
+              const row = await collectionApi.start(sessionName, scope || null);
               setSessionId(row.id);
               setSessionName("");
               clearFormDraft("stocktake-name");
@@ -282,7 +662,17 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
               onChange={(event) => setSessionName(event.target.value)}
             />
           </label>
-          <p>범위: {filter && filter !== "unassigned" ? locationName(filter) : "전체 재고"}</p>
+          <label>
+            범위
+            <select value={scope} onChange={(event) => setScope(event.target.value)}>
+              <option value="">전체 재고</option>
+              {locations.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="submit">실사 시작</button>
         </form>
       </fieldset>
@@ -297,7 +687,7 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
           }}
         >
           <option value="">실사를 선택하세요</option>
-          {stocktakes.data?.map((row) => (
+          {stocktakes.map((row) => (
             <option key={row.id} value={row.id}>
               {row.name} (
               {row.status === "active" ? "진행 중" : row.status === "paused" ? "일시 중지" : "완료"}
@@ -309,17 +699,25 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
       {active && (
         <section className="card">
           <h3>{active.name}</h3>
-          <p>
-            예정 {active.expected_count}병 · 관찰 {active.observations.length}병 · 미확인{" "}
-            {active.missing.length}병
+          <p className="muted">
+            범위: {active.location_id ? locationName(active.location_id) : "전체 재고"}
           </p>
-          <fieldset disabled={!online || action.isPending || active.status !== "active"}>
+          <div className="progress-row">
+            <progress max={1} value={progress} aria-label="실사 진행률" />
+            <span>
+              확인 {active.observed_count}/{active.expected_count}병 · 미확인{" "}
+              {active.missing.length}병
+              {active.mismatch_count > 0 ? ` · 위치 불일치 ${active.mismatch_count}병` : ""}
+              {active.unexpected_count > 0 ? ` · 예정 밖 ${active.unexpected_count}병` : ""}
+            </span>
+          </div>
+          <fieldset disabled={!online || pending || active.status !== "active"}>
             <legend>병 확인</legend>
             <label>
-              실제로 확인한 위치
+              지금 확인하는 위치
               <select value={observed} onChange={(event) => setObserved(event.target.value)}>
                 <option value="">미지정</option>
-                {activeLocations.map((row) => (
+                {locations.map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name}
                   </option>
@@ -327,9 +725,10 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
               </select>
             </label>
             <form
+              className="inline-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                scan(code);
+                void scan(code);
               }}
             >
               <label>
@@ -337,15 +736,104 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
                 <input required value={code} onChange={(event) => setCode(event.target.value)} />
               </label>
               <button type="submit">병 확인</button>
-              <button type="button" onClick={() => setCamera(!camera)}>
-                {camera ? "카메라 닫기" : "QR 카메라"}
+              <button type="button" aria-pressed={camera} onClick={() => setCamera(!camera)}>
+                {camera ? "연속 스캔 끄기" : "연속 스캔 켜기"}
               </button>
             </form>
-            {camera && <BottleQrCamera onScan={scan} />}
+            {camera && (
+              <>
+                <p className="muted text-sm">
+                  카메라를 켠 채로 병을 차례로 비추세요. 확인할 때마다 짧게 진동합니다.
+                </p>
+                <BottleQrCamera continuous onScan={(value) => void scan(value)} />
+              </>
+            )}
+          </fieldset>
+          {notice && (
+            <output className="scan-notice" aria-live="polite">
+              {notice}
+            </output>
+          )}
+          {active.mismatch_count > 0 ? (
+            <div className="button-row">
+              <button
+                type="button"
+                disabled={!online || pending}
+                onClick={() =>
+                  void run(async () => {
+                    const result = await collectionApi.applyLocations(active.id);
+                    toast.show({ message: `${result.moved}병의 위치를 확인한 곳으로 바꿨습니다` });
+                  })
+                }
+              >
+                위치 불일치 {active.mismatch_count}병을 확인한 위치로 옮기기
+              </button>
+            </div>
+          ) : null}
+          <details>
+            <summary>확인한 병 {active.observations.length}개</summary>
+            <ul>
+              {active.observations.map((row) => (
+                <li key={row.bottle_id}>
+                  {RESULTS[row.result] ?? row.result} · {bottleName(row.bottle_id)}
+                </li>
+              ))}
+            </ul>
+          </details>
+          <h4>미확인 병 {active.missing.length}개</h4>
+          {active.missing.length > 0 ? (
+            <>
+              <p className="muted text-sm">
+                마셨는데 기록하지 않은 병이 있다면 골라서 한 번에 소진 처리할 수 있습니다.
+              </p>
+              <ul className="check-list">
+                {active.missing.map((bottle) => (
+                  <li key={bottle.id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={missingSelected.has(bottle.id)}
+                        onChange={() =>
+                          setMissingSelected((current) => {
+                            const next = new Set(current);
+                            if (next.has(bottle.id)) next.delete(bottle.id);
+                            else next.add(bottle.id);
+                            return next;
+                          })
+                        }
+                      />
+                      {bottle.name} #{bottle.label_no}
+                    </label>{" "}
+                    <button
+                      type="button"
+                      className="sort-button"
+                      onClick={() => onSelectProduct(bottle.product_id)}
+                    >
+                      제품 보기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="button-row">
+                <button
+                  type="button"
+                  disabled={missingSelected.size === 0}
+                  onClick={() => void finishMissing()}
+                >
+                  선택한 {missingSelected.size}병 소진 처리
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="muted">모두 확인했습니다.</p>
+          )}
+          <fieldset disabled={!online || pending || active.status !== "active"}>
+            <legend>미등록 발견</legend>
             <form
+              className="inline-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                action.mutate(async () => {
+                void run(async () => {
                   await collectionApi.found(active.id, foundNote);
                   setFoundNote("");
                   clearFormDraft("stocktake-found");
@@ -363,27 +851,6 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
               <button type="submit">발견 기록</button>
             </form>
           </fieldset>
-          {notice && <output>{notice}</output>}
-          <ul>
-            {active.observations.map((row) => (
-              <li key={row.bottle_id}>
-                {RESULTS[row.result] ?? row.result} ·{" "}
-                {(bottles.data ?? []).find((bottle) => bottle.id === row.bottle_id)?.name ??
-                  row.bottle_id}
-              </li>
-            ))}
-          </ul>
-          <h4>미확인 병</h4>
-          <ul>
-            {active.missing.map((bottle) => (
-              <li key={bottle.id}>
-                <button type="button" onClick={() => onSelectProduct(bottle.product_id)}>
-                  {bottle.name} #{bottle.label_no} · 제품에서 상태 확인
-                </button>
-              </li>
-            ))}
-          </ul>
-          <h4>미등록 발견</h4>
           <ul>
             {active.found_notes.map((note) => (
               <li key={note}>{note}</li>
@@ -393,14 +860,14 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
             <div className="button-row">
               <button
                 type="button"
-                disabled={!online || action.isPending}
+                disabled={!online || pending}
                 onClick={() => changeStatus(active.status === "active" ? "paused" : "active")}
               >
                 {active.status === "active" ? "일시 중지" : "실사 재개"}
               </button>
               <button
                 type="button"
-                disabled={!online || action.isPending}
+                disabled={!online || pending}
                 onClick={() => changeStatus("completed")}
               >
                 관찰 기록으로 완료
@@ -409,6 +876,6 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
           )}
         </section>
       )}
-    </section>
+    </>
   );
 }

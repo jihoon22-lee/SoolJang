@@ -38,6 +38,7 @@ import type {
   ProviderDefinition,
   Purchase,
   PurchaseCreateInput,
+  PurchaseUpdateInput,
   Rankings,
   SavedView,
   SavedViewInput,
@@ -303,6 +304,10 @@ export const purchasesApi = {
     request<Purchase>("/purchases", { method: "POST", body: input }),
 
   remove: (id: string) => request<void>(`/purchases/${id}`, { method: "DELETE" }),
+
+  /** 구매처·날짜·가격·병수 수정. 병수는 미개봉 병만 줄일 수 있다(서버 409). */
+  update: (id: string, input: PurchaseUpdateInput) =>
+    request<Purchase>(`/purchases/${id}`, { method: "PATCH", body: input }),
 
   bottles: (id: string, signal?: AbortSignal) =>
     request<Bottle[]>(`/purchases/${id}/bottles`, signal ? { signal } : {}),

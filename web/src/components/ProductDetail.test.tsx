@@ -301,9 +301,10 @@ describe("ProductDetail", () => {
     it("병 목록을 보여주고, 재고(미개봉·개봉)를 먼저 보여준다", () => {
       setup({ bottles });
 
-      expect(screen.getByText("병 (2개)")).toBeInTheDocument();
-      const labels = screen.getAllByText(/\d번 병/).map((el) => el.textContent);
-      expect(labels).toEqual(["1번 병", "2번 병"]);
+      expect(screen.getByRole("heading", { name: /병 2개/ })).toHaveTextContent("재고 1");
+      // 구매가 여러 건이면 어느 구매의 병인지 구매일·구매처를 함께 보인다.
+      const labels = screen.getAllByText(/^\d번 병/).map((el) => el.textContent);
+      expect(labels).toEqual(["1번 병 · 2026-03-01 · 가상마트", "2번 병 · 2026-03-01 · 가상마트"]);
     });
 
     it("병을 누르면 펼쳐져 상세 패널이 나온다", async () => {

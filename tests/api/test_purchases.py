@@ -420,3 +420,27 @@ def test_split_explicit_blank_price_is_zero_and_omitted_price_is_inherited(
     assert {part["unit_paid_price"] for part in parts} == {"0.00", "20000.00"}
     assert {part["unit_list_price"] for part in parts} == {"0.00", "30000.00"}
     assert sum(part["bottle_count"] for part in parts) == 2
+
+
+def test_quantity_change_adds_or_removes_only_unopened_bottles(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "병수 수정 술", "skus": [{"volume_ml": 500}]}
+    ).json()
+    purchase = api_client.post(
+        f"{prefix}/purchases", json={"sku_id": product["skus"][0]["id"], "quantity": 3}
+    ).json()
+    bottles = api_client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()
+    api_client.post(f"{prefix}/bottles/{bottles[0]['id']}:open", json={})
+    api_client.post(f"{prefix}/bottles/{bottles[1]['id']}:open", json={})
+
+    grown = api_client.patch(f"{prefix}/purchases/{purchase['id']}", json={"quantity": 5})
+    shrunk = api_client.patch(f"{prefix}/purchases/{purchase['id']}", json={"quantity": 2})
+    blocked = api_client.patch(f"{prefix}/purchases/{purchase['id']}", json={"quantity": 1})
+
+    assert grown.json()["bottle_count"] == 5
+    assert shrunk.json()["bottle_count"] == 2
+    assert blocked.status_code == 409
+    remaining = api_client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()
+    assert [bottle["status"] for bottle in remaining] == ["open", "open"]

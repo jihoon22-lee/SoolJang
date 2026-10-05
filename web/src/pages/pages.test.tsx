@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
+import { ToastProvider } from "@/components/Toast";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { db } from "@/sync/db";
@@ -94,7 +95,9 @@ describe("ProductsPage", () => {
   function renderProductsPage() {
     return renderWithQuery(
       <SyncStatusProvider>
-        <ProductsPageHarness />
+        <ToastProvider>
+          <ProductsPageHarness />
+        </ToastProvider>
       </SyncStatusProvider>,
     );
   }
@@ -862,38 +865,85 @@ describe("ProductsPage", () => {
     expect(screen.getByRole("button", { name: "← 목록으로" })).toBeInTheDocument();
   });
 
-  it("선택한 제품들의 주종을 일괄 변경한다", async () => {
+  it("필터 결과 전체를 골라 주종을 바꾸면 제품마다 outbox 명령을 남기고 실행 취소할 수 있다", async () => {
     await db.category.bulkPut([
       row({ id: "liquor", parent_id: null, name: "양주" }),
       row({ id: "whisky", parent_id: "liquor", name: "위스키" }),
     ]);
     await seedProduct("p1", "첫 번째 술", { category_id: null });
     await seedProduct("p2", "두 번째 술", { category_id: null });
-    const { calls } = stubRoutes([
-      { match: "/products/p1", method: "PATCH", body: {} },
-      { match: "/products/p2", method: "PATCH", body: {} },
+    stubRoutes([
       { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
       { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
     ]);
 
     renderProductsPage();
 
-    await userEvent.click(await screen.findByRole("button", { name: "선택" }));
-    // 테이블·카드 두 뷰가 모두 렌더되므로 같은 이름의 체크박스가 두 개다 — 첫 번째를 고른다.
-    const [firstCheckbox] = await screen.findAllByRole("checkbox", { name: "첫 번째 술 선택" });
-    await userEvent.click(firstCheckbox as Element);
-    const [secondCheckbox] = screen.getAllByRole("checkbox", { name: "두 번째 술 선택" });
-    await userEvent.click(secondCheckbox as Element);
-    await userEvent.selectOptions(screen.getByLabelText("주종 변경"), "whisky");
-    await userEvent.click(screen.getByRole("button", { name: "변경" }));
+    await userEvent.click(await screen.findByRole("button", { name: "여러 개 선택" }));
+    await userEvent.click(screen.getByRole("button", { name: "필터 결과 2건 모두 선택" }));
+    const bar = screen.getByRole("toolbar", { name: "선택한 술 처리" });
+    await userEvent.selectOptions(within(bar).getByLabelText("옮길 주종"), "whisky");
+    await userEvent.click(within(bar).getByRole("button", { name: "주종 변경" }));
 
-    await waitFor(() => {
-      const patches = calls.filter(
-        (call) => call.method === "PATCH" && call.url.includes("/products/"),
-      );
-      expect(patches).toHaveLength(2);
+    await waitFor(async () => {
+      expect((await db.product.get("p1"))?.category_id).toBe("whisky");
+      expect((await db.product.get("p2"))?.category_id).toBe("whisky");
     });
-    expect(await screen.findByText(/주종 변경 완료 2건/)).toBeInTheDocument();
+    const updates = (await db.outbox.toArray()).filter((entry) => entry.op === "update");
+    expect(updates.map((entry) => entry.fields)).toEqual([
+      { category_id: "whisky" },
+      { category_id: "whisky" },
+    ]);
+
+    await userEvent.click(await screen.findByRole("button", { name: "실행 취소" }));
+    await waitFor(async () => expect((await db.product.get("p1"))?.category_id).toBeNull());
+  });
+
+  it("선택한 술을 확인 후 함께 삭제하고 하위 병도 지운다", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await seedProductWithPurchase("p1", "지울 술");
+
+    renderProductsPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "여러 개 선택" }));
+    const [checkbox] = await screen.findAllByRole("checkbox", { name: "지울 술 선택" });
+    await userEvent.click(checkbox as Element);
+    const bar = screen.getByRole("toolbar", { name: "선택한 술 처리" });
+    await userEvent.click(within(bar).getByRole("button", { name: "삭제" }));
+
+    expect(confirmSpy.mock.calls[0]?.[0]).toMatch(/1건과 그 구매·병 \d+병/);
+    await waitFor(async () => expect((await db.product.get("p1"))?.deleted_at).not.toBeNull());
+    const bottles = await db.bottle.toArray();
+    expect(bottles.every((item) => item.deleted_at !== null)).toBe(true);
+    confirmSpy.mockRestore();
+  });
+
+  it("표 머리글 체크박스로 보이는 술을 모두 고르고 해제한다", async () => {
+    await seedProduct("p1", "첫 번째 술");
+    await seedProduct("p2", "두 번째 술");
+
+    renderProductsPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "여러 개 선택" }));
+    const all = await screen.findByRole("checkbox", { name: "보이는 술 모두 선택" });
+    await userEvent.click(all);
+    expect(await screen.findByText("2건 선택됨")).toBeInTheDocument();
+    await userEvent.click(all);
+    expect(await screen.findByText("0건 선택됨")).toBeInTheDocument();
+  });
+
+  it("필터에서 빠진 선택은 일괄 동작 대상에서 제외한다", async () => {
+    await seedProduct("p1", "위스키 하나", { category_id: null });
+    await seedProduct("p2", "와인 하나", { category_id: null });
+
+    renderProductsPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "여러 개 선택" }));
+    await userEvent.click(screen.getByRole("button", { name: "필터 결과 2건 모두 선택" }));
+    expect(await screen.findByText("2건 선택됨")).toBeInTheDocument();
+    await userEvent.type(screen.getAllByLabelText(/이름 검색/)[0] as Element, "와인");
+
+    expect(await screen.findByText(/1건 선택됨 · 필터 밖 1건은 제외/)).toBeInTheDocument();
   });
 });
 

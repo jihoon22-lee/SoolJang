@@ -36,11 +36,22 @@ export function BottleQr({ code }: { code: string }) {
   );
 }
 
-export function BottleQrCamera({ onScan }: { onScan: (code: string) => void }) {
+/** 같은 QR 이 카메라에 머무는 동안 같은 코드를 다시 보내지 않는 간격. */
+const REPEAT_GUARD_MS = 2500;
+
+export function BottleQrCamera({
+  onScan,
+  continuous = false,
+}: {
+  onScan: (code: string) => void;
+  /** 켜 두면 감지 후에도 카메라를 끄지 않고 다음 병을 계속 읽는다(실사 연속 스캔). */
+  continuous?: boolean;
+}) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
   const callback = useRef(onScan);
   callback.current = onScan;
+  const lastSeen = useRef<{ code: string; at: number } | null>(null);
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;
@@ -52,10 +63,20 @@ export function BottleQrCamera({ onScan }: { onScan: (code: string) => void }) {
           undefined,
           video.current,
           (result, _error, active) => {
-            if (result && !cancelled) {
+            if (!result || cancelled) return;
+            const code = result.getText();
+            if (!continuous) {
               active.stop();
-              callback.current(result.getText());
+              callback.current(code);
+              return;
             }
+            const now = Date.now();
+            const last = lastSeen.current;
+            if (last && last.code === code && now - last.at < REPEAT_GUARD_MS) return;
+            lastSeen.current = { code, at: now };
+            // 손에 든 병을 내려놓기 전에 결과를 알 수 있게 짧게 진동한다(지원 기기만).
+            navigator.vibrate?.(40);
+            callback.current(code);
           },
         );
         stop = () => controls.stop();
@@ -68,7 +89,7 @@ export function BottleQrCamera({ onScan }: { onScan: (code: string) => void }) {
       cancelled = true;
       stop?.();
     };
-  }, []);
+  }, [continuous]);
   return (
     <div>
       <video ref={video} muted playsInline aria-label="병 QR 카메라" style={{ maxWidth: "100%" }} />
