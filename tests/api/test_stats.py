@@ -85,7 +85,7 @@ def test_rankings_and_summary_reflect_seeded_purchases(api_client: TestClient, p
     assert summary["vendor_count"] == 0
 
     by_category = api_client.get(f"{prefix}/stats/by-category").json()
-    assert by_category[0]["name"] == "미분류"
+    assert by_category[0]["name"] == "주종 미지정"
     assert by_category[0]["bottle_count"] == 2
 
 

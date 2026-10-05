@@ -8,6 +8,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { HistoryEntry } from "@/api/types";
+import { formatMoney } from "@/format";
 
 const ACTION_LABELS: Record<string, string> = {
   open: "개봉",
@@ -46,23 +47,44 @@ const STATUS_LABELS: Record<string, string> = {
   sold: "판매",
 };
 
-function show(field: string, value: unknown): string {
+const MONEY_FIELDS = new Set(["unit_list_price", "unit_paid_price"]);
+const REFERENCE_FALLBACK: Record<string, string> = {
+  vendor_id: "지운 구매처",
+  from_location_id: "지운 위치",
+  to_location_id: "지운 위치",
+};
+
+function show(field: string, value: unknown, labels: Record<string, string>): string {
+  const fallback = REFERENCE_FALLBACK[field];
+  if (fallback !== undefined) {
+    if (value === null || value === undefined || value === "") {
+      return field === "vendor_id" ? "없음" : "미지정";
+    }
+    return labels[String(value)] ?? fallback;
+  }
   if (value === null || value === undefined || value === "") return "없음";
   if (field === "status" && typeof value === "string") return STATUS_LABELS[value] ?? value;
-  if (field === "vendor_id") return "다른 구매처";
+  if (MONEY_FIELDS.has(field)) return formatMoney(String(value));
   return String(value);
 }
 
 /** 이력 한 줄의 바뀐 칸 설명. [이전, 이후] 쌍은 "이전 → 이후" 로, 나머지는 값 그대로. */
 export function describeHistory(entry: HistoryEntry): string {
   const parts: string[] = [];
+  const labels = entry.labels ?? {};
+  if ("from_location_id" in entry.detail || "to_location_id" in entry.detail) {
+    const from = show("from_location_id", entry.detail.from_location_id, labels);
+    const to = show("to_location_id", entry.detail.to_location_id, labels);
+    // 동작 이름이 이미 "위치 이동"이라 앞에 칸 이름을 붙이지 않는다.
+    parts.push(`${from} → ${to}`);
+  }
   for (const [field, value] of Object.entries(entry.detail)) {
     if (field === "from_location_id" || field === "to_location_id") continue;
     const label = FIELD_LABELS[field] ?? field;
     if (Array.isArray(value) && value.length === 2) {
-      parts.push(`${label} ${show(field, value[0])} → ${show(field, value[1])}`);
+      parts.push(`${label} ${show(field, value[0], labels)} → ${show(field, value[1], labels)}`);
     } else {
-      parts.push(`${label} ${show(field, value)}`);
+      parts.push(`${label} ${show(field, value, labels)}`);
     }
   }
   return parts.join(" · ");

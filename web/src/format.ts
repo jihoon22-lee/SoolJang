@@ -81,7 +81,7 @@ export function formatValueForMoney(value: string | null | undefined): string {
 }
 
 export function formatCategoryPath(path: string[]): string {
-  return path.length === 0 ? "미분류" : path.join(" › ");
+  return path.length === 0 ? "주종 미지정" : path.join(" › ");
 }
 
 function trimZeros(value: number): string {

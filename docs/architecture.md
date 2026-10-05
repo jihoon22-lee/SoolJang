@@ -381,7 +381,8 @@ erDiagram
 - `record_event`(0019, v1.8.0): 병 상태 전이·잔량 조정·시음으로 인한 병 변화와 구매 수정의
   변경 이력. `entity`(`bottle`|`purchase`), `entity_id`, `action`, `detail jsonb`(바뀐 칸의
   [이전, 이후]). 재계산할 수 없는 1차 사실이라 저장한다. 동기화 대상이 아니며 과거 이력은
-  소급하지 않는다(D222)
+  소급하지 않는다(D222). 구매처·보관 위치는 id로 남기고, 이력 API가 읽을 때 지금 이름을
+  `labels`로 붙인다(D225)
 - 외부 연결·탐색·관심·가격 감시 테이블(`provider_connection`, `interest`, `external_offer`,
   `price_watch` 등)은 [external-data.md](external-data.md)를 본다
 

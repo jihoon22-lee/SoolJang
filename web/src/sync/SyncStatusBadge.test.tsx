@@ -360,6 +360,42 @@ describe("SyncStatusBadge 대기열", () => {
     expect(screen.getByRole("button", { name: "지금 동기화" })).toBeDisabled();
   });
 
+  it("대기만 있으면 문제가 아닌 상태로 부르고, 명령은 사람이 읽는 말로 보인다", async () => {
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+    await db.outbox.bulkPut([
+      {
+        idempotency_key: "op-t",
+        entity: "tasting_session",
+        op: "action",
+        action: "record_tasting",
+        entity_id: "t1",
+        fields: { bottle_id: "b1", tasted_on: "2026-10-05" },
+        created_at: NOW,
+        status: "pending",
+        error: null,
+      },
+      {
+        idempotency_key: "op-f",
+        entity: "bottle",
+        op: "action",
+        action: "finish",
+        entity_id: "b1",
+        fields: {},
+        created_at: NOW,
+        status: "pending",
+        error: null,
+      },
+    ]);
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "오프라인 (대기 2건)" }));
+
+    expect(await screen.findByRole("dialog", { name: "동기화 상태" })).toBeInTheDocument();
+    expect(screen.getByText("시음 기록 · 2026-10-05")).toBeInTheDocument();
+    expect(screen.getByText("병 소진")).toBeInTheDocument();
+    expect(screen.queryByText(/record_tasting/)).not.toBeInTheDocument();
+  });
+
   it("실패가 여러 건이면 모두 다시 보내기로 새 명령을 만든다", async () => {
     for (const key of ["f1", "f2"]) {
       await db.outbox.put({

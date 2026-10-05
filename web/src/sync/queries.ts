@@ -824,7 +824,7 @@ export async function getVendors(): Promise<Vendor[]> {
 // SQL 의 `product_price_metrics_query` 와 같은 규칙(product_price_metrics_query 의
 // docstring 참고)을 domain 함수로 재사용하는 셈이다.
 
-const UNCATEGORIZED_LABEL = "미분류";
+const UNCATEGORIZED_LABEL = "주종 미지정";
 const DEFAULT_RANKING_LIMIT = 10;
 
 interface StatsRow {

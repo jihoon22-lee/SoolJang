@@ -95,11 +95,16 @@ export function QuickTastingSheet({
         userId: queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
       });
       rememberTastingContext({ place: values.place.trim(), companions: values.companions.trim() });
-      toast.show({
-        message: `${chosen.productName} 시음을 기록했습니다${
-          chosen.status === "unopened" ? " (개봉 처리)" : ""
-        }`,
-      });
+      const available =
+        chosen.status === "open" ? (chosen.remainingMl ?? chosen.volumeMl) : chosen.volumeMl;
+      const finished =
+        values.pouredMl !== "" && available !== null && Number(values.pouredMl) === available;
+      const effect = finished
+        ? " (다 마셔 소진 처리)"
+        : chosen.status === "unopened"
+          ? " (개봉 처리)"
+          : "";
+      toast.show({ message: `${chosen.productName} 시음을 기록했습니다${effect}` });
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "기록하지 못했습니다");

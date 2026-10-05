@@ -360,3 +360,25 @@ def test_quality_labels_unnamed_purchases_and_ignores_deleted_products(
     assert [item["label"] for item in vendor_items] == ["라벨 술 · 2026-09-01 · 2병"]
     assert report["coverage"]["zero_paid_purchases"] == 1
     assert report["coverage"]["unassigned_stock_bottles"] == 2
+
+
+def test_bottle_history_names_the_locations_a_bottle_moved_between(
+    api_client: TestClient, prefix: str
+) -> None:
+    # 이동 이력은 위치 id 만 저장한다. 화면이 "어디서 어디로"를 말할 수 있게 이름을 붙여 준다.
+    _, _, bottles = sample(api_client, prefix)
+    bottle_id = bottles[0]["id"]
+    cellar = post(api_client, prefix, "/collection/locations", {"name": "셀러", "kind": "cabinet"})
+    shelf = post(api_client, prefix, "/collection/locations", {"name": "선반", "kind": "shelf"})
+    for location in (cellar, shelf):
+        api_client.put(
+            f"{prefix}/collection/bottles:move",
+            json={"bottle_ids": [bottle_id], "location_id": location["id"]},
+        )
+
+    history = api_client.get(f"{prefix}/bottles/{bottle_id}/history").json()
+
+    latest = history[0]
+    assert latest["action"] == "move"
+    assert latest["detail"] == {"from_location_id": cellar["id"], "to_location_id": shelf["id"]}
+    assert latest["labels"] == {cellar["id"]: "셀러", shelf["id"]: "선반"}

@@ -79,7 +79,24 @@ export function TastingFields({
               {ml}ml
             </button>
           ))}
+          {/* 캔·작은 병은 한 번에 다 마시는 경우가 많다. 남은 양을 모두 따르면 소진으로 기록된다. */}
+          {remainingMl && !POUR_PRESETS.includes(remainingMl) ? (
+            <button
+              type="button"
+              aria-pressed={values.pouredMl === String(remainingMl)}
+              onClick={() =>
+                onChange({
+                  pouredMl: values.pouredMl === String(remainingMl) ? "" : String(remainingMl),
+                })
+              }
+            >
+              남은 양 전부({remainingMl}ml)
+            </button>
+          ) : null}
         </div>
+        {remainingMl && values.pouredMl === String(remainingMl) ? (
+          <p className="muted text-sm">저장하면 이 병을 다 마신 것으로(소진) 기록합니다.</p>
+        ) : null}
         <label htmlFor={ids.poured}>
           직접 입력(ml)
           {remainingMl ? <span className="muted"> · 남은 양 {remainingMl}ml</span> : null}

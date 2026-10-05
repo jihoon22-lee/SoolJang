@@ -380,7 +380,7 @@ function PurchaseSection({
         </output>
       ) : (
         <div className="table-scroll table-scroll--always">
-          <table className="product-table purchase-table">
+          <table className="product-table purchase-table purchase-cards">
             <caption className="sr-only">구매 이력</caption>
             <thead>
               <tr>
@@ -405,18 +405,22 @@ function PurchaseSection({
               {purchases.map((purchase) => (
                 <Fragment key={purchase.id}>
                   <tr>
-                    <td>{formatDate(purchase.purchased_on)}</td>
-                    <td>{purchase.vendor_name ?? "미기록"}</td>
-                    <td className="numeric">{purchase.quantity}</td>
-                    <td className="numeric">
+                    <td data-label="구매일">{formatDate(purchase.purchased_on)}</td>
+                    <td data-label="구매처">{purchase.vendor_name ?? "미기록"}</td>
+                    <td data-label="병수" className="numeric">
+                      {purchase.quantity}
+                    </td>
+                    <td data-label="병당 정가" className="numeric">
                       {formatMoney(purchase.unit_list_price, { short: true })}
                     </td>
-                    <td className="numeric">
+                    <td data-label="병당 실구매가" className="numeric">
                       {formatMoney(purchase.unit_paid_price, { short: true })}
                     </td>
-                    <td className="numeric">{formatMoney(purchase.paid_total, { short: true })}</td>
+                    <td data-label="총 지출" className="numeric">
+                      {formatMoney(purchase.paid_total, { short: true })}
+                    </td>
                     {!offline && (
-                      <td>
+                      <td className="purchase-actions">
                         <div className="button-row">
                           {onUpdatePurchase ? (
                             <button

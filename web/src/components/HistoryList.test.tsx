@@ -15,7 +15,26 @@ describe("HistoryList", () => {
     ).toBe("상태 개봉 → 소진 · 잔량(ml) 300 → 0");
     expect(
       describeHistory({ at: "x", action: "gift", detail: { note: "친구", vendor_id: ["a", "b"] } }),
-    ).toBe("메모 친구 · 구매처 다른 구매처 → 다른 구매처");
+    ).toBe("메모 친구 · 구매처 지운 구매처 → 지운 구매처");
+  });
+
+  it("구매처·위치는 서버가 붙인 이름으로, 가격은 원 단위로 읽는다", () => {
+    expect(
+      describeHistory({
+        at: "x",
+        action: "update",
+        detail: { vendor_id: [null, "v1"], unit_paid_price: ["2500", "2200"] },
+        labels: { v1: "동네 마트" },
+      }),
+    ).toBe("구매처 없음 → 동네 마트 · 병당 실구매가 2,500원 → 2,200원");
+    expect(
+      describeHistory({
+        at: "x",
+        action: "move",
+        detail: { from_location_id: null, to_location_id: "l1" },
+        labels: { l1: "셀러" },
+      }),
+    ).toBe("미지정 → 셀러");
   });
 
   it("펼칠 때만 불러오고 오프라인이면 안내한다", async () => {
