@@ -7,6 +7,7 @@
 import os
 from functools import lru_cache
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -64,6 +65,17 @@ class Settings(BaseSettings):
     # NoDecode 로 pydantic-settings 의 JSON 디코딩을 끄고, 쉼표 구분 문자열을 받는다.
     # 환경 변수로 리스트를 표현할 때 JSON 을 요구하면 실수하기 쉽다.
     cors_origins: Annotated[tuple[str, ...], NoDecode] = ()
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        """오타 난 시간대는 기동할 때 거절한다. 그대로 두면 앱은 정상으로 뜨고 날짜를 비운
+        기록(개봉·시음 등)마다 500 으로 실패한다."""
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValueError(f"알 수 없는 시간대입니다: {value!r} (예: Asia/Seoul)") from error
+        return value
 
     @field_validator("cors_origins", "push_allowed_hosts", mode="before")
     @classmethod

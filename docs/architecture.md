@@ -530,7 +530,6 @@ UTC `timestamptz`다.
 | collection | `PATCH /collection/stocktakes/{stocktake_id}` | Update Stocktake |
 | collection | `POST /collection/stocktakes/{stocktake_id}/found` | Found |
 | collection | `POST /collection/stocktakes/{stocktake_id}/scan` | Scan |
-| collection | `POST /collection/stocktakes/{stocktake_id}/scans:batch` | Scan Many |
 | collection | `POST /collection/stocktakes/{stocktake_id}:apply-locations` | Apply Locations |
 | connections | `GET /connections` | List Connections |
 | connections | `POST /connections` | Register Connection |

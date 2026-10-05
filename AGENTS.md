@@ -95,7 +95,7 @@ Python은 4-space 인덴트와 Ruff 포맷을 사용한다. 함수·모듈은 `s
 | 개별 병 | `bottle` | 물리적 병 1개 (상태·잔량) |
 | 시음 세션 | `tasting_session` | 한 번 마신 기록 (평점·노트) |
 | 평단가 / 실평단가 | `avg_list_price` / `avg_paid_price` | 병당 평균 정가 / 실구매가 |
-| 100ml당 가격 | `price_per_100ml` | 실평단가 기준 단위 가격 |
+| 100ml당 가격 | `price_per_100ml` | **정가** 기준 단위 가격(레거시 통계 재현, D5·D68). 실구매가 기준은 `price_per_100ml_paid` |
 
 ## Testing Guidelines
 

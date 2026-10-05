@@ -182,26 +182,67 @@ async def apply_observed_locations(
     """실사에서 기록과 다른 위치로 관찰된 병을 관찰한 위치로 옮긴다.
 
     실사는 재고 상태를 바꾸지 않는다는 원칙은 그대로다 — 위치만 사용자가 명시적으로 요청할
-    때 반영한다. 반영한 관찰은 결과를 `relocated` 로 바꿔 두 번 옮기지 않는다.
+    때 반영한다. 반영한 관찰은 결과를 `relocated` 로 바꿔 두 번 옮기지 않는다. 실사 뒤에
+    지워진 병이나 위치는 건너뛰고 `relocation_skipped` 로 남긴다 — 한 건 때문에 나머지 반영이
+    모두 취소되면 불일치를 영영 정리할 수 없다.
     """
     row = await owned(session, Stocktake, user_id, stocktake_id)
-    targets: dict[uuid.UUID | None, list[uuid.UUID]] = {}
-    for observation in row.observations.values():
-        if observation["result"] != "location_mismatch":
-            continue
-        observed = observation["observed_location_id"]
-        targets.setdefault(uuid.UUID(observed) if observed else None, []).append(
-            uuid.UUID(observation["bottle_id"])
+    pending = [
+        observation
+        for observation in row.observations.values()
+        if observation["result"] == "location_mismatch"
+    ]
+    bottle_ids = {uuid.UUID(observation["bottle_id"]) for observation in pending}
+    location_ids = {
+        uuid.UUID(observation["observed_location_id"])
+        for observation in pending
+        if observation["observed_location_id"]
+    }
+    live_bottles = set(
+        await session.scalars(
+            select(Bottle.id).where(
+                Bottle.id.in_(bottle_ids), Bottle.user_id == user_id, Bottle.deleted_at.is_(None)
+            )
         )
+    )
+    live_locations = set(
+        await session.scalars(
+            select(StorageLocation.id).where(
+                StorageLocation.id.in_(location_ids),
+                StorageLocation.user_id == user_id,
+                StorageLocation.deleted_at.is_(None),
+            )
+        )
+    )
+
+    targets: dict[uuid.UUID | None, list[uuid.UUID]] = {}
+    skipped: set[str] = set()
+    for observation in pending:
+        bottle_id = uuid.UUID(observation["bottle_id"])
+        observed = observation["observed_location_id"]
+        location_id = uuid.UUID(observed) if observed else None
+        if bottle_id not in live_bottles or (
+            location_id is not None and location_id not in live_locations
+        ):
+            skipped.add(observation["bottle_id"])
+            continue
+        targets.setdefault(location_id, []).append(bottle_id)
     moved = 0
     for location_id, ids in targets.items():
         moved += (await move_bottles(session, user_id, ids, location_id))["moved"]
     row.observations = {
-        key: {**value, "result": "relocated"} if value["result"] == "location_mismatch" else value
+        key: (
+            {
+                **value,
+                "result": "relocation_skipped" if value["bottle_id"] in skipped else "relocated",
+            }
+            if value["result"] == "location_mismatch"
+            else value
+        )
         for key, value in row.observations.items()
     }
     await session.flush()
-    return {"moved": moved}
+    return {"moved": moved, "skipped": len(skipped)}
 
 
 async def start_stocktake(

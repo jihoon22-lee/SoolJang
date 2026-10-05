@@ -6,11 +6,17 @@
  * 술은 알리지 않는다(null).
  */
 
+// 위에서부터 처음 맞는 규칙을 쓴다. 기본 주종 "주정강화와인"·"셰리와인"처럼 이름에 "와인"이
+// 함께 든 술이 있어, 더 구체적인 주정강화·리큐르 규칙을 일반 와인보다 먼저 둔다.
 const RULES: { keywords: string[]; days: number; label: string }[] = [
+  {
+    keywords: ["주정강화", "포트", "셰리", "마데이라", "마르살라", "베르무트", "리큐르"],
+    days: 90,
+    label: "주정강화·리큐르",
+  },
+  { keywords: ["사케", "청주", "약주", "니혼슈"], days: 30, label: "청주·사케" },
   { keywords: ["맥주", "막걸리", "탁주", "생주"], days: 3, label: "맥주·막걸리" },
   { keywords: ["와인", "샴페인", "스파클링"], days: 7, label: "와인" },
-  { keywords: ["사케", "청주", "약주", "니혼슈"], days: 30, label: "청주·사케" },
-  { keywords: ["리큐르", "포트", "셰리", "베르무트"], days: 90, label: "주정강화·리큐르" },
 ];
 
 export interface ShelfLife {

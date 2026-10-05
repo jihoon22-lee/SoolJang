@@ -33,6 +33,7 @@ const RESULTS: Record<string, string> = {
   unexpected: "예정 목록 밖의 병",
   location_mismatch: "위치 불일치",
   relocated: "위치 반영함",
+  relocation_skipped: "반영 못 함(병·위치 삭제됨)",
 };
 
 const KIND_LABELS: Record<Location["kind"], string> = {
@@ -768,7 +769,12 @@ function StocktakePanel({
                 onClick={() =>
                   void run(async () => {
                     const result = await collectionApi.applyLocations(active.id);
-                    toast.show({ message: `${result.moved}병의 위치를 확인한 곳으로 바꿨습니다` });
+                    toast.show({
+                      message:
+                        result.skipped > 0
+                          ? `${result.moved}병의 위치를 바꿨습니다. 삭제된 병·위치 ${result.skipped}건은 건너뛰었습니다`
+                          : `${result.moved}병의 위치를 확인한 곳으로 바꿨습니다`,
+                    });
                   })
                 }
               >

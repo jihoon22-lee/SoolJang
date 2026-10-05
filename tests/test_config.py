@@ -55,3 +55,19 @@ def test_settings_reject_invalid_pool_size(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(ValidationError):
         get_settings()
+
+
+def test_unknown_timezone_is_rejected_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 오타 난 시간대로 기동하면 날짜를 비운 기록마다 500 이 난다. 설정 단계에서 막는다.
+    monkeypatch.setenv("SOOLJANG_TIMEZONE", "Asia/Seol")
+    get_settings.cache_clear()
+
+    with pytest.raises(ValidationError, match="알 수 없는 시간대"):
+        Settings(_env_file=None)
+
+
+def test_valid_timezone_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOOLJANG_TIMEZONE", "Europe/Paris")
+    get_settings.cache_clear()
+
+    assert Settings(_env_file=None).timezone == "Europe/Paris"
