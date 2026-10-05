@@ -16,8 +16,8 @@
 |---|---|
 | 최종 갱신 | 2026-10-05 — v1.8.0 진행. 2026-10-04 코드 리뷰 전 항목 반영·문서 정리·직접 테스트 보강·v1.8.0 태그와 운영 배포까지 사용자 승인([#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
 | 현재 마일스톤 | [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) — 메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147), PR 묶음 ①~⑥(§2) |
-| 진행 브랜치 | ⑤ `feature/v180-docs`(문서 정리). 다음 ⑥ `feature/v180-release`. 재개 시 Git·열린 PR을 먼저 확인한다 |
-| 버전 | 코드·패키지 `1.7.1`(⑥에서 `1.8.0`), schema head `0019_record_event`(운영은 0018, 배포 때 적용) |
+| 진행 브랜치 | ⑥ `feature/v180-release`(직접 테스트 보강·버전 1.8.0). 머지 후 [operations.md](operations.md) §4로 태그·운영 배포. 재개 시 Git·열린 PR을 먼저 확인한다 |
+| 버전 | 코드·패키지 `1.8.0`(⑥), schema head `0019_record_event`(운영은 0018, 배포 때 적용) |
 | 운영 | API·웹 `1.7.1`, schema `0018_price_watch`([v1.7.1 릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.7.1)) |
 | 승인 범위 | 필수 CI 통과 후 자율 머지, 마일스톤 완료 후 v1.8.0 태그·운영 배포. 유료 계약·새 키 발급은 자동 수행하지 않는다 |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
@@ -29,9 +29,9 @@
 | ① 정확성 `feature/v180-correctness` | ✅ [#148](https://github.com/jihoon22-lee/SoolJang/pull/148) 머지 | [기록](../workthrough/2026-10-05-v180-correctness.md) |
 | ② 일괄 처리 `feature/v180-bulk-records` | ✅ [#149](https://github.com/jihoon22-lee/SoolJang/pull/149) 머지 | [기록](../workthrough/2026-10-05-v180-bulk-records.md) |
 | ③ 디자인·빠른 기록 `feature/v180-design` | ✅ [#150](https://github.com/jihoon22-lee/SoolJang/pull/150) 머지 | [기록](../workthrough/2026-10-05-v180-design.md) |
-| ④ 부가 기능 `feature/v180-insights` | 🟡 [#151](https://github.com/jihoon22-lee/SoolJang/pull/151) CI | [기록](../workthrough/2026-10-05-v180-insights.md) |
-| ⑤ 문서 정리 `feature/v180-docs` | 🟡 PR 진행 | [기록](../workthrough/2026-10-05-v180-docs.md) |
-| ⑥ 직접 테스트 보강·릴리스 `feature/v180-release` | ⬜ | — |
+| ④ 부가 기능 `feature/v180-insights` | ✅ [#151](https://github.com/jihoon22-lee/SoolJang/pull/151) 머지 | [기록](../workthrough/2026-10-05-v180-insights.md) |
+| ⑤ 문서 정리 `feature/v180-docs` | ✅ [#152](https://github.com/jihoon22-lee/SoolJang/pull/152) 머지 | [기록](../workthrough/2026-10-05-v180-docs.md) |
+| ⑥ 직접 테스트 보강·릴리스 `feature/v180-release` | 🟡 PR 진행, 이후 태그·배포 | [기록](../workthrough/2026-10-05-v180-release.md) |
 
 ## 3. 재개 절차
 
@@ -61,6 +61,8 @@
 | D221 | "오늘 마셨어요"는 홈에서 병 고르기 → 별점·따른 양 → 저장 두 단계다. 시음 입력은 날짜·별점(0.5 단위)·양 프리셋을 먼저, 향·맛 등은 접어 두며 직전 장소·동석자를 기기에 기억한다 | 한 잔 기록에 제품→병→8칸 폼을 거치던 흐름을 줄인다. 저장 규칙은 기존 `record_tasting` 과 같다 |
 | D222 | 병 상태 전이·잔량 조정·시음으로 인한 병 변화와 구매 수정을 `record_event`(0019, additive)에 바뀐 칸만 [이전, 이후]로 쌓는다. 온라인·동기화가 같은 서비스 함수를 거쳐 한 번만 남고, 과거 이력은 소급하지 않는다 | 실행 취소·실수 확인의 근거. 재계산할 수 없는 1차 사실이라 저장한다. 위치 이동은 기존 `bottle_movement` 와 합쳐 보인다 |
 | D223 | 개봉 후 권장 기간 알림은 서버 푸시가 아니라 홈 위젯으로 하고, 주종 경로 이름(와인 7일·맥주/막걸리 3일·청주/사케 30일·주정강화/리큐르 90일, 증류주 없음)으로 고른다. 규격별 지표·CSV 내보내기는 오프라인 계산으로 한다 | 새 서버 작업·알림 동의 없이 바로 쓸 수 있다. 푸시 확장은 실제 사용 뒤 판단한다 |
+| D224 | 주종이 없는 술의 묶음 이름은 "주종 미지정"이다. "미분류"는 레거시 가져오기가 만드는 실제 주종 이름으로만 쓴다 | 레거시 데이터가 있으면 통계·홈의 주종별 보유에 "미분류"가 두 줄(실제 주종·주종 없음) 나와 구분할 수 없었다(직접 테스트) |
+| D225 | 변경 이력은 구매처·보관 위치를 id로만 저장하고, 읽을 때 이 사용자 소유 기록의 지금 이름을 `labels`로 붙인다 | 이름을 바꾸면 과거 이력도 새 이름으로 읽히는 편이 덜 헷갈리고, 저장 형식(D222)을 바꾸지 않는다 |
 
 ## 5. 열린 질문
 
