@@ -47,8 +47,7 @@ flowchart LR
 가격 감시는 Interest별 정기 조회에 따로 동의한 경우만 제한된 worker가 실행한다. 푸시 수신도
 별도 동의다. 요청마다 설정 revision·호스트·실제 호출량을 검사하며 개인 소비 이력을 보내지 않는다.
 오프라인에서도 기존 기록·로컬 조회와 입력 복원은 유지되지만 외부 탐색·가격 이력·첨부 원본은
-온라인이 필요하다. 상세 계약은 [연결 관리](provider-connections.md), [가격 감시](price-watch.md),
-[수용 원장](plans/v1.7.0/acceptance.md)에 연결한다.
+온라인이 필요하다. 상세 계약은 [external-data.md](external-data.md)에 둔다.
 
 ### 1.2 컴포넌트 구조
 
@@ -376,6 +375,22 @@ erDiagram
   `warning`, `fetched_at`. `ttl_hours` 내 재조회 요청은 이 값을 그대로 돌려준다(§7.3).
   `source_url` 없는 결과는 저장하지 않는다(§7.1 절대 규칙) — 동기화 대상이 아니다
 - `user`, `session`: 인증(§6)
+- `storage_location`, `bottle_placement`, `bottle_movement`, `stocktake`, `cleanup_preview`:
+  보관 위치·병 배치·이동 이력·재고 실사·정리 미리보기(v1.7.0). 온라인 전용이며 동기화 대상이
+  아니다. 실사 관찰은 `stocktake.observations` JSONB에 둔다(개인 규모라 행 재작성 비용이 작다, D218)
+- `record_event`(0019, v1.8.0): 병 상태 전이·잔량 조정·시음으로 인한 병 변화와 구매 수정의
+  변경 이력. `entity`(`bottle`|`purchase`), `entity_id`, `action`, `detail jsonb`(바뀐 칸의
+  [이전, 이후]). 재계산할 수 없는 1차 사실이라 저장한다. 동기화 대상이 아니며 과거 이력은
+  소급하지 않는다(D222)
+- 외부 연결·탐색·관심·가격 감시 테이블(`provider_connection`, `interest`, `external_offer`,
+  `price_watch` 등)은 [external-data.md](external-data.md)를 본다
+
+### 날짜와 시간대
+
+"오늘"로 채우는 날짜(개봉·소진·증여·판매·시음·구매 기본값)는 사용자 시간대 기준이다. 웹은
+기기 시간대(`format.todayLocal`), 서버는 `SOOLJANG_TIMEZONE`(기본 Asia/Seoul, `clock.local_today`)을
+쓴다. 컨테이너 UTC를 그대로 쓰면 한국 00~09시 기록이 전날로 저장된다(D212). 타임스탬프 컬럼은
+UTC `timestamptz`다.
 
 ### 2.4 인덱스
 
@@ -406,7 +421,7 @@ erDiagram
 | 실평단가 (`avg_paid_price`) | `Σ(unit_paid_price_i × quantity_i) / Σ quantity_i` |
 | 100ml당 가격 | `avg_list_price / (volume_ml / 100)` — **정가 기준** |
 | 100ml당 실가격 | `avg_paid_price / (volume_ml / 100)` — 신규 지표 |
-| 할인율 | `1 − (Σ unit_paid × qty) / (Σ unit_list × qty)` |
+| 할인율 | `1 − (Σ unit_paid × qty) / (Σ unit_list × qty)` — 정가가 기록된(0원 초과) 구매만(D215) |
 | 재고 자산가치(원가) | `Σ_{b∈재고} avg_paid_price(sku(b))` |
 | 재고 자산가치(시세) | `Σ_{b∈재고} latest_price_observation(sku(b))`, 관측 없으면 원가로 대체 |
 | 개봉 후 소진 기간 | `finished_on − opened_on` (일) |
@@ -420,9 +435,13 @@ erDiagram
 여러 용량이 섞인 제품의 제품 수준 100ml당 가격은 **가중 평균**으로 계산한다:
 `Σ(unit_list × qty) / Σ(volume_ml × qty / 100)`.
 
-구매 정가·실구매가 공란/NULL은 선물·포인트 구매 등의 0원이다(2026-09-07 사용자 정정).
+구매 정가·실구매가 공란/NULL은 선물·포인트 구매 등의 0원이다(2026-09-07 사용자 정정, D211).
 제품별·전체 평균의 분모에 해당 병수와 용량을 포함한다. 구매 자체가 없거나 분모가 0인
-지표만 미정의로 남긴다. 이전의 공란 구매를 평균에서 제외하던 해석은 폐기한다.
+지표만 미정의로 남긴다. 다만 **할인율**은 정가 0원을 기준으로 삼을 수 없어 정가가 기록된
+구매만으로 계산하고, **가격 순위**(병당·총액·100ml당)에는 0원 제품을 넣지 않는다(D215).
+
+제품 수준 지표는 여러 용량(규격)을 섞은 값이다. 제품 상세의 "용량별" 표는 같은 규칙을
+규격마다 따로 적용해 보여준다(오프라인 계산).
 
 계산은 `domain/metrics.py`의 순수 함수로 구현하고, 목록·통계 조회 성능이 필요한 경로는 동일
 공식을 SQL 뷰로 이중 구현한다. **두 구현이 같은 결과를 내는지 검증하는 테스트를 둔다.**
@@ -457,42 +476,149 @@ erDiagram
 
 ### 4.2 엔드포인트
 
-| 메서드 · 경로 | 설명 | Task |
+아래 표는 v1.8.0 앱의 OpenAPI에서 생성했다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
+라우터 단위로 인증을 요구하고(§6), 사용자 데이터는 소유권을 검사한다. 외부 연결·탐색·가격
+감시 경로의 동작은 [external-data.md](external-data.md)를 본다.
+
+| 영역 | 메서드 · 경로 | 설명 |
 |---|---|---|
-| `GET /health` | 헬스체크 (인증 불필요) | 5 |
-| `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | 세션 인증 | 12 |
-| `GET·POST /categories`, `PATCH·DELETE /categories/{id}` | 주종 계층 CRUD | 9 |
-| `POST /categories/{id}:reparent` | 부모 변경 (서브트리 동반 이동, 순환 검사) | 9 |
-| `POST /categories:reorder` | 형제 간 표시 순서 일괄 변경 | 9 |
-| `POST /categories/{id}:merge` | 다른 카테고리로 병합 (제품·하위 이관 후 원본 soft delete) | 9 |
-| `POST /categories:reset-seed` | 기본 시드 복원 (사용자 생성 항목은 유지) | 9 |
-| `GET·POST /products`, `GET·PATCH·DELETE /products/{id}` | 제품 | 9 |
-| `GET /products/{id}/metrics` | 파생 지표 | 9 |
-| `GET·POST /products/{id}/skus`, `PATCH·DELETE /skus/{id}` | 규격 | 9 |
-| `GET·POST /purchases`, `GET·PATCH·DELETE /purchases/{id}` | 구매 건 | 9 |
-| `POST /purchases/{id}:split` | 구매 건 분할 (레거시 합성 lot 해체) | 9 |
-| `GET /bottles`, `PATCH /bottles/{id}` | 개별 병 | 13 |
-| `POST /bottles/{id}:open`, `:finish`, `:gift`, `:sell` | 상태 전이 | 13 |
-| `GET·POST /bottles/{id}/tastings`, `PATCH·DELETE /tastings/{id}` | 시음 세션 | 13 |
-| `GET·POST /vendors`, `PATCH·DELETE /vendors/{id}` | 구매처 | 9 |
-| `POST /attachments` | 이미지 업로드 | 10 |
-| `GET /attachments?product_id=…` / `GET /attachments/{id}/content` | 인증·소유권 기반 목록/원본, no-store·경로/해시 검증 | v1.7 B09 |
-| `POST /imports/legacy:analyze` | 업로드 파일 블록 분석·dry-run | 11 |
-| `POST /imports/legacy:commit` | 실제 적재 | 11 |
-| `GET /imports/{id}/report` | 실패 행·경고 리포트 | 11 |
-| `GET /stats/rankings`, `GET /stats/by-category`, `GET /stats/summary` | 통계 v1 | 14 |
-| `GET /stats/timeseries`, `POST /stats/pivot` | 통계 v2 | 20 |
-| `GET·POST /saved-views`, `PATCH·DELETE /saved-views/{id}` | 커스텀 뷰 | 20 |
-| `GET /sync?since=<cursor>` | 델타 풀 | 15 |
-| `POST /sync/batch` | outbox 일괄 전송 | 15 |
-| `GET /barcodes/{code}` | 바코드 조회 (로컬 → 외부 → 검색) | 16 |
-| `GET·PUT·DELETE /llm-settings` | LLM 제공자·API 키(암호화 저장)·모델 설정 | 17 |
-| `POST /ocr/label` | 라벨 OCR 구조화 추출. 아무것도 저장하지 않는다 | 17 |
-| `GET·POST /external-sources`, `PATCH·DELETE /external-sources/{id}` | 소스 레지스트리 | 18 |
-| `POST /external-sources:discover` | 추천 소스 자동 탐색 | 19 |
-| `POST /products/{id}/external:refresh` | 외부 정보 온디맨드 조회 | 18 |
-| `GET /products/{id}/external` | 저장된 스냅샷 조회 | 18 |
-| `GET /skus/{id}/prices` | 시세 이력 | 19 |
+| attachments | `GET /attachments` | List Product Attachments |
+| attachments | `POST /attachments` | Upload Attachment |
+| attachments | `GET /attachments/{attachment_id}/content` | Attachment Content |
+| auth | `POST /auth/login` | 로그인 |
+| auth | `POST /auth/logout` | 로그아웃 |
+| auth | `GET /auth/me` | 현재 사용자 |
+| auth | `PATCH /auth/me` | 표시 이름 수정 |
+| auth | `POST /auth/password` | 비밀번호 변경 (다른 세션 전부 폐기) |
+| auth | `GET /auth/setup` | 초기 설정 필요 여부 |
+| auth | `POST /auth/setup` | 최초 사용자 생성 |
+| barcodes | `GET /barcodes/{code}` | 바코드 조회 (로컬 → 외부) |
+| bottles | `GET /bottles` | 병 목록 |
+| bottles | `GET /bottles/{bottle_id}` | 병 조회 |
+| bottles | `GET /bottles/{bottle_id}/history` | 병 변경 이력 |
+| bottles | `GET /bottles/{bottle_id}/tastings` | 병의 시음 타임라인 |
+| bottles | `POST /bottles/{bottle_id}:finish` | 소진 |
+| bottles | `POST /bottles/{bottle_id}:gift` | 증여 |
+| bottles | `POST /bottles/{bottle_id}:open` | 개봉 |
+| bottles | `POST /bottles/{bottle_id}:remaining` | 잔량 조정 |
+| bottles | `POST /bottles/{bottle_id}:reopen` | 상태 되돌리기 |
+| bottles | `POST /bottles/{bottle_id}:sell` | 판매 |
+| bottles | `POST /bottles/{bottle_id}:unopen` | 개봉 취소 |
+| categories | `GET /categories` | 주종 계층 전체 조회 |
+| categories | `POST /categories` | 주종 추가 |
+| categories | `DELETE /categories/{category_id}` | 주종 삭제 |
+| categories | `PATCH /categories/{category_id}` | 주종 수정 |
+| categories | `POST /categories/{category_id}:merge` | 주종 병합 |
+| categories | `POST /categories/{category_id}:reparent` | 주종 이동 |
+| categories | `POST /categories:reorder` | 표시 순서 일괄 변경 |
+| categories | `POST /categories:reset-seed` | 기본 주종 복원 |
+| categories | `POST /categories:save-as-default` | 현재 구조를 기본으로 저장 |
+| collection | `GET /collection/bottles` | Bottles |
+| collection | `PUT /collection/bottles/{bottle_id}/location` | Place |
+| collection | `GET /collection/bottles/{bottle_id}/movements` | Movements |
+| collection | `PUT /collection/bottles:move` | Place Many |
+| collection | `GET /collection/cleanup/history` | Cleanup History |
+| collection | `POST /collection/cleanup/preview` | Preview |
+| collection | `POST /collection/cleanup/{preview_id}/confirm` | Confirm |
+| collection | `GET /collection/locations` | Locations |
+| collection | `POST /collection/locations` | Create Location |
+| collection | `PATCH /collection/locations/{location_id}` | Update Location |
+| collection | `GET /collection/quality` | Quality |
+| collection | `GET /collection/stocktakes` | Stocktakes |
+| collection | `POST /collection/stocktakes` | Create Stocktake |
+| collection | `PATCH /collection/stocktakes/{stocktake_id}` | Update Stocktake |
+| collection | `POST /collection/stocktakes/{stocktake_id}/found` | Found |
+| collection | `POST /collection/stocktakes/{stocktake_id}/scan` | Scan |
+| collection | `POST /collection/stocktakes/{stocktake_id}/scans:batch` | Scan Many |
+| collection | `POST /collection/stocktakes/{stocktake_id}:apply-locations` | Apply Locations |
+| connections | `GET /connections` | List Connections |
+| connections | `POST /connections` | Register Connection |
+| connections | `GET /connections/providers` | Providers |
+| connections | `DELETE /connections/{connection_id}` | Disconnect |
+| connections | `GET /connections/{connection_id}` | Read Connection |
+| connections | `PATCH /connections/{connection_id}` | Edit Connection |
+| connections | `POST /connections/{connection_id}/probe` | Test Connection |
+| connections | `PUT /connections/{connection_id}/sources/{source_id}` | Share Connection |
+| discovery | `POST /discovery/apply` | Apply |
+| discovery | `POST /discovery/interests/{interest_id}/lookup` | Interest Lookup |
+| discovery | `POST /discovery/lookup` | Lookup |
+| discovery | `GET /discovery/products/{product_id}/context` | Product Context |
+| discovery | `POST /discovery/products/{product_id}/lookup` | Product Lookup |
+| discovery | `POST /discovery/search` | Search |
+| external-sources | `GET /external-sources` | 외부 소스 목록 |
+| external-sources | `POST /external-sources` | 외부 소스 등록 |
+| external-sources | `GET /external-sources/health` | 소스별 최근 조회 이력 요약 |
+| external-sources | `GET /external-sources/presets` | 번들 소스 프리셋 카탈로그 |
+| external-sources | `DELETE /external-sources/{source_id}` | 외부 소스 삭제 |
+| external-sources | `PATCH /external-sources/{source_id}` | 외부 소스 수정 |
+| external-sources | `PUT /external-sources/{source_id}/credentials` | 소스에 필요한 자격 증명을 일괄 저장(암호화) |
+| external-sources | `POST /external-sources/{source_id}/probe` | 샘플 제품명으로 소스를 테스트 조회(캐시에 저장하지 않음) |
+| external-sources | `POST /products/{product_id}/external-lookup` | 제품에 대해 등록된 외부 소스를 조회 |
+| external-sources | `POST /products/{product_id}/external-matches` | 제품과 외부 소스 상품의 매칭을 고정 |
+| external-sources | `DELETE /products/{product_id}/external-matches/{source_id}` | 매칭 고정 해제 |
+| health | `GET /health` | 서비스 상태 확인 |
+| health | `GET /health/live` | 프로세스 생존 확인 |
+| health | `GET /health/ready` | 서비스 준비 상태 확인 |
+| imports | `POST /imports/legacy:analyze` | 레거시 시트 분석 (dry-run) |
+| imports | `POST /imports/legacy:commit` | 레거시 시트 적재 |
+| interests | `GET /interests` | List Interests |
+| interests | `POST /interests` | Post Interest |
+| interests | `PATCH /interests/{interest_id}` | Patch Interest |
+| interests | `POST /interests/{interest_id}/purchase` | Purchase Interest |
+| llm-settings | `DELETE /llm-settings` | Remove Llm Setting |
+| llm-settings | `GET /llm-settings` | Read Llm Setting |
+| llm-settings | `PUT /llm-settings` | Upsert Llm Setting |
+| ocr | `POST /ocr/label` | Extract Label Fields |
+| price-watch | `GET /price-watch` | Watches |
+| price-watch | `POST /price-watch` | Create |
+| price-watch | `GET /price-watch/config` | Configuration |
+| price-watch | `GET /price-watch/interests/{interest_id}/history` | History |
+| price-watch | `GET /price-watch/notifications` | Notifications |
+| price-watch | `POST /price-watch/notifications/{notification_id}/read` | Mark Read |
+| price-watch | `GET /price-watch/products/{product_id}/history` | Product History |
+| price-watch | `GET /price-watch/runs/{run_id}` | Read Run |
+| price-watch | `GET /price-watch/subscriptions` | Subscriptions |
+| price-watch | `POST /price-watch/subscriptions` | Subscribe |
+| price-watch | `DELETE /price-watch/subscriptions/{subscription_id}` | Unsubscribe |
+| price-watch | `DELETE /price-watch/{watch_id}` | Remove |
+| price-watch | `PATCH /price-watch/{watch_id}` | Edit |
+| price-watch | `POST /price-watch/{watch_id}/check` | Check |
+| products | `GET /products` | 제품 목록 조회 |
+| products | `POST /products` | 제품 등록 |
+| products | `DELETE /products/{product_id}` | 제품 삭제 (soft delete) |
+| products | `GET /products/{product_id}` | 제품 상세 조회 |
+| products | `PATCH /products/{product_id}` | 제품 수정 |
+| products | `GET /products/{product_id}/metrics` | 파생 지표만 조회 |
+| products | `POST /products/{product_id}/skus` | 규격 추가 |
+| products | `PATCH /skus/{sku_id}` | 규격 수정 |
+| purchases | `GET /purchases` | 구매 건 목록 |
+| purchases | `POST /purchases` | 구매 건 등록 |
+| purchases | `DELETE /purchases/{purchase_id}` | 구매 건 삭제 |
+| purchases | `PATCH /purchases/{purchase_id}` | 구매 건 수정 |
+| purchases | `GET /purchases/{purchase_id}/bottles` | 구매 건의 병 목록 |
+| purchases | `GET /purchases/{purchase_id}/history` | 구매 건 변경 이력 |
+| purchases | `POST /purchases/{purchase_id}:split` | 구매 건 분할 |
+| saved-views | `GET /saved-views` | 저장된 뷰 목록 |
+| saved-views | `POST /saved-views` | 뷰 저장 |
+| saved-views | `DELETE /saved-views/{view_id}` | 뷰 삭제 |
+| saved-views | `PATCH /saved-views/{view_id}` | 뷰 이름·정의 수정 |
+| stats | `GET /stats/by-category` | 주종별 집계 |
+| stats | `POST /stats/pivot` | 커스텀 피벗 (Task 20) |
+| stats | `GET /stats/rankings` | 랭킹 4종 |
+| stats | `GET /stats/summary` | 전체 합계 |
+| stats | `GET /stats/timeseries` | 월별 지출·구매 병수 |
+| sync | `GET /sync` | 델타 풀 |
+| sync | `POST /sync/batch` | outbox 일괄 전송 |
+| sync | `POST /sync/conflicts/{conflict_id}:resolve` | 충돌 확인 처리 |
+| tastings | `GET /tastings` | 시음 타임라인 |
+| tastings | `POST /tastings` | 시음 기록 |
+| tastings | `GET /tastings/summary` | 시음 요약 |
+| tastings | `DELETE /tastings/{tasting_id}` | 시음 기록 삭제 |
+| vendors | `GET /vendors` | 구매처 목록 |
+| vendors | `POST /vendors` | 구매처 등록 |
+| vendors | `DELETE /vendors/{vendor_id}` | 구매처 삭제 |
+| vendors | `PATCH /vendors/{vendor_id}` | 구매처 수정 |
+| vendors | `POST /vendors/{vendor_id}:merge` | 구매처 병합 |
 
 ### 4.3 필터 규약
 
@@ -529,7 +655,15 @@ sequenceDiagram
   (구매 건 → 병 → 시음 세션 연쇄 생성이 오프라인에서 가능해진다)
 - `idempotency_key`는 `outbox_receipt`에 30일 보관한다. 재전송 시 같은 키면 이전 결과를 반환한다
 - 전송은 **순서 보장**이 필요하다. 부모 레코드보다 자식이 먼저 도착하면 FK가 깨진다.
-  outbox는 단일 직렬 큐로 처리하고, 실패 시 뒤 항목을 막는다(head-of-line blocking을 허용)
+  outbox는 단일 직렬 큐로 처리하고, **입력 자체가 거부된 실패**(검증 오류·없는 부모)는 뒤
+  항목을 막는다(head-of-line blocking). 사용자가 동기화 패널에서 입력을 고치거나, 다시 보내거나,
+  의존 명령과 함께 건너뛴다
+- **다른 기기와 부딪힌 병 상태 전이**(예: 오프라인 개봉 사이 다른 기기에서 소진)는 실패가 아니라
+  `conflict`다. 서버 상태를 유지하고 `conflict_log`에 남긴 뒤 배치를 계속한다. 오프라인에서
+  기록한 시음은 잔량이 부족해도 보존하고 잔량을 0(소진)으로 맞춘다(D213)
+- 여러 병·술의 일괄 처리(개봉·소진·증여·판매, 주종 변경, 삭제)도 항목마다 outbox 명령 하나로
+  적재한다. 실행 취소는 역방향 명령(`reopen`·`unopen`·`set_remaining`, 원래 주종)으로 보낸다(D217)
+- 실패 명령이 남아 있어도 받기(풀)는 계속한다. 대기 중인 행은 보호해 덮어쓰지 않는다
 
 ### 5.3 읽기 경로 (델타 풀)
 
@@ -539,13 +673,23 @@ sequenceDiagram
 - 커서는 `(updated_at, id)` 복합값을 불투명 문자열로 인코딩한다. `updated_at`만 쓰면 동일
   타임스탬프 레코드에서 누락이 생긴다
 - `deleted_at`이 채워진 레코드도 응답에 포함한다. 그래야 삭제가 전파된다
-- 클라이언트는 `updated_at`을 비교해 로컬이 더 최신이면 유지, 아니면 덮어쓴다
+- 클라이언트는 `updated_at`을 비교해 로컬이 더 최신이면 유지, 아니면 덮어쓴다. 온라인 생성
+  응답을 로컬에 미러할 때는 기기 시계를 믿지 않도록 `reconcile_ids`로 표시해 다음 풀이 덮어쓴다
+- `updated_at`은 트랜잭션 시작 시각이라 늦게 커밋된 행이 지나간 커서보다 이를 수 있다. 한 번의
+  동기화에서 **첫 페이지만** `rewind=true`로 커서 30초 앞부터 다시 읽는다(병합은 멱등)
 
 ### 5.4 충돌 처리
 
 같은 레코드가 양쪽에서 수정된 경우 서버 `updated_at`이 더 최신이면 서버 값을 채택하고, 로컬
 변경은 `conflict_log`에 원본과 함께 보관해 UI에 알린다. 사용자가 잃어버린 입력을 복구할 수
-있어야 한다.
+있어야 한다. 병 상태 전이 충돌도 같은 방식으로 남긴다(§5.2).
+
+### 5.5 삭제 전파
+
+제품 삭제는 하위 규격·구매·병을 같은 시각으로 soft delete 한다(구매 삭제가 병을 함께 지우는
+것과 같은 규칙, D214). 시음 기록은 지우지 않는다. 이전 버전에서 제품만 지워져 남은 하위 행은
+조회(보관·실사 목록, 병 목록, 구매처 집계, 품질 보고, 최근 시음)에서 부모 삭제를 함께 확인해
+제외한다. 주종 삭제는 온라인·동기화 모두 하위 주종·소속 제품이 있으면 거부한다.
 
 ## 6. 인증과 권한
 
@@ -584,298 +728,16 @@ Tailscale로 접근이 제한되어 있어도 앱 레벨 인증을 생략하지 
 `api/deps.py`의 `current_user_id`가 세션 쿠키를 해석한다. Task 9에서 이 자리를 미리 둔
 덕분에 이 함수만 바꿔 전 라우터에 인증이 적용됐다.
 
-## 7. 외부 데이터 어댑터
+## 7. 외부 데이터
 
-### 7.1 인터페이스
+외부 소스 레지스트리(`adapter` 전략), 통합 연결(네이버·Brave·Exa), 탐색·관심, 매칭·후보·고정,
+가격 관측과 감시·웹 푸시는 [external-data.md](external-data.md)에 모았다. 경계 원칙만 여기 둔다.
 
-```python
-class SourceAdapter(Protocol):
-    async def search(self, query: SearchQuery) -> list[Candidate]: ...
-    async def fetch(self, url: str) -> FetchedSnapshot: ...
-```
-
-`FetchedSnapshot`은 `ratings`, `reviews`, `prices`, `source_url`, `raw_excerpt`,
-`fetched_at`을 담는다. `source_url`이 없으면 어댑터가 예외를 던진다.
-
-**매칭 정보(Task 34 PR1)**: 조회 결과에는 값뿐 아니라 "무엇에 어느 정도 확신으로
-매칭됐는지"가 함께 담긴다 — `matched_name`, `match_score`, `needs_confirmation`,
-`pinned`, `candidates`(상위 5개). 이름 유사도는 100%가 될 수 없으므로 **결과를 정답
-하나로 제시하지 않는다.** 점수는 세 구간으로 나뉜다.
-
-| 구간 | 조건 | 동작 |
-|---|---|---|
-| 자동 채택 | `score ≥ 0.85` | 값을 바로 보여준다 |
-| 확인 필요 | `0.5 ≤ score < 0.85` | 값은 보여주되 후보를 함께 펼쳐 사용자 확인을 받는다 |
-| 후보 없음 | `score < 0.5` | 값 없음. 후보만 노출해 사용자가 직접 고르게 한다 |
-
-### 7.2 두 가지 전략
-
-| 전략 | 구현 | 용도 |
-|---|---|---|
-| `search` | 웹 검색 API로 후보를 찾고 LLM으로 구조화 요약. 출처 링크를 함께 저장 | 모든 주종 기본. 사이트별 구현 없이 즉시 동작 |
-| `adapter` | `adapter_spec` JSON/YAML의 셀렉터로 페이지를 파싱 | 정확도가 중요한 사이트(국내 가격 비교 등) |
-
-`adapter_spec` 스키마(HTML 모드, 기본값):
-
-```yaml
-version: 1
-search:
-  url_template: "https://example.com/search?q={query}"
-  item: ".product-card"
-  fields:
-    name: { selector: ".title", attr: text }
-    url:  { selector: "a", attr: href, absolute: true }
-detail:
-  fields:
-    price:  { selector: ".price", attr: text, transform: [strip_currency, to_number] }
-    rating: { selector: ".rating", attr: text, transform: [to_number] }
-    scale:  { const: 5 }
-```
-
-**JSON 모드**(`format: json`, Task 24 후속): 최근 국내 쇼핑몰은 Next.js 등으로 만들어져
-검색 결과 페이지의 HTML을 그대로 받으면 상품 정보가 비어 있고, 대신 브라우저가 호출하는
-별도 공개 JSON API가 있는 경우가 흔하다(데일리샷에서 실제로 겪음). 이 모드는 `selector`
-대신 점 구분 JSON 경로 `path`를 쓴다. 검색 응답 자체에 상세 정보가 이미 다 있으면
-`result_fields`로 상세 페이지를 다시 조회하지 않고 검색 응답에서 바로 최종 필드를 뽑는다.
-상세 페이지 링크가 `href`로 바로 오지 않고 다른 필드로 조립해야 하면(`id`→URL 등)
-`url_template`을 쓴다 — 아이템의 최상위 필드를 그대로 치환한다:
-
-```yaml
-version: 1
-format: json
-search:
-  url_template: "https://api.example.com/items/search/?q={query}"
-  item: "results"                                    # 리스트를 가리키는 JSON 경로
-  fields:
-    name: { path: "name" }
-    url:  { url_template: "https://example.com/item/{id}" }  # item["id"] 를 채운다
-  result_fields:                                       # 있으면 상세 페이지를 또 조회하지 않는다
-    price:  { path: "price" }
-    rating: { path: "review_rate" }
-    scale:  { const: 5 }
-```
-
-셀렉터(또는 JSON 경로)가 깨지면 예외 대신 **부분 결과 + 경고**를 반환하고 소스를
-`degraded`로 표시해 사용자에게 알린다. 사이트 구조 변경은 정상적으로 발생하는 일이므로
-실패가 앱 전체를 막아서는 안 된다.
-
-**표준 필드(Task 34 PR3)**: 소스마다 `가격`·`price`·`sale_price` 처럼 제각각인 필드명을
-쓰면 비교·최저가 계산이 불가능하다. `detail.fields`/`search.result_fields` 가 아래 키로
-값을 내보내면 `infrastructure/external/fields.py::split_fields` 가 이를 추려 타입까지
-맞춘다. 표준 키가 아닌 값은 `extra`로 손실 없이 보존된다 — 소스가 아직 표준 키로 안
-바뀌어도 값 자체는 그대로 보인다.
-
-| 키 | 타입 | 비고 |
-|---|---|---|
-| `price_krw` | int | 실제 판매가 |
-| `list_price_krw` | int \| null | 정가 |
-| `currency` | str | 기본 `"KRW"` |
-| `volume_ml` | int \| null | 이 가격이 어느 용량의 가격인지 |
-| `rating` | float \| null | 원 척도 그대로 |
-| `rating_scale` | float \| null | 5 / 100 등 |
-| `review_count` | int \| null | |
-| `in_stock` | bool \| null | |
-
-파생값(`rating_normalized` = `rating / rating_scale × 5`, `price_per_100ml` = `price_krw /
-volume_ml × 100`)은 **저장하지 않는다**(절대 규칙 6) — `NormalizedFields` 의 프로퍼티로
-응답을 조립할 때마다 다시 계산된다. 이 분류는 `adapter.py` 가 아니라
-`application/external_sources.py::lookup_product` 가 캐시 적중·신규 조회 양쪽 공통으로
-호출한다 — `AdapterResult` 생성 지점이 여러 곳이라 그중 하나에 두면 캐시 적중 경로를
-못 덮는다. 캐시 스냅샷에는 `"version": 2` 를 넣고, 버전이 낮은(표준 키 도입 이전) 행은
-TTL 과 무관하게 stale 로 취급해 다음 조회에서 자연스럽게 새 모양으로 교체한다.
-
-**`adapter_spec` v2**(Task 34 PR5): 실제 사이트를 붙이려면 `v1` 스펙으로는 부족하다.
-`version` 키가 없거나 `1`이면 새 키가 없는 것으로 보고 기존 동작(`GET`, 헤더 없음) 그대로
-동작한다 — 하위 호환이 깨지지 않는다.
-
-```yaml
-search:
-  method: POST                  # 기본 GET. POST 로 검색하는 국내 몰용
-  body: { keyword: "{query}" }  # method: POST 일 때만 쓴다. "{query}" 를 재귀 치환
-  headers: { Accept: "application/json" }  # 정적 헤더
-credentials:                    # 공식 API 키. 값은 스펙에 두지 않는다(아래 참조)
-  - name: client_id
-    inject: { type: header, key: "X-Naver-Client-Id" }
-  - name: client_secret
-    inject: { type: header, key: "X-Naver-Client-Secret" }
-detail:
-  fields:
-    title: { path: "title", transform: [strip_tags] }  # `<b>` 강조 태그 제거(네이버 쇼핑 등)
-```
-
-**자격 증명**: 값 자체는 `adapter_spec` 에 두지 않고 `external_source_credential` 에
-Fernet 으로 암호화해 저장한다(`LlmSetting` 과 같은 패턴, `infrastructure/security/
-secrets.py`) — 평문 저장 금지, 마지막 4자만 힌트로 노출, 요청 직전에만 복호화한다.
-**헤더 주입만 지원한다**(쿼리 파라미터 주입은 없음) — 값이 URL 에 들어가면 접근 로그·
-리다이렉트 Location 등으로 새기 쉽다.
-
-### 7.3 준수 규칙
-
-- 요청 전 `robots.txt`를 확인하고 캐시한다 — **실제 요청 대상 호스트**에서 받는다
-  (Task 34 PR5, D187). 검색 호스트와 상세 링크 호스트가 다른 소스(데일리샷의
-  `api.dailyshot.co` vs `dailyshot.co`)에서, 소스의 `base_url` 호스트 것만 받으면 실제로
-  요청이 나가는 다른 호스트의 규약을 확인하지 못한다 — robots.txt 는 호스트별 규약이다
-- 소스별 `rate_limit_per_min`을 적용하고, 조회는 사용자 조작 시점에만 발생시킨다
-- `ttl_hours` 내 재조회는 캐시를 반환한다
-- User-Agent에 프로젝트 식별자와 연락 수단을 넣는다
-- 대량 백그라운드 크롤링은 하지 않는다. 시세 추적(Task 19)도 관심 등록 품목에 한해 저빈도로 수행한다
-
-**구현 결정(Task 18)**: robots.txt 파서 캐시와 rate limit 카운터는 DB 가 아니라 프로세스
-메모리에 둔다. §8.1 토폴로지가 단일 프로세스 배포라 재시작 사이에 카운트가 리셋되는 정도는
-안전 마진 안이다 — `llm_setting`(§9.14)의 "단일 활성 행을 애플리케이션 계층에서 강제" 판단과
-같은 종류의 단순화다. 재조회 자체를 피하기 위한 TTL 캐시(`external_lookup_cache`)만 DB 에 둔다.
-
-### 7.3.1 이름 매칭 규칙 (Task 34 PR2)
-
-매칭 판정은 `infrastructure/external/matching.py`(네트워크 의존성 없는 순수 모듈)가 맡는다.
-어댑터는 네트워크만 담당하고, 판정 규칙은 표 기반 테스트로 따로 검증한다.
-
-**정규화** — 프로모션 블록(`[단독]`·`(1+1)`)을 걷어내고, 용량(`700ml`·`0.7L`·`70cl` →
-700), 숙성 연수(`10년`·`10y`·`aged 10`), 도수(`46.3%`·`46.3도`), 빈티지(단독 4자리)를
-속성으로 뽑아낸다. **속성으로 소비된 숫자는 토큰에서 빠진다** — 그래야 `700`이 빈티지로
-잘못 읽히지 않는다. 표기 동의어(캐스크 스트렝스=CS, 쉐리=셰리, 버본=버번)는 공백으로 갈린
-복합어까지 인접 토큰을 붙여 인식한다.
-
-**점수** — `0.6 × 토큰 집합 Jaccard + 0.4 × 정규화 문자열 유사도`. 토큰 집합을 주 가중치로
-둔 이유는 어순·수식어가 사이트마다 달라 문자열 비율이 그 흔들림에 약해서다.
-
-**하드 제약** — 용량·숙성 연수·빈티지·도수가 **양쪽에 값이 다 있는데** 다르면 점수를 0으로
-떨어뜨린다(도수는 0.6%p 허용 — 배치별 미세 차이). "양쪽에 다 있을 때만"이 핵심 안전장치다:
-한쪽이 모르는 값으로 정답을 탈락시키면 안 된다.
-
-이 규칙이 D148에 "순수 문자열 비교로는 원천적으로 구분할 수 없다"고 기록된 한계를 푼다.
-"우드포드 리저브"↔"우드포드 리저브 라이"는 `라이` 토큰이 한쪽에만 있어 토큰 점수가 떨어지고,
-"글렌고인"↔"글렌리벳"은 0.2까지 내려간다. 그래서 **접두사 게이트(`_plausible_candidate`)를
-제거했다** — 그 게이트는 `[단독] 글렌알라키…`처럼 상품명 앞에 문구가 붙으면 오히려 정답을
-탈락시키는 부작용이 있었다.
-
-**질의 확장** — `name` → `name_en`(있고 다를 때) → 배치 표기를 뺀 축약형 순으로 최대 3개를
-시도하되, **자동 채택 구간에 들면 즉시 멈춘다.** 질의 하나가 HTTP 요청 1회라 소스의
-`rate_limit_per_min`을 그만큼 소비하기 때문이다. 고정된 소스는 질의를 확장하지 않는다.
-
-### 7.4 매칭 고정 (Task 34 PR1)
-
-`external_product_match`에 "이 제품 = 이 소스의 이 상품"을 저장한다. 한 번 고정하면 이후
-조회는 유사도를 쓰지 않고 그 상품을 그대로 본다 — 그 제품에 한해 정확도가 100%가 된다.
-
-**고정은 사용자의 명시적 조작으로만 만들어진다.** 점수가 높다고 자동으로 고정하지 않는다
-(오답을 영구화할 위험). 고정하거나 해제하면 해당 `(소스, 제품)`의 `external_lookup_cache`
-행을 즉시 버린다 — 남겨 두면 `ttl_hours` 동안 옛 상품 값을 계속 보여준다.
-
-조회 경로는 소스 형태에 따라 갈린다. **고정은 "매칭 결정"을 고정하는 것이지 "요청 경로"를
-고정하는 것이 아니다.**
-
-| 소스 형태 | 동작 | 이유 |
-|---|---|---|
-| 상세 페이지가 따로 있는 소스 | 검색을 **건너뛰고** `external_url`을 직접 조회 | 왕복 1회 절감 + 검색 순위 변동에 영향받지 않음 |
-| `search.result_fields` 를 쓰는 JSON 모드 | 검색은 하되 후보 선택을 **유사도 대신 `external_key`/URL 일치**로 | 이 모드는 상세를 조회하지 않는다 — 값이 검색 응답 안에만 있어 검색을 건너뛸 수 없다 |
-
-두 번째 경로에서 고정된 키가 검색 결과에 더 이상 없으면(단종·개편) `degraded=True`로
-알리고 후보를 함께 돌려줘 재고정을 유도한다. **조용히 유사도 매칭으로 되돌아가지 않는다**
-— 그러면 고정의 의미가 사라진다.
-
-고정 URL은 **저장 시점과 조회 시점 양쪽에서** 소스의 `base_url`과 같은 호스트인지 확인한다
-(SSRF 방어). 저장 후에 `base_url`이 바뀔 수 있고, 클라이언트가 보낸 URL을 그대로 믿을
-이유도 없다.
-
-### 7.5 소스 헬스 체크 (Task 34 PR4)
-
-`external_lookup_cache`는 **성공한 조회만** 담아(절대 규칙 7 + `ok` 가드) 실패 이력이
-남는 곳이 없었다 — 소스가 언제부터 깨졌는지 알 방법이 없다는 뜻이다. `external_source_probe`
-가 그 공백을 메운다: 소스 하나에 실제로 조회를 시도한 결과(`ok`·`degraded`·`warning`)를
-성공·실패 가리지 않고 남기는 롤링 로그다(소스별 최근 20개). 절대 규칙 6(파생값 저장
-금지)에 걸리지 않는다 — 도메인 파생 지표가 아니라 다른 어디서도 재계산할 수 없는 1차
-사실(운영 로그)이다.
-
-**기록 시점**: `lookup_product`의 **실제 시도**(fresh fetch)와 `POST
-/external-sources/{id}/probe`(샘플 제품명으로 하는 테스트 조회) 에서만 기록한다. 캐시
-적중·rate limit 스킵은 시도가 아니므로 기록하지 않는다 — 헬스는 "사이트가 지금 살아
-있는가"를 보려는 것이지 캐시 재사용 빈도를 보려는 게 아니다. 테스트 조회는 실제 소유한
-제품이 아니라서 `external_lookup_cache`에는 저장하지 않는다.
-
-**헬스 판정**(최근 시도, 최신순):
-
-| 상태 | 조건 |
-|---|---|
-| `failing` | 가장 최근 시도부터 연속 실패가 3회 이상 |
-| `degraded` | `failing`이 아니고, 가장 최근 시도가 실패했거나 `degraded=True` |
-| `healthy` | 가장 최근 시도가 성공이고 `degraded=False` |
-| `unknown` | 시도 이력이 아예 없음(등록만 하고 조회한 적 없음) |
-
-`GET /external-sources/health`가 소스별 상태·마지막 성공 시각·연속 실패 횟수·마지막
-경고를 돌려준다. `SourcesPage`가 배지로 보여주고, "테스트 조회" 버튼으로 샘플 제품명을
-넣어 즉시 확인할 수 있다.
-
-### 7.6 소스 프리셋 카탈로그 (Task 34 PR5)
-
-`adapter_spec` JSON 을 직접 쓰는 등록(Task 18)은 정확하지만 사용자가 셀렉터 문법을
-알아야 한다. `infrastructure/external/presets.py::PRESET_CATALOG` 가 검증된 스펙을
-이름 하나로 골라 등록할 수 있게 한다 — `GET /external-sources/presets` 로 목록을 받고,
-`POST /external-sources`에 `preset_key`만 넘기면 `base_url`·`adapter_spec`을 프리셋
-값으로 채운다.
-
-**자동 갱신**: `external_source`에 `preset_key`·`preset_version`·`spec_overridden`을
-둔다. `list_sources` 조회 시점에(부팅 훅이 아니다) `spec_overridden=False`인 프리셋
-소스를 카탈로그의 최신 버전으로 맞춘다. 사용자가 `adapter_spec`을 직접 고치면
-`spec_overridden=True`로 자동 전환되어, 앱 업데이트가 그 편집을 덮어쓰지 않는다.
-
-### 7.7 애매 구간 LLM 재판정 (Task 34 PR6)
-
-PR1 의 "확인 필요" 구간(점수 0.5~0.85)에서 사용자가 매번 후보를 직접 골라야 하는 빈도를
-줄이는 **완전 opt-in** 보조 기능이다. `infrastructure/external/match_llm.py::rematch()`
-가 `llm.py::extract_label`(Task 17 라벨 OCR)과 같은 `chat.completions.parse` 구조화
-출력 패턴을 쓴다.
-
-**ToS 위험이 없다** — D167 에서 폐기한 `search` 전략(검색엔진 결과 스크래핑)과 다르다.
-이미 `adapter` 가 정당하게 받아온 검색 후보 이름 중에서 고르는 것뿐이고, 외부 사이트에
-추가 요청이 나가지 않는다.
-
-**호출 조건 전부**(하나라도 안 맞으면 호출 자체가 없다):
-
-1. 최고 점수 후보가 확인 필요 구간(`needs_confirmation=True`)
-2. `LlmSetting` 이 활성 상태
-3. 사용자가 설정 화면에서 "LLM 매칭 보조"를 켬(`rematch_enabled`, **기본 꺼짐**)
-4. 같은 `(소스, 제품)` 조합을 24시간 안에 호출하지 않았음
-5. 이번 달 호출 수가 사용자 설정 월 상한(`rematch_monthly_cap`, 기본 200회) 미만
-
-**입력을 최소화한다**: 내 제품의 이름·생산자·도수·용량·숙성·빈티지와 후보 **이름만**
-LLM 에 보낸다 — 가격·URL·후기는 함수 시그니처 자체에 실을 자리가 없다.
-
-**자동 고정하지 않는다.** `rematch()` 는 추천 인덱스만 돌려주고, `lookup_product` 가
-그 추천을 `SourceLookupResult.llm_recommended_url` 에 담아 응답에 실을 뿐이다.
-`SourcesPage`/`ExternalInfoCard` 는 그 URL 과 일치하는 후보에 "LLM 추천" 배지만 붙인다
-— 고정은 다른 후보와 똑같이 사용자가 "이걸로 고정"을 눌러야 한다(PR1 의 "고정은 사용자
-명시 조작으로만" 원칙).
-
-**실패는 예외 없이 조용한 폴백이다.** `rematch()` 는 `extract_label` 과 같은 계약이다
-— 인증 오류·타임아웃·거부·스키마 불일치·후보 범위를 벗어난 인덱스, 무엇이든 `None` 으로
-통일한다. 호출부(`_maybe_llm_rematch`)는 이 반환값을 그대로 신뢰하고 추가로 감싸지
-않는다 — `fetch_snapshot` 의 `ok` 를 호출부가 그대로 믿는 것과 같은 판단이다.
-
-**비용 가드는 DB 롤링 로그로 강제한다.** `rate_limit_per_min` 처럼 인메모리 슬라이딩
-윈도를 쓰지 않는 이유는, 재시작으로 카운트가 날아가면 월 상한이 무의미해지기 때문이다.
-`external_llm_rematch_log`(`external_source_probe` 와 같은 패턴)에 호출을 **실제로
-시도한 시점**을 성공·실패 가리지 않고 남긴다 — 잘못된 마스터 키로 계속 재시도하며 API
-요청을 낭비하는 경로를 막으려면 실패도 기록해야 한다.
-
-### 7.8 제외 키워드 (Task 34 PR7)
-
-`adapter_spec.search.exclude_keywords`(문자열 목록)에 든 단어가 후보 이름에 있으면
-그 후보를 검색 결과에서 뺀다 — 잔·글라스처럼 술 이름 검색에 곧잘 같이 걸리는 비주류
-상품(굿즈)을 걸러내는 용도다. 소스 컬럼이 아니라 **스펙 안**에 두는 이유는 프리셋으로
-함께 배포·갱신되어야 하기 때문이다(§7.6).
-
-**토큰 단위로 비교한다** — 단순 부분 문자열 매칭은 `잔`이 `잔티`·`발란자`에도 걸리는
-오탐을 낸다. `matching.py::is_excluded()` 가 §7.3.1 의 `parse_name()` 으로 후보 이름과
-키워드 양쪽을 토큰화하고, **키워드의 토큰 전부가 후보의 토큰 집합에 포함될 때**(부분
-집합) 제외한다. 초안 목록(잔·글라스·디캔터·미니어처·공병·굿즈·안주·선물세트·쇼핑백·
-보관함, 데일리샷 실사용 근거)은 전부 한 단어라 지금은 "토큰 하나가 포함되는가"와 결과가
-같지만, 여러 단어짜리 키워드가 나중에 추가돼도 그대로 맞는 규칙이다.
-
-**고정된 상품은 이 필터의 영향을 받지 않는다** — §7.4 의 "고정은 매칭 결정을 고정하는
-것" 원칙과 같다. 검색을 건너뛰는 소스는 필터를 거칠 일이 애초에 없고,
-`search.result_fields` 모드처럼 고정돼도 검색하는 소스는 `_match_pinned` 가 필터를
-거치지 않은 전체 후보 목록에서 고정된 키를 찾는다.
+- 외부 HTTP는 `infrastructure/external/safe_http.py`를 거친다: URL·redirect·연결 IP 검증, 비밀
+  헤더는 원래 호스트에만, 크기·압축·시간 제한
+- 네트워크 부수효과(HTTP·LLM)는 어댑터 안에 두고 매칭·점수·변환은 순수 함수로 둔다
+- 출처 URL·관측 시각·조건을 함께 저장하고, 실패·캐시·미검증 자료를 새 관측으로 표시하지 않는다
+- 관심(비보유 대상)은 구매·재고·지출 합계를 늘리지 않는다
 
 ## 8. 배포
 

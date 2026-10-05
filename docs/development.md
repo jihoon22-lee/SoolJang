@@ -1,25 +1,58 @@
 # 개발·검증 절차
 
-공통 지침은 [AGENTS.md](../AGENTS.md), 현재 작업은 [plan.md](plan.md) §1,
-운영 절차는 [operations.md](operations.md)를 따른다. 이 문서는 로컬 명령의 범위를 설명한다.
+공통 지침은 [AGENTS.md](../AGENTS.md), 현재 작업은 [plan.md](plan.md) §1, 운영 절차는
+[operations.md](operations.md)를 따른다. 이 문서는 로컬 환경 준비, 검증 선택, 개발 중 알아 둘
+함정을 다룬다.
 
-## 격리 환경
+## 1. 격리 개발 환경
 
-이 기기의 `docker-compose.yml`은 운영 스택이다. 개발에는 `make db-local-setup`(최초 1회),
-`make db-local-start`를 사용한다. 기본 개발 DB는 `127.0.0.1:54329/sooljang_dev`, 테스트 DB는
-`127.0.0.1:54329/sooljang_test`다. `make db-up/db-down`은 Compose를 조작하는 기존 명령이며
-개발 준비에 사용하지 않는다. 운영 복원·재배포는 이 절차에 포함하지 않는다.
+**이 기기의 `docker-compose.yml`은 실사용자 데이터가 든 운영 스택이다.** 개발에는 운영과
+분리된 사용자 영역 PostgreSQL 17(포트 54329)을 쓴다. `make db-up`/`make db-down`,
+`docker compose up/down`, `docker compose exec db ...`는 개발 준비에 쓰지 않는다.
 
-`Makefile`의 URL은 환경/명령줄로 덮어쓸 수 있다. 실행 전에 대상 host·port·DB 이름이
-격리 환경인지 확인하되 자격증명 전체를 출력하지 않는다. pytest fixture는 스키마를
-drop/create하고 migration 왕복은 `downgrade base`를 실행하므로 운영 DB에서 실행하지 않는다.
-같은 테스트 DB에 대한 pytest·migration 검증은 순차 실행한다.
+```bash
+cd /home/jihoon/projects/SoolJang
+git status -sb && git log --oneline -5 && gh pr list --state open
+bash scripts/install-hooks.sh      # 클론 직후 1회(commit-msg·pre-push 훅)
+uv sync --frozen                   # 의존성이 바뀌었을 때만
+npm ci --prefix web
+make db-local-setup                # 최초 1회: micromamba로 PostgreSQL 17 설치
+make db-local-start                # 이후 재개: 127.0.0.1:54329, sooljang_dev / sooljang_test
+```
 
-의존성 변경이 없으면 `uv sync --frozen`, `npm ci --prefix web`로 lockfile을 재사용한다.
-환경이 준비돼 있으면 매번 재설치하지 않는다. 기존 `.env`를 예시 파일로 덮어쓰지 않는다.
-로컬 앱 실행의 비밀·포트 설정은 [handoff.md](handoff.md) §1을 참조한다.
+`Makefile`의 DB URL은 환경·명령줄로 덮어쓸 수 있다. 실행 전에 대상 host·port·DB 이름이 격리
+환경인지 확인하되 자격증명 전체를 출력하지 않는다. **루트 `.env`의 `SOOLJANG_DATABASE_URL`이
+운영 DB(`127.0.0.1:5432`)를 가리키는지 먼저 확인한다** — Compose `api` 컨테이너는 이 값을 읽지
+않으므로(직접 조립) 개발용으로 `…@127.0.0.1:54329/sooljang_dev`를 두는 편이 안전하다. 기존
+`.env`를 예시 파일로 덮어쓰지 않는다.
 
-## 검사 선택
+### 앱 실행
+
+운영 API(8000)·웹(8080)과 겹치지 않는 포트를 쓴다.
+
+```bash
+export SOOLJANG_DATABASE_URL=postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_dev
+uv run alembic upgrade head                     # 격리 개발 DB인지 확인한 뒤
+SOOLJANG_API_PORT=8210 uv run sooljang-api      # 다른 터미널에서 웹:
+SOOLJANG_API_URL=http://127.0.0.1:8210 npm --prefix web run dev   # → http://localhost:5173
+```
+
+`.env`가 없으면 `.env.example`을 복사해 채운다. `SOOLJANG_SECRET_KEY`(Fernet 마스터 키)는
+필수다(`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
+빈 DB에서는 첫 화면이 계정 만들기 폼이다. API로 만들 때는
+`POST /api/v1/auth/setup {"email","password","display_name"}`를 쓴다(사용자가 없을 때만 허용).
+
+합성 데이터로 써 볼 때는 `tests/infrastructure/legacy/testdata/sample_sheet.csv`를 "가져오기"
+화면이나 `POST /api/v1/imports/legacy:commit`으로 넣는다. 실제 기록 파일은 opt-in 검증에만
+쓰고 저장소·로그에 남기지 않는다. 개발 DB 계정을 지울 때도 `bash scripts/dev-db.sh psql`
+(격리 DB)만 쓴다.
+
+카메라(바코드·라벨·병 QR)와 서비스 워커는 secure context가 필요하다. 폰 실기 확인은 운영과
+같은 Tailscale HTTPS 주소(`https://main.tail30f401.ts.net:8080`, [operations.md](operations.md) §5)나
+별도 HTTPS 프록시로 한다. `scripts/serve-https.sh --start`는 443 포트를 관리하므로 공유 호스트에서
+`tailscale serve status`를 확인하기 전에 실행하지 않는다.
+
+## 2. 검사 선택
 
 | 단계/변경 | 실행할 검증 |
 |---|---|
@@ -66,7 +99,7 @@ test·secret scan만 실행하며 웹 build, migration 왕복/드리프트, 버�
 실행하므로 모델 드리프트는 별도 `alembic check`가 필요하다. 현재 required gate는
 [quality.yml](../.github/workflows/quality.yml)을 기준으로 유지한다.
 
-## 증거와 완료
+## 3. 증거와 완료
 
 동일 코드·환경·입력의 성공 검증을 이유 없이 반복하지 않는다. 실패 원인이나 미해결 우려가
 있으면 해당 검증을 확대한다. 단위 테스트 통과와 실사용 수용을 구분하고 해당 WP의
@@ -77,7 +110,31 @@ PR 묶음당 `workthrough/YYYY-MM-DD-scope.md` 하나에 실제 변경·검증·
 요약/링크를 남긴다. mock 통과·DB skip·기존 성공 로그를 새 환경의 실검증으로 보고하지 않는다.
 형식/링크 검사와 실제 스킬 호출 결과도 구분한다.
 
-## Codex 지침의 근거와 관리
+## 4. 알아 둘 함정
+
+| 함정 | 증상 | 대응 |
+|---|---|---|
+| `docker` 그룹 미반영 | `permission denied … docker.sock` | 새 셸을 열거나 **절대 경로** `/usr/bin/sg docker -c "…"`. 이 기기의 `sg`는 ast-grep으로 가려져 있다 |
+| 테스트·스크립트가 운영 DB에 붙음 | 운영 스키마가 지워질 수 있음 | 테스트 기본 URL은 54329다. `SOOLJANG_DATABASE_URL`을 명시하고 `SOOLJANG_ENV_FILE=''`로 `.env`를 막는다 |
+| 마이그레이션 왕복을 pytest DB에서 실행 | `DuplicateTable: … already exists` | pytest가 `create_all`로 만든 DB다. 빈 전용 DB(예: `sooljang_migrate`)에서 `make migration-check`를 돌린다 |
+| CI 환경 변수 접두사 | `DATABASE_URL`이 무시됨 | 앱 설정은 `SOOLJANG_` 접두사만 읽는다. 새 필수 설정은 `quality.yml`의 migration 잡 `env:`에도 넣는다 |
+| SQLAlchemy Enum이 이름을 저장 | `status <> 'unopened'` CHECK가 무력화 | `base.str_enum_column`으로 값을 저장한다 |
+| 재귀 CTE 타입 불일치 | `recursive query … character varying(120)` | 비재귀 항의 경로 컬럼을 `text`로 캐스팅한다 |
+| 새 모델 등록 누락 | `create_all`·autogenerate가 테이블을 빠뜨림 | `infrastructure/database/models/__init__.py`에 import·`__all__` 등록 |
+| `user_id` 단일 인덱스 중복 | autogenerate가 같은 인덱스를 두 번 만듦 | `EntityMixin.user_id`는 이미 `index=True`다. 복합 인덱스만 추가한다 |
+| flush 직후 Decimal 정밀도 | 생성 응답 `85000`, 재조회 `85000.00` | 응답 전에 `session.refresh()` |
+| 관계 컬렉션이 낡은 값 유지 | 교체한 품종이 응답에 남음 | 수정 후 `session.expire(obj, ["관계명"])` |
+| 운영 이미지에 없는 의존성 | 실행 시에만 `ModuleNotFoundError` | 프로덕션 코드가 import하는 패키지는 `[project.dependencies]`에 둔다 |
+| 느슨한 의존성 상한 | CI `pip-audit`/`npm audit` 실패 | 새 의존성을 넣으면 로컬에서 감사를 돌린다(§2) |
+| Dexie에서 `deleted_at` null 조회 | `Invalid key provided` | IndexedDB 키로 `null`을 못 쓴다. FK 인덱스로 좁힌 뒤 JS에서 거른다 |
+| `useLiveQuery` 직후 동기 단언 | 플레이키 테스트 | `findBy*`로 기다린다 |
+| 닫힌 `<details>`의 내용 강제 표시 | Chrome이 `content-visibility`로 숨김 | 뷰포트별 강제 펼침은 `useState`+버튼으로 구현한다 |
+| `web.Dockerfile`은 `web/`만 복사 | 컨테이너 빌드에서만 import 실패 | 저장소 루트 fixture를 참조하면 Dockerfile에 `COPY`를 추가한다 |
+| `vi.stubGlobal("URL", {...URL})` | `new URL()` 생성자가 사라짐 | 정적 메서드만 `vi.spyOn`한다 |
+| 전역 `db`를 바꾸는 테스트 | 같은 파일의 뒤 테스트가 다른 저장소를 봄 | `activateDatabase`가 필요한 테스트는 파일을 나눈다(`vendorPrefill.test.tsx`) |
+| 시간대 | 한국 00~09시 기록이 전날로 저장 | 웹은 `todayLocal()`, 서버는 `clock.local_today()`를 쓴다(`toISOString()`·`date.today()` 금지) |
+
+## 5. 에이전트 지침의 근거
 
 2026-09-07 OpenAI 공식 문서를 확인해 적용했다.
 
