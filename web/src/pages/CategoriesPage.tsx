@@ -1,13 +1,14 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { categoriesApi } from "@/api/client";
-import type { DeleteStrategy, User } from "@/api/types";
+import type { DeleteStrategy } from "@/api/types";
 import { CategoryManager } from "@/components/CategoryManager";
 import { LoadingState } from "@/components/StatusViews";
 import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { getCategoryTree } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { useSessionMutation } from "@/sync/useSessionMutation";
 import { newId } from "@/sync/uuid7";
 
 const SLUG_STRIP = /[^0-9a-z가-힣]+/g;
@@ -40,11 +41,10 @@ export function CategoriesPage({
     triggerSync();
   };
 
-  const create = useMutation({
-    mutationFn: async ({ name, parentId }: { name: string; parentId: string | null }) => {
+  const create = useSessionMutation({
+    mutationFn: async ({ name, parentId }: { name: string; parentId: string | null }, session) => {
       const id = newId();
       const now = new Date().toISOString();
-      const currentUser = queryClient.getQueryData<User>(["auth", "me"]);
       await enqueue({
         entity: "category",
         op: "create",
@@ -52,7 +52,7 @@ export function CategoriesPage({
         fields: { name, parent_id: parentId, sort_order: 0 },
         optimisticRow: {
           id,
-          user_id: currentUser?.id ?? "",
+          user_id: session.userId,
           created_at: now,
           updated_at: now,
           deleted_at: null,
@@ -67,9 +67,10 @@ export function CategoriesPage({
     },
   });
 
-  const rename = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+  const rename = useSessionMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }, session) => {
       const current = await db.category.get(id);
+      session.assertCurrent();
       if (!current) throw new Error("주종을 찾을 수 없습니다");
       const now = new Date().toISOString();
       await enqueue({
@@ -83,19 +84,22 @@ export function CategoriesPage({
     },
   });
 
-  const reparent = useMutation({
+  const reparent = useSessionMutation({
+    networkMode: "online",
     mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
       categoriesApi.reparent(id, parentId),
     onSuccess: invalidateOnline,
   });
 
-  const merge = useMutation({
+  const merge = useSessionMutation({
+    networkMode: "online",
     mutationFn: ({ id, targetId }: { id: string; targetId: string }) =>
       categoriesApi.merge(id, targetId),
     onSuccess: invalidateOnline,
   });
 
-  const remove = useMutation({
+  const remove = useSessionMutation({
+    networkMode: "online",
     mutationFn: ({
       id,
       strategy,
@@ -108,12 +112,14 @@ export function CategoriesPage({
     onSuccess: invalidateOnline,
   });
 
-  const resetSeed = useMutation({
+  const resetSeed = useSessionMutation({
+    networkMode: "online",
     mutationFn: () => categoriesApi.resetSeed(),
     onSuccess: invalidateOnline,
   });
 
-  const saveAsDefault = useMutation({
+  const saveAsDefault = useSessionMutation({
+    networkMode: "online",
     mutationFn: () => categoriesApi.saveAsDefault(),
   });
 

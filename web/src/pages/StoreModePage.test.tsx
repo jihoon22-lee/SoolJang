@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product, ProductMetrics } from "@/api/types";
 import { StoreModePage } from "@/pages/StoreModePage";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -106,7 +106,8 @@ async function selectResult(name: string): Promise<void> {
 }
 
 beforeEach(async () => {
-  await db.open();
+  localStorage.clear();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {

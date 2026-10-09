@@ -1,4 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type FormEvent, useMemo, useState } from "react";
 
@@ -13,6 +12,7 @@ import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { getVendors } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { useSessionMutation } from "@/sync/useSessionMutation";
 
 //: `ProductDetail.tsx` 의 구매처 이름 자동완성과 같은 개수 제한이다.
 const MAX_SUGGESTIONS = 8;
@@ -55,9 +55,10 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [mergePreview, setMergePreview] = useState<CleanupPreview | null>(null);
 
-  const update = useMutation({
-    mutationFn: async (input: { id: string; name: string; kind: VendorKind }) => {
+  const update = useSessionMutation({
+    mutationFn: async (input: { id: string; name: string; kind: VendorKind }, session) => {
       const current = await db.vendor.get(input.id);
+      session.assertCurrent();
       if (!current) throw new Error("구매처를 찾을 수 없습니다");
       const now = new Date().toISOString();
       await enqueue({
@@ -86,7 +87,8 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
   }
 
   // 구매처 병합은 온라인 전용이다(재배치 + soft delete 전파 — 주종 이동·병합과 같은 판단).
-  const merge = useMutation({
+  const merge = useSessionMutation({
+    networkMode: "online",
     mutationFn: async (input: { sourceId: string; targetId: string }) => {
       if (mergePreview) {
         await collectionApi.confirm(mergePreview.id);

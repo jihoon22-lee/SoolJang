@@ -8,13 +8,15 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
-import { db } from "@/sync/db";
+import { databaseIdentity, db } from "@/sync/db";
 import { type SyncEngineState, syncEngine } from "@/sync/engine";
+import { listQuarantines } from "@/sync/quarantine";
 
 export interface SyncStatus extends SyncEngineState {
   pendingCount: number;
   failedCount: number;
   conflictCount: number;
+  quarantineCount: number;
   triggerSync: () => void;
 }
 
@@ -45,17 +47,28 @@ export function SyncStatusProvider({
   }, [userId]);
 
   const pendingCount =
-    useLiveQuery(() => db.outbox.where("status").equals("pending").count(), []) ?? 0;
+    useLiveQuery(() => db.outbox.where("status").equals("pending").count(), [userId]) ?? 0;
   const failedCount =
-    useLiveQuery(() => db.outbox.where("status").equals("failed").count(), []) ?? 0;
+    useLiveQuery(() => db.outbox.where("status").equals("failed").count(), [userId]) ?? 0;
   const conflictCount =
-    useLiveQuery(() => db.conflict_log.filter((row) => row.deleted_at === null).count(), []) ?? 0;
+    useLiveQuery(
+      () => db.conflict_log.filter((row) => row.deleted_at === null).count(),
+      [userId],
+    ) ?? 0;
+  const quarantineCount =
+    useLiveQuery(async () => {
+      const identity = databaseIdentity();
+      if (!userId || identity.userId !== userId) return 0;
+      const records = await listQuarantines({ store: db, userId, generation: identity.generation });
+      return records.reduce((count, record) => count + (record.unreadable ? 1 : record.count), 0);
+    }, [userId]) ?? 0;
 
   const value: SyncStatus = {
     ...engineState,
     pendingCount,
     failedCount,
     conflictCount,
+    quarantineCount,
     triggerSync: () => void syncEngine.triggerSync(),
   };
 

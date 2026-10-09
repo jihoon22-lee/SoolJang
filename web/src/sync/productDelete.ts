@@ -4,10 +4,13 @@
  * `touchedIds` 로 보호해 다음 pull 이 아직 살아 있는 서버 행으로 되돌리지 않는다.
  */
 
-import { db } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
+import { captureWriteSession } from "@/sync/writeSession";
 
 export async function enqueueProductDelete(productId: string): Promise<void> {
+  const session = captureWriteSession();
+  session.assertCurrent();
+  const db = session.store;
   const skuIds = (await db.sku.where("product_id").equals(productId).toArray())
     .filter((row) => row.deleted_at === null)
     .map((row) => row.id);
@@ -17,6 +20,7 @@ export async function enqueueProductDelete(productId: string): Promise<void> {
   const bottleIds = (await db.bottle.where("purchase_id").anyOf(purchaseIds).toArray())
     .filter((row) => row.deleted_at === null)
     .map((row) => row.id);
+  session.assertCurrent();
   await enqueue({
     entity: "product",
     op: "delete",

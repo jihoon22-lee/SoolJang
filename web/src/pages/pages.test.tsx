@@ -6,7 +6,7 @@ import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
 import { ToastProvider } from "@/components/Toast";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ProductsPage } from "@/pages/ProductsPage";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -131,7 +131,7 @@ describe("ProductsPage", () => {
   }
 
   beforeEach(async () => {
-    await db.open();
+    await activateDatabase("u1");
   });
 
   afterEach(async () => {
@@ -986,7 +986,7 @@ describe("CategoriesPage", () => {
   }
 
   beforeEach(async () => {
-    await db.open();
+    await activateDatabase("u1");
   });
 
   afterEach(async () => {

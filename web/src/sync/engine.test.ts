@@ -433,6 +433,110 @@ it("최신 서버 미러를 과거 델타로 되돌리지 않는다", async () =
   expect((await db.vendor.get("v1"))?.name).toBe("latest");
 });
 
+it("소유자 불명 명령은 원본 보관하고 관계없는 후속 명령을 계속 동기화한다", async () => {
+  await db.outbox.put({
+    idempotency_key: "unknown-owner-key",
+    entity: "vendor",
+    entity_id: "unknown-vendor",
+    user_id: "",
+    op: "create",
+    fields: { name: "소유자 미확인" },
+    created_at: "2026-01-01T00:00:00Z",
+    status: "pending",
+    error: null,
+  });
+  await enqueue({ entity: "vendor", op: "create", entityId: "good-vendor", fields: {} });
+  const sentIds: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (!input.includes("/sync/batch"))
+        return respond({ changes: {}, next_cursor: null, has_more: false });
+      const { operations } = JSON.parse(String(init?.body));
+      sentIds.push(...operations.map((operation: { entity_id: string }) => operation.entity_id));
+      return respond(batchResult(operations));
+    }),
+  );
+  let lastError: string | null = null;
+  const unsubscribe = syncEngine.onStateChange((state) => {
+    lastError = state.lastError;
+  });
+  await syncEngine.triggerSync();
+  unsubscribe();
+  expect(sentIds).toEqual(["good-vendor"]);
+  expect(await db.outbox.count()).toBe(0);
+  expect(await db.sync_meta.where("key").startsWith("quarantine:").count()).toBe(1);
+  expect(lastError).toBeNull();
+});
+
+it("격리 기록 저장이 실패하면 어떤 후속 명령도 보내지 않고 원본을 보존한다", async () => {
+  await db.outbox.put({
+    idempotency_key: "unknown-owner-key",
+    entity: "vendor",
+    entity_id: "unknown-vendor",
+    op: "create",
+    fields: {},
+    created_at: "2026-01-01T00:00:00Z",
+    status: "pending",
+    error: null,
+  });
+  await enqueue({ entity: "vendor", op: "create", entityId: "good-vendor", fields: {} });
+  const spy = vi.fn();
+  vi.stubGlobal("fetch", spy);
+  const save = vi.spyOn(db.sync_meta, "add").mockRejectedValueOnce(new Error("원본 보관 실패"));
+  await syncEngine.triggerSync();
+  save.mockRestore();
+  expect(spy).not.toHaveBeenCalled();
+  expect(await db.outbox.count()).toBe(2);
+});
+
+it("batch 응답 대기 중 들어온 격리 부모의 후속 명령은 다음 batch에서 보내지 않는다", async () => {
+  await db.outbox.put({
+    idempotency_key: "unknown-parent-key",
+    entity: "product",
+    entity_id: "unknown-parent",
+    user_id: "",
+    op: "create",
+    fields: {},
+    created_at: "2026-01-01T00:00:00Z",
+    status: "pending",
+    error: null,
+  });
+  await enqueue({ entity: "vendor", op: "create", entityId: "good-first", fields: {} });
+  const sentIds: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (!input.includes("/sync/batch"))
+        return respond({ changes: {}, next_cursor: null, has_more: false });
+      const { operations } = JSON.parse(String(init?.body));
+      sentIds.push(...operations.map((operation: { entity_id: string }) => operation.entity_id));
+      if (sentIds.length === 1) {
+        await enqueue({
+          entity: "sku",
+          op: "create",
+          entityId: "late-child",
+          fields: { product_id: "unknown-parent" },
+        });
+        await enqueue({ entity: "vendor", op: "create", entityId: "good-second", fields: {} });
+      }
+      return respond(batchResult(operations));
+    }),
+  );
+  await syncEngine.triggerSync();
+  expect(sentIds).toEqual(["good-first", "good-second"]);
+  expect(await db.outbox.count()).toBe(0);
+  const archives = await db.sync_meta.where("key").startsWith("quarantine:").toArray();
+  expect(archives).toHaveLength(2);
+  expect(
+    archives.some(({ value }) =>
+      JSON.parse(value).entries.some(
+        (entry: { entity_id: string }) => entry.entity_id === "late-child",
+      ),
+    ),
+  ).toBe(true);
+});
+
 it("같은 계정의 두 탭은 하나의 전송자만 네트워크를 사용한다", async () => {
   const { SyncEngine } = await import("@/sync/engine");
   const other = new SyncEngine();

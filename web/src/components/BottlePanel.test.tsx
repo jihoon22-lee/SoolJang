@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Tasting, TastingSummary } from "@/api/types";
 import { BottlePanel, formatRatingChange, formatRemaining } from "@/components/BottlePanel";
 import { todayLocal } from "@/format";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
 const NOW = "2026-01-01T00:00:00Z";
@@ -78,7 +78,8 @@ function stubTastings(
 }
 
 beforeEach(async () => {
-  await db.open();
+  localStorage.clear();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {

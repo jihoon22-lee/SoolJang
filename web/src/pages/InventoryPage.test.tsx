@@ -5,7 +5,7 @@ import { collectionApi, type InventoryBottle, type Stocktake } from "@/api/colle
 import { ToastProvider } from "@/components/Toast";
 import { todayLocal } from "@/format";
 import { InventoryPage } from "@/pages/InventoryPage";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -49,7 +49,7 @@ function renderPage(onSelectProduct = vi.fn()) {
 }
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {

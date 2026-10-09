@@ -9,7 +9,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { syncApi } from "@/api/client";
-import { db, type OutboxEntry } from "@/sync/db";
+import { databaseIdentity, db, type OutboxEntry } from "@/sync/db";
 import {
   dependentEntries,
   discardAllFailedEntries,
@@ -17,7 +17,9 @@ import {
   replaceFailedEntry,
   retryFailedEntries,
 } from "@/sync/outbox";
+import { exportQuarantine, listQuarantines, quarantineContext } from "@/sync/quarantine";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { captureWriteSession } from "@/sync/writeSession";
 import { useModalDialog } from "@/useModalDialog";
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -63,8 +65,15 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 export function SyncStatusBadge() {
-  const { state, pendingCount, failedCount, conflictCount, triggerSync, lastError } =
-    useSyncStatus();
+  const {
+    state,
+    pendingCount,
+    failedCount,
+    conflictCount,
+    quarantineCount,
+    triggerSync,
+    lastError,
+  } = useSyncStatus();
   const [panelOpen, setPanelOpen] = useState(false);
   const statusRef = useRef<HTMLDivElement | null>(null);
   const badgeRef = useRef<HTMLButtonElement | null>(null);
@@ -99,17 +108,18 @@ export function SyncStatusBadge() {
   const label =
     lastError && !hasFailed
       ? "동기화 확인 필요"
-      : describeStatus({ state, pendingCount, failedCount, conflictCount });
+      : describeStatus({ state, pendingCount, failedCount, conflictCount, quarantineCount });
   const tone =
     failedCount > 0
       ? "danger"
-      : hasConflicts || stuck || lastError
+      : hasConflicts || stuck || lastError || quarantineCount > 0
         ? "warn"
         : state === "offline"
           ? "muted"
           : "ok";
   // 보낼 기록이 남아 있으면 무엇이 기다리는지도 볼 수 있게 패널을 연다.
-  const opensPanel = hasConflicts || hasFailed || Boolean(lastError) || pendingCount > 0;
+  const opensPanel =
+    hasConflicts || hasFailed || Boolean(lastError) || pendingCount > 0 || quarantineCount > 0;
 
   return (
     <div className="sync-status" ref={statusRef}>
@@ -133,9 +143,9 @@ export function SyncStatusBadge() {
         <span className="sync-status-dot" aria-hidden="true" />
         <span className="sync-status-text">{label}</span>
         {/* 좁은 화면에서는 문구 대신 점과 건수만 보인다(접근성 이름은 문구 그대로). */}
-        {failedCount + conflictCount + pendingCount > 0 ? (
+        {failedCount + conflictCount + pendingCount + quarantineCount > 0 ? (
           <span className="sync-status-count" aria-hidden="true">
-            {failedCount || conflictCount || pendingCount}
+            {failedCount || conflictCount || quarantineCount || pendingCount}
           </span>
         ) : null}
       </button>
@@ -154,9 +164,11 @@ function describeStatus(status: {
   pendingCount: number;
   failedCount: number;
   conflictCount: number;
+  quarantineCount: number;
 }): string {
   if (status.failedCount > 0) return `동기화 실패 ${status.failedCount}건`;
   if (status.conflictCount > 0) return `충돌 ${status.conflictCount}건`;
+  if (status.quarantineCount > 0) return `격리 기록 ${status.quarantineCount}건`;
   if (status.state === "syncing") return "동기화 중…";
   if (status.state === "offline") {
     return status.pendingCount > 0 ? `오프라인 (대기 ${status.pendingCount}건)` : "오프라인";
@@ -187,25 +199,61 @@ function SyncIssuesPanel({
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const dialogRef = useModalDialog(returnFocusRef);
+  const identity = databaseIdentity();
   const conflicts = useLiveQuery(
-    () => db.conflict_log.filter((row) => row.deleted_at === null).toArray(),
-    [],
+    () =>
+      db.conflict_log
+        .filter((row) => row.deleted_at === null && row.user_id === identity.userId)
+        .toArray(),
+    [identity.userId, identity.generation],
   );
   const failedEntries = useLiveQuery(
-    () => db.outbox.where("status").equals("failed").toArray(),
-    [],
+    () =>
+      db.outbox
+        .where("status")
+        .equals("failed")
+        .filter((entry) => entry.user_id === identity.userId)
+        .toArray(),
+    [identity.userId, identity.generation],
   );
   const pendingEntries = useLiveQuery(
-    () => db.outbox.where("status").equals("pending").sortBy("created_at"),
-    [],
+    () =>
+      db.outbox
+        .where("status")
+        .equals("pending")
+        .filter((entry) => entry.user_id === identity.userId)
+        .sortBy("created_at"),
+    [identity.userId, identity.generation],
   );
-  const { state, triggerSync } = useSyncStatus();
+  const quarantines = useLiveQuery(
+    () => (identity.userId ? listQuarantines(quarantineContext()) : []),
+    [identity.userId, identity.generation],
+  );
+  const { state, triggerSync, lastError, quarantineCount, pendingCount, failedCount } =
+    useSyncStatus();
   const [bulkBusy, setBulkBusy] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [discardingKey, setDiscardingKey] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<OutboxEntry | null>(null);
   const [editFields, setEditFields] = useState<Record<string, unknown>>({});
+
+  async function downloadQuarantine(key: string) {
+    setResolveError(null);
+    try {
+      const session = captureWriteSession();
+      const contents = await exportQuarantine(quarantineContext(), key);
+      session.assertCurrent();
+      const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "sooljang-quarantine.json";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setResolveError(error instanceof Error ? error.message : "격리 기록을 내보내지 못했습니다");
+    }
+  }
 
   async function resolve(id: string) {
     setResolvingId(id);
@@ -282,12 +330,20 @@ function SyncIssuesPanel({
     }
   }
 
-  const hasProblems = (conflicts?.length ?? 0) > 0 || (failedEntries?.length ?? 0) > 0;
+  const hasProblems =
+    (conflicts?.length ?? 0) > 0 ||
+    (failedEntries?.length ?? 0) > 0 ||
+    quarantineCount > 0 ||
+    Boolean(lastError);
   const title = hasProblems ? "동기화 문제" : "동기화 상태";
   const nothingToShow =
-    (!conflicts || conflicts.length === 0) &&
-    (!failedEntries || failedEntries.length === 0) &&
-    (!pendingEntries || pendingEntries.length === 0);
+    conflicts?.length === 0 &&
+    failedEntries?.length === 0 &&
+    pendingEntries?.length === 0 &&
+    pendingCount === 0 &&
+    failedCount === 0 &&
+    quarantineCount === 0 &&
+    !lastError;
 
   return (
     <div
@@ -343,6 +399,38 @@ function SyncIssuesPanel({
         </form>
       )}
       {nothingToShow && <p className="muted">확인할 문제가 없습니다.</p>}
+
+      {quarantines && quarantines.length > 0 && (
+        <section aria-labelledby="sync-quarantine-heading">
+          <h4 id="sync-quarantine-heading">별도로 보관한 기록</h4>
+          <p>
+            계정 소유자를 확인할 수 없는 기록과 연결된 입력의 원본을 보관했습니다. 이 기록은
+            자동으로 보내거나 삭제하지 않으며, 관계없는 입력은 계속 동기화합니다.
+          </p>
+          <ul>
+            {quarantines.map((record) => (
+              <li key={record.key}>
+                <span>
+                  {record.unreadable
+                    ? "격리 기록을 읽지 못했습니다. 원본은 보존됩니다."
+                    : `격리된 명령 ${record.count}건`}
+                </span>
+                {record.exportableCount > 0 ? (
+                  <button type="button" onClick={() => void downloadQuarantine(record.key)}>
+                    내보낼 수 있는 원본 {record.exportableCount}건 저장
+                  </button>
+                ) : (
+                  <span className="muted">이 계정에서 내보낼 수 있는 원본이 없습니다.</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="muted text-sm">
+            내보내기는 서버 반영 여부를 확인하거나 기록을 다시 보내는 작업이 아닙니다. 다른 계정의
+            소유자가 명시된 내용은 포함하지 않습니다.
+          </p>
+        </section>
+      )}
 
       {failedEntries && failedEntries.length > 0 && (
         <section aria-labelledby="sync-failed-heading">

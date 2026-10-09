@@ -14,14 +14,25 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-10-05 — v1.8.1 릴리스·운영 배포 완료(v1.8.0 최종 리뷰 7건 수정, [릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.8.1), [기록](../workthrough/2026-10-05-v181-review-fixes.md)) |
-| 현재 마일스톤 | 없음. 직전 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) 완료(메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
-| 진행 브랜치 | 없음. 새 작업은 `feature/<task-slug>` 로 시작한다 |
+| 최종 갱신 | 2026-10-09 — 실사용 리뷰 PR 1 저장·계정 보호 구현·검증 완료. PR 2 구매·시음 입력 대기 |
+| 현재 마일스톤 | 실사용 리뷰 후속(릴리스 미포함). 직전 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) 완료(메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
+| 진행 브랜치 | `feature/review-sync-ownership` (PR 1) |
 | 버전 | 코드·패키지 `1.8.1`, schema head `0019_record_event` |
 | 운영 | API·웹 `1.8.1`, schema `0019_record_event`(2026-10-05 배포, 백업 `sooljang-20261005T075522111604Z-16fe607e`) |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
 
-## 2. 직전 마일스톤: v1.8.0 (완료)
+## 2. 실사용 리뷰 후속
+
+| 묶음 | 요구사항·수용 시나리오 | 상태 |
+|---|---|---|
+| PR 1 `feature/review-sync-ownership` | F1 로그아웃 후 대기열, F2 오프라인 저장, F3 구매처 권한 | 구현·검증 완료, PR 준비 ([기록](../workthrough/2026-10-09-review-sync-ownership.md)) |
+| PR 2 `feature/review-record-entry` | F4 수량 재증가, F5 첫 규격, F6 병 선택, F7 초안 복구 | PR 1 뒤 진행 |
+| PR 3 `feature/review-history-usability` | F8 시음 페이지, F9 실사 정정, F10 모바일 지표 | PR 2 뒤 진행 |
+
+세 묶음은 순차 브랜치/PR로 연결한다. 원본 보존·구버전 PWA 호환을 유지하고 최종 묶음에서
+합성 데이터 21개 사용 시나리오를 재검증한다. 버전 변경·머지·릴리스·운영 배포는 포함하지 않는다.
+
+### 직전 마일스톤: v1.8.0 (완료)
 
 | 묶음 | 상태 | 근거 |
 |---|---|---|
@@ -44,8 +55,11 @@
 
 ## 4. 결정(진행 중 마일스톤)
 
-진행 중인 마일스톤이 없다. 다음 마일스톤의 결정은 D228부터 여기에 쓰고 릴리스 후
-[history.md](history.md) §6으로 옮긴다. v1.8.0(D212~D225)·v1.8.1(D226~D227) 결정은 이미 옮겼다.
+- **D228**: 실제 Chromium·격리 PostgreSQL로 재현한 F1~F10을 3개 PR로 개선한다. 기존
+  소유자 불명 명령은 원본·연결 행을 `sync_meta`에 원자적으로 보존한 뒤 활성 큐에서 격리한다.
+  현재 계정으로 자동 귀속·재전송하거나 결과 불명 pending을 폐기하지 않는다.
+- **D229**: 빠른 시음은 사용자가 선택한 "규격별 기본 선택 + 개별 병 변경"으로 구현한다.
+  계정·탭·병별 초안, 시음 커서 페이지, 명시적 실사 위치 정정을 제공한다. 스키마·버전 변경 없음.
 
 ## 5. 열린 질문
 

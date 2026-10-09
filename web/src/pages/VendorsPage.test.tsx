@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VendorsPage } from "@/pages/VendorsPage";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -30,7 +30,7 @@ function row(overrides: Record<string, unknown>) {
 }
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {

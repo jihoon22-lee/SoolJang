@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { OUTBOX_CHANGED, syncEvents } from "@/sync/events";
 import {
   discardAllFailedEntries,
@@ -12,7 +12,7 @@ import {
 } from "@/sync/outbox";
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {

@@ -1,4 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { productsApi, purchasesApi } from "@/api/client";
@@ -37,6 +36,8 @@ import {
   splitVarieties,
   useCreateProduct,
 } from "@/sync/useCreateProduct";
+import { useSessionMutation } from "@/sync/useSessionMutation";
+import { captureWriteSession } from "@/sync/writeSession";
 
 const DEFAULT_FILTERS: ProductFilters = { sort: "name", order: "asc", limit: 30 };
 const PAGE_SIZE = DEFAULT_FILTERS.limit ?? 30;
@@ -261,13 +262,15 @@ export function ProductsPage({
 
   // 일괄 편집은 제품마다 outbox 명령 하나다. 오프라인에서도 되고, 실패한 항목은 동기화 배지에
   // 개별로 남아 수정·재시도할 수 있다. 끝나면 "실행 취소"로 원래 주종을 되돌린다.
-  const bulkChange = useMutation({
-    mutationFn: async (input: { ids: string[]; categoryId: string | null }) => {
+  const bulkChange = useSessionMutation({
+    mutationFn: async (input: { ids: string[]; categoryId: string | null }, session) => {
       const previous: { id: string; categoryId: string | null }[] = [];
       for (const id of input.ids) {
+        session.assertCurrent();
         const current = await db.product.get(id);
         if (!current || current.deleted_at !== null) continue;
         previous.push({ id, categoryId: (current.category_id as string | null) ?? null });
+        session.assertCurrent();
         await enqueueCategoryChange(id, input.categoryId);
       }
       return previous;
@@ -290,9 +293,12 @@ export function ProductsPage({
     },
   });
 
-  const bulkDelete = useMutation({
-    mutationFn: async (ids: string[]) => {
-      for (const id of ids) await enqueueProductDelete(id);
+  const bulkDelete = useSessionMutation({
+    mutationFn: async (ids: string[], session) => {
+      for (const id of ids) {
+        session.assertCurrent();
+        await enqueueProductDelete(id);
+      }
       return ids.length;
     },
     onSuccess: (count) => {
@@ -568,7 +574,7 @@ function ProductDetailView({
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const [editing, setEditing] = useState(false);
 
-  const remove = useMutation({
+  const remove = useSessionMutation({
     mutationFn: () => enqueueProductDelete(productId),
     onSuccess: () => {
       triggerSync();
@@ -576,8 +582,8 @@ function ProductDetailView({
     },
   });
 
-  const updateProduct = useMutation({
-    mutationFn: async (values: ProductFormValues) => {
+  const updateProduct = useSessionMutation({
+    mutationFn: async (values: ProductFormValues, session) => {
       const producerName = values.producerName?.trim() || null;
       const fields = {
         name: values.name.trim(),
@@ -606,6 +612,7 @@ function ProductDetailView({
       // 생산자는 오프라인 쓰기 대상이 아니라 새로 못 만든다 — 미러에 있으면 재사용하고,
       // 없으면 잃지 않게 메모로 보존한다.
       const producerId = producerName ? await resolveProducerIdOffline(producerName) : null;
+      session.assertCurrent();
       const note =
         producerName && !producerId
           ? fields.note
@@ -636,9 +643,11 @@ function ProductDetailView({
   // 구매 추가·삭제·분할·규격 추가는 서버 상태 기준으로 병 라벨을 재배치하므로 온라인
   // 전용이다(ProductDetail 이 오프라인이면 버튼 자체를 숨긴다 — 여기 mutationFn 은 항상
   // 온라인 호출을 가정한다).
-  const addPurchase = useMutation({
-    mutationFn: async (input: AddPurchaseInput) => {
-      const vendorId = input.vendorName ? await resolveVendorId(input.vendorName) : null;
+  const addPurchase = useSessionMutation({
+    networkMode: "online",
+    mutationFn: async (input: AddPurchaseInput, session) => {
+      const vendorId = input.vendorName ? await resolveVendorId(input.vendorName, session) : null;
+      session.assertCurrent();
       await purchasesApi.create({
         sku_id: input.skuId,
         quantity: input.quantity,
@@ -656,13 +665,17 @@ function ProductDetailView({
     },
   });
 
-  const deletePurchase = useMutation({
+  const deletePurchase = useSessionMutation({
+    networkMode: "online",
     mutationFn: (purchaseId: string) => purchasesApi.remove(purchaseId),
     onSuccess: () => triggerSync(),
   });
 
   async function updatePurchase(purchaseId: string, input: EditPurchaseInput): Promise<void> {
-    const vendorId = input.vendorName ? await resolveVendorId(input.vendorName) : null;
+    const session = captureWriteSession();
+    session.assertCurrent();
+    const vendorId = input.vendorName ? await resolveVendorId(input.vendorName, session) : null;
+    session.assertCurrent();
     await purchasesApi.update(purchaseId, {
       vendor_id: vendorId,
       purchased_on: input.purchasedOn || null,
@@ -671,28 +684,35 @@ function ProductDetailView({
       unit_list_price: input.unitListPrice || "0",
       unit_paid_price: input.unitPaidPrice || "0",
     });
+    session.assertCurrent();
     if (input.vendorName) setLastVendorName(input.vendorName);
     triggerSync();
     toast.show({ message: "구매 기록을 고쳤습니다" });
   }
 
-  const splitPurchase = useMutation({
-    mutationFn: async ({ purchaseId, parts }: { purchaseId: string; parts: SplitPart[] }) => {
+  const splitPurchase = useSessionMutation({
+    networkMode: "online",
+    mutationFn: async (
+      { purchaseId, parts }: { purchaseId: string; parts: SplitPart[] },
+      session,
+    ) => {
       const resolvedParts = await Promise.all(
         parts.map(async (part) => {
           const vendorName = part.vendorName.trim();
           return {
             quantity: Number(part.quantity),
-            vendor_id: vendorName ? await resolveVendorId(vendorName) : null,
+            vendor_id: vendorName ? await resolveVendorId(vendorName, session) : null,
           };
         }),
       );
+      session.assertCurrent();
       await purchasesApi.split(purchaseId, resolvedParts);
     },
     onSuccess: () => triggerSync(),
   });
 
-  const addSku = useMutation({
+  const addSku = useSessionMutation({
+    networkMode: "online",
     mutationFn: (volumeMl: number) => productsApi.addSku(productId, volumeMl),
     onSuccess: () => triggerSync(),
   });
