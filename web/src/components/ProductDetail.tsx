@@ -1,17 +1,21 @@
+import { useLiveQuery } from "dexie-react-hooks";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Bottle, Product, Purchase, Sku } from "@/api/types";
+import type { Bottle, ContextualTasting, Product, Purchase, Sku } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottleSection } from "@/components/BottleSection";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { ProductAttachments } from "@/components/ProductAttachments";
+import { ProductTastingHistory } from "@/components/ProductTastingHistory";
 import { type EditPurchaseInput, PurchaseEditForm } from "@/components/PurchaseEditForm";
+import { PurchaseSkuCorrectionForm } from "@/components/PurchaseSkuCorrectionForm";
 import {
   productEdition,
   productSkuSummaries,
   purchaseReference,
 } from "@/components/productDisplay";
 import { SkuMetricsTable } from "@/components/SkuMetricsTable";
+import { TastingCorrectionForm } from "@/components/TastingCorrectionForm";
 import {
   formatAbv,
   formatCategoryPath,
@@ -27,6 +31,7 @@ import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
+import { getCorrectionOptions } from "@/sync/tastingHistory";
 import { captureWriteSession } from "@/sync/writeSession";
 
 //: `ProductForm` 과 같은 값 — 405종 목록에서도 스크롤 없이 훑을 수 있는 후보 수.
@@ -52,6 +57,8 @@ interface ProductDetailProps {
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
   onSelectContext?: ((context: ProductContext) => void) | undefined;
+  onTastingCorrected?: ((tasting: ContextualTasting) => void) | undefined;
+  onCorrectionSavingChange?: ((saving: boolean) => void) | undefined;
   product: Product;
   purchases: Purchase[];
   bottles: Bottle[];
@@ -111,6 +118,8 @@ export function ProductDetail({
   selectedBottleId,
   selectedTastingId,
   onSelectContext,
+  onTastingCorrected,
+  onCorrectionSavingChange,
   offline,
   onBack,
   onEdit,
@@ -159,7 +168,7 @@ export function ProductDetail({
     [bottleContextKey],
   );
   const selectContext = (context: ProductContext) => {
-    if (savingBottle || savingPurchase || addingPurchase || addingSku) return;
+    if (savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku) return;
     if (onSelectContext) onSelectContext(context);
     else setLocalContext(context);
   };
@@ -172,6 +181,32 @@ export function ProductDetail({
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [externalInfoOpen, setExternalInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(Boolean(contextTastingId));
+  const [correctionPurchaseId, setCorrectionPurchaseId] = useState<string | null>(null);
+  const [correctionTastingId, setCorrectionTastingId] = useState<string | null>(null);
+  const [savingCorrection, setCorrectionPending] = useState(false);
+  const setSavingCorrection = useCallback(
+    (saving: boolean) => {
+      setCorrectionPending(saving);
+      onCorrectionSavingChange?.(saving);
+    },
+    [onCorrectionSavingChange],
+  );
+  const correctionOptions = useLiveQuery(
+    async () => (correctionTastingId ? getCorrectionOptions() : undefined),
+    [correctionTastingId],
+  );
+  const purchaseCorrectionRef = useRef<HTMLDivElement>(null);
+  const tastingCorrectionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (contextTastingId) setHistoryOpen(true);
+  }, [contextTastingId]);
+  useEffect(() => {
+    if (correctionPurchaseId) purchaseCorrectionRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [correctionPurchaseId]);
+  useEffect(() => {
+    if (correctionTastingId) tastingCorrectionRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [correctionTastingId]);
 
   return (
     <article aria-labelledby="detail-heading">
@@ -179,7 +214,9 @@ export function ProductDetail({
         <button
           type="button"
           className="btn-quiet"
-          disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+          disabled={
+            savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku
+          }
           onClick={onBack}
         >
           ← 목록으로
@@ -187,7 +224,9 @@ export function ProductDetail({
         <div className="button-row">
           <button
             type="button"
-            disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+            disabled={
+              savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku
+            }
             onClick={onEdit}
           >
             수정
@@ -218,7 +257,12 @@ export function ProductDetail({
                     if (window.confirm(message)) onDelete();
                   }}
                   disabled={
-                    deleting || savingBottle || savingPurchase || addingPurchase || addingSku
+                    deleting ||
+                    savingBottle ||
+                    savingPurchase ||
+                    savingCorrection ||
+                    addingPurchase ||
+                    addingSku
                   }
                 >
                   {deleting ? "삭제 중…" : "삭제"}
@@ -311,7 +355,7 @@ export function ProductDetail({
         product={product}
         selectedSkuId={activeSkuId}
         onSelect={(skuId) => selectContext(skuId ? { skuId } : {})}
-        disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+        disabled={savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku}
       />
       {selectedSku ? (
         <output className="selected-sku-context">
@@ -325,7 +369,9 @@ export function ProductDetail({
             <button
               type="button"
               aria-pressed={matchingOnly}
-              disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+              disabled={
+                savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku
+              }
               onClick={() => setAllHistoryScope(null)}
             >
               선택 조건
@@ -333,7 +379,9 @@ export function ProductDetail({
             <button
               type="button"
               aria-pressed={!matchingOnly}
-              disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+              disabled={
+                savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku
+              }
               onClick={() => setAllHistoryScope(matchingScope)}
             >
               전체 구매 이력
@@ -367,7 +415,32 @@ export function ProductDetail({
         splitError={splitError}
         onAddSku={onAddSku}
         addingSku={addingSku}
+        correctionPending={savingCorrection}
+        onCorrectSku={(id) => {
+          if (!savingCorrection) setCorrectionPurchaseId(id);
+        }}
       />
+
+      {correctionPurchaseId ? (
+        <div ref={purchaseCorrectionRef}>
+          <PurchaseSkuCorrectionForm
+            key={correctionPurchaseId}
+            purchaseId={correctionPurchaseId}
+            offline={offline}
+            onSavingChange={setSavingCorrection}
+            onCancel={() => {
+              if (!savingCorrection) setCorrectionPurchaseId(null);
+            }}
+            onSaved={() => {
+              setSavingCorrection(false);
+              setCorrectionPurchaseId(null);
+              const next = { purchaseScope: undefined };
+              if (onSelectContext) onSelectContext(next);
+              else setLocalContext(next);
+            }}
+          />
+        </div>
+      ) : null}
 
       {matchingOnly && scopedBottles.length === 0 ? (
         <output className="notice">
@@ -381,11 +454,68 @@ export function ProductDetail({
           offline={offline}
           selectedSkuId={activeSkuId}
           selectedBottleId={contextBottleId}
-          selectedTastingId={contextTastingId}
           onSelectContext={selectContext}
           onSavingChange={setSavingBottle}
         />
       )}
+
+      <details
+        className="panel mt-2"
+        open={historyOpen}
+        onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+      >
+        <summary>시음 기록 찾기·정정</summary>
+        {historyOpen ? (
+          <ProductTastingHistory
+            productId={product.id}
+            selectedSkuId={activeSkuId}
+            selectedBottleId={contextBottleId}
+            selectedTastingId={contextTastingId}
+            offline={offline}
+            correctionPending={savingCorrection}
+            onCorrect={(tasting) => {
+              if (!savingCorrection) setCorrectionTastingId(tasting.id);
+            }}
+            onSelectTasting={(tasting) =>
+              selectContext({
+                skuId: tasting.sku_id,
+                bottleId: tasting.bottle_id ?? undefined,
+                tastingId: tasting.id,
+              })
+            }
+          />
+        ) : null}
+      </details>
+      {correctionTastingId ? (
+        <div ref={tastingCorrectionRef}>
+          <TastingCorrectionForm
+            key={correctionTastingId}
+            tastingId={correctionTastingId}
+            offline={offline}
+            bottleOptions={correctionOptions?.bottles}
+            skuOptions={correctionOptions?.skus}
+            onSavingChange={setSavingCorrection}
+            onCancel={() => {
+              if (!savingCorrection) setCorrectionTastingId(null);
+            }}
+            onSaved={(result) => {
+              setSavingCorrection(false);
+              setCorrectionTastingId(null);
+              if (onTastingCorrected) onTastingCorrected(result);
+              else {
+                const next = {
+                  skuId: result.sku_id,
+                  bottleId: result.bottle_id ?? undefined,
+                  tastingId: result.id,
+                  purchaseScope: undefined,
+                };
+                if (onSelectContext) onSelectContext(next);
+                else setLocalContext(next);
+              }
+            }}
+          />
+        </div>
+      ) : null}
 
       <ProductAttachments key={product.id} productId={product.id} offline={offline} />
 
@@ -463,7 +593,11 @@ function PurchaseSection({
   onAddSku,
   addingSku,
   onSavingChange,
+  onCorrectSku,
+  correctionPending,
 }: {
+  onCorrectSku: (purchaseId: string) => void;
+  correctionPending: boolean;
   onSavingChange: (saving: boolean) => void;
   product: Product;
   matchingPurchaseIds?: readonly string[] | undefined;
@@ -521,7 +655,13 @@ function PurchaseSection({
     }
     wasAdding.current = addingPurchase;
   }, [addingPurchase, addPurchaseError, onSavingChange]);
-  const busy = editing.pending || addingPurchase || addingLocally || skuSaving || addingSku;
+  const busy =
+    editing.pending ||
+    addingPurchase ||
+    addingLocally ||
+    skuSaving ||
+    addingSku ||
+    correctionPending;
 
   function submitPurchase(input: AddPurchaseInput): void {
     if (flight.current || busy) return;
@@ -635,6 +775,15 @@ function PurchaseSection({
                       <span className="purchase-context" title={purchase.id}>
                         {purchaseReference(purchase.id, purchaseIds)}
                       </span>
+                      <button
+                        type="button"
+                        className="btn-quiet"
+                        disabled={busy}
+                        onClick={() => onCorrectSku(purchase.id)}
+                        aria-label={`${purchaseReference(purchase.id, purchaseIds)} 규격 정정`}
+                      >
+                        규격 정정
+                      </button>
                     </td>
                     <td data-label="구매일">{formatDate(purchase.purchased_on)}</td>
                     <td data-label="구매처">{purchase.vendor_name ?? "미기록"}</td>

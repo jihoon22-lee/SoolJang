@@ -9,12 +9,19 @@ import datetime
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
 from sooljang.api.pagination import Cursor, build_page
+from sooljang.api.schemas.attachments import AttachmentOut
+from sooljang.api.schemas.corrections import (
+    BottleCorrectionContext,
+    ContextualTasting,
+    ContextualTastingPage,
+    TastingCorrection,
+)
 from sooljang.api.schemas.tasting import (
     BottleOut,
     BottleRevisionRequest,
@@ -23,13 +30,13 @@ from sooljang.api.schemas.tasting import (
     OpenBottleRequest,
     SetRemainingRequest,
     TastingCreate,
-    TastingOut,
-    TastingPageOut,
     TastingSummaryOut,
 )
 from sooljang.application.bottle_commands import require_no_tasting, require_revision
+from sooljang.application.corrections import correct_tasting
 from sooljang.application.history import bottle_history
 from sooljang.application.skus import load_live_sku_for_write
+from sooljang.application.tasting_context import bottle_context, contextual_tastings, owned_tasting
 from sooljang.application.tastings import (
     BottleTransitionError,
     InsufficientRemainingError,
@@ -229,18 +236,23 @@ async def bottle_history_endpoint(
 
 
 @bottles_router.get(
-    "/{bottle_id}/tastings", response_model=list[TastingOut], summary="병의 시음 타임라인"
+    "/{bottle_id}/tastings", response_model=list[ContextualTasting], summary="병의 시음 타임라인"
 )
 async def bottle_tastings(
     session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
-) -> list[TastingOut]:
+) -> list[ContextualTasting]:
     await _get_bottle(session, user_id, bottle_id)
     records = await list_tastings(session, user_id=user_id, bottle_id=bottle_id)
-    return [TastingOut.model_validate(record) for record in records]
+    return [
+        ContextualTasting.model_validate(row)
+        for row in await contextual_tastings(session, user_id, records, bottle_id=bottle_id)
+    ]
 
 
 @bottles_router.get(
-    "/{bottle_id}/tastings/page", response_model=TastingPageOut, summary="병의 시음 내역 이어 보기"
+    "/{bottle_id}/tastings/page",
+    response_model=ContextualTastingPage,
+    summary="병의 시음 내역 이어 보기",
 )
 async def bottle_tastings_page(
     session: SessionDep,
@@ -248,7 +260,7 @@ async def bottle_tastings_page(
     bottle_id: uuid.UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: Annotated[str | None, Query(max_length=2048)] = None,
-) -> TastingPageOut:
+) -> ContextualTastingPage:
     await _get_bottle(session, user_id, bottle_id)
     before = None
     if cursor is not None:
@@ -265,18 +277,21 @@ async def bottle_tastings_page(
     page = build_page(
         records, limit=limit, sort_value_of=lambda row: row.tasted_on, id_of=lambda row: row.id
     )
-    return TastingPageOut(
-        items=[TastingOut.model_validate(record) for record in page.items],
+    return ContextualTastingPage(
+        items=[
+            ContextualTasting.model_validate(row)
+            for row in await contextual_tastings(session, user_id, page.items, bottle_id=bottle_id)
+        ],
         next_cursor=page.next_cursor,
     )
 
 
 @tastings_router.post(
-    "", response_model=TastingOut, status_code=status.HTTP_201_CREATED, summary="시음 기록"
+    "", response_model=ContextualTasting, status_code=status.HTTP_201_CREATED, summary="시음 기록"
 )
 async def create_tasting(
     session: SessionDep, user_id: UserDep, payload: TastingCreate
-) -> TastingOut:
+) -> ContextualTasting:
     """시음을 기록한다.
 
     병을 지정하면 잔량을 차감하고, 미개봉 병이면 자동으로 개봉 처리한다. 마시기 시작한 것
@@ -324,21 +339,28 @@ async def create_tasting(
         raise ConflictError(str(error)) from error
 
     await session.refresh(record)
-    return TastingOut.model_validate(record)
+    return ContextualTasting.model_validate(
+        (await contextual_tastings(session, user_id, [record]))[0]
+    )
 
 
-@tastings_router.get("", response_model=list[TastingOut], summary="시음 타임라인")
+@tastings_router.get("", response_model=list[ContextualTasting], summary="시음 타임라인")
 async def timeline(
     session: SessionDep,
     user_id: UserDep,
     sku_id: Annotated[uuid.UUID | None, Query()] = None,
     bottle_id: Annotated[uuid.UUID | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[TastingOut]:
+) -> list[ContextualTasting]:
     records = await list_tastings(
         session, user_id=user_id, sku_id=sku_id, bottle_id=bottle_id, limit=limit
     )
-    return [TastingOut.model_validate(record) for record in records]
+    return [
+        ContextualTasting.model_validate(row)
+        for row in await contextual_tastings(
+            session, user_id, records, sku_id=sku_id, bottle_id=bottle_id
+        )
+    ]
 
 
 @tastings_router.get("/summary", response_model=TastingSummaryOut, summary="시음 요약")
@@ -347,9 +369,20 @@ async def summary(
     user_id: UserDep,
     sku_id: Annotated[uuid.UUID | None, Query()] = None,
     bottle_id: Annotated[uuid.UUID | None, Query()] = None,
+    product_id: Annotated[uuid.UUID | None, Query()] = None,
+    tasted_on_min: datetime.date | None = None,
+    tasted_on_max: datetime.date | None = None,
 ) -> TastingSummaryOut:
     """시음 요약. 기록이 없어도 404 가 아니라 0 과 null 을 반환한다(정상 상태)."""
-    result = await summarize_tastings(session, user_id=user_id, sku_id=sku_id, bottle_id=bottle_id)
+    result = await summarize_tastings(
+        session,
+        user_id=user_id,
+        sku_id=sku_id,
+        bottle_id=bottle_id,
+        product_id=product_id,
+        tasted_on_min=tasted_on_min,
+        tasted_on_max=tasted_on_max,
+    )
     return TastingSummaryOut(
         session_count=result.session_count,
         rated_count=result.rated_count,
@@ -372,19 +405,148 @@ async def delete_tasting(session: SessionDep, user_id: UserDep, tasting_id: uuid
     잔량은 되돌리지 않는다. 실제로 마신 양을 되돌릴 방법이 없고, 잘못 입력했다면 병의 잔량을
     직접 고치는 편이 명확하다.
     """
+    from sooljang.application.corrections import _lock_rows
+    from sooljang.application.history import log_event
     from sooljang.infrastructure.database.models import TastingSession
 
-    record = await session.scalar(
-        select(TastingSession).where(
-            TastingSession.id == tasting_id,
-            TastingSession.user_id == user_id,
-            TastingSession.deleted_at.is_(None),
-        )
+    await lock_user_writes(session, user_id)
+    record = await owned_tasting(session, user_id, tasting_id)
+    original_bottle_id = record.bottle_id
+    bottles = await _lock_rows(
+        session, Bottle, {original_bottle_id} if original_bottle_id else set(), user_id
     )
-    if record is None:
-        raise NotFoundError("시음 기록을 찾을 수 없습니다")
-
-    import datetime
-
+    records = await _lock_rows(session, TastingSession, {tasting_id}, user_id)
+    record = records[tasting_id]
+    if record.bottle_id != original_bottle_id:
+        raise ConflictError("시음 연결이 변경되었습니다")
     record.deleted_at = datetime.datetime.now(datetime.UTC)
+    for bottle in bottles.values():
+        bottle.revision = uuid.uuid4()
+        log_event(
+            session,
+            user_id=user_id,
+            entity="bottle",
+            entity_id=bottle.id,
+            action="tasting_delete",
+            detail={"tasting_id": tasting_id},
+        )
+    log_event(
+        session,
+        user_id=user_id,
+        entity="tasting_session",
+        entity_id=tasting_id,
+        action="delete",
+        detail={},
+    )
     await session.flush()
+
+
+@tastings_router.get("/page", response_model=ContextualTastingPage)
+async def timeline_page(
+    session: SessionDep,
+    user_id: UserDep,
+    product_id: uuid.UUID | None = None,
+    sku_id: uuid.UUID | None = None,
+    bottle_id: uuid.UUID | None = None,
+    tasted_on_min: datetime.date | None = None,
+    tasted_on_max: datetime.date | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+) -> ContextualTastingPage:
+    before = None
+    if cursor:
+        decoded = Cursor.decode(cursor)
+        try:
+            if not isinstance(decoded.sort_value, str):
+                raise ValueError("날짜가 아닙니다")
+            before = (datetime.date.fromisoformat(decoded.sort_value), decoded.id)
+        except ValueError as error:
+            raise ValidationFailedError("시음 cursor의 날짜를 해석할 수 없습니다") from error
+    records = await list_tastings(
+        session,
+        user_id=user_id,
+        product_id=product_id,
+        sku_id=sku_id,
+        bottle_id=bottle_id,
+        tasted_on_min=tasted_on_min,
+        tasted_on_max=tasted_on_max,
+        limit=limit + 1,
+        before=before,
+    )
+    page = build_page(
+        records, limit=limit, sort_value_of=lambda row: row.tasted_on, id_of=lambda row: row.id
+    )
+    return ContextualTastingPage(
+        items=[
+            ContextualTasting.model_validate(row)
+            for row in await contextual_tastings(
+                session,
+                user_id,
+                page.items,
+                product_id=product_id,
+                sku_id=sku_id,
+                bottle_id=bottle_id,
+                tasted_on_min=tasted_on_min,
+                tasted_on_max=tasted_on_max,
+            )
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+@tastings_router.get("/{tasting_id}", response_model=ContextualTasting)
+async def get_tasting(
+    session: SessionDep, user_id: UserDep, tasting_id: uuid.UUID
+) -> ContextualTasting:
+    record = await owned_tasting(session, user_id, tasting_id)
+    rows = await contextual_tastings(session, user_id, [record])
+    if not rows:
+        raise NotFoundError("시음 기록을 찾을 수 없습니다")
+    return ContextualTasting.model_validate(rows[0])
+
+
+@tastings_router.post("/{tasting_id}:correct", response_model=ContextualTasting)
+async def correct_tasting_endpoint(
+    session: SessionDep, user_id: UserDep, tasting_id: uuid.UUID, payload: TastingCorrection
+) -> ContextualTasting:
+    return await correct_tasting(session, user_id, tasting_id, payload)
+
+
+@tastings_router.get("/{tasting_id}/attachments", response_model=list[AttachmentOut])
+async def tasting_attachments(
+    session: SessionDep, user_id: UserDep, tasting_id: uuid.UUID, response: Response
+) -> list[AttachmentOut]:
+    from sooljang.infrastructure.database.models import Attachment
+
+    await owned_tasting(session, user_id, tasting_id)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Cookie"
+    rows = await session.scalars(
+        select(Attachment)
+        .where(
+            Attachment.user_id == user_id,
+            Attachment.tasting_session_id == tasting_id,
+            Attachment.deleted_at.is_(None),
+        )
+        .order_by(Attachment.created_at.desc(), Attachment.id)
+    )
+    return [AttachmentOut.model_validate(row) for row in rows]
+
+
+@tastings_router.get("/{tasting_id}/history")
+async def tasting_history_endpoint(
+    session: SessionDep, user_id: UserDep, tasting_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    from sooljang.application.history import entity_history
+
+    await owned_tasting(session, user_id, tasting_id)
+    return await entity_history(
+        session, user_id=user_id, entity="tasting_session", entity_id=tasting_id
+    )
+
+
+@bottles_router.get("/{bottle_id}/correction-context", response_model=BottleCorrectionContext)
+async def bottle_correction_context(
+    session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
+) -> BottleCorrectionContext:
+    return BottleCorrectionContext.model_validate(await bottle_context(session, user_id, bottle_id))

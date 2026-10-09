@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sooljang.api.routes import purchases
+from sooljang.api.schemas.tasting import TastingOut
 from sooljang.infrastructure.database.models import Bottle, Purchase
 from sooljang.infrastructure.database.session import get_session_factory
 from tests.api.test_purchases import _post, _product_with_sku
@@ -44,7 +45,14 @@ def test_purchase_can_grow_after_shrinking_without_reusing_deleted_bottles_or_ch
         assert [bottle["id"] for bottle in current[:2]] == [bottle["id"] for bottle in original[:2]]
         assert original[2]["id"] not in {bottle["id"] for bottle in current}
         assert api_client.get(f"{prefix}/bottles/{original[0]['id']}").json() == tasted_bottle
-        assert api_client.get(f"{prefix}/bottles/{original[0]['id']}/tastings").json() == [tasting]
+        timeline = api_client.get(f"{prefix}/bottles/{original[0]['id']}/tastings").json()
+        assert len(timeline) == 1
+        assert {key: timeline[0][key] for key in TastingOut.model_fields} == {
+            key: tasting[key] for key in TastingOut.model_fields
+        }
+        assert timeline[0]["updated_at"] == tasting["updated_at"]
+        assert timeline[0]["purchase"]["id"] == purchase["id"]
+        assert timeline[0]["purchase"]["quantity"] == quantity
 
     async def original_deleted_bottle_is_preserved() -> None:
         async with get_session_factory()() as session:

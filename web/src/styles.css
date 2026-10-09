@@ -3242,3 +3242,52 @@ legend {
 .product-card dl.filtered-price-summary dd {
   text-align: right;
 }
+
+.correction-fields,
+.tasting-correction-form > fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.correction-bottle {
+  min-width: 0;
+  margin-block: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.correction-form,
+.tasting-correction-form,
+.product-tasting-history {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.correction-confirm {
+  display: block;
+  margin-block: var(--space-md);
+}
+.tasting-correction-form label,
+.product-tasting-history .field-row > label {
+  display: block;
+  min-width: 0;
+}
+.tasting-correction-form select,
+.product-tasting-history select,
+.product-tasting-history input {
+  max-width: 100%;
+  min-width: 0;
+}
+.tasting-correction-form textarea,
+.tasting-correction-form select {
+  display: block;
+  width: 100%;
+}
+.tasting-correction-form textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+.product-tasting-history > .tasting-timeline {
+  list-style: none;
+  padding: 0;
+}

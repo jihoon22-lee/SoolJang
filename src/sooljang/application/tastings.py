@@ -432,13 +432,19 @@ async def summarize_tastings(
     user_id: uuid.UUID,
     sku_id: uuid.UUID | None = None,
     bottle_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
+    tasted_on_min: datetime.date | None = None,
+    tasted_on_max: datetime.date | None = None,
 ) -> TastingSummary:
     """시음 요약을 계산한다. 저장하지 않고 매번 센다(파생값 비저장 규칙)."""
-    filters = _live_tasting_conditions(user_id)
-    if sku_id is not None:
-        filters.append(TastingSession.sku_id == sku_id)
-    if bottle_id is not None:
-        filters.append(TastingSession.bottle_id == bottle_id)
+    filters = tasting_conditions(
+        user_id,
+        product_id=product_id,
+        sku_id=sku_id,
+        bottle_id=bottle_id,
+        tasted_on_min=tasted_on_min,
+        tasted_on_max=tasted_on_max,
+    )
 
     aggregate = (
         await session.execute(
@@ -490,15 +496,21 @@ async def list_tastings(
     user_id: uuid.UUID,
     sku_id: uuid.UUID | None = None,
     bottle_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
+    tasted_on_min: datetime.date | None = None,
+    tasted_on_max: datetime.date | None = None,
     limit: int = 50,
     before: tuple[datetime.date, uuid.UUID] | None = None,
 ) -> list[TastingSession]:
     """시음 타임라인. 최근 순으로 반환한다."""
-    filters = _live_tasting_conditions(user_id)
-    if sku_id is not None:
-        filters.append(TastingSession.sku_id == sku_id)
-    if bottle_id is not None:
-        filters.append(TastingSession.bottle_id == bottle_id)
+    filters = tasting_conditions(
+        user_id,
+        product_id=product_id,
+        sku_id=sku_id,
+        bottle_id=bottle_id,
+        tasted_on_min=tasted_on_min,
+        tasted_on_max=tasted_on_max,
+    )
     if before is not None:
         tasted_on, tasting_id = before
         filters.append(
@@ -537,3 +549,34 @@ def _live_tasting_conditions(user_id: uuid.UUID) -> list[Any]:
             TastingSession.bottle_id.in_(live_bottles_query(user_id).with_only_columns(Bottle.id)),
         ),
     ]
+
+
+def tasting_conditions(
+    user_id: uuid.UUID,
+    *,
+    product_id: uuid.UUID | None = None,
+    sku_id: uuid.UUID | None = None,
+    bottle_id: uuid.UUID | None = None,
+    tasted_on_min: datetime.date | None = None,
+    tasted_on_max: datetime.date | None = None,
+) -> list[Any]:
+    from sooljang.api.errors import ValidationFailedError
+
+    if tasted_on_min and tasted_on_max and tasted_on_min > tasted_on_max:
+        raise ValidationFailedError("시음 시작일은 종료일보다 늦을 수 없습니다")
+    filters = _live_tasting_conditions(user_id)
+    if sku_id is not None:
+        filters.append(TastingSession.sku_id == sku_id)
+    if bottle_id is not None:
+        filters.append(TastingSession.bottle_id == bottle_id)
+    if product_id is not None:
+        filters.append(
+            TastingSession.sku_id.in_(
+                select(Sku.id).where(Sku.product_id == product_id, Sku.user_id == user_id)
+            )
+        )
+    if tasted_on_min is not None:
+        filters.append(TastingSession.tasted_on >= tasted_on_min)
+    if tasted_on_max is not None:
+        filters.append(TastingSession.tasted_on <= tasted_on_max)
+    return filters

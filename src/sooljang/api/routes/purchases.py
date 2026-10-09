@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
+from sooljang.api.schemas.corrections import PurchaseCorrectionContext, PurchaseSkuCorrection
 from sooljang.api.schemas.product import (
     BottleOut,
     PurchaseCreate,
@@ -28,8 +29,10 @@ from sooljang.api.schemas.product import (
 )
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
+from sooljang.application.corrections import correct_purchase_sku
 from sooljang.application.history import changes, entity_history, log_event
 from sooljang.application.skus import load_live_sku_for_write
+from sooljang.application.tasting_context import correction_purchase_context
 from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import (
     Bottle,
@@ -560,3 +563,19 @@ async def _owned_purchase(
     if purchase is None:
         raise NotFoundError(f"구매 건을 찾을 수 없습니다: {purchase_id}")
     return purchase
+
+
+@purchases_router.get("/{purchase_id}/correction-context")
+async def purchase_correction_context_endpoint(
+    session: SessionDep, user_id: UserDep, purchase_id: uuid.UUID
+) -> PurchaseCorrectionContext:
+    return PurchaseCorrectionContext.model_validate(
+        await correction_purchase_context(session, user_id, purchase_id)
+    )
+
+
+@purchases_router.post("/{purchase_id}:correct-sku")
+async def correct_purchase_sku_endpoint(
+    session: SessionDep, user_id: UserDep, purchase_id: uuid.UUID, payload: PurchaseSkuCorrection
+) -> PurchaseCorrectionContext:
+    return await correct_purchase_sku(session, user_id, purchase_id, payload)

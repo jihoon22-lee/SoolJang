@@ -4,7 +4,8 @@
  * 시음 기록 없이 줄어든 양(요리·나눔)이나 잘못 기록된 잔량을 바로잡는다. 0 은 소진이다.
  */
 
-import { useEffect, useId, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useId, useState } from "react";
 import type { Bottle } from "@/api/types";
 import { bottleVolumeMl } from "@/sync/bottleActions";
 import { db } from "@/sync/db";
@@ -24,28 +25,20 @@ export function RemainingEditor({
   onSet: (remainingMl: number) => void;
   pending?: boolean;
 }) {
-  const [volume, setVolume] = useState<number | null>(null);
+  const volume = useLiveQuery(async () => {
+    const row = await db.bottle.get(bottle.id);
+    return row ? bottleVolumeMl(row.purchase_id as string) : null;
+  }, [bottle.id]);
   const [custom, setCustom] = useState("");
   const [open, setOpen] = useState(false);
   const inputId = useId();
-
-  useEffect(() => {
-    let active = true;
-    void db.bottle.get(bottle.id).then(async (row) => {
-      const ml = row ? await bottleVolumeMl(row.purchase_id as string) : null;
-      if (active) setVolume(ml);
-    });
-    return () => {
-      active = false;
-    };
-  }, [bottle.id]);
 
   const customValue = Number(custom);
   const customValid =
     custom.trim() !== "" &&
     Number.isInteger(customValue) &&
     customValue >= 0 &&
-    (volume === null || customValue <= volume);
+    (volume == null || customValue <= volume);
 
   return (
     <div className="remaining-editor">

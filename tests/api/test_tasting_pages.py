@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import update
 
 from sooljang.api.pagination import Cursor
+from sooljang.api.schemas.tasting import TastingOut
 from sooljang.infrastructure.database.models import Bottle, User
 from sooljang.infrastructure.database.session import get_session_factory
 from tests.api.test_purchases import _post
@@ -39,14 +40,21 @@ def test_bottle_tasting_pages_reach_oldest_note_without_duplicates_after_insert_
     removed = records.pop(10)
     assert api_client.delete(f"{prefix}/tastings/{removed['id']}").status_code == 204
     expected = sorted(records, key=lambda row: (row["tasted_on"], row["id"]), reverse=True)
+    expected_records = [{key: row[key] for key in TastingOut.model_fields} for row in expected]
     path = f"{prefix}/bottles/{bottle_id}/tastings"
 
     first_response = api_client.get(f"{path}/page")
     assert first_response.status_code == 200, first_response.text
     first = first_response.json()
-    assert first["items"] == expected[:50]
+    assert [
+        {key: row[key] for key in TastingOut.model_fields} for row in first["items"]
+    ] == expected_records[:50]
+    current_revision = api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"]
+    assert all(row["bottle"]["revision"] == current_revision for row in first["items"])
     assert first["next_cursor"] is not None
-    assert api_client.get(path).json() == expected[:50]
+    assert [
+        {key: row[key] for key in TastingOut.model_fields} for row in api_client.get(path).json()
+    ] == expected_records[:50]
 
     # 첫 페이지를 보는 사이 새 시음이 생기거나 경계 행이 삭제되어도 다음 구간은 이어진다.
     _post(
@@ -58,7 +66,12 @@ def test_bottle_tasting_pages_reach_oldest_note_without_duplicates_after_insert_
     second_response = api_client.get(f"{path}/page", params={"cursor": first["next_cursor"]})
     assert second_response.status_code == 200, second_response.text
     second = second_response.json()
-    assert second == {"items": expected[50:], "next_cursor": None}
+    assert second["next_cursor"] is None
+    assert [
+        {key: row[key] for key in TastingOut.model_fields} for row in second["items"]
+    ] == expected_records[50:]
+    current_revision = api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"]
+    assert all(row["bottle"]["revision"] == current_revision for row in second["items"])
     combined = first["items"] + second["items"]
     assert len({row["id"] for row in combined}) == 51
     assert combined[-1]["note"] == expected[-1]["note"]

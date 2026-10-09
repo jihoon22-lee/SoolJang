@@ -73,7 +73,8 @@ GET으로 확인했다. 강제 클릭·시계 가속·운영 데이터·유료 �
 
 로컬 원본은 `/tmp/sooljang-usage/wp04-browser-artifacts/report.json`(최초 10 pass/1 fail),
 수정 후 `/tmp/sooljang-usage/wp04-browser-artifacts/stock-mobile-fixed/`(2 pass)에 있다.
-백엔드 전체 로그는 `/tmp/usage-wp04-backend-full.log`에 있다. 원격 CI·머지는 대기 중이다.
+백엔드 전체 로그는 `/tmp/usage-wp04-backend-full.log`에 있다. [#164 CI](https://github.com/jihoon22-lee/SoolJang/actions/runs/37968190547) 전체 통과 후
+merge commit으로 main `23d5c89`에 통합했다. 구현 커밋은 `0d246e3`이다.
 
 ## 후속 범위
 
