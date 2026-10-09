@@ -86,6 +86,19 @@ export interface ProductMetrics {
   value_for_money: string | null;
 }
 
+export type FilteredPrices = Pick<
+  ProductMetrics,
+  | "purchased_count"
+  | "total_volume_ml"
+  | "list_total"
+  | "paid_total"
+  | "avg_list_price"
+  | "avg_paid_price"
+  | "price_per_100ml"
+  | "price_per_100ml_paid"
+  | "discount_rate"
+>;
+
 export interface SkuSummary {
   sku_id: string;
   volume_ml: number;
@@ -111,6 +124,8 @@ export interface Product {
   skus: Sku[];
   /** 구버전 응답에는 없을 수 있다. 로컬 조회는 항상 계산한다. */
   sku_summaries?: SkuSummary[];
+  filtered_prices?: FilteredPrices | null;
+  filtered_stock_count?: number | null;
   metrics: ProductMetrics;
   created_at: string;
   updated_at: string;
@@ -139,6 +154,7 @@ export type SortKey =
 export type SortOrder = "asc" | "desc";
 
 export interface ProductFilters {
+  volume_ml?: number | undefined;
   // exactOptionalPropertyTypes 를 켜 두었으므로 선택 속성에 undefined 를 명시한다.
   // 그러지 않으면 `{ q: undefined }` 같은 부분 갱신이 타입 오류가 된다.
   q?: string | undefined;
@@ -155,16 +171,20 @@ export interface ProductFilters {
   variety?: string | undefined;
   price_per_100ml_min?: string | undefined;
   price_per_100ml_max?: string | undefined;
-  /** `YYYY-MM-DD`. 이 범위 안에 구매 건이 하나라도 있으면 매치한다(`vendor_id` 필터와 같은
-   * "하나라도 있으면" 의미론). 오프라인(`sync/queries.ts::filterAndSortProducts`)과 백엔드
-   * `/products` 양쪽 다 구현돼 있어 온/오프라인 결과가 같다. 구매일이 없는 구매 건(레거시
-   * 임포트)은 어느 범위에도 매치하지 않는다. */
+  /** `YYYY-MM-DD`. 구매처·용량·날짜를 같은 구매 건에서 만족해야 한다.
+   * 오프라인 조회와 `/products`에 같은 조건을 적용한다.
+   * 구매일이 없는 구매 건(레거시 임포트)은 날짜 범위에 매치하지 않는다. */
   purchased_on_min?: string | undefined;
   purchased_on_max?: string | undefined;
   sort?: SortKey | undefined;
   order?: SortOrder | undefined;
   limit?: number | undefined;
 }
+
+export type PurchaseScope = Pick<
+  ProductFilters,
+  "volume_ml" | "vendor_id" | "purchased_on_min" | "purchased_on_max" | "in_stock"
+>;
 
 export interface ProductCreateInput {
   name: string;

@@ -1,8 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { cloneElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Bottle, Product, ProductMetrics, Purchase } from "@/api/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Bottle, Product, ProductMetrics, Purchase, Sku } from "@/api/types";
 import { ProductDetail } from "@/components/ProductDetail";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
@@ -126,7 +126,13 @@ function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
   const onAddPurchase = vi.fn();
   const onDeletePurchase = vi.fn();
   const onSplitPurchase = vi.fn();
-  const onAddSku = vi.fn();
+  const onAddSku = vi.fn(async (volumeMl: number) => ({
+    id: "s1",
+    volume_ml: volumeMl,
+    barcode: null,
+    barcode_type: null,
+    package_note: null,
+  }));
   const element = (
     <ProductDetail
       product={product}
@@ -164,6 +170,15 @@ function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
     rerenderProduct: (next: Product) => view.rerender(cloneElement(element, { product: next })),
   };
 }
+
+beforeEach(async () => {
+  localStorage.clear();
+  await activateDatabase("product-detail-owner");
+});
+afterEach(() => {
+  localStorage.clear();
+  lockDatabase();
+});
 
 describe("ProductDetail", () => {
   it("이름과 주종 경로를 보여준다", () => {
@@ -581,7 +596,7 @@ it("첫 규격을 추가한 같은 폼에서 바로 구매를 저장한다", asy
   expect(screen.queryByText("규격을 선택하세요")).not.toBeInTheDocument();
 });
 
-it("규격 목록이 바뀌어도 유효한 선택과 구매 입력은 보존하고 없어진 선택만 보정한다", async () => {
+it("규격 목록이 바뀌어도 유효한 선택과 구매 입력을 보존하며 사라진 선택은 직접 바꾸게 한다", async () => {
   const other = { ...product.skus[0]!, id: "s2", volume_ml: 350 };
   const { onAddPurchase, rerenderProduct } = setup({
     product: { ...product, skus: [...product.skus, other] },
@@ -596,6 +611,11 @@ it("규격 목록이 바뀌어도 유효한 선택과 구매 입력은 보존하
   });
   expect(screen.getByLabelText("규격")).toHaveValue("s2");
   rerenderProduct(product);
+  expect(screen.getByRole("alert")).toHaveTextContent("선택한 규격을 사용할 수 없습니다");
+  expect(screen.getByLabelText("규격")).toHaveValue("s2");
+  expect(screen.getByRole("button", { name: "구매 추가" })).toBeDisabled();
+  expect(onAddPurchase).not.toHaveBeenCalled();
+  await userEvent.selectOptions(screen.getByLabelText("규격"), "s1");
   await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
   expect(onAddPurchase).toHaveBeenCalledWith(expect.objectContaining({ skuId: "s1", quantity: 3 }));
 });
@@ -755,4 +775,135 @@ it("선택한 SKU의 구매와 병을 펼치고 전체 제품 지표 및 선택 
   ).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "700ml" }));
   expect(onSelectContext).toHaveBeenCalledWith({ skuId: "s1" });
+});
+
+it("다른 용량을 추가해도 구매 입력 전부를 보존하고 미러 갱신 전 반환 SKU로 저장한다", async () => {
+  let complete!: (sku: Sku) => void;
+  const onAddSku = vi.fn(
+    () =>
+      new Promise<Sku>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const { onAddPurchase } = setup({ onAddSku });
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.clear(screen.getByLabelText("병수"));
+  await userEvent.type(screen.getByLabelText("병수"), "3");
+  fireEvent.change(screen.getByLabelText("구매일"), { target: { value: "2026-02-03" } });
+  await userEvent.type(screen.getByLabelText("구매처"), "입력한 매장");
+  await userEvent.type(screen.getByLabelText("병당 정가 (원)"), "24000");
+  await userEvent.type(screen.getByLabelText("병당 실구매가 (원)"), "21000");
+  await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
+  await userEvent.type(screen.getByLabelText("용량 (ml)"), "350");
+  fireEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+  fireEvent.click(screen.getByRole("button", { name: "추가 중…" }));
+  expect(onAddSku).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText("병수")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "취소" })).toBeDisabled();
+  await act(async () =>
+    complete({
+      id: "new350",
+      volume_ml: 350,
+      barcode: null,
+      barcode_type: null,
+      package_note: null,
+    }),
+  );
+  expect(screen.getByLabelText("규격")).toHaveValue("new350");
+  expect(screen.getByLabelText("병수")).toHaveValue(3);
+  expect(screen.getByLabelText("구매일")).toHaveValue("2026-02-03");
+  expect(screen.getByLabelText("구매처")).toHaveValue("입력한 매장");
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  expect(onAddPurchase).toHaveBeenCalledWith({
+    skuId: "new350",
+    quantity: 3,
+    purchasedOn: "2026-02-03",
+    vendorName: "입력한 매장",
+    unitListPrice: "24000",
+    unitPaidPrice: "21000",
+  });
+});
+
+it("같은 용량은 API 생성 없이 재사용하고 규격 추가 실패에도 입력을 남긴다", async () => {
+  const onAddSku = vi.fn().mockRejectedValue(new Error("규격 생성 실패"));
+  setup({ onAddSku });
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.type(screen.getByLabelText("구매처"), "보존 매장");
+  await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
+  await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+  await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+  expect(onAddSku).not.toHaveBeenCalled();
+  expect(screen.getByText("선택 규격: 700ml")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
+  await userEvent.clear(screen.getByLabelText("용량 (ml)"));
+  await userEvent.type(screen.getByLabelText("용량 (ml)"), "350");
+  await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("규격 생성 실패");
+  expect(screen.getByLabelText("용량 (ml)")).toHaveValue(350);
+  expect(screen.getByLabelText("구매처")).toHaveValue("보존 매장");
+  expect(screen.getByText("선택 규격: 700ml")).toBeInTheDocument();
+});
+
+it("이전 제품의 늦은 규격 생성 성공은 새 제품의 구매 선택을 바꾸지 않는다", async () => {
+  let complete!: (sku: Sku) => void;
+  const onAddSku = vi.fn(
+    () =>
+      new Promise<Sku>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const { rerenderProduct } = setup({ onAddSku });
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
+  await userEvent.type(screen.getByLabelText("용량 (ml)"), "350");
+  await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+  rerenderProduct({
+    ...product,
+    id: "another-product",
+    name: "다른 제품",
+    skus: [
+      { id: "another1000", volume_ml: 1000, barcode: null, barcode_type: null, package_note: null },
+    ],
+  });
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await act(async () =>
+    complete({
+      id: "old350",
+      volume_ml: 350,
+      barcode: null,
+      barcode_type: null,
+      package_note: null,
+    }),
+  );
+  expect(screen.getByText("선택 규격: 1L")).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "350ml" })).not.toBeInTheDocument();
+});
+
+it("선택 조건은 구매와 그 병에만 적용하고 전체 이력으로 전환할 수 있다", async () => {
+  const bottleFor = (id: string, purchaseId: string): Bottle => ({
+    id,
+    purchase_id: purchaseId,
+    label_no: 1,
+    status: "unopened",
+    opened_on: null,
+    finished_on: null,
+    remaining_ml: null,
+    storage_location: null,
+    note: null,
+  });
+  setup({
+    matchingPurchaseIds: ["pu1"],
+    bottles: [bottleFor("b1", "pu1"), bottleFor("b2", "pu2")],
+    offline: true,
+  });
+  const table = screen.getByRole("table", { name: "구매 이력" });
+  expect(table).toHaveTextContent("구매 pu1");
+  expect(table).not.toHaveTextContent("구매 pu2");
+  expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: "전체 구매 이력" }));
+  expect(table).toHaveTextContent("구매 pu2");
+  expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(2);
+  await userEvent.click(screen.getByRole("button", { name: "선택 조건" }));
+  expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(1);
+  expect(screen.getByText("102,667원")).toBeInTheDocument();
 });

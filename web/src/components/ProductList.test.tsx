@@ -290,3 +290,53 @@ it("계산 모집단 설명을 받으면 전체 용량 평균으로 다시 표�
   expect(screen.getAllByText("조건에 맞는 구매 평균")).toHaveLength(2);
   expect(screen.queryByText(/제품 가격.*전체 용량/)).not.toBeInTheDocument();
 });
+
+it("조건 가격·재고와 제품 전체 재고·SKU 요약을 구분해 표시한다", () => {
+  const metrics = {
+    ...emptyMetrics,
+    in_stock_count: 2,
+    purchased_count: 2,
+    avg_list_price: "30000",
+    avg_paid_price: "20000",
+    price_per_100ml: "4000",
+  };
+  const selected = product({
+    metrics,
+    filtered_stock_count: 0,
+    filtered_prices: {
+      purchased_count: 1,
+      avg_list_price: "12000",
+      avg_paid_price: "10000",
+      price_per_100ml: "2400",
+      price_per_100ml_paid: "2000",
+      list_total: "12000",
+      paid_total: "10000",
+      total_volume_ml: 500,
+      discount_rate: "0.1667",
+    },
+  });
+  render(
+    <ProductList
+      products={[selected]}
+      priceScopeLabel="조건에 맞는 구매 평균"
+      onSelect={vi.fn()}
+      sort="avg_paid_price"
+      order="asc"
+      onSort={vi.fn()}
+    />,
+  );
+  const card = screen.getByRole("list", { name: /카드 보기/ });
+  expect(within(card).getByText("전체 재고 2병")).toBeInTheDocument();
+  expect(within(card).getByText("조건 내 재고 0병")).toBeInTheDocument();
+  expect(within(card).getByText("조건 평균 정가").nextElementSibling).toHaveTextContent("12,000원");
+  expect(within(card).getByText("조건 평균 실구매가").nextElementSibling).toHaveTextContent(
+    "10,000원",
+  );
+  expect(within(card).getByRole("list", { name: "규격별 재고와 실평단가" })).toHaveTextContent(
+    "실평단가 20,000원",
+  );
+  expect(screen.getByRole("columnheader", { name: /조건 평균 실구매가/ })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+});

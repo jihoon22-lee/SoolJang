@@ -17,6 +17,7 @@ from sooljang.api.pagination import (
     normalize_limit,
 )
 from sooljang.api.schemas.product import (
+    FilteredPricesOut,
     ProductCreate,
     ProductMetricsOut,
     ProductOut,
@@ -34,6 +35,7 @@ from sooljang.application.products import (
     category_path_map,
     ensure_category_exists,
     ensure_producer_exists,
+    filtered_prices_from_row,
     load_product,
     load_sku,
     metrics_from_row,
@@ -45,6 +47,13 @@ from sooljang.application.products import (
     soft_delete_product,
     sort_column_for,
 )
+from sooljang.application.skus import (
+    create_sku,
+    delete_unused_sku,
+    load_live_sku_for_write,
+    validate_sku_volume_change,
+)
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.metrics_sql import single_product_metrics_query
 from sooljang.infrastructure.database.models import Product, ProductVariety, Sku
 
@@ -59,6 +68,8 @@ def _to_out(
     category_paths: dict[uuid.UUID, list[str]],
     producer_names: dict[uuid.UUID, str],
     sku_summaries: list[dict[str, Any]],
+    filtered_prices: dict[str, Any] | None = None,
+    filtered_stock_count: int | None = None,
 ) -> ProductOut:
     return ProductOut(
         id=product.id,
@@ -78,6 +89,10 @@ def _to_out(
         varieties=[link.variety.name for link in product.varieties if link.deleted_at is None],
         skus=[SkuOut.model_validate(sku) for sku in product.skus if sku.deleted_at is None],
         sku_summaries=sku_summaries,
+        filtered_prices=FilteredPricesOut(**filtered_prices)
+        if filtered_prices is not None
+        else None,
+        filtered_stock_count=filtered_stock_count,
         metrics=ProductMetricsOut(**metrics),
         created_at=product.created_at,
         updated_at=product.updated_at,
@@ -99,6 +114,7 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
     rating_min: Annotated[Decimal | None, Query(gt=0, le=6)] = None,
     in_stock: Annotated[bool | None, Query(description="재고 유무")] = None,
     vendor_id: Annotated[uuid.UUID | None, Query()] = None,
+    volume_ml: Annotated[int | None, Query(gt=0, le=100_000)] = None,
     variety: Annotated[str | None, Query(description="품종·스타일 부분 일치")] = None,
     price_per_100ml_min: Annotated[Decimal | None, Query(ge=0)] = None,
     price_per_100ml_max: Annotated[Decimal | None, Query(ge=0)] = None,
@@ -127,6 +143,7 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
         rating_min=rating_min,
         in_stock=in_stock,
         vendor_id=vendor_id,
+        volume_ml=volume_ml,
         variety=variety,
         price_per_100ml_min=price_per_100ml_min,
         price_per_100ml_max=price_per_100ml_max,
@@ -134,8 +151,16 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
         purchased_on_max=purchased_on_max,
     )
 
-    statement, metrics = await build_product_query(session, user_id=user_id, filters=filters)
-    sort_col = sort_column_for(sort, metrics)
+    statement, metrics, price_metrics = await build_product_query(
+        session, user_id=user_id, filters=filters
+    )
+    sort_metrics = (
+        price_metrics
+        if sort in {"avg_list_price", "avg_paid_price", "price_per_100ml", "paid_total"}
+        else metrics
+    )
+    sort_col = sort_column_for(sort, sort_metrics)
+    statement = statement.add_columns(sort_col.label("cursor_sort_value"))
     statement = apply_cursor(
         statement,
         sort_column=sort_col,
@@ -161,6 +186,12 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
             category_paths=category_paths,
             producer_names=producer_names,
             sku_summaries=summaries.get(row[0].id, []),
+            filtered_prices=filtered_prices_from_row(row)
+            if filters.purchase_scope.active
+            else None,
+            filtered_stock_count=int(row.filtered_stock_count)
+            if filters.purchase_scope.active
+            else None,
         )
         for row in visible
     ]
@@ -169,25 +200,10 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
     if has_more and visible:
         last_row = visible[-1]
         product: Product = last_row[0]
-        sort_value = (
-            getattr(product, sort, None)
-            if sort in {"name", "created_at", "updated_at", "abv", "vintage", "personal_rating"}
-            else getattr(last_row, _metric_attr(sort), None)
-        )
+        sort_value = last_row.cursor_sort_value
         next_cursor = Cursor(sort_value=sort_value, id=product.id).encode()
 
     return ProductPage(items=items, next_cursor=next_cursor)
-
-
-def _metric_attr(sort: SortKey) -> str:
-    return {
-        "avg_list_price": "avg_list_price",
-        "avg_paid_price": "avg_paid_price",
-        "price_per_100ml": "price_per_100ml",
-        "paid_total": "paid_total",
-        "in_stock_count": "in_stock",
-        "purchased_count": "purchased_count",
-    }[sort]
 
 
 @router.post(
@@ -200,6 +216,7 @@ async def create_product(
 
     4계층 구조의 입력 부담을 줄이려면 한 번의 요청으로 제품·규격·품종을 만들 수 있어야 한다.
     """
+    await lock_user_writes(session, user_id)
     await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
     producer_id = payload.producer_id
@@ -293,14 +310,21 @@ async def delete_product(product_id: uuid.UUID, session: SessionDep, user_id: Us
 async def add_sku(
     product_id: uuid.UUID, payload: SkuCreate, session: SessionDep, user_id: UserDep
 ) -> SkuOut:
-    await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
+    await lock_user_writes(session, user_id)
     try:
-        sku = _new_sku(user_id, product_id, payload)
+        barcode, _ = normalize_optional(payload.barcode)
+        await _check_barcode_available(session, user_id=user_id, barcode=barcode)
+        sku = await create_sku(
+            session,
+            user_id=user_id,
+            product_id=product_id,
+            volume_ml=payload.volume_ml,
+            barcode=payload.barcode,
+            package_note=payload.package_note,
+            restore_empty=True,
+        )
     except InvalidBarcodeError as error:
         raise ValidationFailedError(str(error)) from error
-    await _check_barcode_available(session, user_id=user_id, barcode=sku.barcode)
-    session.add(sku)
-    await session.flush()
     return SkuOut.model_validate(sku)
 
 
@@ -326,7 +350,12 @@ async def update_sku(
     못했을 때, 사용자가 확인한 뒤 이 엔드포인트로 바코드를 저장하면 다음 스캔부터는
     바로 매칭된다.
     """
+    await lock_user_writes(session, user_id)
     sku = await load_sku(session, user_id=user_id, sku_id=sku_id, for_update=True)
+    if "volume_ml" in payload.model_fields_set:
+        if payload.volume_ml is None:
+            raise ValidationFailedError("규격 용량은 비울 수 없습니다")
+        await validate_sku_volume_change(session, sku, payload.volume_ml)
 
     fields = payload.model_dump(exclude_unset=True, exclude={"barcode", "barcode_type"})
     for key, value in fields.items():
@@ -345,6 +374,15 @@ async def update_sku(
 
     await session.flush()
     return SkuOut.model_validate(sku)
+
+
+@skus_router.delete("/{sku_id}", status_code=status.HTTP_204_NO_CONTENT, summary="미사용 규격 삭제")
+async def delete_sku(sku_id: uuid.UUID, session: SessionDep, user_id: UserDep) -> None:
+    await lock_user_writes(session, user_id)
+    sku = await load_live_sku_for_write(
+        session, user_id=user_id, sku_id=sku_id, include_deleted=True
+    )
+    await delete_unused_sku(session, sku)
 
 
 async def _check_barcode_available(

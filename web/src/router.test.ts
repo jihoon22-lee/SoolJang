@@ -114,3 +114,19 @@ it("선택한 SKU·병·시음 맥락은 새로고침 가능한 URL로 왕복한
   };
   expect(parseHash(routeToHash(route))).toMatchObject(route);
 });
+
+it("선택한 구매 조건은 상세 URL의 새로고침에서도 전체 이력과 구분된다", () => {
+  const route = {
+    view: "products" as const,
+    productId: "p",
+    skuId: "s",
+    purchaseScope: {
+      volume_ml: 750,
+      vendor_id: "v",
+      purchased_on_min: "2026-01-01",
+      purchased_on_max: "2026-12-31",
+      in_stock: false,
+    },
+  };
+  expect(parseHash(routeToHash(route))).toMatchObject(route);
+});

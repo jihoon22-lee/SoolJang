@@ -15,12 +15,13 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from sooljang.api.errors import NotFoundError
+from sooljang.api.errors import NotFoundError, ValidationFailedError
 from sooljang.application.categories import descendant_ids_query, load_tree
+from sooljang.application.skus import load_live_sku_for_write
 from sooljang.domain.metrics import quantize_money, quantize_ratio, value_for_money
 from sooljang.infrastructure.database.metrics_sql import product_metrics_query, sku_metrics_query
 from sooljang.infrastructure.database.models import (
@@ -32,6 +33,11 @@ from sooljang.infrastructure.database.models import (
     Purchase,
     Sku,
     Variety,
+)
+from sooljang.infrastructure.database.purchase_filter_sql import (
+    PRICE_FIELDS,
+    PurchaseScope,
+    matching_price_metrics_query,
 )
 from sooljang.infrastructure.legacy.normalize import normalize_name_for_matching
 from sooljang.infrastructure.legacy.varieties import normalize_varieties
@@ -86,11 +92,22 @@ class ProductFilters:
     rating_min: Decimal | None = None
     in_stock: bool | None = None
     vendor_id: uuid.UUID | None = None
+    volume_ml: int | None = None
     variety: str | None = None
     price_per_100ml_min: Decimal | None = None
     price_per_100ml_max: Decimal | None = None
     purchased_on_min: date | None = None
     purchased_on_max: date | None = None
+
+    @property
+    def purchase_scope(self) -> PurchaseScope:
+        return PurchaseScope(
+            volume_ml=self.volume_ml,
+            vendor_id=self.vendor_id,
+            purchased_on_min=self.purchased_on_min,
+            purchased_on_max=self.purchased_on_max,
+            in_stock=self.in_stock,
+        )
 
 
 async def _category_scope(
@@ -106,7 +123,7 @@ async def _category_scope(
 
 async def build_product_query(
     session: AsyncSession, *, user_id: uuid.UUID, filters: ProductFilters
-) -> tuple[Select[Any], Any]:
+) -> tuple[Select[Any], Any, Any]:
     """필터가 적용된 제품 조회문과 지표 서브쿼리를 반환한다.
 
     지표 서브쿼리를 LEFT JOIN 하는 이유는 구매 건이 없는 제품도 목록에 남아야 하기
@@ -120,6 +137,24 @@ async def build_product_query(
         .outerjoin(metrics, metrics.c.product_id == Product.id)
         .where(Product.user_id == user_id, Product.deleted_at.is_(None))
     )
+
+    scope = filters.purchase_scope
+    if (
+        scope.purchased_on_min is not None
+        and scope.purchased_on_max is not None
+        and scope.purchased_on_min > scope.purchased_on_max
+    ):
+        raise ValidationFailedError("구매일 하한은 상한보다 늦을 수 없습니다")
+    price_metrics = metrics
+    if scope.active:
+        price_metrics = matching_price_metrics_query(user_id, scope).subquery("matching_prices")
+        statement = statement.outerjoin(price_metrics, price_metrics.c.product_id == Product.id)
+        statement = statement.add_columns(
+            *[price_metrics.c[name].label(f"filtered_{name}") for name in PRICE_FIELDS],
+            func.coalesce(price_metrics.c.in_stock, literal(0)).label("filtered_stock_count"),
+        )
+        if scope.requires_purchase or scope.volume_ml is not None:
+            statement = statement.where(price_metrics.c.product_id.is_not(None))
 
     if filters.q:
         # pg_trgm GIN 인덱스가 ILIKE '%...%' 를 가속한다. 한글에서 동작함을 실측했다.
@@ -146,14 +181,14 @@ async def build_product_query(
         statement = statement.where(Product.personal_rating >= filters.rating_min)
 
     if filters.in_stock is True:
-        statement = statement.where(func.coalesce(metrics.c.in_stock, 0) > 0)
+        statement = statement.where(func.coalesce(price_metrics.c.in_stock, 0) > 0)
     elif filters.in_stock is False:
-        statement = statement.where(func.coalesce(metrics.c.in_stock, 0) == 0)
+        statement = statement.where(func.coalesce(price_metrics.c.in_stock, 0) == 0)
 
     if filters.price_per_100ml_min is not None:
-        statement = statement.where(metrics.c.price_per_100ml >= filters.price_per_100ml_min)
+        statement = statement.where(price_metrics.c.price_per_100ml >= filters.price_per_100ml_min)
     if filters.price_per_100ml_max is not None:
-        statement = statement.where(metrics.c.price_per_100ml <= filters.price_per_100ml_max)
+        statement = statement.where(price_metrics.c.price_per_100ml <= filters.price_per_100ml_max)
 
     if filters.variety:
         statement = statement.where(
@@ -164,47 +199,21 @@ async def build_product_query(
             )
         )
 
-    if filters.vendor_id is not None:
-        statement = statement.where(
-            Product.id.in_(
-                select(Sku.product_id)
-                .join(Purchase, Purchase.sku_id == Sku.id)
-                .where(
-                    Purchase.vendor_id == filters.vendor_id,
-                    Purchase.deleted_at.is_(None),
-                )
-            )
-        )
-
-    # 구매일 범위. "범위 안 구매 건이 하나라도 있으면 매치" 한다 — 오프라인 Dexie 경로
-    # (`queries.ts::filterAndSortProducts`)와 같은 의미론이라 온/오프라인 결과가 갈리지
-    # 않는다. `purchased_on` 이 없는 구매 건(레거시 임포트 등)은 어느 범위에도 매치하지
-    # 않는다(None 비교는 항상 거짓) — 오프라인도 `purchaseDatesByProduct` 에서 null 을
-    # 제외하므로 동일하다.
-    if filters.purchased_on_min is not None or filters.purchased_on_max is not None:
-        purchase_scope = (
-            select(Sku.product_id)
-            .join(Purchase, Purchase.sku_id == Sku.id)
-            .where(Purchase.deleted_at.is_(None))
-        )
-        if filters.purchased_on_min is not None:
-            purchase_scope = purchase_scope.where(Purchase.purchased_on >= filters.purchased_on_min)
-        if filters.purchased_on_max is not None:
-            purchase_scope = purchase_scope.where(Purchase.purchased_on <= filters.purchased_on_max)
-        statement = statement.where(Product.id.in_(purchase_scope))
-
     statement = statement.options(
         selectinload(Product.skus),
         selectinload(Product.varieties).selectinload(ProductVariety.variety),
     )
-    return statement, metrics
+    return statement, metrics, price_metrics
 
 
 def sort_column_for(key: SortKey, metrics: Any) -> Any:
     """정렬 키에 해당하는 컬럼. 파생 지표는 지표 서브쿼리에서 가져온다."""
     if key in _PRODUCT_SORT_COLUMNS:
         return _PRODUCT_SORT_COLUMNS[key]
-    return metrics.c[_METRIC_SORT_KEYS[key]]
+    column = metrics.c[_METRIC_SORT_KEYS[key]]
+    if key in {"purchased_count", "in_stock_count"}:
+        return func.coalesce(column, literal(0))
+    return column
 
 
 async def load_product(
@@ -224,7 +233,7 @@ async def load_product(
         )
     )
     if for_update:
-        query = query.with_for_update().execution_options(populate_existing=True)
+        query = query.with_for_update(key_share=True).execution_options(populate_existing=True)
     product = await session.scalar(query)
     if product is None:
         raise NotFoundError(f"제품을 찾을 수 없습니다: {product_id}")
@@ -234,15 +243,20 @@ async def load_product(
 async def load_sku(
     session: AsyncSession, *, user_id: uuid.UUID, sku_id: uuid.UUID, for_update: bool = False
 ) -> Sku:
-    """규격 하나를 읽는다. 수정용 호출은 for_update로 현재 행을 잠그고 다시 읽는다."""
-    query = select(Sku).where(
-        Sku.id == sku_id,
-        Sku.user_id == user_id,
-        Sku.deleted_at.is_(None),
-    )
+    """규격과 부모 제품이 모두 살아 있고 같은 사용자 소유인지 확인한다."""
     if for_update:
-        query = query.with_for_update().execution_options(populate_existing=True)
-    sku = await session.scalar(query)
+        return await load_live_sku_for_write(session, user_id=user_id, sku_id=sku_id)
+    sku = await session.scalar(
+        select(Sku)
+        .join(Product, Product.id == Sku.product_id)
+        .where(
+            Sku.id == sku_id,
+            Sku.user_id == user_id,
+            Sku.deleted_at.is_(None),
+            Product.user_id == user_id,
+            Product.deleted_at.is_(None),
+        )
+    )
     if sku is None:
         raise NotFoundError(f"규격을 찾을 수 없습니다: {sku_id}")
     return sku
@@ -411,6 +425,20 @@ async def sku_summaries_for_products(
             }
         )
     return summaries
+
+
+def filtered_prices_from_row(row: Any) -> dict[str, Any]:
+    """목록의 M 전용 가격 DTO. 전체 병수나 SKU 원가를 섞지 않는다."""
+    result: dict[str, Any] = {}
+    for name in PRICE_FIELDS:
+        value = getattr(row, f"filtered_{name}", None)
+        if name in {"purchased_count", "total_volume_ml"}:
+            result[name] = int(value or 0)
+        elif name == "discount_rate":
+            result[name] = _ratio(value)
+        else:
+            result[name] = _money(value)
+    return result
 
 
 def metrics_from_row(row: Any, *, personal_rating: Decimal | None = None) -> dict[str, Any]:

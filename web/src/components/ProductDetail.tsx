@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Bottle, Product, Purchase } from "@/api/types";
+import type { Bottle, Product, Purchase, Sku } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottleSection } from "@/components/BottleSection";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
@@ -47,6 +47,7 @@ export interface SplitPart {
 }
 
 interface ProductDetailProps {
+  matchingPurchaseIds?: readonly string[] | undefined;
   selectedSkuId?: string | undefined;
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
@@ -77,7 +78,7 @@ interface ProductDetailProps {
   splittingPurchaseId: string | null;
   splitError: unknown;
 
-  onAddSku: (volumeMl: number) => void;
+  onAddSku: (volumeMl: number) => Promise<Sku>;
   addingSku: boolean;
   /** 삭제·구매 삭제·규격 추가처럼 폼 밖에서 실패한 동작의 오류. */
   actionError?: unknown;
@@ -105,6 +106,7 @@ export function ProductDetail({
   product,
   purchases,
   bottles,
+  matchingPurchaseIds,
   selectedSkuId,
   selectedBottleId,
   selectedTastingId,
@@ -129,6 +131,13 @@ export function ProductDetail({
   actionError,
 }: ProductDetailProps) {
   const { metrics } = product;
+  const matchingScope = matchingPurchaseIds ? [...matchingPurchaseIds].sort().join(":") : null;
+  const [allHistoryScope, setAllHistoryScope] = useState<string | null>(null);
+  const matchingOnly = matchingScope !== null && allHistoryScope !== matchingScope;
+  const visibleMatchingIds = matchingOnly ? matchingPurchaseIds : undefined;
+  const scopedBottles = matchingOnly
+    ? bottles.filter((bottle) => matchingPurchaseIds?.includes(bottle.purchase_id))
+    : bottles;
   const [localContext, setLocalContext] = useState<ProductContext>({});
   const contextSkuId = selectedSkuId ?? localContext.skuId;
   const contextBottleId = selectedBottleId ?? localContext.bottleId;
@@ -150,7 +159,7 @@ export function ProductDetail({
     [bottleContextKey],
   );
   const selectContext = (context: ProductContext) => {
-    if (savingBottle || savingPurchase || addingPurchase) return;
+    if (savingBottle || savingPurchase || addingPurchase || addingSku) return;
     if (onSelectContext) onSelectContext(context);
     else setLocalContext(context);
   };
@@ -170,7 +179,7 @@ export function ProductDetail({
         <button
           type="button"
           className="btn-quiet"
-          disabled={savingBottle || savingPurchase || addingPurchase}
+          disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
           onClick={onBack}
         >
           ← 목록으로
@@ -178,7 +187,7 @@ export function ProductDetail({
         <div className="button-row">
           <button
             type="button"
-            disabled={savingBottle || savingPurchase || addingPurchase}
+            disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
             onClick={onEdit}
           >
             수정
@@ -208,7 +217,9 @@ export function ProductDetail({
                     setMoreOpen(false);
                     if (window.confirm(message)) onDelete();
                   }}
-                  disabled={deleting || savingBottle || savingPurchase || addingPurchase}
+                  disabled={
+                    deleting || savingBottle || savingPurchase || addingPurchase || addingSku
+                  }
                 >
                   {deleting ? "삭제 중…" : "삭제"}
                 </button>
@@ -300,7 +311,7 @@ export function ProductDetail({
         product={product}
         selectedSkuId={activeSkuId}
         onSelect={(skuId) => selectContext(skuId ? { skuId } : {})}
-        disabled={savingBottle || savingPurchase || addingPurchase}
+        disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
       />
       {selectedSku ? (
         <output className="selected-sku-context">
@@ -308,7 +319,36 @@ export function ProductDetail({
         </output>
       ) : null}
 
+      {matchingScope !== null ? (
+        <fieldset className="panel" aria-label="구매 이력 범위">
+          <div className="button-row">
+            <button
+              type="button"
+              aria-pressed={matchingOnly}
+              disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+              onClick={() => setAllHistoryScope(null)}
+            >
+              선택 조건
+            </button>
+            <button
+              type="button"
+              aria-pressed={!matchingOnly}
+              disabled={savingBottle || savingPurchase || addingPurchase || addingSku}
+              onClick={() => setAllHistoryScope(matchingScope)}
+            >
+              전체 구매 이력
+            </button>
+          </div>
+          <p className="muted mb-0">
+            {matchingOnly
+              ? "선택 조건에 맞는 구매와 그 병만 표시합니다. 다른 규격은 전체 구매 이력에서 확인하세요."
+              : "선택 조건을 풀고 전체 구매 이력을 표시합니다."}{" "}
+            제품 지표와 규격별 요약은 전체 이력 기준입니다.
+          </p>
+        </fieldset>
+      ) : null}
       <PurchaseSection
+        matchingPurchaseIds={visibleMatchingIds}
         key={`purchase:${product.id}`}
         onSavingChange={setSavingPurchase}
         selectedSkuId={activeSkuId}
@@ -329,17 +369,23 @@ export function ProductDetail({
         addingSku={addingSku}
       />
 
-      <BottleSection
-        product={product}
-        bottles={bottles}
-        purchases={purchases}
-        offline={offline}
-        selectedSkuId={activeSkuId}
-        selectedBottleId={contextBottleId}
-        selectedTastingId={contextTastingId}
-        onSelectContext={selectContext}
-        onSavingChange={setSavingBottle}
-      />
+      {matchingOnly && scopedBottles.length === 0 ? (
+        <output className="notice">
+          선택 조건에 맞는 병이 없습니다. 전체 구매 이력에서 확인하세요.
+        </output>
+      ) : (
+        <BottleSection
+          product={product}
+          bottles={scopedBottles}
+          purchases={purchases}
+          offline={offline}
+          selectedSkuId={activeSkuId}
+          selectedBottleId={contextBottleId}
+          selectedTastingId={contextTastingId}
+          onSelectContext={selectContext}
+          onSavingChange={setSavingBottle}
+        />
+      )}
 
       <ProductAttachments key={product.id} productId={product.id} offline={offline} />
 
@@ -400,6 +446,7 @@ function Metric({
 
 function PurchaseSection({
   product,
+  matchingPurchaseIds,
   selectedSkuId,
   purchases,
   offline,
@@ -419,6 +466,7 @@ function PurchaseSection({
 }: {
   onSavingChange: (saving: boolean) => void;
   product: Product;
+  matchingPurchaseIds?: readonly string[] | undefined;
   selectedSkuId?: string | undefined;
   purchases: Purchase[];
   offline: boolean;
@@ -434,12 +482,14 @@ function PurchaseSection({
   onSplitPurchase: (purchaseId: string, parts: SplitPart[]) => void;
   splittingPurchaseId: string | null;
   splitError: unknown;
-  onAddSku: (volumeMl: number) => void;
+  onAddSku: (volumeMl: number) => Promise<Sku>;
   addingSku: boolean;
 }) {
-  const visiblePurchases = selectedSkuId
-    ? purchases.filter((purchase) => purchase.sku_id === selectedSkuId)
-    : purchases;
+  const visiblePurchases = purchases.filter(
+    (purchase) =>
+      (!selectedSkuId || purchase.sku_id === selectedSkuId) &&
+      (!matchingPurchaseIds || matchingPurchaseIds.includes(purchase.id)),
+  );
   const purchaseIds = purchases.map((purchase) => purchase.id);
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [splittingId, setSplittingId] = useState<string | null>(null);
@@ -450,6 +500,7 @@ function PurchaseSection({
   });
   const flight = useRef(false);
   const mounted = useRef(true);
+  const [skuSaving, setSkuSaving] = useState(false);
   const [addingLocally, setAddingLocally] = useState(false);
   const addSnapshot = useRef<ReturnType<typeof captureFormDraft> | null>(null);
   const promiseAdding = useRef(false);
@@ -470,7 +521,7 @@ function PurchaseSection({
     }
     wasAdding.current = addingPurchase;
   }, [addingPurchase, addPurchaseError, onSavingChange]);
-  const busy = editing.pending || addingPurchase || addingLocally;
+  const busy = editing.pending || addingPurchase || addingLocally || skuSaving || addingSku;
 
   function submitPurchase(input: AddPurchaseInput): void {
     if (flight.current || busy) return;
@@ -523,7 +574,13 @@ function PurchaseSection({
 
       {addFormOpen && (
         <AddPurchaseForm
+          key={product.id}
           product={product}
+          selectedSkuId={selectedSkuId}
+          onSavingChange={(saving) => {
+            setSkuSaving(saving);
+            onSavingChange(saving);
+          }}
           onSubmit={submitPurchase}
           onAddSku={onAddSku}
           addingSku={addingSku}
@@ -535,8 +592,9 @@ function PurchaseSection({
 
       {visiblePurchases.length === 0 ? (
         <output className="notice">
-          구매 기록이 없습니다. 같은 술을 여러 번 샀다면 구매 건을 각각 추가해 구매처와 가격을 따로
-          남길 수 있습니다.
+          {purchases.length > 0
+            ? "선택한 조건·규격에 맞는 구매 기록이 없습니다. 전체 구매 이력을 확인하세요."
+            : "구매 기록이 없습니다. 같은 술을 여러 번 샀다면 구매 건을 각각 추가해 구매처와 가격을 따로 남길 수 있습니다."}
         </output>
       ) : (
         <div className="table-scroll table-scroll--always">
@@ -707,6 +765,8 @@ function PurchaseSection({
 
 function AddPurchaseForm({
   product,
+  selectedSkuId,
+  onSavingChange,
   onSubmit,
   onAddSku,
   addingSku,
@@ -715,8 +775,10 @@ function AddPurchaseForm({
   vendorNames,
 }: {
   product: Product;
+  selectedSkuId?: string | undefined;
+  onSavingChange: (saving: boolean) => void;
   onSubmit: (input: AddPurchaseInput) => void;
-  onAddSku: (volumeMl: number) => void;
+  onAddSku: (volumeMl: number) => Promise<Sku>;
   addingSku: boolean;
   submitting: boolean;
   error: unknown;
@@ -724,7 +786,7 @@ function AddPurchaseForm({
 }) {
   const [skuId, setSkuId] = useDraftState(
     `purchase:${product.id}:skuId`,
-    product.skus[0]?.id ?? "",
+    selectedSkuId ?? (product.skus.length === 1 ? (product.skus[0]?.id ?? "") : ""),
   );
   const [quantity, setQuantity] = useDraftState(`purchase:${product.id}:quantity`, "1");
   const [vendorName, setVendorName] = useDraftState(`purchase:${product.id}:vendorName`, () =>
@@ -744,13 +806,89 @@ function AddPurchaseForm({
   const [newVolumeMl, setNewVolumeMl] = useDraftState(`purchase:${product.id}:newVolumeMl`, "");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // 첫 규격 생성 응답과 오래된 초안을 모두 반영하되 사용자의 유효한 선택은 유지한다.
+  const [confirmedSkus, setConfirmedSkus] = useState<Sku[]>([]);
+  const [volumeOpen, setVolumeOpen] = useState(product.skus.length === 0);
+  const [savingSku, setSavingSku] = useState(false);
+  const skuFlight = useRef(false);
+  const mounted = useRef(true);
+  const target = useRef({ productId: product.id, selectedSkuId });
+  target.current = { productId: product.id, selectedSkuId };
+  const previousContext = useRef<string | undefined>(undefined);
+  const skus = [
+    ...product.skus,
+    ...confirmedSkus.filter((sku) => !product.skus.some((item) => item.id === sku.id)),
+  ];
+  const chosenSku = skus.find((sku) => sku.id === skuId);
+  const busy = submitting || addingSku || savingSku;
   useEffect(() => {
-    if (product.skus.length > 0 && !product.skus.some((sku) => sku.id === skuId)) {
-      setSkuId(product.skus[0]?.id ?? "");
-      setLocalError(null);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setConfirmedSkus((current) => {
+      const pending = current.filter((sku) => !product.skus.some((item) => item.id === sku.id));
+      return pending.length === current.length ? current : pending;
+    });
+  }, [product.skus]);
+  useEffect(() => {
+    if (selectedSkuId && previousContext.current !== selectedSkuId) setSkuId(selectedSkuId);
+    previousContext.current = selectedSkuId;
+  }, [selectedSkuId, setSkuId]);
+
+  async function addVolume(): Promise<void> {
+    if (skuFlight.current || busy) return;
+    const volume = Number(newVolumeMl);
+    if (!Number.isInteger(volume) || volume < 1 || volume > 100_000) {
+      setLocalError("용량은 1~100,000ml 범위의 정수로 입력하세요");
+      return;
     }
-  }, [product.skus, skuId, setSkuId]);
+    const existing = skus.find((sku) => sku.volume_ml === volume);
+    if (existing) {
+      setSkuId(existing.id);
+      setVolumeOpen(false);
+      setLocalError(null);
+      return;
+    }
+    const session = captureWriteSession();
+    const submittedTarget = target.current;
+    skuFlight.current = true;
+    setSavingSku(true);
+    onSavingChange(true);
+    setLocalError(null);
+    try {
+      session.assertCurrent();
+      const sku = await onAddSku(volume);
+      if (
+        !mounted.current ||
+        !session.isCurrent() ||
+        target.current.productId !== submittedTarget.productId ||
+        target.current.selectedSkuId !== submittedTarget.selectedSkuId
+      )
+        return;
+      if (!sku?.id || sku.volume_ml !== volume)
+        throw new Error("추가한 규격을 확인할 수 없습니다. 입력은 보관했습니다");
+      setConfirmedSkus((current) => [...current.filter((item) => item.id !== sku.id), sku]);
+      setSkuId(sku.id);
+      setNewVolumeMl("");
+      setVolumeOpen(false);
+    } catch (cause) {
+      if (
+        mounted.current &&
+        session.isCurrent() &&
+        target.current.productId === submittedTarget.productId &&
+        target.current.selectedSkuId === submittedTarget.selectedSkuId
+      )
+        setLocalError(cause instanceof Error ? cause.message : "규격을 추가하지 못했습니다");
+    } finally {
+      skuFlight.current = false;
+      if (mounted.current && session.isCurrent()) {
+        setSavingSku(false);
+        onSavingChange(false);
+      }
+    }
+  }
 
   const vendorSuggestions = useMemo(
     () => rankByQuery(vendorNames, vendorName, (name) => name).slice(0, MAX_SUGGESTIONS),
@@ -760,47 +898,22 @@ function AddPurchaseForm({
   const errorMessage =
     localError ?? (error instanceof Error ? error.message : error ? String(error) : null);
 
-  if (product.skus.length === 0) {
-    return (
-      <form
-        className="panel"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!newVolumeMl.trim()) return;
-          onAddSku(Number(newVolumeMl));
-        }}
-      >
-        <p className="muted mt-0">
-          이 술은 아직 규격(용량)이 없습니다. 구매를 추가하려면 먼저 규격을 등록하세요.
-        </p>
-        <div className="field">
-          <label htmlFor="new-sku-volume">용량 (ml)</label>
-          <input
-            id="new-sku-volume"
-            type="number"
-            min={1}
-            value={newVolumeMl}
-            onChange={(event) => setNewVolumeMl(event.target.value)}
-          />
-        </div>
-        <button type="submit" className="primary" disabled={addingSku}>
-          {addingSku ? "추가 중…" : "규격 추가"}
-        </button>
-      </form>
-    );
-  }
-
   return (
     <form
       className="panel"
       onSubmit={(event) => {
         event.preventDefault();
-        if (submitting) return;
-        if (!skuId) {
+        if (skuFlight.current || busy) return;
+        if (!chosenSku) {
           setLocalError("규격을 선택하세요");
           return;
         }
-        if (!quantity.trim() || Number(quantity) < 1) {
+        if (
+          !quantity.trim() ||
+          !Number.isInteger(Number(quantity)) ||
+          Number(quantity) < 1 ||
+          Number(quantity) > 1000
+        ) {
           setLocalError("병수를 입력하세요");
           return;
         }
@@ -815,7 +928,7 @@ function AddPurchaseForm({
         });
       }}
     >
-      <fieldset disabled={submitting} style={{ border: 0, padding: 0 }}>
+      <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
         <DraftRecoveryButton form={`purchase:${product.id}`} />
         {errorMessage && (
           <p className="alert" role="alert">
@@ -823,22 +936,75 @@ function AddPurchaseForm({
           </p>
         )}
 
-        {product.skus.length > 1 && (
+        {skuId && !chosenSku ? (
+          <p className="alert" role="alert">
+            선택한 규격을 사용할 수 없습니다. 입력을 보관했습니다. 사용할 규격을 직접 선택하세요.
+          </p>
+        ) : null}
+        {skus.length === 0 ? (
+          <p className="muted">
+            이 술은 아직 규격(용량)이 없습니다. 구매를 추가하려면 먼저 규격을 등록하세요.
+          </p>
+        ) : null}
+        {skus.length > 1 || !chosenSku ? (
           <div className="field">
             <label htmlFor="purchase-sku">규격</label>
             <select
               id="purchase-sku"
               value={skuId}
-              onChange={(event) => setSkuId(event.target.value)}
+              onChange={(event) => {
+                setSkuId(event.target.value);
+                setLocalError(null);
+              }}
             >
-              {product.skus.map((sku) => (
+              <option value="">규격을 선택하세요</option>
+              {skuId && !chosenSku ? <option value={skuId}>사용할 수 없는 이전 규격</option> : null}
+              {skus.map((sku) => (
                 <option key={sku.id} value={sku.id}>
                   {formatVolume(sku.volume_ml)}
                 </option>
               ))}
             </select>
           </div>
+        ) : (
+          <p className="muted">선택 규격: {formatVolume(chosenSku?.volume_ml)}</p>
         )}
+        {!volumeOpen && skus.length > 0 ? (
+          <button type="button" onClick={() => setVolumeOpen(true)}>
+            다른 용량 추가
+          </button>
+        ) : null}
+        {volumeOpen || skus.length === 0 ? (
+          <fieldset className="fieldset-bordered">
+            <legend>{skus.length ? "다른 용량 추가" : "첫 규격 추가"}</legend>
+            <label htmlFor="new-sku-volume">용량 (ml)</label>
+            <input
+              id="new-sku-volume"
+              type="number"
+              min={1}
+              max={100000}
+              step={1}
+              value={newVolumeMl}
+              onChange={(event) => setNewVolumeMl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void addVolume();
+                }
+              }}
+            />
+            <div className="button-row">
+              <button type="button" onClick={() => void addVolume()} disabled={busy}>
+                {savingSku || addingSku ? "추가 중…" : "규격 추가"}
+              </button>
+              {skus.length > 0 ? (
+                <button type="button" onClick={() => setVolumeOpen(false)}>
+                  용량 추가 취소
+                </button>
+              ) : null}
+            </div>
+          </fieldset>
+        ) : null}
 
         <div className="field-row">
           <div className="field">
@@ -902,7 +1068,7 @@ function AddPurchaseForm({
           />
         </div>
 
-        <button type="submit" className="primary" disabled={submitting}>
+        <button type="submit" className="primary" disabled={busy || !chosenSku}>
           {submitting ? "저장 중…" : "구매 추가"}
         </button>
       </fieldset>

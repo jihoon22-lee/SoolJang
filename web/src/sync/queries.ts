@@ -44,6 +44,13 @@ import {
   tallyBottles,
   valueForMoney,
 } from "@/domain/metrics";
+import {
+  hasPurchaseScope,
+  type PriceSortKey,
+  purchaseScopePrices,
+  type ScopedPurchase,
+  selectPurchaseScope,
+} from "@/purchaseScope";
 import { matchesQuery } from "@/search";
 import { db, type SyncRow } from "@/sync/db";
 
@@ -200,10 +207,7 @@ interface ProductAssembly {
   skus: SyncRow[];
   lots: PurchaseLot[];
   bottles: MetricsBottleRecord[];
-  /** 이 제품의 어느 규격이든 구매한 적 있는 구매처 id 들. `filters.vendor_id` 필터용이다. */
-  vendorIds: Set<string>;
-  /** 이 제품의 구매 건들의 `purchased_on`(null 제외). `filters.purchased_on_min/max` 필터용이다. */
-  purchaseDates: string[];
+  purchases: ScopedPurchase[];
 }
 
 /** `assembleProducts()`(전체)와 `loadProductScope()`(단일 제품) 양쪽이 공유하는 조립
@@ -216,8 +220,7 @@ function assembleOneProduct(
 ): ProductAssembly {
   const lots: PurchaseLot[] = [];
   const bottleRecords: MetricsBottleRecord[] = [];
-  const vendorIds = new Set<string>();
-  const purchaseDates: string[] = [];
+  const scopedPurchases: ScopedPurchase[] = [];
 
   for (const sku of productSkus) {
     const skuPurchases = purchasesBySku.get(sku.id) ?? [];
@@ -227,7 +230,7 @@ function assembleOneProduct(
       // 서버 제약상 생기지 않지만, 손상된 로컬 행 하나가 `RangeError` 로 목록·통계 전체를
       // 빈 화면으로 만들지 않게 그 구매만 지표에서 뺀다.
       if (!(quantity > 0) || !(volumeMl > 0)) continue;
-      lots.push({
+      const lot = {
         ...purchaseLot(
           quantity,
           volumeMl,
@@ -236,11 +239,19 @@ function assembleOneProduct(
         ),
         purchaseId: purchase.id,
         skuId: sku.id,
+      };
+      lots.push(lot);
+      scopedPurchases.push({
+        id: purchase.id,
+        skuId: sku.id,
+        volumeMl,
+        vendorId: (purchase.vendor_id as string | null) ?? null,
+        purchasedOn: (purchase.purchased_on as string | null) ?? null,
+        lot,
+        inStockCount: (bottlesByPurchase.get(purchase.id) ?? []).filter(
+          (bottle) => bottle.status === "open" || bottle.status === "unopened",
+        ).length,
       });
-      const vendorId = purchase.vendor_id as string | null;
-      if (vendorId) vendorIds.add(vendorId);
-      const purchasedOn = purchase.purchased_on as string | null;
-      if (purchasedOn) purchaseDates.push(purchasedOn);
       for (const bottle of bottlesByPurchase.get(purchase.id) ?? []) {
         bottleRecords.push({
           purchaseId: purchase.id,
@@ -257,8 +268,7 @@ function assembleOneProduct(
     skus: productSkus,
     lots,
     bottles: bottleRecords,
-    vendorIds,
-    purchaseDates,
+    purchases: scopedPurchases,
   };
 }
 
@@ -505,8 +515,7 @@ function stockTier(product: Product): 0 | 1 | 2 {
 
 export interface ProductCatalog {
   products: Product[];
-  vendorIdsByProduct: Map<string, Set<string>>;
-  purchaseDatesByProduct: Map<string, string[]>;
+  purchasesByProduct: Map<string, ScopedPurchase[]>;
 }
 
 /** 필터·정렬 없이 전체 카탈로그를 조립한다(4개 테이블 조인 + 지표 계산, 제품 규모에 비례하는
@@ -523,11 +532,12 @@ async function assembleCatalog(): Promise<ProductCatalog> {
   const products = assemblies.map((assembly) =>
     toProduct(assembly, categoryPaths, producerNames, varietyNames),
   );
-  const vendorIdsByProduct = new Map(assemblies.map((a) => [a.row.id as string, a.vendorIds]));
-  const purchaseDatesByProduct = new Map(
-    assemblies.map((a) => [a.row.id as string, a.purchaseDates]),
-  );
-  return { products, vendorIdsByProduct, purchaseDatesByProduct };
+  return {
+    products,
+    purchasesByProduct: new Map(
+      assemblies.map((assembly) => [assembly.row.id, assembly.purchases]),
+    ),
+  };
 }
 
 export interface ProductSortOptions {
@@ -548,14 +558,28 @@ export function filterAndSortProducts(
   filters: ProductFilters,
   options: ProductSortOptions = {},
 ): Product[] {
-  let products = catalog.products;
+  const scoped = hasPurchaseScope(filters);
+  const rawPrices = new Map<string, ReturnType<typeof purchaseScopePrices>["raw"]>();
+  let products = catalog.products.flatMap((product) => {
+    const selection = selectPurchaseScope(
+      product,
+      catalog.purchasesByProduct.get(product.id) ?? [],
+      filters,
+    );
+    if (!selection.included) return [];
+    const prices = purchaseScopePrices(selection.purchases);
+    rawPrices.set(product.id, prices.raw);
+    return [
+      {
+        ...product,
+        filtered_prices: scoped ? prices.prices : null,
+        filtered_stock_count: scoped ? selection.stockCount : null,
+      },
+    ];
+  });
 
   if (filters.q) {
     products = products.filter((p) => matchesText(p, filters.q as string));
-  }
-  if (filters.vendor_id) {
-    const vendorId = filters.vendor_id;
-    products = products.filter((p) => catalog.vendorIdsByProduct.get(p.id)?.has(vendorId) ?? false);
   }
   if (filters.category_id) {
     const includeDescendants = filters.include_descendants !== false;
@@ -591,11 +615,6 @@ export function filterAndSortProducts(
       (p) => p.personal_rating !== null && Number(p.personal_rating) >= min,
     );
   }
-  if (filters.in_stock === true) {
-    products = products.filter((p) => p.metrics.in_stock_count > 0);
-  } else if (filters.in_stock === false) {
-    products = products.filter((p) => p.metrics.in_stock_count === 0);
-  }
   if (filters.variety) {
     const needle = filters.variety.toLowerCase();
     products = products.filter((p) =>
@@ -603,27 +622,15 @@ export function filterAndSortProducts(
     );
   }
   if (filters.price_per_100ml_min !== undefined) {
-    const min = Number(filters.price_per_100ml_min);
+    const min = new Decimal(filters.price_per_100ml_min);
     products = products.filter(
-      (p) => p.metrics.price_per_100ml !== null && Number(p.metrics.price_per_100ml) >= min,
+      (product) => rawPrices.get(product.id)?.price_per_100ml?.greaterThanOrEqualTo(min) ?? false,
     );
   }
   if (filters.price_per_100ml_max !== undefined) {
-    const max = Number(filters.price_per_100ml_max);
+    const max = new Decimal(filters.price_per_100ml_max);
     products = products.filter(
-      (p) => p.metrics.price_per_100ml !== null && Number(p.metrics.price_per_100ml) <= max,
-    );
-  }
-  if (filters.purchased_on_min !== undefined || filters.purchased_on_max !== undefined) {
-    // ISO `YYYY-MM-DD` 문자열은 사전식 비교가 곧 날짜순 비교다(`SORT_ACCESSORS.created_at`
-    // 과 같은 근거). 이 범위 안의 구매가 하나라도 있으면 매치한다(vendor_id 필터와 같은
-    // "하나라도 있으면" 의미론).
-    const min = filters.purchased_on_min;
-    const max = filters.purchased_on_max;
-    products = products.filter((p) =>
-      (catalog.purchaseDatesByProduct.get(p.id) ?? []).some(
-        (date) => (min === undefined || date >= min) && (max === undefined || date <= max),
-      ),
+      (product) => rawPrices.get(product.id)?.price_per_100ml?.lessThanOrEqualTo(max) ?? false,
     );
   }
 
@@ -636,12 +643,25 @@ export function filterAndSortProducts(
       const tierDiff = stockTier(a) - stockTier(b);
       if (tierDiff !== 0) return tierDiff;
     }
-    const av = accessor(a);
-    const bv = accessor(b);
-    if (av === null && bv === null) return a.id.localeCompare(b.id);
+    const priceKey = (
+      ["avg_list_price", "avg_paid_price", "price_per_100ml", "paid_total"] as string[]
+    ).includes(sortKey)
+      ? (sortKey as PriceSortKey)
+      : null;
+    const av = priceKey ? (rawPrices.get(a.id)?.[priceKey] ?? null) : accessor(a);
+    const bv = priceKey ? (rawPrices.get(b.id)?.[priceKey] ?? null) : accessor(b);
+    if (av === null && bv === null) return (order === "asc" ? 1 : -1) * a.id.localeCompare(b.id);
     if (av === null) return 1;
     if (bv === null) return -1;
-    const cmp = av < bv ? -1 : av > bv ? 1 : a.id.localeCompare(b.id);
+    const valueCmp =
+      Decimal.isDecimal(av) && Decimal.isDecimal(bv)
+        ? av.comparedTo(bv)
+        : av < bv
+          ? -1
+          : av > bv
+            ? 1
+            : 0;
+    const cmp = valueCmp || a.id.localeCompare(b.id);
     return order === "asc" ? cmp : -cmp;
   });
 

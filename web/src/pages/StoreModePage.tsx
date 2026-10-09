@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import type { Purchase } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
-import { ProductForm } from "@/components/ProductForm";
+import { type ExistingProductCandidate, ProductForm } from "@/components/ProductForm";
+import { productEdition } from "@/components/productDisplay";
 import { LoadingState } from "@/components/StatusViews";
 import { formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
@@ -41,6 +42,11 @@ export function StoreModePage({
   const offline = state === "offline";
   const [query, setQuery] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedContext, setSelectedContext] = useState<ProductContext>({});
+  function selectProduct(id: string, context: ProductContext = {}) {
+    setSelectedContext(context);
+    setSelectedProductId(id);
+  }
   const [registering, setRegistering] = useState(false);
 
   const products = useLiveQuery(() => getProducts({}), []);
@@ -61,6 +67,7 @@ export function StoreModePage({
   function reset(): void {
     setQuery("");
     setSelectedProductId(null);
+    setSelectedContext({});
     setRegistering(false);
   }
 
@@ -69,6 +76,7 @@ export function StoreModePage({
       <StoreModeSummary
         key={selectedProductId}
         productId={selectedProductId}
+        initialSkuId={selectedContext.skuId}
         offline={offline}
         onOpenDetail={onOpenDetail}
         onBack={reset}
@@ -82,7 +90,7 @@ export function StoreModePage({
         initialName={query.trim()}
         existingProducts={products ?? []}
         vendorNames={vendorNames}
-        onDone={(productId) => setSelectedProductId(productId)}
+        onDone={selectProduct}
         onCancel={() => setRegistering(false)}
       />
     );
@@ -98,7 +106,7 @@ export function StoreModePage({
         처음 보는 술이면 외부 평점·판매처 시세를 확인할 수 있습니다.
       </p>
 
-      {!offline && <BarcodeScanPanel onSelectProduct={(id) => setSelectedProductId(id)} />}
+      {!offline && <BarcodeScanPanel onSelectProduct={selectProduct} />}
       {offline && <p className="muted text-sm">바코드 스캔은 온라인일 때만 할 수 있습니다.</p>}
 
       <div className="field mt-3">
@@ -118,9 +126,17 @@ export function StoreModePage({
             <ul className="store-mode-results">
               {results.map((product) => (
                 <li key={product.id}>
-                  <button type="button" onClick={() => setSelectedProductId(product.id)}>
+                  <button type="button" onClick={() => selectProduct(product.id)}>
                     <span className="name">{product.name}</span>
-                    <span className="muted">{formatCategoryPath(product.category_path)}</span>
+                    <span className="muted">
+                      {[
+                        formatCategoryPath(product.category_path),
+                        productEdition(product),
+                        product.skus.map((sku) => formatVolume(sku.volume_ml)).join(" / "),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -147,7 +163,7 @@ function StoreModeRegister({
   onCancel,
 }: {
   initialName: string;
-  existingProducts: { id: string; name: string }[];
+  existingProducts: ExistingProductCandidate[];
   vendorNames: string[];
   onDone: (productId: string, context?: ProductContext) => void;
   onCancel: () => void;
@@ -183,6 +199,7 @@ function StoreModeRegister({
         onCancel={onCancel}
         initialValues={{ name: initialName }}
         existingProducts={existingProducts}
+        onSelectExisting={onDone}
         vendorNames={vendorNames}
       />
     </div>
@@ -191,16 +208,18 @@ function StoreModeRegister({
 
 function StoreModeSummary({
   productId,
+  initialSkuId,
   offline,
   onOpenDetail,
   onBack,
 }: {
   productId: string;
+  initialSkuId?: string | undefined;
   offline: boolean;
   onOpenDetail: (productId: string, context?: ProductContext) => void;
   onBack: () => void;
 }) {
-  const [selectedSkuId, setSelectedSkuId] = useState("");
+  const [selectedSkuId, setSelectedSkuId] = useState(initialSkuId ?? "");
   const product = useLiveQuery(() => getProduct(productId), [productId]);
   const purchases = useLiveQuery(() => getPurchasesForProduct(productId), [productId]);
 
@@ -238,8 +257,17 @@ function StoreModeSummary({
       <h2 id="store-mode-summary-heading" className="mb-1">
         {product.name}
       </h2>
-      <p className="muted mt-0">{formatCategoryPath(product.category_path)}</p>
+      <p className="muted mt-0">
+        {[formatCategoryPath(product.category_path), productEdition(product)]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
 
+      {selectedSkuId && !sku && (
+        <p className="alert" role="alert">
+          선택한 규격을 찾을 수 없습니다. 현재 규격을 다시 확인해 주세요.
+        </p>
+      )}
       {product.skus.length > 1 && (
         <label>
           비교할 용량

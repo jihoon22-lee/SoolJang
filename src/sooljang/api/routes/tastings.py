@@ -29,6 +29,7 @@ from sooljang.api.schemas.tasting import (
 )
 from sooljang.application.bottle_commands import require_no_tasting, require_revision
 from sooljang.application.history import bottle_history
+from sooljang.application.skus import load_live_sku_for_write
 from sooljang.application.tastings import (
     BottleTransitionError,
     InsufficientRemainingError,
@@ -37,6 +38,7 @@ from sooljang.application.tastings import (
     finish_bottle,
     hand_over_bottle,
     list_tastings,
+    live_bottles_query,
     load_bottle_for_write,
     open_bottle,
     record_tasting,
@@ -45,7 +47,8 @@ from sooljang.application.tastings import (
     summarize_tastings,
     unopen_bottle,
 )
-from sooljang.infrastructure.database.models import Bottle, BottleStatus, Purchase, Sku
+from sooljang.application.write_locks import lock_user_writes
+from sooljang.infrastructure.database.models import Bottle, BottleStatus, Purchase
 
 bottles_router = APIRouter(prefix="/bottles", tags=["bottles"])
 tastings_router = APIRouter(prefix="/tastings", tags=["tastings"])
@@ -57,13 +60,7 @@ async def _get_bottle(
     if for_update:
         record = await load_bottle_for_write(session, user_id=user_id, bottle_id=bottle_id)
     else:
-        record = await session.scalar(
-            select(Bottle).where(
-                Bottle.id == bottle_id,
-                Bottle.user_id == user_id,
-                Bottle.deleted_at.is_(None),
-            )
-        )
+        record = await session.scalar(live_bottles_query(user_id).where(Bottle.id == bottle_id))
     if record is None:
         raise NotFoundError("병을 찾을 수 없습니다")
     return record
@@ -88,7 +85,7 @@ async def list_bottles(
         filters.append(Bottle.status.not_in([BottleStatus.UNOPENED, BottleStatus.OPEN]))
 
     records = await session.scalars(
-        select(Bottle)
+        live_bottles_query(user_id)
         .where(*filters)
         .order_by(Bottle.created_at.desc(), Bottle.id.desc())
         .offset(offset)
@@ -285,6 +282,7 @@ async def create_tasting(
     병을 지정하면 잔량을 차감하고, 미개봉 병이면 자동으로 개봉 처리한다. 마시기 시작한 것
     자체가 개봉이므로 따로 버튼을 누르게 하면 잊어버린다.
     """
+    await lock_user_writes(session, user_id)
     bottle = None
     sku_id = payload.sku_id
 
@@ -298,11 +296,7 @@ async def create_tasting(
     if sku_id is None:
         raise ValidationFailedError("bottle_id 또는 sku_id 중 하나는 있어야 합니다")
     if bottle is None:
-        owned_sku = await session.scalar(
-            select(Sku.id).where(Sku.id == sku_id, Sku.user_id == user_id, Sku.deleted_at.is_(None))
-        )
-        if owned_sku is None:
-            raise NotFoundError(f"규격을 찾을 수 없습니다: {sku_id}")
+        await load_live_sku_for_write(session, user_id=user_id, sku_id=sku_id)
 
     try:
         record = await record_tasting(

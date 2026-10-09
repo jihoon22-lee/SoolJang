@@ -1,7 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { productsApi, purchasesApi } from "@/api/client";
-import type { Product, ProductFilters, SortKey } from "@/api/types";
+import { ApiError, productsApi, purchasesApi } from "@/api/client";
+import type { Product, ProductFilters, PurchaseScope, SortKey } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { LabelOcrPanel } from "@/components/LabelOcrPanel";
 import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/components/ProductDetail";
@@ -11,10 +11,11 @@ import { ProductList } from "@/components/ProductList";
 import type { EditPurchaseInput } from "@/components/PurchaseEditForm";
 import { LoadingState } from "@/components/StatusViews";
 import { useToast } from "@/components/Toast";
-import { downloadCsv } from "@/csvExport";
+import { downloadCsv, productCsvData } from "@/csvExport";
 import { todayLocal } from "@/format";
 import { setLastVendorName } from "@/lastVendor";
 import { readProductListState, saveProductListState } from "@/productListState";
+import { hasPurchaseScope, purchaseScopeLabel, selectPurchaseScope } from "@/purchaseScope";
 import type { ProductContext } from "@/router";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { databaseIdentity, db } from "@/sync/db";
@@ -166,6 +167,17 @@ export function ProductsPage({
   // (필터가 걸려 있어도 "이미 등록된 술"을 놓치면 안 된다).
   const allProductsUnfiltered = catalog?.products;
 
+  const matchingPurchaseIds = useMemo(() => {
+    if (!catalog || !context.purchaseScope || !selectedProductId) return undefined;
+    const product = catalog.products.find((item) => item.id === selectedProductId);
+    return product
+      ? selectPurchaseScope(
+          product,
+          catalog.purchasesByProduct.get(product.id) ?? [],
+          context.purchaseScope,
+        ).purchaseIds
+      : [];
+  }, [catalog, context.purchaseScope, selectedProductId]);
   const items = allProducts?.slice(0, visibleCount) ?? [];
   const activeFilters = describeActiveFilters(filters, categoryTree?.items ?? [], vendors ?? []);
   const hasMore = (allProducts?.length ?? 0) > visibleCount;
@@ -200,7 +212,7 @@ export function ProductsPage({
     return () => document.removeEventListener("scroll", remember, true);
   }, [owner, filters, visibleCount, selectedProductId, allProducts]);
 
-  function selectProduct(productId: string, target?: ProductContext): void {
+  function selectProduct(productId: string, target?: ProductContext, keepScope = true): void {
     savedScrollY.current = window.scrollY;
     savedTableScroll.current = listScroller()?.scrollTop ?? 0;
     saveProductListState(owner, {
@@ -209,7 +221,17 @@ export function ProductsPage({
       scrollY: window.scrollY,
       tableScrollTop: savedTableScroll.current,
     });
-    onSelectProduct(productId, target);
+    const scope: PurchaseScope = {
+      volume_ml: filters.volume_ml,
+      vendor_id: filters.vendor_id,
+      purchased_on_min: filters.purchased_on_min,
+      purchased_on_max: filters.purchased_on_max,
+      in_stock: filters.in_stock,
+    };
+    onSelectProduct(productId, {
+      ...target,
+      purchaseScope: keepScope && hasPurchaseScope(scope) ? scope : undefined,
+    });
   }
 
   // 키보드 단축키: "/" 로 이름 검색 포커스, Esc 로 등록 폼 닫기. 이미 입력 중일 때는
@@ -355,12 +377,20 @@ export function ProductsPage({
   }
 
   if (selectedProductId !== null) {
+    if (context.purchaseScope && !catalog)
+      return <LoadingState label="선택한 구매 조건을 불러오고 있습니다…" />;
     return (
       <ProductDetailView
         key={selectedProductId}
         productId={selectedProductId}
         context={context}
-        onSelectContext={(next) => onSelectProduct(selectedProductId, next)}
+        matchingPurchaseIds={matchingPurchaseIds}
+        onSelectContext={(next) =>
+          onSelectProduct(selectedProductId, {
+            ...next,
+            purchaseScope: "purchaseScope" in next ? next.purchaseScope : context.purchaseScope,
+          })
+        }
         onBack={onDeselectProduct}
         vendorNames={vendorNames}
       />
@@ -389,7 +419,11 @@ export function ProductsPage({
           <div className="button-row products-toolbar">
             {/* 스캔·라벨 인식 모두 온라인 전용 외부 호출이 필요하다(카메라+Open Food
             Facts, Vision LLM). */}
-            {!offline && <BarcodeScanPanel onSelectProduct={selectProduct} />}
+            {!offline && (
+              <BarcodeScanPanel
+                onSelectProduct={(id, target) => selectProduct(id, target, false)}
+              />
+            )}
             {!offline && (
               <LabelOcrPanel
                 categories={categoryTree?.items ?? []}
@@ -485,9 +519,9 @@ export function ProductsPage({
             initialValues={formPrefill ?? undefined}
             existingProducts={allProductsUnfiltered ?? []}
             vendorNames={vendorNames}
-            onSelectExisting={(id) => {
+            onSelectExisting={(id, target) => {
               closeForm();
-              onSelectProduct(id);
+              onSelectProduct(id, target);
             }}
           />
         )}
@@ -511,6 +545,7 @@ export function ProductsPage({
             ) : null}
             <ProductList
               products={items}
+              priceScopeLabel={purchaseScopeLabel(filters)}
               onSelect={selectProduct}
               sort={filters.sort ?? "name"}
               order={filters.order ?? "asc"}
@@ -597,12 +632,14 @@ function valuesFromProduct(product: Product): Partial<ProductFormValues> {
 function ProductDetailView({
   productId,
   context,
+  matchingPurchaseIds,
   onSelectContext,
   onBack,
   vendorNames,
 }: {
   productId: string;
   context: ProductContext;
+  matchingPurchaseIds?: readonly string[] | undefined;
   onSelectContext: (context: ProductContext) => void;
   onBack: () => void;
   vendorNames: string[];
@@ -619,6 +656,11 @@ function ProductDetailView({
   const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const [editing, setEditing] = useState(false);
+  const contextSignature = JSON.stringify(context);
+  const [pendingPurchaseTarget, setPendingPurchaseTarget] = useState<{
+    skuId: string;
+    contextSignature: string;
+  } | null>(null);
 
   const remove = useSessionMutation({
     mutationFn: () => enqueueProductDelete(productId),
@@ -694,6 +736,7 @@ function ProductDetailView({
     mutationFn: async (input: AddPurchaseInput, session) => {
       const vendorId = input.vendorName ? await resolveVendorId(input.vendorName, session) : null;
       session.assertCurrent();
+      const submittedContext = contextSignature;
       await purchasesApi.create({
         sku_id: input.skuId,
         quantity: input.quantity,
@@ -702,13 +745,26 @@ function ProductDetailView({
         unit_list_price: input.unitListPrice || null,
         unit_paid_price: input.unitPaidPrice || null,
       });
+      return { skuId: input.skuId, contextSignature: submittedContext };
     },
-    onSuccess: (_result, input) => {
+    onSuccess: (result, input) => {
       if (input.vendorName) setLastVendorName(input.vendorName);
       triggerSync();
       toast.show({ message: `구매 ${input.quantity}병을 추가했습니다` });
+      setPendingPurchaseTarget(result);
     },
   });
+
+  useEffect(() => {
+    if (!pendingPurchaseTarget || addPurchase.isPending) return;
+    if (pendingPurchaseTarget.contextSignature !== contextSignature) {
+      setPendingPurchaseTarget(null);
+      return;
+    }
+    if (!product?.skus.some((sku) => sku.id === pendingPurchaseTarget.skuId)) return;
+    setPendingPurchaseTarget(null);
+    onSelectContext({ skuId: pendingPurchaseTarget.skuId, purchaseScope: undefined });
+  }, [pendingPurchaseTarget, contextSignature, product, addPurchase.isPending, onSelectContext]);
 
   const deletePurchase = useSessionMutation({
     networkMode: "online",
@@ -758,7 +814,19 @@ function ProductDetailView({
 
   const addSku = useSessionMutation({
     networkMode: "online",
-    mutationFn: (volumeMl: number) => productsApi.addSku(productId, volumeMl),
+    mutationFn: async (volumeMl: number, session) => {
+      try {
+        return await productsApi.addSku(productId, volumeMl);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) throw error;
+        session.assertCurrent();
+        const current = await productsApi.get(productId);
+        session.assertCurrent();
+        const existing = current.skus.find((sku) => sku.volume_ml === volumeMl);
+        if (!existing) throw error;
+        return existing;
+      }
+    },
     onSuccess: () => triggerSync(),
   });
 
@@ -785,7 +853,7 @@ function ProductDetailView({
         <p role="alert" className="alert">
           선택한 규격·병·시음이 삭제되었거나 이 술에 속하지 않습니다.
         </p>
-        <button type="button" onClick={() => onSelectContext({})}>
+        <button type="button" onClick={() => onSelectContext({ purchaseScope: undefined })}>
           제품 전체 보기
         </button>
         <button type="button" onClick={onBack}>
@@ -813,6 +881,7 @@ function ProductDetailView({
     <ProductDetail
       key={product.id}
       product={product}
+      matchingPurchaseIds={matchingPurchaseIds}
       selectedSkuId={target.skuId}
       selectedBottleId={target.bottleId}
       selectedTastingId={target.tastingId}
@@ -837,7 +906,7 @@ function ProductDetailView({
       }
       splitError={splitPurchase.error}
       actionError={remove.error ?? deletePurchase.error ?? addSku.error}
-      onAddSku={(volumeMl) => addSku.mutate(volumeMl)}
+      onAddSku={(volumeMl) => addSku.mutateAsync(volumeMl)}
       addingSku={addSku.isPending}
     />
   );
@@ -850,6 +919,7 @@ function describeActiveFilters(
   vendors: { id: string; name: string }[],
 ): string[] {
   const labels: string[] = [];
+  if (filters.volume_ml !== undefined) labels.push(`용량 ${filters.volume_ml}ml`);
   if (filters.q) labels.push(`이름 "${filters.q}"`);
   if (filters.category_id)
     labels.push(`주종 ${categories.find((item) => item.id === filters.category_id)?.name ?? ""}`);
@@ -891,33 +961,6 @@ function LoadMoreSentinel({ onVisible }: { onVisible: () => void }) {
 
 /** 지금 필터·정렬된 목록 그대로 내보낸다(백업·엑셀 정리용). */
 function exportProducts(products: Product[]): void {
-  downloadCsv(
-    `sooljang-products-${todayLocal()}.csv`,
-    [
-      "이름",
-      "주종",
-      "빈티지",
-      "도수(%)",
-      "재고(병)",
-      "구매(병)",
-      "평단가",
-      "실평단가",
-      "재고 원가",
-      "100ml당",
-      "내 평점",
-    ],
-    products.map((product) => [
-      product.name,
-      product.category_path.join(" > "),
-      product.vintage,
-      product.abv,
-      product.metrics.in_stock_count,
-      product.metrics.purchased_count,
-      product.metrics.avg_list_price,
-      product.metrics.avg_paid_price,
-      product.metrics.inventory_value_at_cost,
-      product.metrics.price_per_100ml,
-      product.personal_rating,
-    ]),
-  );
+  const { header, rows } = productCsvData(products);
+  downloadCsv(`sooljang-products-${todayLocal()}.csv`, header, rows);
 }

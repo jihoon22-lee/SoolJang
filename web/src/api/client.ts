@@ -275,7 +275,10 @@ export const productsApi = {
   remove: (id: string) => request<void>(`/products/${id}`, { method: "DELETE" }),
 
   addSku: (id: string, volumeMl: number) =>
-    request<unknown>(`/products/${id}/skus`, { method: "POST", body: { volume_ml: volumeMl } }),
+    request<Sku>(`/products/${id}/skus`, {
+      method: "POST",
+      body: { volume_ml: volumeMl },
+    }),
 };
 
 export const skusApi = {

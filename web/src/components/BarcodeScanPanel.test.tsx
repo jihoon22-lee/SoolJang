@@ -1,10 +1,11 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { barcodesApi } from "@/api/client";
+import { barcodesApi, productsApi } from "@/api/client";
+import type { Product } from "@/api/types";
 import type { ScannerController } from "@/barcode/scanner";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
-import { db } from "@/sync/db";
+import { activateDatabase, db, lockDatabase } from "@/sync/db";
 import { authenticatedRoutes, renderWithQuery, stubRoutes } from "@/testing";
 
 const NOW = "2026-01-01T00:00:00Z";
@@ -32,12 +33,15 @@ function fakeScanDetecting(code: string) {
 }
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
+  await Promise.all([db.product.clear(), db.sku.clear()]);
 });
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   await Promise.all([db.product.clear(), db.sku.clear()]);
+  lockDatabase();
 });
 
 describe("BarcodeScanPanel", () => {
@@ -78,7 +82,7 @@ describe("BarcodeScanPanel", () => {
 
     expect(await screen.findByText(/글렌알라키/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "제품으로 이동" }));
-    expect(onSelectProduct).toHaveBeenCalledWith("p1");
+    expect(onSelectProduct).toHaveBeenCalledWith("p1", { skuId: "s1" });
   });
 
   it("외부 제안이 있으면 이름을 미리 채우고, 등록하면 바코드를 붙여 만든다", async () => {
@@ -105,7 +109,11 @@ describe("BarcodeScanPanel", () => {
         match: "/products",
         method: "POST",
         status: 201,
-        body: { id: "new-product", name: "외부 제안 위스키", skus: [{ id: "new-sku" }] },
+        body: {
+          id: "new-product",
+          name: "외부 제안 위스키",
+          skus: [{ id: "new-sku", volume_ml: 700 }],
+        },
       },
     ]);
     const onSelectProduct = vi.fn();
@@ -130,7 +138,7 @@ describe("BarcodeScanPanel", () => {
         skus: [{ volume_ml: 700, barcode: "8801234500009" }],
       });
     });
-    expect(onSelectProduct).toHaveBeenCalledWith("new-product");
+    expect(onSelectProduct).toHaveBeenCalledWith("new-product", { skuId: "new-sku" });
   });
 
   it("RCN 바코드는 경고를 보여준다", async () => {
@@ -346,4 +354,147 @@ describe("BarcodeScanPanel", () => {
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+});
+
+it("확인한 판본·규격에만 바코드를 연결하고 그 SKU 맥락으로 이동한다", async () => {
+  await db.product.bulkPut([
+    row({ id: "p20", name: "같은 이름", vintage: 2020, abv: "40", category_id: null }),
+    row({ id: "p21", name: "같은 이름", vintage: 2021, abv: "46", category_id: null }),
+  ]);
+  await db.sku.bulkPut([
+    row({ id: "s20", product_id: "p20", volume_ml: 750 }),
+    row({ id: "s21", product_id: "p21", volume_ml: 750 }),
+  ]);
+  const { calls } = stubRoutes([
+    ...authenticatedRoutes(),
+    {
+      match: "/barcodes/8801234500009",
+      body: {
+        barcode: "8801234500009",
+        barcode_type: "ean13",
+        is_rcn: false,
+        source: "not_found",
+        local_match: null,
+        external_suggestion: null,
+      },
+    },
+    { match: "/skus/s21", method: "PATCH", body: { id: "s21", barcode: "8801234500009" } },
+  ]);
+  const onSelectProduct = vi.fn();
+  renderWithQuery(
+    <BarcodeScanPanel
+      onSelectProduct={onSelectProduct}
+      scan={fakeScanDetecting("8801234500009")}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "바코드로 스캔" }));
+  expect(
+    await screen.findByRole("option", { name: /2020 빈티지.*40%.*750ml/ }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /2021 빈티지.*46%.*750ml/ })).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText("규격 선택"), "s21");
+  expect(onSelectProduct).not.toHaveBeenCalled();
+  expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+  await userEvent.click(screen.getByRole("button", { name: "이 규격에 바코드 연결" }));
+  await waitFor(() => expect(onSelectProduct).toHaveBeenCalledWith("p21", { skuId: "s21" }));
+  expect(calls.filter((call) => call.method === "PATCH").map((call) => call.url)).toEqual([
+    expect.stringContaining("/skus/s21"),
+  ]);
+});
+
+it("닫힌 바코드 등록의 늦은 성공은 새 화면으로 이동시키지 않는다", async () => {
+  stubRoutes([
+    {
+      match: "/barcodes/8801234500009",
+      body: {
+        barcode: "8801234500009",
+        barcode_type: "ean13",
+        is_rcn: false,
+        source: "not_found",
+        local_match: null,
+        external_suggestion: null,
+      },
+    },
+  ]);
+  let complete!: (value: Product) => void;
+  vi.spyOn(productsApi, "create").mockImplementation(
+    () =>
+      new Promise<Product>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const onSelectProduct = vi.fn();
+  renderWithQuery(
+    <BarcodeScanPanel
+      onSelectProduct={onSelectProduct}
+      scan={fakeScanDetecting("8801234500009")}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "바코드로 스캔" }));
+  await userEvent.type(await screen.findByLabelText("이름"), "늦게 생성된 술");
+  await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+  await userEvent.click(screen.getByRole("button", { name: "이 바코드로 새로 등록" }));
+  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+  await act(async () =>
+    complete({ id: "late-product", skus: [{ id: "late-sku", volume_ml: 700 }] } as Product),
+  );
+  expect(onSelectProduct).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "바코드로 스캔" })).toBeInTheDocument();
+});
+
+it("닫고 다시 스캔한 뒤 이전 조회 응답이 와도 새 바코드의 SKU를 유지한다", async () => {
+  let finishOld!: (value: Awaited<ReturnType<typeof barcodesApi.lookup>>) => void;
+  const lookup = vi.spyOn(barcodesApi, "lookup");
+  lookup.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishOld = resolve;
+      }),
+  );
+  lookup.mockResolvedValueOnce({
+    barcode: "8801234567890",
+    barcode_type: "ean13",
+    is_rcn: false,
+    source: "local",
+    local_match: {
+      product_id: "new-product",
+      product_name: "새 스캔 술",
+      sku_id: "new-sku",
+      volume_ml: 750,
+    },
+    external_suggestion: null,
+  });
+  let calls = 0;
+  const scan = async (
+    _video: HTMLVideoElement,
+    onDetect: (code: string) => void,
+  ): Promise<ScannerController> => {
+    onDetect(calls++ === 0 ? "8801234500009" : "8801234567890");
+    return { stop: () => {} };
+  };
+  const onSelectProduct = vi.fn();
+  renderWithQuery(<BarcodeScanPanel onSelectProduct={onSelectProduct} scan={scan} />);
+  await userEvent.click(screen.getByRole("button", { name: "바코드로 스캔" }));
+  await screen.findByText("조회하는 중…");
+  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+  await userEvent.click(screen.getByRole("button", { name: "바코드로 스캔" }));
+  await screen.findByText(/새 스캔 술/);
+  await act(async () =>
+    finishOld({
+      barcode: "8801234500009",
+      barcode_type: "ean13",
+      is_rcn: false,
+      source: "local",
+      local_match: {
+        product_id: "old-product",
+        product_name: "이전 스캔 술",
+        sku_id: "old-sku",
+        volume_ml: 500,
+      },
+      external_suggestion: null,
+    }),
+  );
+  expect(screen.queryByText(/이전 스캔 술/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "제품으로 이동" }));
+  expect(onSelectProduct).toHaveBeenCalledWith("new-product", { skuId: "new-sku" });
 });

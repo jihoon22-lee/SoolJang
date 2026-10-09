@@ -34,7 +34,7 @@ describe("filterFieldOrder", () => {
     ] as const;
     setFilterFieldOrder([...custom]);
 
-    expect(getFilterFieldOrder()).toEqual([...custom]);
+    expect(getFilterFieldOrder()).toEqual([...custom, "volume"]);
   });
 
   it("모르는 id 는 걸러내고, 저장에 없던 아는 id 는 끝에 붙인다", () => {

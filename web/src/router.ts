@@ -1,3 +1,4 @@
+import type { PurchaseScope } from "@/api/types";
 /**
  * URL 해시 기반 최소 라우팅.
  *
@@ -50,6 +51,7 @@ const VIEW_IDS: readonly View[] = [
 ];
 
 export interface ProductContext {
+  purchaseScope?: PurchaseScope | undefined;
   skuId?: string | undefined;
   bottleId?: string | undefined;
   tastingId?: string | undefined;
@@ -85,9 +87,21 @@ export function parseHash(hash: string): Route {
   const params = new URLSearchParams(queryPart ?? "");
   const categoryId = params.get("category") ?? undefined;
   const vendorId = params.get("vendor") ?? undefined;
+  const purchaseScope: PurchaseScope = {
+    ...(params.has("scopeVolume") ? { volume_ml: Number(params.get("scopeVolume")) } : {}),
+    ...(params.has("scopeVendor") ? { vendor_id: params.get("scopeVendor") ?? undefined } : {}),
+    ...(params.has("scopeFrom") ? { purchased_on_min: params.get("scopeFrom") ?? undefined } : {}),
+    ...(params.has("scopeTo") ? { purchased_on_max: params.get("scopeTo") ?? undefined } : {}),
+    ...(params.get("scopeStock") === "1"
+      ? { in_stock: true }
+      : params.get("scopeStock") === "0"
+        ? { in_stock: false }
+        : {}),
+  };
   return {
     view,
     productId,
+    ...(Object.keys(purchaseScope).length ? { purchaseScope } : {}),
     categoryId,
     vendorId,
     ...(params.has("sku") ? { skuId: params.get("sku") || undefined } : {}),
@@ -103,6 +117,12 @@ export function routeToHash(route: Route): string {
     if (route.skuId) params.set("sku", route.skuId);
     if (route.bottleId) params.set("bottle", route.bottleId);
     if (route.tastingId) params.set("tasting", route.tastingId);
+    const scope = route.purchaseScope;
+    if (scope?.volume_ml !== undefined) params.set("scopeVolume", String(scope.volume_ml));
+    if (scope?.vendor_id) params.set("scopeVendor", scope.vendor_id);
+    if (scope?.purchased_on_min) params.set("scopeFrom", scope.purchased_on_min);
+    if (scope?.purchased_on_max) params.set("scopeTo", scope.purchased_on_max);
+    if (scope?.in_stock !== undefined) params.set("scopeStock", scope.in_stock ? "1" : "0");
     const query = params.toString();
     return `#products/${route.productId}${query ? `?${query}` : ""}`;
   }

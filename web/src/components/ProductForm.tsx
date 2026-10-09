@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { ApiError } from "@/api/client";
-import type { CategoryNode } from "@/api/types";
+import type { CategoryNode, Product } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { formatCategoryPath, todayLocal } from "@/format";
+import { productEdition } from "@/components/productDisplay";
+import { formatCategoryPath, formatVolume, todayLocal } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
+import type { ProductContext } from "@/router";
 import { normalizeNameForMatching, rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { useDraftState } from "@/sync/drafts";
@@ -53,6 +55,19 @@ export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   vendorName: "",
 };
 
+export type ExistingProductCandidate = Pick<Product, "id" | "name"> &
+  Partial<Pick<Product, "vintage" | "abv" | "age_years" | "skus">>;
+
+function candidateLabel(product: ExistingProductCandidate): string {
+  const edition = productEdition({
+    vintage: product.vintage ?? null,
+    abv: product.abv ?? null,
+    age_years: product.age_years ?? null,
+  });
+  const volumes = product.skus?.map((sku) => formatVolume(sku.volume_ml)).join(", ");
+  return [product.name, edition || "판본 정보 미기록", volumes || "규격 미기록"].join(" · ");
+}
+
 interface ProductFormProps {
   categories: CategoryNode[];
   submitting: boolean;
@@ -68,9 +83,9 @@ interface ProductFormProps {
   mode?: "create" | "edit";
   /** 이름 자동완성 후보이자 중복 등록 경고의 대상. `mode === "edit"` 이면 쓰지 않는다
    * (수정 중인 제품 자기 자신은 항상 이름이 일치하므로 경고 대상에서 뺄 방법이 없다). */
-  existingProducts?: { id: string; name: string }[];
+  existingProducts?: ExistingProductCandidate[];
   /** 이미 등록된 술과 이름이 정확히 일치하면 이 콜백으로 그 제품으로 건너뛸 수 있게 한다. */
-  onSelectExisting?: (productId: string) => void;
+  onSelectExisting?: (productId: string, context?: ProductContext) => void;
   /** 구매처 자동완성 후보. */
   vendorNames?: string[];
 }
@@ -117,9 +132,9 @@ export function ProductForm({
 
   const nameSuggestions = useMemo(
     () =>
-      rankByQuery(existingProducts, values.name, (p) => p.name)
-        .slice(0, MAX_SUGGESTIONS)
-        .map((p) => p.name),
+      Array.from(
+        new Set(rankByQuery(existingProducts, values.name, (p) => p.name).map((p) => p.name)),
+      ).slice(0, MAX_SUGGESTIONS),
     [existingProducts, values.name],
   );
   const vendorSuggestions = useMemo(
@@ -127,12 +142,12 @@ export function ProductForm({
     [vendorNames, values.vendorName],
   );
   // 수정 중인 제품은 자기 자신과 항상 이름이 일치하므로 경고 대상에서 뺀다.
-  const duplicateProduct =
+  const duplicateProducts =
     mode === "create" && values.name.trim()
-      ? existingProducts.find(
+      ? existingProducts.filter(
           (p) => normalizeNameForMatching(p.name) === normalizeNameForMatching(values.name),
         )
-      : undefined;
+      : [];
 
   const fail = (field: string, message: string) => {
     setLocalError(message);
@@ -216,18 +231,40 @@ export function ProductForm({
           {...errorProps("form-name", "name")}
         />
         {errorText("form-name", "name")}
-        {duplicateProduct && (
-          <output className="muted">
-            이미 등록된 술입니다 —{" "}
-            <button
-              type="button"
-              className="link-like"
-              onClick={() => onSelectExisting?.(duplicateProduct.id)}
-            >
-              구매 이력 추가하시겠어요?
-            </button>
-          </output>
-        )}
+        {duplicateProducts.length > 0 ? (
+          <div className="notice">
+            <p>
+              이름이 같은 기존 제품이 있습니다. 빈티지·도수·용량을 확인하세요. 다른 판본은 새로
+              등록할 수 있습니다.
+            </p>
+            <ul className="pick-list" aria-label="기존 제품 후보">
+              {duplicateProducts.map((candidate) => (
+                <li key={candidate.id}>
+                  {onSelectExisting ? (
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => {
+                        const matches =
+                          candidate.skus?.filter(
+                            (sku) => sku.volume_ml === Number(values.volumeMl),
+                          ) ?? [];
+                        const sku = matches.length === 1 ? matches[0] : undefined;
+                        if (sku) onSelectExisting(candidate.id, { skuId: sku.id });
+                        else onSelectExisting(candidate.id);
+                      }}
+                    >
+                      <span>{candidateLabel(candidate)}</span>
+                      <span className="muted">이 제품의 구매 이력으로 이동</span>
+                    </button>
+                  ) : (
+                    <span>{candidateLabel(candidate)}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       <div className="field">

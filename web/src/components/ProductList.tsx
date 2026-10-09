@@ -69,6 +69,17 @@ export function ProductList({
     );
   }
 
+  const filtered = products.some((product) => product.filtered_prices != null);
+  const columns = COLUMNS.flatMap((column) => {
+    if (column.sortKey === "avg_list_price" && filtered)
+      return [
+        { ...column, label: "조건 평균 정가" },
+        { sortKey: "avg_paid_price" as const, label: "조건 평균 실구매가", numeric: true },
+      ];
+    if (column.sortKey === "price_per_100ml" && filtered)
+      return [{ ...column, label: "조건 100ml당(정가)" }];
+    return [column];
+  });
   return (
     <>
       <div className="table-scroll">
@@ -93,7 +104,7 @@ export function ProductList({
                   />
                 </th>
               )}
-              {COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <ColumnHeader
                   key={column.label}
                   column={column}
@@ -124,9 +135,12 @@ export function ProductList({
                   {product.age_years !== null ? (
                     <span className="purchase-context">{Number(product.age_years)}년 숙성</span>
                   ) : null}
-                  {product.skus.length > 1 ? (
+                  {product.skus.length > 1 || product.filtered_prices != null || priceScopeLabel ? (
                     <span className="purchase-context">
-                      {priceScopeLabel ?? "제품 가격: 전체 용량 구매 평균"}
+                      {priceScopeLabel ??
+                        (product.filtered_prices != null
+                          ? "조건에 맞는 구매 평균"
+                          : "제품 가격: 전체 용량 구매 평균")}
                     </span>
                   ) : null}
                   <SkuSummaryList
@@ -138,13 +152,32 @@ export function ProductList({
                 <td>{formatCategoryPath(product.category_path)}</td>
                 <td className="numeric">{formatAbv(product.abv)}</td>
                 <td className="numeric">
-                  <StockBadge metrics={product.metrics} allSkus={product.skus.length > 1} />
+                  <StockBadge
+                    metrics={product.metrics}
+                    allSkus={product.skus.length > 1 || product.filtered_stock_count != null}
+                  />
+                  {product.filtered_stock_count != null ? (
+                    <span className="stock-breakdown">
+                      조건 내 재고 {product.filtered_stock_count}병
+                    </span>
+                  ) : null}
                 </td>
                 <td className="numeric">
-                  {formatMoney(product.metrics.avg_list_price, { short: true })}
+                  {formatMoney((product.filtered_prices ?? product.metrics).avg_list_price, {
+                    short: true,
+                  })}
                 </td>
+                {filtered ? (
+                  <td className="numeric">
+                    {formatMoney((product.filtered_prices ?? product.metrics).avg_paid_price, {
+                      short: true,
+                    })}
+                  </td>
+                ) : null}
                 <td className="numeric">
-                  {formatMoney(product.metrics.price_per_100ml, { short: true })}
+                  {formatMoney((product.filtered_prices ?? product.metrics).price_per_100ml, {
+                    short: true,
+                  })}
                 </td>
                 <td className="numeric">{formatRating(product.personal_rating)}</td>
               </tr>
@@ -177,22 +210,39 @@ export function ProductList({
             </p>
             {/* 모바일 카드는 두 줄 요약 — 재고와 가격·평점을 한 줄에 모아 한 화면에 더 많이 본다. */}
             <div className="product-card-meta">
-              <StockBadge metrics={product.metrics} allSkus={product.skus.length > 1} />
+              <StockBadge
+                metrics={product.metrics}
+                allSkus={product.skus.length > 1 || product.filtered_stock_count != null}
+              />
+              {product.filtered_stock_count != null ? (
+                <span className="stock-breakdown">
+                  조건 내 재고 {product.filtered_stock_count}병
+                </span>
+              ) : null}
             </div>
             <SkuSummaryList
               product={product}
               onSelect={(skuId) => onSelect(product.id, { skuId })}
             />
-            {product.skus.length > 1 ? (
+            {product.skus.length > 1 || product.filtered_prices != null || priceScopeLabel ? (
               <p className="muted text-sm">
-                {priceScopeLabel ?? "제품 가격은 전체 용량 구매 기준"}
+                {priceScopeLabel ??
+                  (product.filtered_prices != null
+                    ? "조건에 맞는 구매 평균"
+                    : "제품 가격은 전체 용량 구매 기준")}
               </p>
             ) : null}
-            <dl>
-              <dt>평단가</dt>
-              <dd>{formatMoney(product.metrics.avg_list_price)}</dd>
-              <dt>100ml당</dt>
-              <dd>{formatMoney(product.metrics.price_per_100ml)}</dd>
+            <dl className={product.filtered_prices != null ? "filtered-price-summary" : undefined}>
+              <dt>{product.filtered_prices != null ? "조건 평균 정가" : "평단가"}</dt>
+              <dd>{formatMoney((product.filtered_prices ?? product.metrics).avg_list_price)}</dd>
+              {product.filtered_prices != null ? (
+                <>
+                  <dt>조건 평균 실구매가</dt>
+                  <dd>{formatMoney(product.filtered_prices.avg_paid_price)}</dd>
+                </>
+              ) : null}
+              <dt>{product.filtered_prices != null ? "조건 100ml당(정가)" : "100ml당"}</dt>
+              <dd>{formatMoney((product.filtered_prices ?? product.metrics).price_per_100ml)}</dd>
               <dt>내 평점</dt>
               <dd>{formatRating(product.personal_rating)}</dd>
             </dl>

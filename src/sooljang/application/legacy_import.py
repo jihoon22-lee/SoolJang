@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.categories import create_category, load_tree
 from sooljang.application.import_plan import ImportPlan, PlannedProduct, PlannedPurchase
+from sooljang.application.skus import create_sku, load_live_sku_for_write, lock_live_product
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
@@ -138,6 +140,7 @@ async def apply_plan(
 
     한 행의 문제로 전체를 되돌리면 429행 중 428행이 정상인데도 아무것도 얻지 못한다.
     """
+    await lock_user_writes(session, user_id)
     result = ImportResult()
     # 같은 사용자의 적재를 직렬화한다. 더블탭·재시도로 두 요청이 동시에 "이미 적재됨"
     # 검사를 통과하면 같은 시트가 두 번 들어간다.
@@ -222,14 +225,15 @@ async def _apply_product(
     else:
         result.products_reused += 1
 
+    await lock_live_product(session, user_id=user_id, product_id=product_id)
     sku_id: uuid.UUID | None = None
     if planned.volume_ml is not None:
         key = (product_id, planned.volume_ml)
         sku_id = registry.skus.get(key)
         if sku_id is None:
-            sku = Sku(user_id=user_id, product_id=product_id, volume_ml=planned.volume_ml)
-            session.add(sku)
-            await session.flush()
+            sku = await create_sku(
+                session, user_id=user_id, product_id=product_id, volume_ml=planned.volume_ml
+            )
             sku_id = sku.id
             registry.skus[key] = sku_id
             result.skus_created += 1
@@ -262,6 +266,7 @@ async def _apply_purchase(
     (`스타보틀 인계 * 3 / 스타보틀 인계 * 1`). 순번이 없으면 두 번째 조각이 재실행으로
     오인되어 건너뛰어지고 병수가 하나 줄어든다.
     """
+    await load_live_sku_for_write(session, user_id=user_id, sku_id=sku_id)
     origin = f"레거시 {planned.line_number}행"
     marker = f"{origin} #{part_index} · {purchase.vendor_name or '구매처 미기록'}"
 

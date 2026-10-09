@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.history import changes, log_event
@@ -20,6 +20,7 @@ from sooljang.infrastructure.database.base import new_uuid
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
+    Product,
     Purchase,
     Sku,
     TastingSession,
@@ -95,14 +96,34 @@ def _log_transition(
     )
 
 
+def live_bottles_query(user_id: uuid.UUID) -> Select[tuple[Bottle]]:
+    """예전 버전의 부모만 삭제된 행도 원본은 보존하고 정상 조회·쓰기에서는 제외한다."""
+    return (
+        select(Bottle)
+        .join(Purchase, Purchase.id == Bottle.purchase_id)
+        .join(Sku, Sku.id == Purchase.sku_id)
+        .join(Product, Product.id == Sku.product_id)
+        .where(
+            Bottle.user_id == user_id,
+            Bottle.deleted_at.is_(None),
+            Purchase.user_id == user_id,
+            Purchase.deleted_at.is_(None),
+            Sku.user_id == user_id,
+            Sku.deleted_at.is_(None),
+            Product.user_id == user_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+
+
 async def load_bottle_for_write(
     session: AsyncSession, *, user_id: uuid.UUID, bottle_id: uuid.UUID
 ) -> Bottle | None:
     """온라인·outbox가 상태/잔량을 읽기 전에 같은 행 잠금을 얻는다."""
     return await session.scalar(
-        select(Bottle)
-        .where(Bottle.id == bottle_id, Bottle.user_id == user_id, Bottle.deleted_at.is_(None))
-        .with_for_update()
+        live_bottles_query(user_id)
+        .where(Bottle.id == bottle_id)
+        .with_for_update(of=Bottle)
         .execution_options(populate_existing=True)
     )
 
@@ -413,7 +434,7 @@ async def summarize_tastings(
     bottle_id: uuid.UUID | None = None,
 ) -> TastingSummary:
     """시음 요약을 계산한다. 저장하지 않고 매번 센다(파생값 비저장 규칙)."""
-    filters = [TastingSession.user_id == user_id, TastingSession.deleted_at.is_(None)]
+    filters = _live_tasting_conditions(user_id)
     if sku_id is not None:
         filters.append(TastingSession.sku_id == sku_id)
     if bottle_id is not None:
@@ -473,7 +494,7 @@ async def list_tastings(
     before: tuple[datetime.date, uuid.UUID] | None = None,
 ) -> list[TastingSession]:
     """시음 타임라인. 최근 순으로 반환한다."""
-    filters = [TastingSession.user_id == user_id, TastingSession.deleted_at.is_(None)]
+    filters = _live_tasting_conditions(user_id)
     if sku_id is not None:
         filters.append(TastingSession.sku_id == sku_id)
     if bottle_id is not None:
@@ -494,3 +515,25 @@ async def list_tastings(
         .limit(limit)
     )
     return list(result)
+
+
+def _live_tasting_conditions(user_id: uuid.UUID) -> list[Any]:
+    live_skus = (
+        select(Sku.id)
+        .join(Product, Product.id == Sku.product_id)
+        .where(
+            Sku.user_id == user_id,
+            Sku.deleted_at.is_(None),
+            Product.user_id == user_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    return [
+        TastingSession.user_id == user_id,
+        TastingSession.deleted_at.is_(None),
+        TastingSession.sku_id.in_(live_skus),
+        or_(
+            TastingSession.bottle_id.is_(None),
+            TastingSession.bottle_id.in_(live_bottles_query(user_id).with_only_columns(Bottle.id)),
+        ),
+    ]
