@@ -15,7 +15,7 @@ function row(overrides: Record<string, unknown>) {
 }
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
   await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 500 }));
   await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 1 }));
 });

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/Toast";
 import { HomePage } from "@/pages/HomePage";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery } from "@/testing";
 
@@ -39,7 +39,8 @@ function renderHomePage() {
 }
 
 beforeEach(async () => {
-  await db.open();
+  localStorage.clear();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {

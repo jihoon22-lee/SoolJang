@@ -5,10 +5,10 @@
  * 잔량은 `null` 이 "미개봉(전량)" 이라는 뜻이다. 0ml 이 아니므로 그대로 표시하면 안 된다.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { bottlesApi, tastingsApi } from "@/api/client";
-import type { Bottle, BottleStatus, User } from "@/api/types";
+import type { Bottle, BottleStatus } from "@/api/types";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
 import { HistoryDetails } from "@/components/HistoryList";
 import { RemainingEditor } from "@/components/RemainingEditor";
@@ -22,6 +22,7 @@ import {
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
+import { useSessionMutation } from "@/sync/useSessionMutation";
 
 export const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
@@ -63,7 +64,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
   }
 
   const [handOver, setHandOver] = useState<HandOverAction | null>(null);
-  const transition = useMutation({
+  const transition = useSessionMutation({
     mutationFn: async (
       input: TransitionAction | { action: TransitionAction; options: TransitionOptions },
     ) => {
@@ -80,7 +81,8 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
     },
   });
 
-  const deleteTasting = useMutation({
+  const deleteTasting = useSessionMutation({
+    networkMode: "online",
     mutationFn: (tastingId: string) => tastingsApi.remove(tastingId),
     onSuccess: refresh,
   });
@@ -285,7 +287,6 @@ interface TastingFormProps {
 }
 
 function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): React.JSX.Element {
-  const queryClient = useQueryClient();
   const context = lastTastingContext();
   const [tastedOn, setTastedOn] = useDraftState(`tasting:${bottleId}:tastedOn`, () => todayLocal());
   const [pouredMl, setPouredMl] = useDraftState(`tasting:${bottleId}:pouredMl`, "");
@@ -321,8 +322,8 @@ function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): Reac
     companions: setCompanions,
   };
 
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useSessionMutation<string>({
+    mutationFn: (_input, session) =>
       recordTasting({
         bottleId,
         tastedOn,
@@ -333,7 +334,7 @@ function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): Reac
         finish,
         place,
         companions,
-        userId: queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
+        userId: session.userId,
       }),
     onSuccess: () => {
       rememberTastingContext({ place: place.trim(), companions: companions.trim() });

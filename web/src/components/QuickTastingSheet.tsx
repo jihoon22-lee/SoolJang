@@ -6,16 +6,15 @@
  * 오프라인에서도 outbox 로 저장된다.
  */
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useMemo, useState } from "react";
-import type { User } from "@/api/types";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { useToast } from "@/components/Toast";
 import { todayLocal } from "@/format";
 import { matchesQuery } from "@/search";
 import { type DrinkableBottle, getDrinkableBottles } from "@/sync/queries";
 import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
+import { captureWriteSession } from "@/sync/writeSession";
 import { useModalDialog } from "@/useModalDialog";
 
 function emptyValues(): TastingFieldValues {
@@ -39,7 +38,6 @@ export function QuickTastingSheet({
   onClose: () => void;
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }) {
-  const queryClient = useQueryClient();
   const toast = useToast();
   const dialogRef = useModalDialog(returnFocusRef);
   const bottles = useLiveQuery(() => getDrinkableBottles(), []);
@@ -79,9 +77,11 @@ export function QuickTastingSheet({
 
   async function save(): Promise<void> {
     if (!chosen) return;
+    const session = captureWriteSession();
     setSaving(true);
     setError(null);
     try {
+      session.assertCurrent();
       await recordTasting({
         bottleId: chosen.bottleId,
         tastedOn: values.tastedOn,
@@ -92,8 +92,9 @@ export function QuickTastingSheet({
         finish: values.finish,
         place: values.place,
         companions: values.companions,
-        userId: queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
+        userId: session.userId,
       });
+      session.assertCurrent();
       rememberTastingContext({ place: values.place.trim(), companions: values.companions.trim() });
       const available =
         chosen.status === "open" ? (chosen.remainingMl ?? chosen.volumeMl) : chosen.volumeMl;
@@ -107,6 +108,7 @@ export function QuickTastingSheet({
       toast.show({ message: `${chosen.productName} 시음을 기록했습니다${effect}` });
       onClose();
     } catch (cause) {
+      if (!session.isCurrent()) return;
       setError(cause instanceof Error ? cause.message : "기록하지 못했습니다");
     } finally {
       setSaving(false);

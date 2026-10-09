@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyBottleTransitions, canTransition, undoBottleTransitions } from "@/sync/bottleActions";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 
 const NOW = "2026-01-01T00:00:00Z";
 function row(overrides: Record<string, unknown>) {
@@ -30,7 +30,7 @@ async function seedBottle(id: string, status: string, extra: Record<string, unkn
 }
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
   await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 700 }));
   await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 3 }));
 });

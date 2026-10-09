@@ -40,6 +40,7 @@ export interface EnqueueInput {
 export async function enqueue(input: EnqueueInput): Promise<string> {
   const store = db;
   const identity = databaseIdentity();
+  if (!identity.userId) throw new Error("로그인한 계정에서만 입력을 저장할 수 있습니다");
   const idempotencyKey = newId();
   const now = new Date().toISOString();
 
@@ -68,7 +69,7 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
         throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
       const existing = (await store.table(input.entity).get(input.entityId)) as SyncRow | undefined;
       entry.user_id ??= existing?.user_id;
-      if (identity.userId && entry.user_id !== identity.userId)
+      if (entry.user_id !== identity.userId || (existing && existing.user_id !== identity.userId))
         throw new Error("다른 계정의 입력을 저장할 수 없습니다");
       await store.outbox.add(entry);
       if (input.op === "delete") {

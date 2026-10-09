@@ -11,6 +11,7 @@ import {
   type SyncRow,
 } from "@/sync/db";
 import { OUTBOX_CHANGED, syncEvents } from "@/sync/events";
+import { quarantineAndReadQueue, quarantineInvalidEntries } from "@/sync/quarantine";
 
 export type SyncState = "idle" | "syncing" | "offline";
 export interface SyncEngineState {
@@ -202,6 +203,8 @@ export class SyncEngine {
     this.assertCurrent(run);
     await importLegacyChanges(run.store, run.userId);
     this.assertCurrent(run);
+    await quarantineInvalidEntries(run);
+    this.assertCurrent(run);
     // 실패한 명령이 남아 있어도 다른 기기의 변경은 받아야 한다. 대기 중인 행은 pull 이
     // 보호하므로(`pendingIds`) 먼저 받아도 사용자의 미전송 입력을 덮지 않는다.
     let flushError: unknown = null;
@@ -241,7 +244,9 @@ export class SyncEngine {
     const store = run.store;
     for (let batch = 0; batch < MAX_FLUSH_BATCHES; batch += 1) {
       this.assertCurrent(run);
-      const queue = ordered(await store.outbox.toArray());
+      // 응답을 기다리는 동안 다른 탭이 적재한 격리 체인의 후속 명령도 확인한다.
+      const queue = ordered(await quarantineAndReadQueue(run));
+      this.assertCurrent(run);
       if (queue.length === 0) return;
       const failedIndex = queue.findIndex((entry) => entry.status === "failed");
       if (failedIndex === 0)

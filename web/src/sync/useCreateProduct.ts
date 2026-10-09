@@ -1,15 +1,16 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
-import type { Product, User } from "@/api/types";
+import type { Product } from "@/api/types";
 import type { ProductFormValues } from "@/components/ProductForm";
 import { setLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching } from "@/search";
-import { databaseIdentity, db } from "@/sync/db";
+import { db, type SoolJangDB } from "@/sync/db";
 import { clearFormDraft } from "@/sync/drafts";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { useSessionMutation } from "@/sync/useSessionMutation";
 import { newId } from "@/sync/uuid7";
+import { captureWriteSession, type WriteSession } from "@/sync/writeSession";
 
 export interface CreateProductInput {
   values: ProductFormValues;
@@ -48,17 +49,14 @@ export class PartialProductCreationError extends Error {
  * 정당하다(가상의 미래 재사용이 아니다).
  */
 export function useCreateProduct() {
-  const queryClient = useQueryClient();
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
 
-  return useMutation({
-    mutationFn: async ({
-      values,
-      labelFile,
-      existingProduct,
-      purchaseAlreadyCreated,
-    }: CreateProductInput) => {
+  return useSessionMutation({
+    mutationFn: async (
+      { values, labelFile, existingProduct, purchaseAlreadyCreated }: CreateProductInput,
+      session,
+    ) => {
       for (const [field, value] of [
         ["quantity", values.quantity],
         ["volume_ml", values.volumeMl],
@@ -72,15 +70,8 @@ export function useCreateProduct() {
       }
       if (values.quantity && !values.volumeMl)
         throw new Error("구매 정보를 입력하려면 용량이 필요합니다");
-      const owner = queryClient.getQueryData<User>(["auth", "me"])?.id ?? "";
-      const generation = databaseIdentity().generation;
-      const checkSession = () => {
-        if (
-          databaseIdentity().generation !== generation ||
-          (queryClient.getQueryData<User>(["auth", "me"])?.id ?? "") !== owner
-        )
-          throw new Error("계정이 변경되었습니다. 이전 계정의 저장 결과를 확인하세요");
-      };
+      const owner = session.userId;
+      const checkSession = session.assertCurrent;
       if (!offline) {
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
@@ -114,6 +105,7 @@ export function useCreateProduct() {
           // 구매·병 행까지는 여기서 만들지 않는다(서버가 만드는 병 id 를 알 수 없다) —
           // 그 부분은 곧 sync 가 채운다.
           await mirrorProductOptimistically(product, owner);
+          checkSession();
           triggerSync();
         }
 
@@ -123,7 +115,7 @@ export function useCreateProduct() {
         try {
           if (!purchaseCreated && quantity > 0 && skuId) {
             const vendorId = values.vendorName.trim()
-              ? await resolveVendorId(values.vendorName.trim())
+              ? await resolveVendorId(values.vendorName.trim(), session)
               : null;
             checkSession();
             await purchasesApi.create({
@@ -144,6 +136,7 @@ export function useCreateProduct() {
             await attachmentsApi.create(labelFile, { kind: "label", product_id: product.id });
           }
         } catch (cause) {
+          checkSession();
           const message = cause instanceof Error ? cause.message : String(cause);
           throw new PartialProductCreationError(
             `"${values.name.trim()}" 제품은 이미 등록됐습니다. 나머지 항목 저장에 실패했습니다: ${message}`,
@@ -154,10 +147,7 @@ export function useCreateProduct() {
         return product.id;
       }
 
-      return await createProductOffline(
-        values,
-        queryClient.getQueryData<User>(["auth", "me"])?.id ?? "",
-      );
+      return await createProductOffline(values, owner);
     },
     onSuccess: (_result, { values }) => {
       clearFormDraft("product:create");
@@ -168,8 +158,13 @@ export function useCreateProduct() {
 
 /** 온라인 생성 응답을 로컬 미러(`db.product`/`db.sku`)에 낙관적으로 반영한다. */
 async function mirrorProductOptimistically(product: Product, userId: string): Promise<void> {
+  const session = captureWriteSession();
+  session.assertCurrent();
+  if (session.userId !== userId) throw new Error("다른 계정의 저장 결과입니다");
+  const db = session.store;
   const now = new Date().toISOString();
   await db.transaction("rw", db.product, db.sku, db.sync_meta, async () => {
+    session.assertCurrent();
     // 이 행의 updated_at 은 기기 시계다. 기기 시계가 서버보다 빠르면 다음 pull 의 서버 행이
     // "더 오래됐다" 고 판단돼 무시된다 — 서버가 정규화한 값(생산자 등)을 반드시 받도록
     // 비교 없이 덮어쓸 대상으로 표시한다.
@@ -213,6 +208,7 @@ async function mirrorProductOptimistically(product: Product, userId: string): Pr
         package_note: sku.package_note,
       });
     }
+    session.assertCurrent();
   });
 }
 
@@ -242,11 +238,14 @@ export function splitVarieties(raw: string): string[] {
 }
 
 /** 구매처 이름으로 id 를 찾고, 없으면 만든다. 매번 목록에서 고르게 하면 입력이 느려진다. */
-export async function resolveVendorId(name: string): Promise<string> {
+export async function resolveVendorId(name: string, session: WriteSession): Promise<string> {
+  session.assertCurrent();
   const vendors = await vendorsApi.list();
+  session.assertCurrent();
   const existing = vendors.find((vendor) => vendor.name === name);
   if (existing) return existing.id;
   const created = await vendorsApi.create({ name });
+  session.assertCurrent();
   return created.id;
 }
 
@@ -267,20 +266,24 @@ export async function createProductOffline(
   values: ProductFormValues,
   userId: string,
 ): Promise<string> {
-  const store = db;
-  const generation = databaseIdentity().generation;
+  const session = captureWriteSession();
+  session.assertCurrent();
+  if (session.userId !== userId) throw new Error("다른 계정의 입력을 저장할 수 없습니다");
+  const store = session.store;
   return await store.transaction("rw", store.tables, async () => {
-    const id = await createProductOfflineChain(values, userId);
-    if (databaseIdentity().generation !== generation || db !== store)
-      throw new Error("계정이 변경되어 입력을 저장하지 않았습니다");
+    session.assertCurrent();
+    const id = await createProductOfflineChain(values, session);
+    session.assertCurrent();
     return id;
   });
 }
 
 async function createProductOfflineChain(
   values: ProductFormValues,
-  userId: string,
+  session: WriteSession,
 ): Promise<string> {
+  const db = session.store;
+  const userId = session.userId;
   const now = new Date().toISOString();
 
   const productId = newId();
@@ -291,8 +294,9 @@ async function createProductOfflineChain(
   const categoryId = values.categoryId || null;
   // 생산자는 오프라인 쓰기 대상 7종에 없어 새로 만들 수 없다 — 미러에 이미 있으면 재사용,
   // 없으면 잃지 않게 메모로 보존한다(온라인 등록처럼 실제 필드로 저장할 수는 없다).
-  const { producerId, note } = await resolveOfflineProducer(values.producerName, values.note);
+  const { producerId, note } = await resolveOfflineProducer(values.producerName, values.note, db);
 
+  session.assertCurrent();
   await enqueue({
     entity: "product",
     op: "create",
@@ -331,6 +335,7 @@ async function createProductOfflineChain(
   if (values.volumeMl) {
     skuId = newId();
     const volumeMl = Number(values.volumeMl);
+    session.assertCurrent();
     await enqueue({
       entity: "sku",
       op: "create",
@@ -354,7 +359,7 @@ async function createProductOfflineChain(
   const quantity = parseQuantity(values.quantity);
   if (quantity > 0 && skuId) {
     const vendorId = values.vendorName.trim()
-      ? await resolveVendorIdOffline(values.vendorName.trim(), userId)
+      ? await resolveVendorIdOffline(values.vendorName.trim(), session)
       : null;
 
     const purchaseId = newId();
@@ -363,6 +368,7 @@ async function createProductOfflineChain(
     const unitListPrice = values.unitListPrice || null;
     const unitPaidPrice = values.unitPaidPrice || null;
 
+    session.assertCurrent();
     await enqueue({
       entity: "purchase",
       op: "create",
@@ -396,6 +402,7 @@ async function createProductOfflineChain(
       },
     });
 
+    session.assertCurrent();
     await db.bottle.bulkPut(
       bottleIds.map((id, index) => ({
         id,
@@ -418,8 +425,9 @@ async function createProductOfflineChain(
   return productId;
 }
 
-async function resolveVendorIdOffline(name: string, userId: string): Promise<string> {
-  const vendors = await db.vendor.toArray();
+async function resolveVendorIdOffline(name: string, session: WriteSession): Promise<string> {
+  const vendors = await session.store.vendor.toArray();
+  session.assertCurrent();
   const existing = vendors.find((vendor) => vendor.deleted_at === null && vendor.name === name);
   if (existing) return existing.id;
 
@@ -432,7 +440,7 @@ async function resolveVendorIdOffline(name: string, userId: string): Promise<str
     fields: { name },
     optimisticRow: {
       id,
-      user_id: userId,
+      user_id: session.userId,
       created_at: now,
       updated_at: now,
       deleted_at: null,
@@ -446,8 +454,11 @@ async function resolveVendorIdOffline(name: string, userId: string): Promise<str
 }
 
 /** 미러에서 생산자 이름으로 id 를 찾는다. 없으면(오프라인에서 새로 못 만든다) null. */
-export async function resolveProducerIdOffline(name: string): Promise<string | null> {
-  const producers = await db.producer.toArray();
+export async function resolveProducerIdOffline(
+  name: string,
+  store: SoolJangDB = db,
+): Promise<string | null> {
+  const producers = await store.producer.toArray();
   const normalized = name.trim().toLowerCase();
   const existing = producers.find(
     (producer) =>
@@ -460,10 +471,11 @@ export async function resolveProducerIdOffline(name: string): Promise<string | n
 async function resolveOfflineProducer(
   rawName: string,
   existingNote: string | null,
+  store: SoolJangDB,
 ): Promise<{ producerId: string | null; note: string | null }> {
   const name = rawName?.trim() || null;
   if (!name) return { producerId: null, note: existingNote || null };
-  const producerId = await resolveProducerIdOffline(name);
+  const producerId = await resolveProducerIdOffline(name, store);
   if (producerId) return { producerId, note: existingNote || null };
   const note = existingNote ? `${existingNote}\n생산자: ${name}` : `생산자: ${name}`;
   return { producerId: null, note };

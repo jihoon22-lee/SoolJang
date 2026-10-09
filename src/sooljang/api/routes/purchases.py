@@ -172,7 +172,17 @@ async def _to_purchase_out(session: SessionDep, purchase: Purchase) -> PurchaseO
     """
     await session.refresh(purchase)
     sku = await session.get(Sku, purchase.sku_id)
-    vendor = await session.get(Vendor, purchase.vendor_id) if purchase.vendor_id else None
+    vendor = (
+        await session.scalar(
+            select(Vendor).where(
+                Vendor.id == purchase.vendor_id,
+                Vendor.user_id == purchase.user_id,
+                Vendor.deleted_at.is_(None),
+            )
+        )
+        if purchase.vendor_id
+        else None
+    )
     bottle_count = await session.scalar(
         select(func.count())
         .select_from(Bottle)
@@ -246,7 +256,12 @@ async def list_purchases(
     rows = await session.execute(
         statement.add_columns(Sku.volume_ml, Vendor.name, bottle_counts.c.bottle_count)
         .outerjoin(Sku, Sku.id == Purchase.sku_id)
-        .outerjoin(Vendor, Vendor.id == Purchase.vendor_id)
+        .outerjoin(
+            Vendor,
+            (Vendor.id == Purchase.vendor_id)
+            & (Vendor.user_id == Purchase.user_id)
+            & Vendor.deleted_at.is_(None),
+        )
         .outerjoin(bottle_counts, bottle_counts.c.purchase_id == Purchase.id)
     )
     return [
@@ -415,6 +430,22 @@ async def split_purchase(
     원본의 병 레코드는 조각에 순서대로 재배치한다. 병을 새로 만들면 시음 기록이 끊긴다.
     """
     purchase = await _owned_purchase(session, user_id, purchase_id)
+
+    # 상속할 구매처까지 먼저 검증·잠근다. 병합/일괄 수정과 같은 Vendor → Purchase
+    # 순서를 지키며, 여러 구매처도 UUID 순서로 잠가 반대 방향 분할과 교착하지 않는다.
+    inherited_vendor_id = purchase.vendor_id
+    inherits_vendor = any(part.vendor_id is None for part in payload.parts)
+    vendor_ids = {
+        vendor_id
+        for part in payload.parts
+        if (vendor_id := part.vendor_id or inherited_vendor_id) is not None
+    }
+    for vendor_id in sorted(vendor_ids):
+        await _owned_vendor(session, user_id, vendor_id)
+    purchase = await owned(session, Purchase, user_id, purchase_id)
+    if inherits_vendor and purchase.vendor_id != inherited_vendor_id:
+        # 최초 조회와 잠금 사이에 상속 대상이 바뀌면 새 Vendor 잠금을 역순으로 얻지 않는다.
+        raise ConflictError("구매처가 변경되었습니다. 구매 건을 다시 확인한 뒤 분할하세요")
 
     total = sum(part.quantity for part in payload.parts)
     if total != purchase.quantity:

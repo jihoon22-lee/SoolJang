@@ -9,6 +9,7 @@
 import { todayLocal } from "@/format";
 import { db, type SyncRow } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
+import { captureWriteSession } from "@/sync/writeSession";
 
 export type TransitionAction =
   | "open"
@@ -137,11 +138,14 @@ export async function applyBottleTransition(
   action: TransitionAction,
   options: TransitionOptions = {},
 ): Promise<SyncRow> {
+  const session = captureWriteSession();
+  session.assertCurrent();
   const current = await db.bottle.get(bottleId);
   if (!current) throw new Error("병을 찾을 수 없습니다");
   if (!canTransition(current.status as string, action))
     throw new Error("지금 상태에서는 할 수 없는 동작입니다");
   const fields = await transitionFields(current, action, options);
+  session.assertCurrent();
   await enqueue({
     entity: "bottle",
     op: "action",
@@ -166,13 +170,16 @@ export async function applyBottleTransitions(
   action: TransitionAction,
   options: TransitionOptions = {},
 ): Promise<BulkTransitionResult> {
+  const session = captureWriteSession();
   const result: BulkTransitionResult = { applied: [], skipped: [] };
   for (const id of bottleIds) {
+    session.assertCurrent();
     const current = await db.bottle.get(id);
     if (!current || !canTransition(current.status as string, action)) {
       result.skipped.push(id);
       continue;
     }
+    session.assertCurrent();
     const before = await applyBottleTransition(id, action, options);
     result.applied.push({ id, before });
   }
@@ -186,9 +193,12 @@ export async function applyBottleTransitions(
 export async function undoBottleTransitions(
   applied: BulkTransitionResult["applied"],
 ): Promise<void> {
+  const session = captureWriteSession();
   for (const { id, before } of applied) {
+    session.assertCurrent();
     const current = await db.bottle.get(id);
     if (!current) continue;
+    session.assertCurrent();
     const target = before.status as string;
     let status = current.status as string;
     if (status === target) {

@@ -5,7 +5,7 @@ import { collectionApi } from "@/api/collection";
 import type { Bottle, Purchase } from "@/api/types";
 import { BottleSection } from "@/components/BottleSection";
 import { ToastProvider } from "@/components/Toast";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { renderWithQuery } from "@/testing";
 
 const NOW = "2026-01-01T00:00:00Z";
@@ -75,7 +75,8 @@ function renderSection(bottles: Bottle[], offline = false) {
 }
 
 beforeEach(async () => {
-  await db.open();
+  localStorage.clear();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {
