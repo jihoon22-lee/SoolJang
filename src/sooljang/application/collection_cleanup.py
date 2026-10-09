@@ -90,19 +90,20 @@ async def snapshot(
     elif kind == "purchase_vendor":
         purchases = [row for row in rows if isinstance(row, Purchase)]
     elif kind == "location_delete":
-        placements = list(
-            await session.scalars(
-                select(BottlePlacement)
-                .where(BottlePlacement.user_id == user_id, BottlePlacement.location_id == ids[0])
-                .order_by(BottlePlacement.id)
-                .with_for_update()
-            )
-        )
+        # 실사 위치 반영과 같은 Location → Stocktake → Placement 순서로 잠근다.
         stocktakes = list(
             await session.scalars(
                 select(Stocktake)
                 .where(Stocktake.user_id == user_id, Stocktake.location_id == ids[0])
                 .order_by(Stocktake.id)
+                .with_for_update()
+            )
+        )
+        placements = list(
+            await session.scalars(
+                select(BottlePlacement)
+                .where(BottlePlacement.user_id == user_id, BottlePlacement.location_id == ids[0])
+                .order_by(BottlePlacement.id)
                 .with_for_update()
             )
         )

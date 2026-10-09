@@ -13,6 +13,7 @@ from sooljang.api.schemas.collection_management import (
     CleanupInput,
     FoundInput,
     LocationInput,
+    ObservationCorrectionInput,
     PlacementInput,
     ScanInput,
     StocktakeInput,
@@ -21,6 +22,7 @@ from sooljang.api.schemas.collection_management import (
 from sooljang.application.collection_cleanup import confirm_cleanup, preview_cleanup, quality_report
 from sooljang.application.collection_inventory import (
     apply_observed_locations,
+    correct_observation,
     list_bottles,
     move_bottle,
     move_bottles,
@@ -210,6 +212,25 @@ async def apply_locations(
     moved = await apply_observed_locations(session, user_id, stocktake_id)
     row = await owned(session, Stocktake, user_id, stocktake_id)
     return {**moved, "stocktake": stocktake_out(row)}
+
+
+@router.patch("/stocktakes/{stocktake_id}/observations/{bottle_id}")
+async def correct_stocktake_observation(
+    stocktake_id: uuid.UUID,
+    bottle_id: uuid.UUID,
+    payload: ObservationCorrectionInput,
+    session: SessionDep,
+    user_id: UserDep,
+) -> dict[str, Any]:
+    row = await correct_observation(
+        session,
+        user_id,
+        stocktake_id,
+        bottle_id,
+        observed_location_id=payload.observed_location_id,
+        expected_observed_location_id=payload.expected_observed_location_id,
+    )
+    return stocktake_out(row)
 
 
 @router.post("/stocktakes/{stocktake_id}/found")

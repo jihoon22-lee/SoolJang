@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.history import changes, log_event
@@ -468,6 +468,7 @@ async def list_tastings(
     sku_id: uuid.UUID | None = None,
     bottle_id: uuid.UUID | None = None,
     limit: int = 50,
+    before: tuple[datetime.date, uuid.UUID] | None = None,
 ) -> list[TastingSession]:
     """시음 타임라인. 최근 순으로 반환한다."""
     filters = [TastingSession.user_id == user_id, TastingSession.deleted_at.is_(None)]
@@ -475,6 +476,14 @@ async def list_tastings(
         filters.append(TastingSession.sku_id == sku_id)
     if bottle_id is not None:
         filters.append(TastingSession.bottle_id == bottle_id)
+    if before is not None:
+        tasted_on, tasting_id = before
+        filters.append(
+            or_(
+                TastingSession.tasted_on < tasted_on,
+                and_(TastingSession.tasted_on == tasted_on, TastingSession.id < tasting_id),
+            )
+        )
 
     result = await session.scalars(
         select(TastingSession)

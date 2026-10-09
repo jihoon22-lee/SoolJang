@@ -58,6 +58,7 @@ import type {
   SyncPullResponse,
   Tasting,
   TastingInput,
+  TastingPage,
   TastingSummary,
   TimeSeriesPoint,
   User,
@@ -426,6 +427,13 @@ export const bottlesApi = {
 
   tastings: (id: string, signal?: AbortSignal) =>
     request<Tasting[]>(`/bottles/${id}/tastings`, signal ? { signal } : {}),
+
+  tastingsPage: (
+    id: string,
+    params: { limit?: number; cursor?: string | null },
+    signal?: AbortSignal,
+  ) =>
+    request<TastingPage>(`/bottles/${id}/tastings/page`, { params, ...(signal ? { signal } : {}) }),
 };
 
 export const tastingsApi = {

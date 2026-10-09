@@ -5,8 +5,9 @@
  * 잔량은 `null` 이 "미개봉(전량)" 이라는 뜻이다. 0ml 이 아니므로 그대로 표시하면 안 된다.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useState } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLiveQuery } from "dexie-react-hooks";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { bottlesApi, tastingsApi } from "@/api/client";
 import type { Bottle, BottleStatus } from "@/api/types";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
@@ -20,9 +21,11 @@ import {
   type TransitionOptions,
 } from "@/sync/bottleActions";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
+import { db } from "@/sync/db";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
 import { useSessionMutation } from "@/sync/useSessionMutation";
+import { captureWriteSession } from "@/sync/writeSession";
 
 export const STATUS_LABELS: Record<BottleStatus, string> = {
   unopened: "미개봉",
@@ -47,21 +50,59 @@ interface BottlePanelProps {
 export function BottlePanel({ bottle, offline = false }: BottlePanelProps): React.JSX.Element {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [session] = useState(captureWriteSession);
 
-  const timeline = useQuery({
-    queryKey: ["bottles", bottle.id, "tastings"],
-    queryFn: ({ signal }) => bottlesApi.tastings(bottle.id, signal),
+  const timeline = useInfiniteQuery({
+    queryKey: ["bottles", bottle.id, "tastings", "pages"],
+    queryFn: ({ pageParam, signal }) =>
+      bottlesApi.tastingsPage(bottle.id, { limit: 50, cursor: pageParam }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled: !offline,
   });
+  const tastingItems = [
+    ...new Map(
+      (timeline.data?.pages.flatMap((page) => page.items) ?? []).map((item) => [item.id, item]),
+    ).values(),
+  ];
 
   const summary = useQuery({
     queryKey: ["tastings", "summary", bottle.id],
     queryFn: ({ signal }) => tastingsApi.summary({ bottle_id: bottle.id }, signal),
+    enabled: !offline,
   });
 
-  function refresh(): void {
-    void queryClient.invalidateQueries({ queryKey: ["bottles"] });
-    void queryClient.invalidateQueries({ queryKey: ["tastings"] });
-  }
+  const refresh = useCallback(async (): Promise<void> => {
+    if (!session.isCurrent()) return;
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["bottles", bottle.id] }),
+      queryClient.invalidateQueries({ queryKey: ["tastings", "summary", bottle.id] }),
+    ]);
+  }, [queryClient, bottle.id, session]);
+  const queuedTastings = useLiveQuery(
+    async () => ({
+      bottleId: bottle.id,
+      keys: await db.outbox
+        .filter(
+          (entry) => entry.entity === "tasting_session" && entry.fields.bottle_id === bottle.id,
+        )
+        .primaryKeys(),
+    }),
+    [bottle.id, session.userId],
+  );
+  const previousQueued = useRef<typeof queuedTastings>(undefined);
+  useEffect(() => {
+    if (!queuedTastings) return;
+    const previous = previousQueued.current;
+    previousQueued.current = queuedTastings;
+    // 로컬 저장 직후에는 서버에 없을 수 있다. outbox에서 빠진 뒤 전체 페이지와 요약을
+    // 다시 받는다. 실패해 대기 중인 명령을 서버에 반영된 기록처럼 표시하지 않는다.
+    if (
+      previous?.bottleId === queuedTastings.bottleId &&
+      previous.keys.some((key) => !queuedTastings.keys.includes(key))
+    )
+      void refresh();
+  }, [queuedTastings, refresh]);
 
   const [handOver, setHandOver] = useState<HandOverAction | null>(null);
   const transition = useSessionMutation({
@@ -74,7 +115,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
     },
     onSuccess: () => {
       setError(null);
-      refresh();
+      return refresh();
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "상태를 바꿀 수 없습니다");
@@ -231,13 +272,39 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
 
       <div className="tasting-timeline">
         <h4>시음 기록</h4>
-        {timeline.isPending ? <output>불러오는 중…</output> : null}
-        {timeline.isError ? (
-          <p className="muted">오프라인에서는 시음 기록을 불러올 수 없습니다.</p>
+        {timeline.isPending && !offline ? <output>불러오는 중…</output> : null}
+        {offline && !timeline.data ? (
+          <p className="muted">온라인으로 연결하면 시음 기록을 불러올 수 있습니다.</p>
         ) : null}
-        {timeline.data?.length === 0 ? <p className="muted">아직 기록이 없습니다.</p> : null}
+        {timeline.isError && !timeline.data ? (
+          <>
+            <p role="alert">시음 기록을 불러오지 못했습니다. 다시 시도하세요.</p>
+            <button
+              type="button"
+              disabled={offline || timeline.isFetching}
+              onClick={() => void timeline.refetch()}
+            >
+              시음 기록 다시 불러오기
+            </button>
+          </>
+        ) : null}
+        {timeline.data && tastingItems.length === 0 ? (
+          <p className="muted">아직 기록이 없습니다.</p>
+        ) : null}
+        {timeline.isRefetchError ? (
+          <>
+            <p role="alert">최신 시음 기록을 확인하지 못했습니다. 기존 내역을 표시합니다.</p>
+            <button
+              type="button"
+              disabled={offline || timeline.isFetching}
+              onClick={() => void timeline.refetch()}
+            >
+              목록 새로고침
+            </button>
+          </>
+        ) : null}
         <ul>
-          {timeline.data?.map((item) => (
+          {tastingItems.map((item) => (
             <li key={item.id}>
               <span className="tasting-date">{item.tasted_on}</span>
               <span className="tasting-rating">
@@ -265,6 +332,25 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
             </li>
           ))}
         </ul>
+        {timeline.isFetchNextPageError ? (
+          <p role="alert">이전 기록을 더 불러오지 못했습니다. 이미 불러온 내역은 유지됩니다.</p>
+        ) : null}
+        {timeline.hasNextPage ? (
+          <button
+            type="button"
+            disabled={offline || timeline.isFetching}
+            onClick={() => void timeline.fetchNextPage({ cancelRefetch: false })}
+          >
+            {timeline.isFetchingNextPage
+              ? "이전 기록 불러오는 중…"
+              : timeline.isFetchNextPageError
+                ? "이전 기록 다시 불러오기"
+                : "이전 기록 더 보기"}
+          </button>
+        ) : null}
+        {deleteTasting.error ? (
+          <p role="alert">시음 기록을 삭제하지 못했습니다. 다시 시도하세요.</p>
+        ) : null}
         {offline ? <p className="muted">시음 기록 삭제는 온라인일 때만 할 수 있습니다.</p> : null}
       </div>
     </section>
@@ -283,7 +369,7 @@ export function formatRatingChange(change: string | null): string {
 interface TastingFormProps {
   bottleId: string;
   remainingMl?: number | null | undefined;
-  onSaved: () => void;
+  onSaved: () => Promise<void>;
 }
 
 function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): React.JSX.Element {
@@ -336,7 +422,7 @@ function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): Reac
         companions,
         userId: session.userId,
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       rememberTastingContext({ place: place.trim(), companions: companions.trim() });
       clearFormDraft(`tasting:${bottleId}`);
       setError(null);
@@ -345,7 +431,7 @@ function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): Reac
       setNose("");
       setPalate("");
       setFinish("");
-      onSaved();
+      await onSaved();
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "기록에 실패했습니다");

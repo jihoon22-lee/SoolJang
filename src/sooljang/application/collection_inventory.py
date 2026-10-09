@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
+from sooljang.application.history import log_event
 from sooljang.application.tastings import load_bottle_for_write
 from sooljang.infrastructure.database.base import EntityMixin
 from sooljang.infrastructure.database.models import (
@@ -28,7 +29,8 @@ async def owned[T: EntityMixin](
     row = await session.scalar(
         select(model)
         .where(model.id == entity_id, model.user_id == user_id, model.deleted_at.is_(None))
-        .with_for_update()
+        # 위치의 id는 바꾸지 않는다. 이력 FK의 KEY SHARE까지 막으면 병 잠금과 역전된다.
+        .with_for_update(key_share=model is StorageLocation)
         .execution_options(populate_existing=True)
     )
     if row is None:
@@ -51,7 +53,7 @@ async def owned_many[T: EntityMixin](
         select(model)
         .where(model.id.in_(unique), model.user_id == user_id, model.deleted_at.is_(None))
         .order_by(model.id)
-        .with_for_update()
+        .with_for_update(key_share=model is StorageLocation)
         .execution_options(populate_existing=True)
     )
     found = {row.id: row for row in rows}
@@ -186,34 +188,75 @@ async def apply_observed_locations(
     지워진 병이나 위치는 건너뛰고 `relocation_skipped` 로 남긴다 — 한 건 때문에 나머지 반영이
     모두 취소되면 불일치를 영영 정리할 수 없다.
     """
+    # scan/정정/위치 삭제와 Location → Stocktake → Bottle → Placement 순서를 맞춘다.
+    # 반영할 위치는 실사에 담겨 있으므로 먼저 읽고 위치를 잠근 뒤 실사를 다시 검증한다.
+    initial = await session.scalar(
+        select(Stocktake).where(
+            Stocktake.id == stocktake_id,
+            Stocktake.user_id == user_id,
+            Stocktake.deleted_at.is_(None),
+        )
+    )
+    if initial is None:
+        raise NotFoundError("실사를 찾을 수 없습니다")
+    initial_location_ids = _pending_location_ids(initial)
+    initial_bottle_ids = {
+        uuid.UUID(observation["bottle_id"])
+        for observation in initial.observations.values()
+        if observation["result"] == "location_mismatch"
+    }
+    # 출발 위치 삭제도 같은 위치 잠금에서 직렬화한다. 병을 잠근 뒤 출발지가 달라졌다면
+    # 잠금 순서를 뒤집지 않고 다시 확인하도록 한다.
+    initial_location_ids.update(
+        location_id
+        for location_id in await session.scalars(
+            select(BottlePlacement.location_id).where(
+                BottlePlacement.bottle_id.in_(initial_bottle_ids),
+                BottlePlacement.user_id == user_id,
+            )
+        )
+        if location_id is not None
+    )
+    locked_locations = list(
+        await session.scalars(
+            select(StorageLocation)
+            .where(StorageLocation.id.in_(initial_location_ids), StorageLocation.user_id == user_id)
+            .order_by(StorageLocation.id)
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
+        )
+    )
     row = await owned(session, Stocktake, user_id, stocktake_id)
+    if not _pending_location_ids(row).issubset(initial_location_ids):
+        raise ConflictError("실사 관찰 위치가 변경되었습니다. 확인 후 다시 반영하세요")
     pending = [
         observation
         for observation in row.observations.values()
         if observation["result"] == "location_mismatch"
     ]
     bottle_ids = {uuid.UUID(observation["bottle_id"]) for observation in pending}
-    location_ids = {
-        uuid.UUID(observation["observed_location_id"])
-        for observation in pending
-        if observation["observed_location_id"]
-    }
     live_bottles = set(
         await session.scalars(
-            select(Bottle.id).where(
+            select(Bottle.id)
+            .where(
                 Bottle.id.in_(bottle_ids), Bottle.user_id == user_id, Bottle.deleted_at.is_(None)
             )
+            .order_by(Bottle.id)
+            .with_for_update()
         )
     )
-    live_locations = set(
-        await session.scalars(
-            select(StorageLocation.id).where(
-                StorageLocation.id.in_(location_ids),
-                StorageLocation.user_id == user_id,
-                StorageLocation.deleted_at.is_(None),
+    live_locations = {location.id for location in locked_locations if location.deleted_at is None}
+    current_source_ids = {
+        location_id
+        for location_id in await session.scalars(
+            select(BottlePlacement.location_id).where(
+                BottlePlacement.bottle_id.in_(live_bottles), BottlePlacement.user_id == user_id
             )
         )
-    )
+        if location_id is not None
+    }
+    if not current_source_ids.issubset({location.id for location in locked_locations}):
+        raise ConflictError("병의 보관 위치가 변경되었습니다. 확인 후 다시 반영하세요")
 
     targets: dict[uuid.UUID | None, list[uuid.UUID]] = {}
     skipped: set[str] = set()
@@ -243,6 +286,14 @@ async def apply_observed_locations(
     }
     await session.flush()
     return {"moved": moved, "skipped": len(skipped)}
+
+
+def _pending_location_ids(row: Stocktake) -> set[uuid.UUID]:
+    return {
+        uuid.UUID(observation["observed_location_id"])
+        for observation in row.observations.values()
+        if observation["result"] == "location_mismatch" and observation["observed_location_id"]
+    }
 
 
 async def start_stocktake(
@@ -329,3 +380,58 @@ async def scan_bottle(
     row.observations = {**row.observations, key: observation}
     await session.flush()
     return {"duplicate": False, "observation": observation}
+
+
+async def correct_observation(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    stocktake_id: uuid.UUID,
+    bottle_id: uuid.UUID,
+    *,
+    observed_location_id: uuid.UUID | None,
+    expected_observed_location_id: uuid.UUID | None,
+) -> Stocktake:
+    """스캔한 관찰만 정정한다. 실제 보관 위치와 최초 기록 위치는 변경하지 않는다."""
+    if observed_location_id is not None:
+        await owned(session, StorageLocation, user_id, observed_location_id)
+    row = await owned(session, Stocktake, user_id, stocktake_id)
+    if row.status != "active":
+        raise ConflictError("진행 중인 실사에서만 관찰을 정정할 수 있습니다")
+    key = str(bottle_id)
+    observation = row.observations.get(key)
+    if observation is None:
+        raise NotFoundError("관찰 기록을 찾을 수 없습니다")
+    if observation["result"] not in {"checked", "unexpected", "location_mismatch"}:
+        raise ConflictError("이미 위치에 반영한 관찰은 정정할 수 없습니다. 새 실사로 확인하세요")
+    if await load_bottle_for_write(session, user_id=user_id, bottle_id=bottle_id) is None:
+        raise NotFoundError("이 계정의 병을 찾을 수 없습니다")
+    desired = str(observed_location_id) if observed_location_id is not None else None
+    expected = str(expected_observed_location_id) if expected_observed_location_id else None
+    previous = observation["observed_location_id"]
+    if previous == desired:
+        return row
+    if previous != expected:
+        raise ConflictError("다른 기기에서 관찰 위치를 변경했습니다. 다시 확인하세요")
+    result = (
+        "location_mismatch"
+        if observation["recorded_location_id"] != desired
+        else ("checked" if key in row.expected else "unexpected")
+    )
+    row.observations = {
+        **row.observations,
+        key: {**observation, "observed_location_id": desired, "result": result},
+    }
+    log_event(
+        session,
+        user_id=user_id,
+        entity="stocktake",
+        entity_id=stocktake_id,
+        action="correct_observation",
+        detail={
+            "bottle_id": key,
+            "observed_location_id": [previous, desired],
+            "result": [observation["result"], result],
+        },
+    )
+    await session.flush()
+    return row

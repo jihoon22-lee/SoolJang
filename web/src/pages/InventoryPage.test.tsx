@@ -282,3 +282,123 @@ it("실사를 시작·중지·재개하고 위치 불일치를 반영하며 미�
   await waitFor(() => expect(collectionApi.status).toHaveBeenLastCalledWith("s1", "completed"));
   expect(screen.getByRole("button", { name: "병 확인" })).toBeDisabled();
 });
+
+function seedCorrectionPage(status: Stocktake["status"] = "active", result = "location_mismatch") {
+  let current = stocktakeOf({
+    status,
+    observed_count: 1,
+    mismatch_count: 1,
+    missing: [],
+    observations: [
+      { bottle_id: "b1", result, recorded_location_id: "l1", observed_location_id: "l2" },
+    ],
+  });
+  vi.spyOn(collectionApi, "locations").mockResolvedValue([
+    { id: "l1", name: "원래 선반", kind: "shelf", note: null, deleted: false, bottle_count: 1 },
+    { id: "l2", name: "잘못된 선반", kind: "shelf", note: null, deleted: false, bottle_count: 0 },
+  ]);
+  vi.spyOn(collectionApi, "bottles").mockResolvedValue([bottle]);
+  vi.spyOn(collectionApi, "stocktakes").mockImplementation(async () => structuredClone([current]));
+  const correct = vi
+    .spyOn(collectionApi, "correctObservation")
+    .mockImplementation(async (_id, _bottle, location) => {
+      current = {
+        ...current,
+        mismatch_count: 0,
+        observations: [
+          {
+            bottle_id: "b1",
+            result: "checked",
+            recorded_location_id: "l1",
+            observed_location_id: location,
+          },
+        ],
+      };
+      return structuredClone(current);
+    });
+  const move = vi.spyOn(collectionApi, "move");
+  const apply = vi.spyOn(collectionApi, "applyLocations");
+  renderPage();
+  return { correct, move, apply };
+}
+
+it("관찰 위치만 정정하고 실제 병을 옮기지 않으며 집계를 새로 읽는다", async () => {
+  const { correct, move, apply } = seedCorrectionPage();
+  await userEvent.click(screen.getByRole("tab", { name: "재고 실사" }));
+  await userEvent.selectOptions(await screen.findByLabelText("진행·완료 실사"), "s1");
+  await userEvent.click(await screen.findByText("확인한 병 1개"));
+  await userEvent.click(screen.getByRole("button", { name: "위치 정정" }));
+  await userEvent.selectOptions(screen.getByLabelText("정정할 관찰 위치"), "l1");
+  expect(screen.getByText("잘못된 선반 → 원래 선반")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "관찰 위치 정정 저장" }));
+  await waitFor(() => expect(correct).toHaveBeenCalledWith("s1", "b1", "l1", "l2"));
+  await waitFor(() =>
+    expect(screen.queryByRole("form", { name: "관찰 위치 정정" })).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByRole("button", { name: /위치 불일치.*확인한 위치로/ }),
+  ).not.toBeInTheDocument();
+  expect(move).not.toHaveBeenCalled();
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it("정정 실패 시 선택을 유지하고 최신 관찰로 다시 확인할 수 있다", async () => {
+  const { correct } = seedCorrectionPage();
+  correct.mockRejectedValueOnce(new Error("다른 기기에서 관찰 위치가 변경되었습니다"));
+  await userEvent.click(screen.getByRole("tab", { name: "재고 실사" }));
+  await userEvent.selectOptions(await screen.findByLabelText("진행·완료 실사"), "s1");
+  await userEvent.click(await screen.findByText("확인한 병 1개"));
+  await userEvent.click(screen.getByRole("button", { name: "위치 정정" }));
+  await userEvent.selectOptions(screen.getByLabelText("정정할 관찰 위치"), "l1");
+  await userEvent.click(screen.getByRole("button", { name: "관찰 위치 정정 저장" }));
+  const form = screen.getByRole("form", { name: "관찰 위치 정정" });
+  expect(await within(form).findByRole("alert")).toHaveTextContent("다른 기기");
+  expect(screen.getByLabelText("정정할 관찰 위치")).toHaveValue("l1");
+  await userEvent.click(screen.getByRole("button", { name: "최신 관찰로 다시 확인" }));
+  expect(screen.getByLabelText("정정할 관찰 위치")).toHaveValue("l2");
+});
+
+it.each([
+  ["completed", "checked"],
+  ["active", "relocated"],
+  ["paused", "checked"],
+] as const)("%s/%s 관찰은 위치 정정을 제공하지 않는다", async (status, result) => {
+  seedCorrectionPage(status, result);
+  await userEvent.click(screen.getByRole("tab", { name: "재고 실사" }));
+  await userEvent.selectOptions(await screen.findByLabelText("진행·완료 실사"), "s1");
+  await userEvent.click(await screen.findByText("확인한 병 1개"));
+  expect(screen.queryByRole("button", { name: "위치 정정" })).not.toBeInTheDocument();
+});
+
+it("충돌 뒤 자동 재조회까지 실패해도 복구 버튼은 서버의 최신 관찰을 다시 읽는다", async () => {
+  const { correct } = seedCorrectionPage();
+  await userEvent.click(screen.getByRole("tab", { name: "재고 실사" }));
+  await userEvent.selectOptions(await screen.findByLabelText("진행·완료 실사"), "s1");
+  await userEvent.click(await screen.findByText("확인한 병 1개"));
+  await userEvent.click(screen.getByRole("button", { name: "위치 정정" }));
+  await userEvent.selectOptions(screen.getByLabelText("정정할 관찰 위치"), "l1");
+  correct.mockRejectedValueOnce(new Error("다른 기기에서 관찰을 바꿨습니다"));
+  vi.mocked(collectionApi.stocktakes).mockRejectedValueOnce(new Error("연결 실패"));
+  await userEvent.click(screen.getByRole("button", { name: "관찰 위치 정정 저장" }));
+  await within(screen.getByRole("form", { name: "관찰 위치 정정" })).findByRole("alert");
+  expect(screen.getByLabelText("정정할 관찰 위치")).toHaveValue("l1");
+  vi.mocked(collectionApi.stocktakes).mockResolvedValueOnce([
+    stocktakeOf({
+      observed_count: 1,
+      missing: [],
+      observations: [
+        {
+          bottle_id: "b1",
+          result: "location_mismatch",
+          recorded_location_id: "l1",
+          observed_location_id: null,
+        },
+      ],
+    }),
+  ]);
+  await userEvent.click(screen.getByRole("button", { name: "최신 관찰로 다시 확인" }));
+  await waitFor(() => expect(screen.getByLabelText("정정할 관찰 위치")).toHaveValue(""));
+  await userEvent.selectOptions(screen.getByLabelText("정정할 관찰 위치"), "l1");
+  await userEvent.click(screen.getByRole("button", { name: "관찰 위치 정정 저장" }));
+  await waitFor(() => expect(correct).toHaveBeenLastCalledWith("s1", "b1", "l1", null));
+});

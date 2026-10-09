@@ -138,6 +138,19 @@ export const collectionApi = {
       `/collection/stocktakes/${id}:apply-locations`,
       { method: "POST" },
     ),
+  correctObservation: (
+    id: string,
+    bottleId: string,
+    observedLocationId: string | null,
+    expectedObservedLocationId: string | null,
+  ) =>
+    request<Stocktake>(`/collection/stocktakes/${id}/observations/${bottleId}`, {
+      method: "PATCH",
+      body: {
+        observed_location_id: observedLocationId,
+        expected_observed_location_id: expectedObservedLocationId,
+      },
+    }),
   found: (id: string, note: string) =>
     request<Stocktake>(`/collection/stocktakes/${id}/found`, { method: "POST", body: { note } }),
 };
