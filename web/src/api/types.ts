@@ -372,6 +372,11 @@ export interface Tasting {
   companions: string | null;
 }
 
+export interface TastingPage {
+  items: Tasting[];
+  next_cursor: string | null;
+}
+
 export interface TastingInput {
   tasted_on: string;
   bottle_id?: string | undefined;

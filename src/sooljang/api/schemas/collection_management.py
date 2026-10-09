@@ -42,6 +42,11 @@ class ScanInput(BaseModel):
     observed_location_id: uuid.UUID | None = None
 
 
+class ObservationCorrectionInput(BaseModel):
+    observed_location_id: uuid.UUID | None
+    expected_observed_location_id: uuid.UUID | None
+
+
 class FoundInput(BaseModel):
     note: str = Field(min_length=1, max_length=1000)
 

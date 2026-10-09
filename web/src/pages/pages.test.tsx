@@ -771,7 +771,7 @@ describe("ProductsPage", () => {
   it("병 섹션에서 병을 펼치면 상태 전이 버튼이 나온다", async () => {
     await seedProductWithPurchase("p1", "병 있는 대상");
     stubRoutes([
-      { match: "/bottles/p1-b1/tastings", body: [] },
+      { match: "/bottles/p1-b1/tastings/page", body: { items: [], next_cursor: null } },
       {
         match: "/tastings/summary",
         body: { session_count: 0, average_rating: null, rating_change: null, total_poured_ml: 0 },

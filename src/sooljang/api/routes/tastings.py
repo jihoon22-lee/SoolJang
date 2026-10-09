@@ -5,6 +5,7 @@
 저장된다.
 """
 
+import datetime
 import uuid
 from typing import Annotated, Any
 
@@ -13,6 +14,7 @@ from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
+from sooljang.api.pagination import Cursor, build_page
 from sooljang.api.schemas.tasting import (
     BottleOut,
     FinishBottleRequest,
@@ -21,6 +23,7 @@ from sooljang.api.schemas.tasting import (
     SetRemainingRequest,
     TastingCreate,
     TastingOut,
+    TastingPageOut,
     TastingSummaryOut,
 )
 from sooljang.application.history import bottle_history
@@ -218,6 +221,38 @@ async def bottle_tastings(
     await _get_bottle(session, user_id, bottle_id)
     records = await list_tastings(session, user_id=user_id, bottle_id=bottle_id)
     return [TastingOut.model_validate(record) for record in records]
+
+
+@bottles_router.get(
+    "/{bottle_id}/tastings/page", response_model=TastingPageOut, summary="병의 시음 내역 이어 보기"
+)
+async def bottle_tastings_page(
+    session: SessionDep,
+    user_id: UserDep,
+    bottle_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+) -> TastingPageOut:
+    await _get_bottle(session, user_id, bottle_id)
+    before = None
+    if cursor is not None:
+        decoded = Cursor.decode(cursor)
+        try:
+            if not isinstance(decoded.sort_value, str):
+                raise ValueError("날짜가 아닙니다")
+            before = (datetime.date.fromisoformat(decoded.sort_value), decoded.id)
+        except ValueError as error:
+            raise ValidationFailedError("시음 내역 cursor의 날짜를 해석할 수 없습니다") from error
+    records = await list_tastings(
+        session, user_id=user_id, bottle_id=bottle_id, limit=limit + 1, before=before
+    )
+    page = build_page(
+        records, limit=limit, sort_value_of=lambda row: row.tasted_on, id_of=lambda row: row.id
+    )
+    return TastingPageOut(
+        items=[TastingOut.model_validate(record) for record in page.items],
+        next_cursor=page.next_cursor,
+    )
 
 
 @tastings_router.post(

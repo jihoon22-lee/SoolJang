@@ -2961,7 +2961,8 @@ legend {
 /* 좁은 화면에서도 핵심 지표 금액이 한 줄에 들어오게 글자 크기를 화면 폭에 맞춘다. */
 .metrics-grid--hero .metric dd {
   font-size: clamp(1.05rem, 4.6vw, var(--text-xl));
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .metrics-grid--hero .metric {
@@ -2970,6 +2971,14 @@ legend {
 }
 
 @media (max-width: 599px) {
+  .metrics-grid--hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metrics-grid--hero > .metric:last-child {
+    grid-column: 1 / -1;
+  }
+
   /* 가로로 넘기는 도구 막대에서도 주 동작(새 술 등록)이 맨 앞에 보이게 한다. */
   .products-toolbar > .primary {
     order: -1;

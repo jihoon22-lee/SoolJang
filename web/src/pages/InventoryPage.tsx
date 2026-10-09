@@ -9,7 +9,7 @@
  * 바꾸지 않는다 — 미확인 병의 소진 처리나 위치 반영은 사용자가 명시적으로 고른다.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   type CleanupPreview,
@@ -27,6 +27,8 @@ import { matchesQuery } from "@/search";
 import { applyBottleTransitions, undoBottleTransitions } from "@/sync/bottleActions";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { useSessionMutation } from "@/sync/useSessionMutation";
+import { captureWriteSession } from "@/sync/writeSession";
 
 const RESULTS: Record<string, string> = {
   checked: "확인",
@@ -74,11 +76,15 @@ export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: strin
     queryFn: collectionApi.stocktakes,
     enabled: online,
   });
-  const action = useMutation({
-    mutationFn: async (work: () => Promise<unknown>) => {
+  const action = useSessionMutation({
+    networkMode: "online",
+    mutationFn: async (work: () => Promise<unknown>, session) => {
       if (!online) throw new Error("온라인에서 저장하세요");
-      await work();
-      await cache.invalidateQueries({ queryKey: ["collection"] });
+      try {
+        await work();
+      } finally {
+        if (session.isCurrent()) await cache.invalidateQueries({ queryKey: ["collection"] });
+      }
     },
   });
 
@@ -815,8 +821,30 @@ function StocktakePanel({
             <summary>확인한 병 {active.observations.length}개</summary>
             <ul>
               {active.observations.map((row) => (
-                <li key={row.bottle_id}>
+                <li key={`${active.id}:${row.bottle_id}`}>
                   {RESULTS[row.result] ?? row.result} · {bottleName(row.bottle_id)}
+                  <p className="muted text-sm">
+                    기록 위치: {locationName(row.recorded_location_id)} · 확인 위치:{" "}
+                    {locationName(row.observed_location_id)}
+                  </p>
+                  {active.status === "active" &&
+                  ["checked", "unexpected", "location_mismatch"].includes(row.result) ? (
+                    <ObservationCorrection
+                      stocktakeId={active.id}
+                      observation={row}
+                      locations={locations}
+                      online={online}
+                      pending={pending}
+                      run={run}
+                      locationName={locationName}
+                    />
+                  ) : (
+                    <p className="muted text-sm">
+                      {active.status === "paused"
+                        ? "실사를 재개하면 관찰 위치를 정정할 수 있습니다."
+                        : "완료하거나 위치를 반영한 관찰입니다. 실제 병 위치는 병 위치 화면에서 바꾸세요."}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -918,5 +946,139 @@ function StocktakePanel({
         </section>
       )}
     </>
+  );
+}
+
+/** 재스캔의 중복 방지와 구분한 명시적 관찰 정정. 실제 병 위치는 이동하지 않는다. */
+function ObservationCorrection({
+  stocktakeId,
+  observation,
+  locations,
+  online,
+  pending,
+  run,
+  locationName,
+}: {
+  stocktakeId: string;
+  observation: Stocktake["observations"][number];
+  locations: Location[];
+  online: boolean;
+  pending: boolean;
+  run: (work: () => Promise<unknown>) => Promise<void>;
+  locationName: (id: string | null) => string;
+}) {
+  const cache = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [original, setOriginal] = useState<string | null>(observation.observed_location_id);
+  const [chosen, setChosen] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  async function refreshObservation(): Promise<void> {
+    const session = captureWriteSession();
+    setRefreshing(true);
+    try {
+      session.assertCurrent();
+      const fresh = await collectionApi.stocktakes();
+      session.assertCurrent();
+      const stocktake = fresh.find((row) => row.id === stocktakeId);
+      const row = stocktake?.observations.find((item) => item.bottle_id === observation.bottle_id);
+      if (!row) throw new Error("관찰을 다시 찾지 못했습니다. 실사 목록을 확인하세요");
+      cache.setQueryData(["collection", "stocktakes"], fresh);
+      setOriginal(row.observed_location_id);
+      setChosen(row.observed_location_id ?? "");
+      setError(null);
+    } catch (cause) {
+      if (session.isCurrent())
+        setError(cause instanceof Error ? cause.message : "최신 관찰을 불러오지 못했습니다");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+  if (!editing)
+    return (
+      <button
+        type="button"
+        disabled={!online || pending || refreshing}
+        onClick={() => {
+          setOriginal(observation.observed_location_id);
+          setChosen(observation.observed_location_id ?? "");
+          setError(null);
+          setEditing(true);
+        }}
+      >
+        위치 정정
+      </button>
+    );
+  return (
+    <form
+      className="panel"
+      aria-label="관찰 위치 정정"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setError(null);
+        void run(() =>
+          collectionApi.correctObservation(
+            stocktakeId,
+            observation.bottle_id,
+            chosen || null,
+            original,
+          ),
+        )
+          .then(() => setEditing(false))
+          .catch((cause: unknown) => {
+            setError(cause instanceof Error ? cause.message : "관찰 위치를 정정하지 못했습니다");
+          });
+      }}
+    >
+      <label className="field">
+        정정할 관찰 위치
+        <select
+          disabled={!online || pending || refreshing}
+          value={chosen}
+          onChange={(event) => setChosen(event.target.value)}
+        >
+          <option value="">미지정</option>
+          {original && !locations.some((location) => location.id === original) ? (
+            <option value={original} disabled>
+              {locationName(original)} (삭제된 위치)
+            </option>
+          ) : null}
+          {locations.map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p>
+        {locationName(original)} → {locationName(chosen || null)}
+      </p>
+      <p className="muted text-sm">
+        실사에서 확인한 위치만 고칩니다. 실제 병 위치는 자동으로 이동하지 않습니다.
+      </p>
+      {error ? (
+        <>
+          <p role="alert">{error}</p>
+          <button
+            type="button"
+            disabled={pending || refreshing}
+            onClick={() => void refreshObservation()}
+          >
+            최신 관찰로 다시 확인
+          </button>
+        </>
+      ) : null}
+      <div className="button-row">
+        <button
+          type="submit"
+          disabled={!online || pending || refreshing || (chosen || null) === original}
+        >
+          관찰 위치 정정 저장
+        </button>
+        <button type="button" disabled={pending || refreshing} onClick={() => setEditing(false)}>
+          취소
+        </button>
+      </div>
+    </form>
   );
 }

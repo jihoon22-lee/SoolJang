@@ -94,6 +94,11 @@ class TastingOut(BaseModel):
     companions: str | None = None
 
 
+class TastingPageOut(BaseModel):
+    items: list[TastingOut]
+    next_cursor: str | None = None
+
+
 class TastingSummaryOut(BaseModel):
     """시음 요약.
 

@@ -54,8 +54,8 @@ function stubTastings(
 ) {
   return stubRoutes([
     {
-      match: `/bottles/${bottleId}/tastings`,
-      body: opts.tastings ?? [],
+      match: `/bottles/${bottleId}/tastings/page`,
+      body: { items: opts.tastings ?? [], next_cursor: null },
       ...(opts.tastingsStatus ? { status: opts.tastingsStatus } : {}),
     },
     {
@@ -438,13 +438,14 @@ describe("BottlePanel", () => {
       expect(screen.getByText("불러오는 중…")).toBeInTheDocument();
     });
 
-    it("오프라인 등으로 실패하면 안내 문구를 보여준다", async () => {
+    it("첫 조회가 실패하면 오류와 다시 불러오기 버튼을 보여준다", async () => {
       // 스텁을 걸지 않아 실제 fetch 가 실패하도록 둔다.
       renderWithQuery(<BottlePanel bottle={bottle()} />);
 
       expect(
-        await screen.findByText("오프라인에서는 시음 기록을 불러올 수 없습니다."),
+        await screen.findByText("시음 기록을 불러오지 못했습니다. 다시 시도하세요."),
       ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "시음 기록 다시 불러오기" })).toBeInTheDocument();
     });
 
     it("기록이 없으면 안내한다", async () => {
@@ -520,9 +521,9 @@ describe("BottlePanel", () => {
     it("오프라인이면 삭제 버튼을 숨기고 안내한다", async () => {
       const target = bottle();
       stubTastings(target.id, { tastings: [item] });
-      renderWithQuery(<BottlePanel bottle={target} offline={true} />);
-
+      const view = renderWithQuery(<BottlePanel bottle={target} />);
       await screen.findByText("2026-01-10");
+      view.rerender(<BottlePanel bottle={target} offline={true} />);
       expect(screen.queryByRole("button", { name: "삭제" })).not.toBeInTheDocument();
       expect(
         screen.getByText("시음 기록 삭제는 온라인일 때만 할 수 있습니다."),
