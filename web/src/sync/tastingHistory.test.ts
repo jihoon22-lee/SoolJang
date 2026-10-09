@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { activateDatabase, db, lockDatabase } from "@/sync/db";
+import { getRecentTastings } from "@/sync/queries";
 import {
   getCorrectionOptions,
   getLocalTasting,
@@ -79,6 +80,30 @@ beforeEach(async () => {
   ]);
 });
 describe("기기에 저장된 시음 찾기", () => {
+  it("같은 날 새로 기록한 시음이 홈의 최근 목록 앞에 오고 전체 이력과 같은 순서를 쓴다", async () => {
+    await db.tasting_session.bulkPut(
+      ["t5", "t6", "t7", "t8", "t9"].map((id) =>
+        row(id, { sku_id: "s1", bottle_id: null, tasted_on: "2026-01-03" }),
+      ),
+    );
+    expect((await getRecentTastings()).map((item) => item.id)).toEqual([
+      "t9",
+      "t8",
+      "t7",
+      "t6",
+      "t5",
+    ]);
+  });
+
+  it("홈 최근 목록은 삭제된 구매·병의 시음을 숨기고 독립 시음과 원본 행은 보존한다", async () => {
+    await db.purchase.update("q1", { deleted_at: "2026-02-01T00:00:00Z" });
+    expect((await getRecentTastings()).map((item) => item.id)).toEqual(["t4", "t2"]);
+    await db.bottle.update("b2", { deleted_at: "2026-02-01T00:00:00Z" });
+    expect((await getRecentTastings()).map((item) => item.id)).toEqual(["t2"]);
+    expect(await db.tasting_session.count()).toBe(4);
+    expect((await db.tasting_session.get("t1"))?.bottle_id).toBe("b1");
+  });
+
   it("다른 사용자의 남은 행은 조회·요약·선택에 섞지 않고 원본도 지우지 않는다", async () => {
     await db.tasting_session.put(
       row("foreign-note", {
