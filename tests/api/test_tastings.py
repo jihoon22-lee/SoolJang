@@ -95,7 +95,14 @@ class TestBottleTransitions:
         bottle_id = setup["bottles"][0]["id"]
 
         api_client.post(f"{prefix}/bottles/{bottle_id}:finish", json={})
-        response = api_client.post(f"{prefix}/bottles/{bottle_id}:reopen")
+        response = api_client.post(
+            f"{prefix}/bottles/{bottle_id}:reopen",
+            json={
+                "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()[
+                    "revision"
+                ]
+            },
+        )
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "open"
         assert response.json()["finished_on"] is None
@@ -105,7 +112,14 @@ class TestBottleTransitions:
         bottle_id = setup["bottles"][0]["id"]
 
         api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={})
-        response = api_client.post(f"{prefix}/bottles/{bottle_id}:unopen")
+        response = api_client.post(
+            f"{prefix}/bottles/{bottle_id}:unopen",
+            json={
+                "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()[
+                    "revision"
+                ]
+            },
+        )
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "unopened"
         assert response.json()["opened_on"] is None
@@ -115,7 +129,14 @@ class TestBottleTransitions:
         setup = _create_product_with_bottle(api_client, prefix)
         bottle_id = setup["bottles"][0]["id"]
 
-        response = api_client.post(f"{prefix}/bottles/{bottle_id}:unopen")
+        response = api_client.post(
+            f"{prefix}/bottles/{bottle_id}:unopen",
+            json={
+                "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()[
+                    "revision"
+                ]
+            },
+        )
         assert response.status_code == 409
 
     def test_없는_병은_404(self, api_client: TestClient, prefix: str) -> None:
@@ -295,7 +316,12 @@ def test_reopened_finished_bottle_accepts_new_tasting(api_client: TestClient, pr
     bottle_id = data["bottles"][0]["id"]
     api_client.post(f"{prefix}/bottles/{bottle_id}:finish", json={})
 
-    reopened = api_client.post(f"{prefix}/bottles/{bottle_id}:reopen").json()
+    reopened = api_client.post(
+        f"{prefix}/bottles/{bottle_id}:reopen",
+        json={
+            "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"]
+        },
+    ).json()
     tasting = api_client.post(
         f"{prefix}/tastings",
         json={"bottle_id": bottle_id, "tasted_on": "2026-10-04", "poured_ml": 50},
@@ -312,11 +338,27 @@ def test_remaining_can_be_adjusted_and_zero_finishes_the_bottle(
     bottle_id = data["bottles"][0]["id"]
     api_client.post(f"{prefix}/bottles/{bottle_id}:open", json={})
 
-    half = api_client.post(f"{prefix}/bottles/{bottle_id}:remaining", json={"remaining_ml": 350})
-    too_much = api_client.post(
-        f"{prefix}/bottles/{bottle_id}:remaining", json={"remaining_ml": 701}
+    half = api_client.post(
+        f"{prefix}/bottles/{bottle_id}:remaining",
+        json={
+            "remaining_ml": 350,
+            "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"],
+        },
     )
-    empty = api_client.post(f"{prefix}/bottles/{bottle_id}:remaining", json={"remaining_ml": 0})
+    too_much = api_client.post(
+        f"{prefix}/bottles/{bottle_id}:remaining",
+        json={
+            "remaining_ml": 701,
+            "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"],
+        },
+    )
+    empty = api_client.post(
+        f"{prefix}/bottles/{bottle_id}:remaining",
+        json={
+            "remaining_ml": 0,
+            "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"],
+        },
+    )
 
     assert half.json()["remaining_ml"] == 350
     assert too_much.status_code == 409
@@ -360,7 +402,12 @@ def test_bottle_history_lists_transitions_and_tasting_changes(
         json={"bottle_id": bottle_id, "tasted_on": "2026-10-02", "poured_ml": 100},
     )
     api_client.post(f"{prefix}/bottles/{bottle_id}:finish", json={"finished_on": "2026-10-03"})
-    api_client.post(f"{prefix}/bottles/{bottle_id}:reopen")
+    api_client.post(
+        f"{prefix}/bottles/{bottle_id}:reopen",
+        json={
+            "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()["revision"]
+        },
+    )
 
     history = api_client.get(f"{prefix}/bottles/{bottle_id}/history").json()
 

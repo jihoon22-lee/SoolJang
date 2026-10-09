@@ -17,6 +17,7 @@ const ACTION_LABELS: Record<string, string> = {
   sell: "판매",
   reopen: "되돌리기",
   unopen: "개봉 취소",
+  undo: "실행 취소",
   set_remaining: "잔량 조정",
   tasting: "시음",
   move: "위치 이동",
@@ -79,7 +80,12 @@ export function describeHistory(entry: HistoryEntry): string {
     parts.push(`${from} → ${to}`);
   }
   for (const [field, value] of Object.entries(entry.detail)) {
-    if (field === "from_location_id" || field === "to_location_id") continue;
+    if (
+      field === "from_location_id" ||
+      field === "to_location_id" ||
+      field === "origin_operation_id"
+    )
+      continue;
     const label = FIELD_LABELS[field] ?? field;
     if (Array.isArray(value) && value.length === 2) {
       parts.push(`${label} ${show(field, value[0], labels)} → ${show(field, value[1], labels)}`);

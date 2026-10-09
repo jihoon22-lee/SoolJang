@@ -7,6 +7,12 @@
  */
 
 import { todayLocal } from "@/format";
+import {
+  bottlePrecondition,
+  confirmedBottleOperation,
+  localBottleOperationKey,
+  markBottleOperation,
+} from "@/sync/bottleRevision";
 import { db, type SyncRow } from "@/sync/db";
 import { enqueue } from "@/sync/outbox";
 import { captureWriteSession } from "@/sync/writeSession";
@@ -132,39 +138,79 @@ export function transitionOutboxFields(
   }
 }
 
-/** 병 하나에 상태 전이를 적용한다(낙관적 반영 + outbox). 전이 전 행을 돌려준다. */
+const STATE_FIELDS = ["status", "opened_on", "finished_on", "remaining_ml", "note"] as const;
+
+function stateOf(row: SyncRow): Record<string, unknown> {
+  return Object.fromEntries(STATE_FIELDS.map((key) => [key, row[key] ?? null]));
+}
+
+export interface AppliedBottleTransition {
+  id: string;
+  before: SyncRow;
+  operationId: string;
+  after: Record<string, unknown>;
+}
+
+async function applyTransition(
+  bottleId: string,
+  action: TransitionAction,
+  options: TransitionOptions,
+  skipInvalid = false,
+): Promise<AppliedBottleTransition | null> {
+  const session = captureWriteSession();
+  const store = db;
+  return store.transaction("rw", store.tables, async () => {
+    session.assertCurrent();
+    const current = await store.bottle.get(bottleId);
+    if (!current || current.deleted_at !== null) {
+      if (skipInvalid) return null;
+      throw new Error("병을 찾을 수 없습니다");
+    }
+    if (!canTransition(current.status as string, action)) {
+      if (skipInvalid) return null;
+      throw new Error("지금 상태에서는 할 수 없는 동작입니다");
+    }
+    if (
+      action === "unopen" &&
+      (await store.tasting_session.where("bottle_id").equals(bottleId).count())
+    )
+      throw new Error("시음 기록이 있는 병은 개봉을 취소할 수 없습니다. 기록과 잔량을 확인하세요");
+    const condition = ["reopen", "unopen", "set_remaining"].includes(action)
+      ? await bottlePrecondition(store, current)
+      : {};
+    const fields = await transitionFields(current, action, options);
+    const after = { ...current, ...fields, updated_at: new Date().toISOString() };
+    session.assertCurrent();
+    const operationId = await enqueue({
+      entity: "bottle",
+      op: "action",
+      entityId: bottleId,
+      action,
+      fields: { ...transitionOutboxFields(action, fields, options), ...condition },
+      optimisticRow: after,
+    });
+    await markBottleOperation(store, bottleId, operationId);
+    session.assertCurrent();
+    return { id: bottleId, before: current, operationId, after: stateOf(after) };
+  });
+}
+
+/** 병 하나의 낙관적 반영·명령 적재·변경 식별자를 같은 transaction으로 저장한다. */
 export async function applyBottleTransition(
   bottleId: string,
   action: TransitionAction,
   options: TransitionOptions = {},
 ): Promise<SyncRow> {
-  const session = captureWriteSession();
-  session.assertCurrent();
-  const current = await db.bottle.get(bottleId);
-  if (!current) throw new Error("병을 찾을 수 없습니다");
-  if (!canTransition(current.status as string, action))
-    throw new Error("지금 상태에서는 할 수 없는 동작입니다");
-  const fields = await transitionFields(current, action, options);
-  session.assertCurrent();
-  await enqueue({
-    entity: "bottle",
-    op: "action",
-    entityId: bottleId,
-    action,
-    fields: transitionOutboxFields(action, fields, options),
-    optimisticRow: { ...current, ...fields, updated_at: new Date().toISOString() },
-  });
-  return current;
+  const applied = await applyTransition(bottleId, action, options);
+  if (!applied) throw new Error("병을 찾을 수 없습니다");
+  return applied.before;
 }
 
 export interface BulkTransitionResult {
-  /** 적용한 병과 적용 전 상태. 실행 취소에 쓴다. */
-  applied: { id: string; before: SyncRow }[];
-  /** 지금 상태에서 할 수 없어 건너뛴 병(예: 이미 소진한 병의 개봉). */
+  applied: AppliedBottleTransition[];
   skipped: string[];
 }
 
-/** 여러 병에 같은 전이를 적용한다. 할 수 없는 병은 건너뛰고 나머지는 계속한다. */
 export async function applyBottleTransitions(
   bottleIds: readonly string[],
   action: TransitionAction,
@@ -174,61 +220,67 @@ export async function applyBottleTransitions(
   const result: BulkTransitionResult = { applied: [], skipped: [] };
   for (const id of bottleIds) {
     session.assertCurrent();
-    const current = await db.bottle.get(id);
-    if (!current || !canTransition(current.status as string, action)) {
-      result.skipped.push(id);
-      continue;
-    }
-    session.assertCurrent();
-    const before = await applyBottleTransition(id, action, options);
-    result.applied.push({ id, before });
+    const applied = await applyTransition(id, action, options, true);
+    if (applied) result.applied.push(applied);
+    else result.skipped.push(id);
   }
   return result;
 }
 
-/**
- * 직전 일괄 전이를 되돌린다. 서버에는 "삭제"가 아니라 역방향 전이를 보낸다 — 기록을 지우지
- * 않고 상태만 원래대로 돌린다(`reopen`/`unopen` 조합).
- */
+export interface UndoBottleResult {
+  applied: string[];
+  skipped: string[];
+}
+
+/** 원동작 이후의 변경을 덮지 않는다. 서버도 원 receipt의 revision과 before를 다시 검증한다. */
 export async function undoBottleTransitions(
   applied: BulkTransitionResult["applied"],
-): Promise<void> {
+): Promise<UndoBottleResult> {
   const session = captureWriteSession();
-  for (const { id, before } of applied) {
+  const store = db;
+  const result: UndoBottleResult = { applied: [], skipped: [] };
+  for (const original of applied) {
     session.assertCurrent();
-    const current = await db.bottle.get(id);
-    if (!current) continue;
-    session.assertCurrent();
-    const target = before.status as string;
-    let status = current.status as string;
-    if (status === target) {
-      // 잔량 조정처럼 상태가 그대로인 경우는 잔량만 되돌린다.
-      if (status === "open" && before.remaining_ml !== current.remaining_ml) {
-        const remaining = before.remaining_ml as number | null;
-        if (remaining !== null && remaining > 0) {
-          await applyBottleTransition(id, "set_remaining", { remainingMl: remaining });
-        }
-      }
-      continue;
-    }
-    if (status !== "open" && status !== "unopened") {
-      await applyBottleTransition(id, "reopen");
-      status = "open";
-    }
-    if (target === "unopened" && status === "open") {
-      await applyBottleTransition(id, "unopen");
-      continue;
-    }
-    // 소진 되돌리기는 잔량을 미기록으로 돌린다 — 전이 전에 알던 잔량이 있으면 복원한다.
-    const remaining = before.remaining_ml as number | null;
-    const now = await db.bottle.get(id);
-    if (
-      target === "open" &&
-      remaining !== null &&
-      remaining > 0 &&
-      now?.remaining_ml !== remaining
-    ) {
-      await applyBottleTransition(id, "set_remaining", { remainingMl: remaining });
-    }
+    const accepted = await store.transaction("rw", store.tables, async () => {
+      session.assertCurrent();
+      const current = await store.bottle.get(original.id);
+      const last = (await store.sync_meta.get(localBottleOperationKey(original.id)))?.value;
+      const confirmation = await confirmedBottleOperation(store, original.id);
+      if (
+        !current ||
+        current.deleted_at !== null ||
+        last !== original.operationId ||
+        current.purchase_id !== original.before.purchase_id ||
+        (confirmation?.operationId !== original.operationId &&
+          JSON.stringify(stateOf(current)) !== JSON.stringify(original.after)) ||
+        (confirmation?.operationId === original.operationId &&
+          (confirmation.status !== "applied" || confirmation.revision !== current.revision))
+      )
+        return false;
+      const queue = await store.outbox.toArray();
+      const origin = queue.find((entry) => entry.idempotency_key === original.operationId);
+      if (origin?.status === "failed") return false;
+      if (!origin && confirmation?.operationId !== original.operationId) return false;
+      const condition = origin
+        ? { expected_operation_id: original.operationId }
+        : { expected_revision: confirmation?.revision };
+      const operationId = await enqueue({
+        entity: "bottle",
+        op: "action",
+        entityId: original.id,
+        action: "undo",
+        fields: { origin_operation_id: original.operationId, ...condition },
+        optimisticRow: {
+          ...current,
+          ...stateOf(original.before),
+          updated_at: new Date().toISOString(),
+        },
+      });
+      await markBottleOperation(store, original.id, operationId);
+      session.assertCurrent();
+      return true;
+    });
+    (accepted ? result.applied : result.skipped).push(original.id);
   }
+  return result;
 }

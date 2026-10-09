@@ -639,7 +639,17 @@ function StocktakePanel({
     toast.show({
       message: `미확인 ${result.applied.length}병을 소진 처리했습니다`,
       actionLabel: "실행 취소",
-      onAction: () => undoBottleTransitions(result.applied),
+      onAction: async () => {
+        const undone = await undoBottleTransitions(result.applied);
+        toast.show({
+          message:
+            `${undone.applied.length}병 취소 기록 저장` +
+            (undone.skipped.length
+              ? ` · ${undone.skipped.length}병은 이후 변경이 있어 유지했습니다`
+              : ""),
+          tone: undone.skipped.length ? "warn" : "info",
+        });
+      },
     });
   }
 

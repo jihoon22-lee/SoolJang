@@ -22,7 +22,7 @@ import {
 } from "@/sync/bottleActions";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { db } from "@/sync/db";
-import { clearFormDraft, useDraftState } from "@/sync/drafts";
+import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
 import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
 import { useSessionMutation } from "@/sync/useSessionMutation";
 import { captureWriteSession } from "@/sync/writeSession";
@@ -45,9 +45,16 @@ interface BottlePanelProps {
   bottle: Bottle;
   /** 시음 기록 삭제는 서버 상태만 갖고 있어 온라인에서만 할 수 있다. */
   offline?: boolean;
+  onSavingChange?: (saving: boolean) => void;
 }
 
-export function BottlePanel({ bottle, offline = false }: BottlePanelProps): React.JSX.Element {
+export function BottlePanel({
+  bottle,
+  offline = false,
+  onSavingChange,
+}: BottlePanelProps): React.JSX.Element {
+  const [savingTarget, setSavingTarget] = useState<string | null>(null);
+  const savingTasting = savingTarget === bottle.id;
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [session] = useState(captureWriteSession);
@@ -154,7 +161,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
         <dd>{bottle.finished_on ?? "—"}</dd>
       </dl>
 
-      <fieldset className="bottle-actions">
+      <fieldset className="bottle-actions" disabled={savingTasting}>
         <legend>상태 바꾸기</legend>
         {bottle.status === "unopened" ? (
           <button
@@ -218,7 +225,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
         <HandOverSheet
           action={handOver}
           count={1}
-          pending={transition.isPending}
+          pending={transition.isPending || savingTasting}
           onCancel={() => setHandOver(null)}
           onConfirm={({ on, note }) =>
             transition.mutate(
@@ -232,7 +239,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
       {bottle.status === "open" ? (
         <RemainingEditor
           bottle={bottle}
-          pending={transition.isPending}
+          pending={transition.isPending || savingTasting}
           onSet={(remainingMl) =>
             transition.mutate({ action: "set_remaining", options: { remainingMl } })
           }
@@ -265,6 +272,11 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
       />
 
       <TastingForm
+        key={bottle.id}
+        onSavingChange={(saving) => {
+          setSavingTarget(saving ? bottle.id : null);
+          onSavingChange?.(saving);
+        }}
         bottleId={bottle.id}
         remainingMl={bottle.status === "open" ? bottle.remaining_ml : null}
         onSaved={refresh}
@@ -324,7 +336,7 @@ export function BottlePanel({ bottle, offline = false }: BottlePanelProps): Reac
                   type="button"
                   className="sort-button tasting-delete"
                   onClick={() => handleDeleteTasting(item.id)}
-                  disabled={deletingTastingId === item.id}
+                  disabled={savingTasting || deletingTastingId === item.id}
                 >
                   {deletingTastingId === item.id ? "삭제 중…" : "삭제"}
                 </button>
@@ -370,9 +382,24 @@ interface TastingFormProps {
   bottleId: string;
   remainingMl?: number | null | undefined;
   onSaved: () => Promise<void>;
+  onSavingChange: (saving: boolean) => void;
 }
 
-function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): React.JSX.Element {
+function TastingForm({
+  bottleId,
+  remainingMl,
+  onSaved,
+  onSavingChange,
+}: TastingFormProps): React.JSX.Element {
+  const saving = useRef(false);
+  const [pending, setPending] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const context = lastTastingContext();
   const [tastedOn, setTastedOn] = useDraftState(`tasting:${bottleId}:tastedOn`, () => todayLocal());
   const [pouredMl, setPouredMl] = useDraftState(`tasting:${bottleId}:pouredMl`, "");
@@ -408,65 +435,83 @@ function TastingForm({ bottleId, remainingMl, onSaved }: TastingFormProps): Reac
     companions: setCompanions,
   };
 
-  const mutation = useSessionMutation<string>({
-    mutationFn: (_input, session) =>
+  const mutation = useSessionMutation<string, { bottleId: string; values: TastingFieldValues }>({
+    mutationFn: ({ bottleId: targetId, values: submitted }, session) =>
       recordTasting({
-        bottleId,
-        tastedOn,
-        pouredMl: pouredMl ? Number(pouredMl) : null,
-        rating: rating || null,
-        nose,
-        palate,
-        finish,
-        place,
-        companions,
+        bottleId: targetId,
+        ...submitted,
+        pouredMl: submitted.pouredMl ? Number(submitted.pouredMl) : null,
+        rating: submitted.rating || null,
         userId: session.userId,
       }),
-    onSuccess: async () => {
-      rememberTastingContext({ place: place.trim(), companions: companions.trim() });
-      clearFormDraft(`tasting:${bottleId}`);
-      setError(null);
-      setPouredMl("");
-      setRating("");
-      setNose("");
-      setPalate("");
-      setFinish("");
-      await onSaved();
-    },
-    onError: (cause) => {
-      setError(cause instanceof Error ? cause.message : "기록에 실패했습니다");
-    },
   });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    mutation.mutate();
+    if (saving.current) return;
+    saving.current = true;
+    setPending(true);
+    onSavingChange(true);
+    const session = captureWriteSession();
+    const submitted = { ...values };
+    const draft = captureFormDraft(`tasting:${bottleId}`);
+    try {
+      await mutation.mutateAsync({ bottleId, values: submitted });
+      if (!session.isCurrent()) return;
+      rememberTastingContext({
+        place: submitted.place.trim(),
+        companions: submitted.companions.trim(),
+      });
+      const cleared = clearSubmittedDraft(draft);
+      if (!mounted.current) return;
+      setError(null);
+      if (cleared) {
+        setPouredMl("");
+        setRating("");
+        setNose("");
+        setPalate("");
+        setFinish("");
+      }
+      await onSaved();
+    } catch (cause) {
+      if (mounted.current && session.isCurrent())
+        setError(cause instanceof Error ? cause.message : "기록에 실패했습니다");
+    } finally {
+      saving.current = false;
+      if (mounted.current && session.isCurrent()) {
+        setPending(false);
+        onSavingChange(false);
+      }
+    }
   }
 
   return (
     <form className="tasting-form" onSubmit={handleSubmit}>
-      <DraftRecoveryButton form={`tasting:${bottleId}`} />
-      <h4>시음 기록하기</h4>
+      <fieldset disabled={pending} style={{ border: 0, padding: 0 }}>
+        <DraftRecoveryButton form={`tasting:${bottleId}`} />
+        <h4>시음 기록하기</h4>
 
-      <TastingFields
-        values={values}
-        remainingMl={remainingMl}
-        onChange={(patch) => {
-          for (const [key, value] of Object.entries(patch)) {
-            setters[key as keyof TastingFieldValues](value as string);
-          }
-        }}
-      />
+        <TastingFields
+          values={values}
+          remainingMl={remainingMl}
+          onChange={(patch) => {
+            if (saving.current) return;
+            for (const [key, value] of Object.entries(patch)) {
+              setters[key as keyof TastingFieldValues](value as string);
+            }
+          }}
+        />
 
-      {error ? (
-        <p className="bottle-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+        {error ? (
+          <p className="bottle-error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
-      <button type="submit" className="primary" disabled={mutation.isPending}>
-        {mutation.isPending ? "저장 중…" : "기록 저장"}
-      </button>
+        <button type="submit" className="primary" disabled={pending}>
+          {pending ? "저장 중…" : "기록 저장"}
+        </button>
+      </fieldset>
     </form>
   );
 }

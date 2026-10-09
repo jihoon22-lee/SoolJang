@@ -1,9 +1,10 @@
-import { screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { cloneElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Product, ProductMetrics, Purchase } from "@/api/types";
 import { ProductDetail } from "@/components/ProductDetail";
+import { activateDatabase, lockDatabase } from "@/sync/db";
 import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
 
 function stubRoutes(routes: Parameters<typeof originalStubRoutes>[0]) {
@@ -152,6 +153,7 @@ function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
   );
   const view = renderWithQuery(element);
   return {
+    unmount: view.unmount,
     onBack,
     onEdit,
     onDelete,
@@ -593,4 +595,90 @@ it("규격 목록이 바뀌어도 유효한 선택과 구매 입력은 보존하
   rerenderProduct(product);
   await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
   expect(onAddPurchase).toHaveBeenCalledWith(expect.objectContaining({ skuId: "s1", quantity: 3 }));
+});
+
+describe("구매 저장 중 입력 보호", () => {
+  afterEach(() => {
+    localStorage.clear();
+    lockDatabase();
+  });
+
+  it("수정 저장이 지연되면 취소와 다른 구매 전환을 잠그고 실패 입력을 보존한다", async () => {
+    await activateDatabase("purchase-form-owner");
+    let fail!: (error: Error) => void;
+    const update = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    setup({ onUpdatePurchase: update });
+    await userEvent.click(
+      screen.getAllByRole("button", { name: "구매 기록 수정" })[0] as HTMLElement,
+    );
+    const quantity = screen.getByLabelText("병수");
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "3");
+    const form = screen.getByRole("form", { name: "구매 건 수정" });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(quantity).toBeDisabled();
+    expect(screen.getByRole("button", { name: "취소" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "구매 기록 수정" })[1]).toBeDisabled();
+    expect(screen.getByRole("button", { name: "← 목록으로" })).toBeDisabled();
+    await act(async () => fail(new Error("수정 저장 실패")));
+    expect(screen.getByRole("alert")).toHaveTextContent("수정 저장 실패");
+    expect(quantity).toHaveValue(3);
+    expect(quantity).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "취소" }));
+    await userEvent.click(
+      screen.getAllByRole("button", { name: "구매 기록 수정" })[0] as HTMLElement,
+    );
+    expect(screen.getByLabelText("병수")).toHaveValue(3);
+  });
+
+  it("구매 추가가 지연되어도 취소하지 못하며 성공한 입력만 정리한다", async () => {
+    await activateDatabase("purchase-form-owner");
+    let complete!: () => void;
+    const add = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    setup({ onAddPurchase: add });
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.type(screen.getByLabelText("구매처"), "가상 새 매장");
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    expect(screen.getByRole("button", { name: "취소" })).toBeDisabled();
+    expect(screen.getByLabelText("구매처")).toBeDisabled();
+    await act(async () => complete());
+    await waitFor(() => expect(screen.queryByLabelText("구매처")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    expect(screen.getByLabelText("구매처")).toHaveValue("");
+  });
+
+  it("닫힌 구매 폼의 늦은 성공은 새로 연 폼의 입력을 지우거나 닫지 않는다", async () => {
+    await activateDatabase("purchase-form-owner");
+    let complete!: () => void;
+    const add = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const first = setup({ onAddPurchase: add });
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.type(screen.getByLabelText("구매처"), "이전 제출");
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    first.unmount();
+    setup({ onAddPurchase: add });
+    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.clear(screen.getByLabelText("구매처"));
+    await userEvent.type(screen.getByLabelText("구매처"), "새 입력");
+    await act(async () => complete());
+    expect(screen.getByLabelText("구매처")).toHaveValue("새 입력");
+    expect(Object.values(localStorage).join()).toContain("새 입력");
+  });
 });

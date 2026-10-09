@@ -1,6 +1,8 @@
 /** 사용자별 outbox를 200개씩 순차 전송하고 확인한 멱등 키만 제거한다. */
+
 import { ApiError, syncApi } from "@/api/client";
 import type { SyncBatchResponse, SyncOperationRequest } from "@/api/types";
+import { confirmedBottleOperationKey } from "@/sync/bottleRevision";
 import {
   databaseIdentity,
   db,
@@ -279,7 +281,7 @@ export class SyncEngine {
       const results = validateBatch(pending, response);
       await store.transaction(
         "rw",
-        [store.outbox, ...SYNC_ENTITIES.map((entity) => store.table(entity))],
+        [store.outbox, store.sync_meta, ...SYNC_ENTITIES.map((entity) => store.table(entity))],
         async () => {
           this.assertCurrent(run);
           const currentQueue = ordered(await store.outbox.toArray());
@@ -319,6 +321,25 @@ export class SyncEngine {
                 await store.outbox.update(next.idempotency_key, {
                   base_updated_at: row.updated_at,
                 });
+            }
+            const effect = result.effects?.bottle as SyncRow | undefined;
+            const bottleSnapshot =
+              effect ?? (entry.entity === "bottle" ? (result.snapshot as SyncRow | null) : null);
+            if (bottleSnapshot) {
+              const targetId = entry.entity === "bottle" ? entry.entity_id : entry.fields.bottle_id;
+              if (bottleSnapshot.id !== targetId || bottleSnapshot.user_id !== run.userId)
+                throw new Error("병 변경 응답의 소유자 또는 대상이 다릅니다");
+              if (effect && !protectedIds.has(effect.id)) await store.bottle.put(effect);
+              if (typeof bottleSnapshot.revision === "string") {
+                await store.sync_meta.put({
+                  key: confirmedBottleOperationKey(bottleSnapshot.id),
+                  value: JSON.stringify({
+                    operationId: entry.idempotency_key,
+                    revision: bottleSnapshot.revision,
+                    status: result.status,
+                  }),
+                });
+              }
             }
             await store.outbox.delete(entry.idempotency_key);
           }

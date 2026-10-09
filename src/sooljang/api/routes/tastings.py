@@ -17,6 +17,7 @@ from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedEr
 from sooljang.api.pagination import Cursor, build_page
 from sooljang.api.schemas.tasting import (
     BottleOut,
+    BottleRevisionRequest,
     FinishBottleRequest,
     HandOverRequest,
     OpenBottleRequest,
@@ -26,6 +27,7 @@ from sooljang.api.schemas.tasting import (
     TastingPageOut,
     TastingSummaryOut,
 )
+from sooljang.application.bottle_commands import require_no_tasting, require_revision
 from sooljang.application.history import bottle_history
 from sooljang.application.tastings import (
     BottleTransitionError,
@@ -163,10 +165,15 @@ async def _hand_over(
 
 @bottles_router.post("/{bottle_id}:reopen", response_model=BottleOut, summary="상태 되돌리기")
 async def reopen_bottle_endpoint(
-    session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
+    session: SessionDep,
+    user_id: UserDep,
+    bottle_id: uuid.UUID,
+    payload: BottleRevisionRequest | None = None,
 ) -> BottleOut:
     """잘못 누른 경우를 위한 되돌리기. 기록을 지우지 않고 상태만 개봉으로 바꾼다."""
     record = await _get_bottle(session, user_id, bottle_id, for_update=True)
+    guard = payload or BottleRevisionRequest()
+    await require_revision(session, record, **guard.model_dump())
     try:
         await reopen_bottle(session, record)
     except BottleTransitionError as error:
@@ -181,6 +188,12 @@ async def set_remaining_endpoint(
 ) -> BottleOut:
     """개봉 병의 잔량을 직접 맞춘다. 0 이면 소진 처리한다."""
     record = await _get_bottle(session, user_id, bottle_id, for_update=True)
+    await require_revision(
+        session,
+        record,
+        expected_revision=payload.expected_revision,
+        expected_operation_id=payload.expected_operation_id,
+    )
     try:
         await set_remaining(session, record, remaining_ml=payload.remaining_ml, on=payload.on)
     except BottleTransitionError as error:
@@ -191,10 +204,16 @@ async def set_remaining_endpoint(
 
 @bottles_router.post("/{bottle_id}:unopen", response_model=BottleOut, summary="개봉 취소")
 async def unopen_bottle_endpoint(
-    session: SessionDep, user_id: UserDep, bottle_id: uuid.UUID
+    session: SessionDep,
+    user_id: UserDep,
+    bottle_id: uuid.UUID,
+    payload: BottleRevisionRequest | None = None,
 ) -> BottleOut:
     """실수로 개봉을 누른 경우를 위한 되돌리기. 개봉 상태만 미개봉으로 되돌릴 수 있다."""
     record = await _get_bottle(session, user_id, bottle_id, for_update=True)
+    guard = payload or BottleRevisionRequest()
+    await require_revision(session, record, **guard.model_dump())
+    await require_no_tasting(session, record)
     try:
         await unopen_bottle(session, record)
     except BottleTransitionError as error:

@@ -445,6 +445,11 @@ def test_bottle_unopen_action(api_client: TestClient, prefix: str) -> None:
                 entity_id=uuid.UUID(bottle_id),
                 idempotency_key=uuid.uuid4(),
                 action="unopen",
+                fields={
+                    "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()[
+                        "revision"
+                    ]
+                },
             )
         ],
     )
@@ -864,7 +869,12 @@ def test_set_remaining_action_adjusts_open_bottle(api_client: TestClient, prefix
                 op="action",
                 entity_id=uuid.UUID(bottle_id),
                 action="set_remaining",
-                fields={"remaining_ml": 350},
+                fields={
+                    "remaining_ml": 350,
+                    "expected_revision": api_client.get(f"{prefix}/bottles/{bottle_id}").json()[
+                        "revision"
+                    ],
+                },
             )
         ],
     )

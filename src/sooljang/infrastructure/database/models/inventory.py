@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from sooljang.infrastructure.database.base import Base, EntityMixin, str_enum_column
+from sooljang.infrastructure.database.base import Base, EntityMixin, new_uuid, str_enum_column
 from sooljang.infrastructure.database.models.product import Sku
 
 
@@ -145,6 +145,11 @@ class Bottle(Base, EntityMixin):
     """개별 병. 물리적 병 하나에 대응한다."""
 
     __tablename__ = "bottle"
+
+    # UUID는 같은 트랜잭션 안의 연속 변경도 구분한다.
+    revision: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), nullable=False, default=new_uuid, onupdate=new_uuid
+    )
 
     purchase_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("purchase.id", ondelete="CASCADE"), nullable=False

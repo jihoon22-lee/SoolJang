@@ -73,6 +73,7 @@ async def batch(session: SessionDep, user_id: UserDep, payload: SyncBatchIn) -> 
                 status=r.status,
                 detail=r.detail,
                 snapshot=r.snapshot,
+                effects=r.effects,
             )
             for r in result.results
         ],
