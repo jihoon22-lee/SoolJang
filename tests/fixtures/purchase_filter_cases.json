@@ -1,0 +1,1190 @@
+{
+  "_comment": "WP04 §4.2의 구매 모집단 M 독립 정답. product_id는 UUID 정렬을 공유하며 나머지 ID는 dataset 내부 별칭이다. 원가는 전체 이력 기준으로 유지한다.",
+  "datasets": [
+    {
+      "name": "g06_conditions_must_match_one_purchase",
+      "vendors": [
+        {
+          "vendor_id": "shop-a",
+          "name": "A매장"
+        },
+        {
+          "vendor_id": "shop-b",
+          "name": "B매장"
+        }
+      ],
+      "products": [
+        {
+          "product_id": "00000000-0000-0000-0000-000000000001",
+          "name": "다른 구매에서 조건 충족",
+          "skus": [
+            {
+              "sku_id": "a750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "a-old",
+              "sku_id": "a750",
+              "vendor_id": "shop-a",
+              "purchased_on": "2025-01-01",
+              "quantity": 1,
+              "unit_list_price": "10000",
+              "unit_paid_price": "10000"
+            },
+            {
+              "purchase_id": "b-new",
+              "sku_id": "a750",
+              "vendor_id": "shop-b",
+              "purchased_on": "2026-01-01",
+              "quantity": 1,
+              "unit_list_price": "30000",
+              "unit_paid_price": "30000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "ab1",
+              "purchase_id": "a-old",
+              "status": "finished",
+              "remaining_ml": 0
+            },
+            {
+              "bottle_id": "ab2",
+              "purchase_id": "b-new",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000002",
+          "name": "같은 구매에서 조건 충족",
+          "skus": [
+            {
+              "sku_id": "b750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "match",
+              "sku_id": "b750",
+              "vendor_id": "shop-a",
+              "purchased_on": "2026-01-01",
+              "quantity": 1,
+              "unit_list_price": "20000",
+              "unit_paid_price": "20000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "bb1",
+              "purchase_id": "match",
+              "status": "finished",
+              "remaining_ml": 0
+            }
+          ]
+        }
+      ],
+      "queries": [
+        {
+          "name": "different_purchase_does_not_match",
+          "filters": {
+            "vendor_id": "shop-a",
+            "purchased_on_min": "2026-01-01",
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "20000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000002": 0
+          }
+        },
+        {
+          "name": "empty_purchase_set_is_not_out_of_stock",
+          "filters": {
+            "vendor_id": "shop-a",
+            "purchased_on_min": "2026-01-01",
+            "in_stock": false
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {},
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000002": 0
+          }
+        },
+        {
+          "name": "only_matching_purchase_stock_matters",
+          "filters": {
+            "vendor_id": "shop-a",
+            "in_stock": false,
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "10000.00"
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "20000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 0,
+            "00000000-0000-0000-0000-000000000002": 0
+          },
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000001": {
+              "in_stock_count": 1,
+              "avg_paid_price": "20000.00",
+              "inventory_value_at_cost": "20000.00"
+            }
+          }
+        },
+        {
+          "name": "other_shop_stock_cannot_qualify",
+          "filters": {
+            "vendor_id": "shop-a",
+            "in_stock": true
+          },
+          "expected_ids": [],
+          "expected_prices": {},
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "date_upper_and_vendor_share_purchase",
+          "filters": {
+            "vendor_id": "shop-b",
+            "purchased_on_max": "2025-12-31"
+          },
+          "expected_ids": [],
+          "expected_prices": {},
+          "expected_filtered_stock": {}
+        }
+      ]
+    },
+    {
+      "name": "g07_volume_and_stock_change_price_order",
+      "vendors": [],
+      "products": [
+        {
+          "product_id": "00000000-0000-0000-0000-000000000001",
+          "name": "제품 A",
+          "skus": [
+            {
+              "sku_id": "a375",
+              "volume_ml": 375
+            },
+            {
+              "sku_id": "a750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "ap375",
+              "sku_id": "a375",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": "6000",
+              "unit_paid_price": "6000"
+            },
+            {
+              "purchase_id": "ap750",
+              "sku_id": "a750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": "24000",
+              "unit_paid_price": "24000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "ab375",
+              "purchase_id": "ap375",
+              "status": "finished",
+              "remaining_ml": 0
+            },
+            {
+              "bottle_id": "ab750",
+              "purchase_id": "ap750",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000002",
+          "name": "제품 B",
+          "skus": [
+            {
+              "sku_id": "b750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "bp750",
+              "sku_id": "b750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": "18000",
+              "unit_paid_price": "18000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "bb750",
+              "purchase_id": "bp750",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        }
+      ],
+      "queries": [
+        {
+          "name": "unfiltered_whole_average_a_then_b",
+          "filters": {
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "15000.00"
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "18000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": null,
+            "00000000-0000-0000-0000-000000000002": null
+          }
+        },
+        {
+          "name": "750ml_average_b_then_a",
+          "filters": {
+            "volume_ml": 750,
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "24000.00"
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "18000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1,
+            "00000000-0000-0000-0000-000000000002": 1
+          },
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "15000.00",
+              "inventory_value_at_cost": "24000.00"
+            }
+          }
+        },
+        {
+          "name": "stock_qualifies_skus_b_then_a",
+          "filters": {
+            "in_stock": true,
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "24000.00"
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "18000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1,
+            "00000000-0000-0000-0000-000000000002": 1
+          }
+        },
+        {
+          "name": "scoped_price_range_uses_list_100ml",
+          "filters": {
+            "volume_ml": 750,
+            "price_per_100ml_min": "3000"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "price_per_100ml": "3200.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1
+          }
+        },
+        {
+          "name": "price_range_alone_has_no_scope_dto",
+          "filters": {
+            "price_per_100ml_min": "2500"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "price_per_100ml": "2666.67"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": null
+          }
+        },
+        {
+          "name": "375ml_out_of_stock_is_not_whole_out_of_stock",
+          "filters": {
+            "volume_ml": 375,
+            "in_stock": false
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "6000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 0
+          },
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000001": {
+              "in_stock_count": 1
+            }
+          }
+        },
+        {
+          "name": "whole_out_of_stock_excludes_both",
+          "filters": {
+            "in_stock": false
+          },
+          "expected_ids": [],
+          "expected_prices": {},
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "nonexistent_volume_does_not_match",
+          "filters": {
+            "volume_ml": 1000
+          },
+          "expected_ids": [],
+          "expected_prices": {},
+          "expected_filtered_stock": {}
+        }
+      ]
+    },
+    {
+      "name": "free_empty_and_null_last",
+      "vendors": [],
+      "products": [
+        {
+          "product_id": "00000000-0000-0000-0000-000000000001",
+          "name": "무료",
+          "skus": [
+            {
+              "sku_id": "free750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "free",
+              "sku_id": "free750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": null,
+              "unit_paid_price": null
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "freeb",
+              "purchase_id": "free",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000002",
+          "name": "유료",
+          "skus": [
+            {
+              "sku_id": "paid750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "paid",
+              "sku_id": "paid750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": "20000",
+              "unit_paid_price": "10000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "paidb",
+              "purchase_id": "paid",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000003",
+          "name": "구매 없음",
+          "skus": [
+            {
+              "sku_id": "empty750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [],
+          "bottles": []
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000004",
+          "name": "규격 없음",
+          "skus": [],
+          "lots": [],
+          "bottles": []
+        }
+      ],
+      "queries": [
+        {
+          "name": "zero_before_paid_null_last_ascending",
+          "filters": {
+            "sort": "avg_paid_price",
+            "order": "asc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000003",
+            "00000000-0000-0000-0000-000000000004"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "0.00"
+            },
+            "00000000-0000-0000-0000-000000000003": {
+              "avg_paid_price": null
+            }
+          },
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "null_last_descending_and_id_desc_tie",
+          "filters": {
+            "sort": "avg_paid_price",
+            "order": "desc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000004",
+            "00000000-0000-0000-0000-000000000003"
+          ],
+          "expected_prices": {},
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "volume_keeps_unpurchased_existing_sku",
+          "filters": {
+            "volume_ml": 750,
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000003"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000003": {
+              "purchased_count": 0,
+              "avg_paid_price": null
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1,
+            "00000000-0000-0000-0000-000000000002": 1,
+            "00000000-0000-0000-0000-000000000003": 0
+          }
+        },
+        {
+          "name": "volume_out_of_stock_keeps_only_empty_sku",
+          "filters": {
+            "volume_ml": 750,
+            "in_stock": false
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000003"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000003": {
+              "purchased_count": 0,
+              "avg_paid_price": null
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000003": 0
+          }
+        },
+        {
+          "name": "price_floor_zero_excludes_null_not_free",
+          "filters": {
+            "price_per_100ml_min": "0",
+            "sort": "avg_paid_price"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "price_per_100ml": "0.00"
+            }
+          },
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "list_price_range_is_not_paid_price",
+          "filters": {
+            "volume_ml": 750,
+            "price_per_100ml_min": "2000"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000002": {
+              "price_per_100ml": "2666.67",
+              "price_per_100ml_paid": "1333.33"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000002": 1
+          }
+        },
+        {
+          "name": "no_sku_counts_as_zero_for_purchased_count_asc",
+          "filters": {
+            "sort": "purchased_count",
+            "order": "asc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000003",
+            "00000000-0000-0000-0000-000000000004",
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {},
+          "expected_filtered_stock": {},
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000003": {
+              "purchased_count": 0
+            },
+            "00000000-0000-0000-0000-000000000004": {
+              "purchased_count": 0
+            }
+          }
+        },
+        {
+          "name": "no_sku_counts_as_zero_for_purchased_count_desc",
+          "filters": {
+            "sort": "purchased_count",
+            "order": "desc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000004",
+            "00000000-0000-0000-0000-000000000003"
+          ],
+          "expected_prices": {},
+          "expected_filtered_stock": {},
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000003": {
+              "purchased_count": 0
+            },
+            "00000000-0000-0000-0000-000000000004": {
+              "purchased_count": 0
+            }
+          }
+        },
+        {
+          "name": "no_sku_counts_as_zero_for_in_stock_count_asc",
+          "filters": {
+            "sort": "in_stock_count",
+            "order": "asc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000003",
+            "00000000-0000-0000-0000-000000000004",
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {},
+          "expected_filtered_stock": {},
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000003": {
+              "in_stock_count": 0
+            },
+            "00000000-0000-0000-0000-000000000004": {
+              "in_stock_count": 0
+            }
+          }
+        },
+        {
+          "name": "no_sku_counts_as_zero_for_in_stock_count_desc",
+          "filters": {
+            "sort": "in_stock_count",
+            "order": "desc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000004",
+            "00000000-0000-0000-0000-000000000003"
+          ],
+          "expected_prices": {},
+          "expected_filtered_stock": {},
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000003": {
+              "in_stock_count": 0
+            },
+            "00000000-0000-0000-0000-000000000004": {
+              "in_stock_count": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "in_stock_sku_includes_past_matching_purchases",
+      "vendors": [
+        {
+          "vendor_id": "shop-a",
+          "name": "A매장"
+        },
+        {
+          "vendor_id": "shop-b",
+          "name": "B매장"
+        }
+      ],
+      "products": [
+        {
+          "product_id": "00000000-0000-0000-0000-000000000001",
+          "name": "과거 구매 포함",
+          "skus": [
+            {
+              "sku_id": "same750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "past",
+              "sku_id": "same750",
+              "vendor_id": "shop-a",
+              "purchased_on": "2025-01-01",
+              "quantity": 1,
+              "unit_list_price": "10000",
+              "unit_paid_price": "10000"
+            },
+            {
+              "purchase_id": "current",
+              "sku_id": "same750",
+              "vendor_id": "shop-a",
+              "purchased_on": "2026-01-01",
+              "quantity": 1,
+              "unit_list_price": "30000",
+              "unit_paid_price": "30000"
+            },
+            {
+              "purchase_id": "other",
+              "sku_id": "same750",
+              "vendor_id": "shop-b",
+              "purchased_on": "2026-01-02",
+              "quantity": 1,
+              "unit_list_price": "50000",
+              "unit_paid_price": "50000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "pastb",
+              "purchase_id": "past",
+              "status": "finished",
+              "remaining_ml": 0
+            },
+            {
+              "bottle_id": "currentb",
+              "purchase_id": "current",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "otherb",
+              "purchase_id": "other",
+              "status": "finished",
+              "remaining_ml": 0
+            }
+          ]
+        }
+      ],
+      "queries": [
+        {
+          "name": "stock_keeps_old_purchase_of_qualifying_sku",
+          "filters": {
+            "in_stock": true
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 3,
+              "avg_paid_price": "30000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1
+          }
+        },
+        {
+          "name": "vendor_stock_scope_keeps_matching_past_only",
+          "filters": {
+            "vendor_id": "shop-a",
+            "in_stock": true
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 2,
+              "avg_paid_price": "20000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1
+          },
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000001": {
+              "inventory_value_at_cost": "30000.00",
+              "avg_paid_price": "30000.00"
+            }
+          }
+        },
+        {
+          "name": "date_scope_excludes_older_purchase",
+          "filters": {
+            "purchased_on_min": "2026-01-01",
+            "in_stock": true
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 2,
+              "avg_paid_price": "40000.00"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "raw_average_orders_equal_display_values",
+      "vendors": [],
+      "products": [
+        {
+          "product_id": "00000000-0000-0000-0000-000000000001",
+          "name": "표시 같음 A",
+          "skus": [
+            {
+              "sku_id": "ra750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "ra1",
+              "sku_id": "ra750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 2,
+              "unit_list_price": "1.00",
+              "unit_paid_price": "1.00"
+            },
+            {
+              "purchase_id": "ra2",
+              "sku_id": "ra750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": "1.01",
+              "unit_paid_price": "1.01"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "ra1b1",
+              "purchase_id": "ra1",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "ra1b2",
+              "purchase_id": "ra1",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "ra2b1",
+              "purchase_id": "ra2",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000002",
+          "name": "표시 같음 B",
+          "skus": [
+            {
+              "sku_id": "rb750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "rb1",
+              "sku_id": "rb750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 3,
+              "unit_list_price": "1.00",
+              "unit_paid_price": "1.00"
+            },
+            {
+              "purchase_id": "rb2",
+              "sku_id": "rb750",
+              "vendor_id": null,
+              "purchased_on": null,
+              "quantity": 1,
+              "unit_list_price": "1.01",
+              "unit_paid_price": "1.01"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "rb1b1",
+              "purchase_id": "rb1",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "rb1b2",
+              "purchase_id": "rb1",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "rb1b3",
+              "purchase_id": "rb1",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "rb2b1",
+              "purchase_id": "rb2",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        }
+      ],
+      "queries": [
+        {
+          "name": "raw_1_0025_precedes_1_003333_even_if_b_id_larger",
+          "filters": {
+            "volume_ml": 750,
+            "sort": "avg_paid_price",
+            "order": "asc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "1.00"
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "1.00"
+            }
+          },
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "raw_desc_reverses_equal_display_order",
+          "filters": {
+            "in_stock": true,
+            "sort": "avg_paid_price",
+            "order": "desc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "avg_paid_price": "1.00"
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "avg_paid_price": "1.00"
+            }
+          },
+          "expected_filtered_stock": {}
+        },
+        {
+          "name": "raw_unit_price_range_does_not_compare_rounded_display",
+          "filters": {
+            "volume_ml": 750,
+            "price_per_100ml_min": "0.1337"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "price_per_100ml": "0.13"
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "scoped_prices_preserve_whole_count_sort",
+      "vendors": [],
+      "products": [
+        {
+          "product_id": "00000000-0000-0000-0000-000000000001",
+          "name": "a",
+          "skus": [
+            {
+              "sku_id": "a750",
+              "volume_ml": 750
+            },
+            {
+              "sku_id": "a375",
+              "volume_ml": 375
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "a750purchase",
+              "sku_id": "a750",
+              "vendor_id": null,
+              "purchased_on": "2026-01-01",
+              "quantity": 1,
+              "unit_list_price": "10000",
+              "unit_paid_price": "10000"
+            },
+            {
+              "purchase_id": "a375purchase",
+              "sku_id": "a375",
+              "vendor_id": null,
+              "purchased_on": "2026-01-01",
+              "quantity": 3,
+              "unit_list_price": "10000",
+              "unit_paid_price": "10000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "a750purchase0",
+              "purchase_id": "a750purchase",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "a375purchase0",
+              "purchase_id": "a375purchase",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "a375purchase1",
+              "purchase_id": "a375purchase",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "a375purchase2",
+              "purchase_id": "a375purchase",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        },
+        {
+          "product_id": "00000000-0000-0000-0000-000000000002",
+          "name": "b",
+          "skus": [
+            {
+              "sku_id": "b750",
+              "volume_ml": 750
+            }
+          ],
+          "lots": [
+            {
+              "purchase_id": "b750purchase",
+              "sku_id": "b750",
+              "vendor_id": null,
+              "purchased_on": "2026-01-01",
+              "quantity": 2,
+              "unit_list_price": "10000",
+              "unit_paid_price": "10000"
+            }
+          ],
+          "bottles": [
+            {
+              "bottle_id": "b750purchase0",
+              "purchase_id": "b750purchase",
+              "status": "unopened",
+              "remaining_ml": null
+            },
+            {
+              "bottle_id": "b750purchase1",
+              "purchase_id": "b750purchase",
+              "status": "unopened",
+              "remaining_ml": null
+            }
+          ]
+        }
+      ],
+      "queries": [
+        {
+          "name": "volume_scope_purchased_count_sorts_whole_history",
+          "filters": {
+            "volume_ml": 750,
+            "sort": "purchased_count",
+            "order": "asc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 1
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "purchased_count": 2
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1,
+            "00000000-0000-0000-0000-000000000002": 2
+          },
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 4,
+              "in_stock_count": 4
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "purchased_count": 2,
+              "in_stock_count": 2
+            }
+          }
+        },
+        {
+          "name": "volume_scope_in_stock_count_sorts_whole_history",
+          "filters": {
+            "volume_ml": 750,
+            "sort": "in_stock_count",
+            "order": "asc"
+          },
+          "expected_ids": [
+            "00000000-0000-0000-0000-000000000002",
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "expected_prices": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 1
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "purchased_count": 2
+            }
+          },
+          "expected_filtered_stock": {
+            "00000000-0000-0000-0000-000000000001": 1,
+            "00000000-0000-0000-0000-000000000002": 2
+          },
+          "expected_metrics": {
+            "00000000-0000-0000-0000-000000000001": {
+              "purchased_count": 4,
+              "in_stock_count": 4
+            },
+            "00000000-0000-0000-0000-000000000002": {
+              "purchased_count": 2,
+              "in_stock_count": 2
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

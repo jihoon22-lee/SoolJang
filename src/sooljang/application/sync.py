@@ -59,6 +59,12 @@ from sooljang.application.products import (
     normalized_name_of,
     soft_delete_product,
 )
+from sooljang.application.skus import (
+    create_sku,
+    delete_unused_sku,
+    load_live_sku_for_write,
+    validate_sku_volume_change,
+)
 from sooljang.application.tastings import (
     BottleInputError,
     BottleTransitionError,
@@ -74,6 +80,7 @@ from sooljang.application.tastings import (
     set_remaining,
     unopen_bottle,
 )
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.base import Base
 from sooljang.infrastructure.database.models import (
     Attachment,
@@ -353,10 +360,7 @@ async def apply_batch(
     session: AsyncSession, *, user_id: uuid.UUID, operations: list[SyncOperation]
 ) -> BatchResult:
     """작업을 순서대로 적용한다. 실패하면 그 지점에서 멈춘다."""
-    user_lock = int.from_bytes(
-        hashlib.blake2b(b"sync-user" + user_id.bytes, digest_size=8).digest(), signed=True
-    )
-    await session.execute(select(func.pg_advisory_xact_lock(user_lock)))
+    await lock_user_writes(session, user_id)
     # Receipt key locks serialize concurrent redelivery before any domain side effects.
     # Sorted global order also avoids deadlocks when two batches contain the same keys.
     for key in sorted({op.idempotency_key for op in operations}):
@@ -729,34 +733,28 @@ async def _dispatch_sku(
     fields = op.fields
 
     if op.op == "create":
-        product = await _load_writable(
+        _barcode(fields.get("barcode"))
+        sku = await create_sku(
             session,
-            Product,
             user_id=user_id,
-            entity_id=_required_uuid(fields["product_id"], field_name="product_id"),
-            op="create",
-        )
-        barcode, barcode_type = _barcode(fields.get("barcode"))
-        sku = Sku(
-            id=op.entity_id,
-            user_id=user_id,
-            product_id=product.id,
+            product_id=_required_uuid(fields["product_id"], field_name="product_id"),
             volume_ml=_bounded_int(fields["volume_ml"], field_name="volume_ml", le=100_000),
-            barcode=barcode,
-            barcode_type=barcode_type,
+            barcode=fields.get("barcode"),
             package_note=fields.get("package_note"),
+            sku_id=op.entity_id,
         )
-        session.add(sku)
-        await session.flush()
         return await _applied(session, op, sku)
 
-    sku = await _load_writable(session, Sku, user_id=user_id, entity_id=op.entity_id, op=op.op)
-
+    sku = await load_live_sku_for_write(
+        session, user_id=user_id, sku_id=op.entity_id, include_deleted=op.op == "delete"
+    )
     if op.op == "delete":
-        if sku.deleted_at is None:
-            sku.deleted_at = datetime.now(UTC)
-            await session.flush()
+        await delete_unused_sku(session, sku)
         return await _applied(session, op, sku)
+    if "volume_ml" in fields:
+        await validate_sku_volume_change(
+            session, sku, _bounded_int(fields["volume_ml"], field_name="volume_ml", le=100_000)
+        )
 
     conflict = await _check_conflict(session, user_id=user_id, entity="sku", row=sku, op=op)
     if conflict is not None:
@@ -835,12 +833,10 @@ async def _dispatch_purchase(
     fields = op.fields
 
     if op.op == "create":
-        sku = await _load_writable(
+        sku = await load_live_sku_for_write(
             session,
-            Sku,
             user_id=user_id,
-            entity_id=_required_uuid(fields["sku_id"], field_name="sku_id"),
-            op="create",
+            sku_id=_required_uuid(fields["sku_id"], field_name="sku_id"),
         )
         vendor_id = _uuid(fields.get("vendor_id"))
         if vendor_id is not None:
@@ -1111,7 +1107,7 @@ async def _dispatch_tasting_action(
     if sku_id is None:
         raise ValidationFailedError("bottle_id 또는 sku_id 중 하나는 있어야 합니다")
     if bottle is None:
-        await _load_writable(session, Sku, user_id=user_id, entity_id=sku_id, op="create")
+        await load_live_sku_for_write(session, user_id=user_id, sku_id=sku_id)
 
     try:
         record = await record_tasting(

@@ -764,7 +764,17 @@ describe("ProductsPage", () => {
   it("규격이 없는 제품은 규격 추가 후에야 구매를 추가할 수 있다", async () => {
     await seedProduct("p1", "규격 없는 술");
     const { calls } = stubRoutes([
-      { match: "/products/p1/skus", method: "POST", body: { id: "sku-new" } },
+      {
+        match: "/products/p1/skus",
+        method: "POST",
+        body: {
+          id: "sku-new",
+          volume_ml: 500,
+          barcode: null,
+          barcode_type: null,
+          package_note: null,
+        },
+      },
     ]);
 
     renderProductsPage();

@@ -126,6 +126,20 @@ class SkuSummaryOut(BaseModel):
     metrics: ProductMetricsOut
 
 
+class FilteredPricesOut(BaseModel):
+    """조건에 맞는 구매 모집단 M의 가격. 전체 재고 원가는 포함하지 않는다."""
+
+    purchased_count: int = 0
+    total_volume_ml: int = 0
+    list_total: Decimal | None = None
+    paid_total: Decimal | None = None
+    avg_list_price: Decimal | None = None
+    avg_paid_price: Decimal | None = None
+    price_per_100ml: Decimal | None = None
+    price_per_100ml_paid: Decimal | None = None
+    discount_rate: Decimal | None = None
+
+
 class ProductOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -146,6 +160,8 @@ class ProductOut(BaseModel):
     varieties: list[str] = Field(default_factory=list)
     skus: list[SkuOut] = Field(default_factory=list)
     sku_summaries: list[SkuSummaryOut] = Field(default_factory=list)
+    filtered_prices: FilteredPricesOut | None = None
+    filtered_stock_count: int | None = None
     metrics: ProductMetricsOut = Field(default_factory=ProductMetricsOut)
     #: "등록일" 정렬(`SortKey.created_at`/`updated_at`)에 쓴다. 오프라인 Dexie 미러의
     #: `SyncRow` 는 이미 이 값들을 갖고 있었는데 온라인 응답에만 빠져 있었다 — 정렬

@@ -20,7 +20,8 @@ export type FilterFieldId =
   | "vendor"
   | "variety"
   | "price100ml"
-  | "purchasedOn";
+  | "purchasedOn"
+  | "volume";
 
 export const DEFAULT_FILTER_FIELD_ORDER: FilterFieldId[] = [
   "q",
@@ -36,6 +37,7 @@ export const DEFAULT_FILTER_FIELD_ORDER: FilterFieldId[] = [
   "variety",
   "price100ml",
   "purchasedOn",
+  "volume",
 ];
 
 /** 이 개수까지는 상시 표시하고, 그 이후는 "더 많은 필터" 아코디언에 접힌다. 사용자가

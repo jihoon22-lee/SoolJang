@@ -88,6 +88,7 @@ def test_online_tasting_rechecks_amount_after_sync_row_lock(
     sync_locked, release_sync, online_started, online_read = (threading.Event() for _ in range(4))
     original_sync = sync_service._load_bottle
     original_online = tasting_routes._get_bottle
+    original_entry_lock = tasting_routes.lock_user_writes
 
     async def hold_sync(*args: Any, **kwargs: Any) -> Any:
         bottle = await original_sync(*args, **kwargs)
@@ -96,13 +97,17 @@ def test_online_tasting_rechecks_amount_after_sync_row_lock(
         return bottle
 
     async def observe_online(*args: Any, **kwargs: Any) -> Any:
-        online_started.set()
         bottle = await original_online(*args, **kwargs)
         online_read.set()
         return bottle
 
+    async def observe_entry(*args: Any, **kwargs: Any) -> None:
+        online_started.set()
+        await original_entry_lock(*args, **kwargs)
+
     monkeypatch.setattr(sync_service, "_load_bottle", hold_sync)
     monkeypatch.setattr(tasting_routes, "_get_bottle", observe_online)
+    monkeypatch.setattr(tasting_routes, "lock_user_writes", observe_entry)
     with ThreadPoolExecutor(max_workers=2) as executor:
         sync_future = executor.submit(
             _post_sync,

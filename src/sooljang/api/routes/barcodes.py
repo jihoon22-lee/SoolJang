@@ -12,7 +12,7 @@ from sooljang.api.schemas.barcodes import (
     BarcodeLookupOut,
 )
 from sooljang.application.barcodes import InvalidBarcodeError, normalize_and_classify
-from sooljang.infrastructure.database.models import BarcodeType, Sku
+from sooljang.infrastructure.database.models import BarcodeType, Product, Sku
 from sooljang.infrastructure.external import open_food_facts
 
 router = APIRouter(prefix="/barcodes", tags=["barcodes"])
@@ -37,7 +37,9 @@ async def lookup_barcode(code: str, session: SessionDep, user_id: UserDep) -> Ba
 
     sku = await session.scalar(
         select(Sku)
+        .join(Product, Product.id == Sku.product_id)
         .where(Sku.user_id == user_id, Sku.barcode == normalized, Sku.deleted_at.is_(None))
+        .where(Product.user_id == user_id, Product.deleted_at.is_(None))
         .options(selectinload(Sku.product))
     )
     if sku is not None:

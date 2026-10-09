@@ -58,6 +58,7 @@ const FIELD_LABELS: Record<FilterFieldId, string> = {
   variety: "품종·스타일",
   price100ml: "100ml당 가격",
   purchasedOn: "구매일",
+  volume: "용량",
 };
 
 /**
@@ -94,6 +95,26 @@ export function ProductFilterPanel({
 
   function renderField(id: FilterFieldId) {
     switch (id) {
+      case "volume":
+        return (
+          <div className="field">
+            <label htmlFor="filter-volume">구매 용량 (ml)</label>
+            <input
+              id="filter-volume"
+              type="number"
+              min={1}
+              step={1}
+              placeholder="전체 용량"
+              value={filters.volume_ml ?? ""}
+              onChange={(event) =>
+                update({
+                  volume_ml: event.target.value === "" ? undefined : Number(event.target.value),
+                })
+              }
+            />
+          </div>
+        );
+
       case "q":
         return (
           <div className="field">

@@ -68,7 +68,8 @@
 페이지 오류, 강제 클릭, 시계 가속, 외부 제공자 요청, 실제 개인 데이터 사용은 없었다.
 로컬 원본: `/tmp/sooljang-usage/wp02-browser-artifacts/report.json` 및 합성 스크린샷.
 
-원격 CI·머지는 대기 중이다.
+[#163](https://github.com/jihoon22-lee/SoolJang/pull/163)의 [CI](https://github.com/jihoon22-lee/SoolJang/actions/runs/37962888779) 전체 통과 후 merge commit `81c7819`로 통합했다.
+01:58 KST 강화 재실행에서도 비기본 `created_at` 정렬과 브라우저 뒤로가기의 내부 스크롤 복원을 포함해 11개 흐름이 모두 통과했다.
 
 ## 후속 범위
 

@@ -204,9 +204,13 @@ describe("ProductForm", () => {
     });
 
     await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키 12년");
-    expect(await screen.findByText(/이미 등록된 술입니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/이름이 같은 기존 제품이 있습니다/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "구매 이력 추가하시겠어요?" }));
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /글렌알라키 12년.*판본 정보 미기록.*이 제품의 구매 이력으로 이동/,
+      }),
+    );
     expect(onSelectExisting).toHaveBeenCalledWith("p1");
   });
 
@@ -214,7 +218,7 @@ describe("ProductForm", () => {
     setup({ existingProducts: [{ id: "p1", name: "글렌알라키 12년" }] });
 
     await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키");
-    expect(screen.queryByText(/이미 등록된 술입니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이름이 같은 기존 제품이 있습니다/)).not.toBeInTheDocument();
   });
 
   it("수정 모드에서는 중복 경고를 하지 않는다", async () => {
@@ -224,7 +228,7 @@ describe("ProductForm", () => {
       existingProducts: [{ id: "p1", name: "글렌알라키 12년" }],
     });
 
-    expect(screen.queryByText(/이미 등록된 술입니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이름이 같은 기존 제품이 있습니다/)).not.toBeInTheDocument();
   });
 
   it("구매처 자동완성 후보를 보여준다", async () => {
@@ -249,4 +253,45 @@ describe("ProductForm", () => {
       expect(select).toHaveAccessibleName();
     }
   });
+});
+
+it("동일 이름의 빈티지·도수 후보를 구분하고 입력 용량과 일치한 SKU만 전달한다", async () => {
+  const onSelectExisting = vi.fn();
+  setup({
+    initialValues: { name: "합성 판본", volumeMl: "750", vintage: "2022", abv: "43" },
+    existingProducts: [
+      {
+        id: "edition20",
+        name: "합성 판본",
+        vintage: 2020,
+        abv: "40",
+        age_years: null,
+        skus: [
+          { id: "sku20", volume_ml: 750, barcode: null, barcode_type: null, package_note: null },
+        ],
+      },
+      {
+        id: "edition21",
+        name: "합성 판본",
+        vintage: 2021,
+        abv: "46",
+        age_years: "12",
+        skus: [
+          { id: "sku21", volume_ml: 750, barcode: null, barcode_type: null, package_note: null },
+        ],
+      },
+    ],
+    onSelectExisting,
+  });
+  const candidates = screen.getByRole("list", { name: "기존 제품 후보" });
+  expect(
+    within(candidates).getByRole("button", { name: /2020 빈티지.*40%.*750ml/ }),
+  ).toBeInTheDocument();
+  const next = within(candidates).getByRole("button", {
+    name: /2021 빈티지.*12년 숙성.*46%.*750ml/,
+  });
+  expect(screen.getByRole("button", { name: "등록" })).toBeEnabled();
+  await userEvent.click(next);
+  expect(onSelectExisting).toHaveBeenCalledWith("edition21", { skuId: "sku21" });
+  expect(screen.getByLabelText("빈티지")).toHaveValue(2022);
 });

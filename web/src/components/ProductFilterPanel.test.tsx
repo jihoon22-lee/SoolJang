@@ -80,7 +80,7 @@ describe("ProductFilterPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
 
     expect(screen.getByRole("button", { name: "이름 검색 위로 이동" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "구매일 아래로 이동" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "용량 아래로 이동" })).toBeDisabled();
   });
 
   it("항목을 경계 너머로 올리면 '더 많은 필터' 에서 상시 표시로 넘어온다", async () => {

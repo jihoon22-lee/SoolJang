@@ -110,7 +110,16 @@ def test_two_sessions_convert_one_interest_into_one_purchase(
     path = f"{prefix}/interests/{row['id']}/purchase"
     held, release, started, second_read = (threading.Event() for _ in range(4))
     original = service.owned
+    original_entry_lock = service.lock_user_writes
     calls = 0
+    entries = 0
+
+    async def observe_entry(*args: Any, **kwargs: Any) -> None:
+        nonlocal entries
+        entries += 1
+        if entries == 2:
+            started.set()
+        await original_entry_lock(*args, **kwargs)
 
     async def paused_owned(
         session: Any, model: Any, user_id: uuid.UUID, entity_id: uuid.UUID
@@ -120,8 +129,6 @@ def test_two_sessions_convert_one_interest_into_one_purchase(
             return await original(session, model, user_id, entity_id)
         calls += 1
         index = calls
-        if index == 2:
-            started.set()
         result = await original(session, model, user_id, entity_id)
         if index == 1:
             held.set()
@@ -131,6 +138,7 @@ def test_two_sessions_convert_one_interest_into_one_purchase(
         return result
 
     monkeypatch.setattr(service, "owned", paused_owned)
+    monkeypatch.setattr(service, "lock_user_writes", observe_entry)
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(api_client.post, path, json=payload, headers=first_headers)
         assert held.wait(3)

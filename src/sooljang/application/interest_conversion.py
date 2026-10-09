@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sooljang.api.errors import ConflictError
 from sooljang.application.collection_inventory import owned
 from sooljang.application.products import normalized_name_of, resolve_producer_id
+from sooljang.application.skus import load_live_sku_for_write
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import (
     Bottle,
     Category,
@@ -34,6 +36,7 @@ async def convert_interest(
     product_fields: dict[str, Any] | None,
     purchase_fields: dict[str, Any],
 ) -> dict[str, str]:
+    await lock_user_writes(session, user_id)
     interest = await owned(session, Interest, user_id, interest_id)
     fingerprint = hashlib.sha256(
         json.dumps(
@@ -88,8 +91,7 @@ async def convert_interest(
         session.add(sku)
         await session.flush()
     else:
-        sku = await owned(session, Sku, user_id, sku_id)
-        await owned(session, Product, user_id, sku.product_id)
+        sku = await load_live_sku_for_write(session, user_id=user_id, sku_id=sku_id)
     if vendor_id := purchase_fields.get("vendor_id"):
         await owned(session, Vendor, user_id, vendor_id)
     purchase = Purchase(user_id=user_id, sku_id=sku.id, **purchase_fields)

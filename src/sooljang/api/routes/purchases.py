@@ -29,10 +29,13 @@ from sooljang.api.schemas.product import (
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
 from sooljang.application.history import changes, entity_history, log_event
+from sooljang.application.skus import load_live_sku_for_write
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
     CleanupPreview,
+    Product,
     Purchase,
     Sku,
     Vendor,
@@ -234,7 +237,15 @@ async def list_purchases(
 ) -> list[PurchaseOut]:
     statement = (
         select(Purchase)
+        .join(Sku, Sku.id == Purchase.sku_id)
+        .join(Product, Product.id == Sku.product_id)
         .where(Purchase.user_id == user_id, Purchase.deleted_at.is_(None))
+        .where(
+            Sku.user_id == user_id,
+            Sku.deleted_at.is_(None),
+            Product.user_id == user_id,
+            Product.deleted_at.is_(None),
+        )
         .order_by(Purchase.purchased_on.desc().nullslast(), Purchase.created_at.desc())
     )
     if sku_id is not None:
@@ -256,7 +267,6 @@ async def list_purchases(
     )
     rows = await session.execute(
         statement.add_columns(Sku.volume_ml, Vendor.name, bottle_counts.c.bottle_count)
-        .outerjoin(Sku, Sku.id == Purchase.sku_id)
         .outerjoin(
             Vendor,
             (Vendor.id == Purchase.vendor_id)
@@ -284,9 +294,8 @@ async def create_purchase(
     같은 제품에 구매처·가격이 다른 구매 건을 여러 개 만들 수 있다. 엑셀에서 불가능했던
     기록이며 이 프로젝트의 존재 이유다.
     """
-    sku = await session.get(Sku, payload.sku_id)
-    if sku is None or sku.deleted_at is not None or sku.user_id != user_id:
-        raise NotFoundError(f"규격을 찾을 수 없습니다: {payload.sku_id}")
+    await lock_user_writes(session, user_id)
+    await load_live_sku_for_write(session, user_id=user_id, sku_id=payload.sku_id)
     if payload.vendor_id is not None:
         await _owned_vendor(session, user_id, payload.vendor_id)
 
@@ -534,7 +543,20 @@ def _add_bottles(
 async def _owned_purchase(
     session: SessionDep, user_id: uuid.UUID, purchase_id: uuid.UUID
 ) -> Purchase:
-    purchase = await session.get(Purchase, purchase_id)
-    if purchase is None or purchase.deleted_at is not None or purchase.user_id != user_id:
+    purchase = await session.scalar(
+        select(Purchase)
+        .join(Sku, Sku.id == Purchase.sku_id)
+        .join(Product, Product.id == Sku.product_id)
+        .where(
+            Purchase.id == purchase_id,
+            Purchase.user_id == user_id,
+            Purchase.deleted_at.is_(None),
+            Sku.user_id == user_id,
+            Sku.deleted_at.is_(None),
+            Product.user_id == user_id,
+            Product.deleted_at.is_(None),
+        )
+    )
+    if purchase is None:
         raise NotFoundError(f"구매 건을 찾을 수 없습니다: {purchase_id}")
     return purchase

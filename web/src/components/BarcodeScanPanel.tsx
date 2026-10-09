@@ -13,7 +13,11 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useStat
 import { ApiError, barcodesApi, productsApi, skusApi } from "@/api/client";
 import type { BarcodeLookupResponse } from "@/api/types";
 import { startScanning } from "@/barcode/scanner";
+import { productEdition } from "@/components/productDisplay";
+import { formatVolume } from "@/format";
+import type { ProductContext } from "@/router";
 import { getProducts } from "@/sync/queries";
+import { captureWriteSession } from "@/sync/writeSession";
 import { useModalDialog } from "@/useModalDialog";
 
 type Phase =
@@ -24,7 +28,7 @@ type Phase =
   | { kind: "error"; message: string };
 
 interface BarcodeScanPanelProps {
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
   /** 테스트가 실제 카메라 없이 감지를 흉내낼 수 있게 하는 주입점. */
   scan?: typeof startScanning;
 }
@@ -38,6 +42,7 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   // 언마운트돼도 이 setPhase 는 막을 방법이 없었다 — 이미 닫은 다이얼로그가 다시
   // 열리는 것으로 보였다(B9). 스캔 세션이 여전히 "살아 있는지" 를 이 ref 로 추적한다.
   const liveRef = useRef(true);
+  const lookupGeneration = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -46,13 +51,14 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   }, []);
 
   const lookup = useCallback(async (code: string) => {
+    const attempt = ++lookupGeneration.current;
     setPhase({ kind: "looking_up" });
     try {
       const result = await barcodesApi.lookup(code);
-      if (!liveRef.current) return;
+      if (!liveRef.current || attempt !== lookupGeneration.current) return;
       setPhase({ kind: "result", result });
     } catch (cause) {
-      if (!liveRef.current) return;
+      if (!liveRef.current || attempt !== lookupGeneration.current) return;
       setPhase({
         kind: "error",
         message: cause instanceof ApiError ? cause.message : "바코드 조회에 실패했습니다.",
@@ -95,6 +101,7 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   }, [phase.kind, scan, lookup]);
 
   function close() {
+    lookupGeneration.current += 1;
     liveRef.current = false;
     stopRef.current?.();
     stopRef.current = null;
@@ -102,6 +109,7 @@ export function BarcodeScanPanel({ onSelectProduct, scan = startScanning }: Barc
   }
 
   function rescan() {
+    lookupGeneration.current += 1;
     stopRef.current?.();
     stopRef.current = null;
     liveRef.current = true;
@@ -195,16 +203,26 @@ function BarcodeResult({
 }: {
   result: BarcodeLookupResponse;
   onDone: () => void;
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
 }) {
   if (result.source === "local" && result.local_match) {
     const match = result.local_match;
     return (
       <div className="field">
         <p>
-          <strong>{match.product_name}</strong> 에 이미 등록된 바코드입니다.
+          <strong>
+            {match.product_name} · {formatVolume(match.volume_ml)}
+          </strong>{" "}
+          에 이미 등록된 바코드입니다.
         </p>
-        <button type="button" className="primary" onClick={() => onSelectProduct(match.product_id)}>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => {
+            onDone();
+            onSelectProduct(match.product_id, { skuId: match.sku_id });
+          }}
+        >
           제품으로 이동
         </button>
       </div>
@@ -223,7 +241,7 @@ function UnmatchedBarcodeResult({
 }: {
   result: BarcodeLookupResponse;
   onDone: () => void;
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
 }) {
   const suggestion = result.external_suggestion;
   const [name, setName] = useState(suggestion?.name ?? "");
@@ -231,47 +249,79 @@ function UnmatchedBarcodeResult({
   const [selectedSkuId, setSelectedSkuId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const mounted = useRef(true);
+  const submittingRef = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const products = useLiveQuery(() => getProducts({}), []);
   const skuOptions = (products ?? []).flatMap((product) =>
     product.skus.map((sku) => ({
       id: sku.id,
-      label: `${product.name} (${sku.volume_ml.toLocaleString("ko-KR")}ml)`,
+      productId: product.id,
+      label: [product.name, productEdition(product), formatVolume(sku.volume_ml)]
+        .filter(Boolean)
+        .join(" · "),
     })),
   );
 
   async function registerNew() {
+    if (submittingRef.current) return;
     if (!name.trim() || !volumeMl.trim()) {
       setError("이름과 용량을 입력하세요");
       return;
     }
+    const session = captureWriteSession();
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
+      session.assertCurrent();
       const created = await productsApi.create({
         name: name.trim(),
         skus: [{ volume_ml: Number(volumeMl), barcode: result.barcode }],
       });
-      onSelectProduct(created.id);
+      if (!mounted.current || !session.isCurrent()) return;
+      const sku = created.skus.find((sku) => sku.volume_ml === Number(volumeMl));
       onDone();
+      if (sku) onSelectProduct(created.id, { skuId: sku.id });
+      else onSelectProduct(created.id);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : "등록에 실패했습니다.");
+      if (mounted.current && session.isCurrent())
+        setError(cause instanceof ApiError ? cause.message : "등록에 실패했습니다.");
     } finally {
-      setSubmitting(false);
+      submittingRef.current = false;
+      if (mounted.current && session.isCurrent()) setSubmitting(false);
     }
   }
 
   async function attachToExisting() {
-    // 버튼이 selectedSkuId 없이는 disabled 라 여기 도달할 때는 항상 값이 있다.
+    if (submittingRef.current) return;
+    const option = skuOptions.find((option) => option.id === selectedSkuId);
+    if (!option) {
+      setError("연결할 규격을 다시 선택하세요");
+      return;
+    }
+    const session = captureWriteSession();
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      await skusApi.update(selectedSkuId, { barcode: result.barcode });
+      session.assertCurrent();
+      await skusApi.update(option.id, { barcode: result.barcode });
+      if (!mounted.current || !session.isCurrent()) return;
       onDone();
+      onSelectProduct(option.productId, { skuId: option.id });
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : "연결에 실패했습니다.");
+      if (mounted.current && session.isCurrent())
+        setError(cause instanceof ApiError ? cause.message : "연결에 실패했습니다.");
     } finally {
-      setSubmitting(false);
+      submittingRef.current = false;
+      if (mounted.current && session.isCurrent()) setSubmitting(false);
     }
   }
 
@@ -303,7 +353,7 @@ function UnmatchedBarcodeResult({
         </p>
       )}
 
-      <fieldset className="fieldset-bordered">
+      <fieldset className="fieldset-bordered" disabled={submitting}>
         <legend>새 술로 등록</legend>
         <div className="field">
           <label htmlFor="scan-new-name">이름</label>
@@ -333,7 +383,7 @@ function UnmatchedBarcodeResult({
         </button>
       </fieldset>
 
-      <fieldset className="fieldset-bordered">
+      <fieldset className="fieldset-bordered" disabled={submitting}>
         <legend>기존 술에 연결</legend>
         <div className="field">
           <label htmlFor="scan-existing-sku">규격 선택</label>
