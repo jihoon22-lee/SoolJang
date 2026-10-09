@@ -11,7 +11,6 @@
  */
 
 import Decimal from "decimal.js";
-
 import type {
   Bottle,
   CategoryNode,
@@ -53,6 +52,7 @@ import {
 } from "@/purchaseScope";
 import { matchesQuery } from "@/search";
 import { db, type SyncRow } from "@/sync/db";
+import { getLocalTastingHistory } from "@/sync/tastingHistory";
 
 //: 백엔드 `legacy/categories.py::MAX_CATEGORY_DEPTH` 와 같은 값.
 const CATEGORY_DEPTH_LIMIT = 8;
@@ -1270,39 +1270,19 @@ export async function getRecentProducts(limit = 5): Promise<RecentProduct[]> {
 
 /** 최근 시음(`tasted_on` 내림차순). 제품 이름은 sku→product 로 붙인다. */
 export async function getRecentTastings(limit = 5): Promise<RecentTasting[]> {
-  const tastings = await db.tasting_session.filter((row) => row.deleted_at === null).toArray();
-  const [skus, products, bottles] = await Promise.all([
-    liveTable("sku"),
-    liveTable("product"),
-    liveTable("bottle"),
-  ]);
-  const bottleById = new Map(bottles.map((bottle) => [bottle.id, bottle]));
-  const skuById = new Map(skus.map((sku) => [sku.id, sku]));
-  const productById = new Map(products.map((product) => [product.id, product]));
-  // 삭제한 제품의 시음은 최근 활동에 다시 띄우지 않는다(기록 자체는 보존된다).
-  const recent = tastings
-    .filter((t) => {
-      const sku = skuById.get(t.sku_id as string);
-      return sku !== undefined && productById.has(sku.product_id as string);
-    })
-    .sort((a, b) => String(b.tasted_on).localeCompare(String(a.tasted_on)))
-    .slice(0, limit);
-
-  return recent.map((t) => {
-    const sku = skuById.get(t.sku_id as string);
-    const product = sku ? productById.get(sku.product_id as string) : undefined;
-    return {
-      id: t.id,
-      labelNo: (bottleById.get(String(t.bottle_id))?.label_no as number | undefined) ?? null,
-      purchaseId: (bottleById.get(String(t.bottle_id))?.purchase_id as string | undefined) ?? null,
-      skuId: String(t.sku_id),
-      bottleId: (t.bottle_id as string | null) ?? null,
-      volumeMl: sku ? Number(sku.volume_ml) : null,
-      vintage: (product?.vintage as number | null) ?? null,
-      productId: product?.id ?? null,
-      productName: product ? String(product.name) : "알 수 없는 술",
-      tastedOn: String(t.tasted_on),
-      rating: t.rating != null ? String(t.rating) : null,
-    };
-  });
+  const { items } = await getLocalTastingHistory({});
+  // Use the same live ownership chain and date/ID order as the full tasting history.
+  return items.slice(0, limit).map((t) => ({
+    id: t.id,
+    labelNo: t.bottle?.label_no ?? null,
+    purchaseId: t.purchase?.id ?? null,
+    skuId: t.sku_id,
+    bottleId: t.bottle_id,
+    volumeMl: t.context.volume_ml,
+    vintage: t.context.vintage,
+    productId: t.context.product_id,
+    productName: t.context.product_name,
+    tastedOn: t.tasted_on,
+    rating: t.rating,
+  }));
 }

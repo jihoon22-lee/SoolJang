@@ -298,7 +298,14 @@ function sourceContext(item: ContextualTasting): BottleCorrectionContext | null 
 export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
   const [identity] = useState(databaseIdentity);
   const [session] = useState(captureWriteSession);
+  const recordKey = `${identity.userId}:${identity.generation}:${props.tastingId}`;
+  const [loadedRecord, setLoadedRecord] = useState<{
+    key: string;
+    record: ContextualTasting;
+  } | null>(null);
   const record = useQuery({
+    staleTime: 0,
+    refetchOnMount: "always",
     networkMode: props.offline ? "always" : "online",
     queryKey: [
       "tastings",
@@ -318,17 +325,28 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
     },
     refetchOnWindowFocus: false,
   });
+  useEffect(() => {
+    if (!record.isSuccess || !record.isFetchedAfterMount || record.isFetching || !record.data)
+      return;
+    const fresh = record.data;
+    setLoadedRecord((previous) =>
+      previous?.key === recordKey ? previous : { key: recordKey, record: fresh },
+    );
+  }, [record.isSuccess, record.isFetchedAfterMount, record.isFetching, record.data, recordKey]);
+  // Cached context may predate a later tasting on the same bottle. Start from the first fresh
+  // read, then retain that baseline while editing; later refetches must not rebase the draft.
+  const initialRecord = loadedRecord?.key === recordKey ? loadedRecord.record : null;
   return (
     <section className="tasting-correction" aria-label="시음 정정">
       <h3>시음 정정</h3>
-      {record.isPending ? <output>정정할 기록을 불러오는 중…</output> : null}
+      {!initialRecord && record.isFetching ? <output>정정할 기록을 불러오는 중…</output> : null}
       {record.isError ? (
         <p role="alert">정정할 기록을 확인하지 못했습니다. 저장된 입력은 유지됩니다.</p>
       ) : null}
       {record.isSuccess && !record.data ? (
         <p role="alert">이 기기에서 정정할 기록을 찾을 수 없습니다. 온라인에서 다시 확인하세요.</p>
       ) : null}
-      {!record.data ? (
+      {!initialRecord ? (
         <div className="button-row">
           <button type="button" disabled={record.isFetching} onClick={() => void record.refetch()}>
             기록 다시 확인
@@ -339,9 +357,9 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
         </div>
       ) : (
         <CorrectionEditor
-          key={`${identity.userId}:${identity.generation}:${props.tastingId}`}
+          key={recordKey}
           {...props}
-          initialRecord={record.data}
+          initialRecord={initialRecord}
           readFailed={record.isError || record.isFetching}
         />
       )}
@@ -431,6 +449,8 @@ function CorrectionEditor({
     };
   }
   const targetSku = useQuery({
+    staleTime: 0,
+    refetchOnMount: "always",
     queryKey: [
       "products",
       "correction-sku",
@@ -463,6 +483,8 @@ function CorrectionEditor({
     standaloneSku &&
     (!draft.checkedSku || skuStamp(draft.checkedSku) !== skuStamp(standaloneSku));
   const target = useQuery({
+    staleTime: 0,
+    refetchOnMount: "always",
     queryKey: ["bottles", "correction", session.userId, draft.fields.bottleId],
     queryFn: async ({ signal }) => {
       session.assertCurrent();
@@ -505,7 +527,11 @@ function CorrectionEditor({
     draft.fields.skuId,
   ];
   const newTargetGuard =
-    destination && !draft.checkedBottles.some((guard) => guard.id === destination.bottle.id)
+    destination &&
+    !target.isFetching &&
+    !target.isError &&
+    target.isFetchedAfterMount &&
+    !draft.checkedBottles.some((guard) => guard.id === destination.bottle.id)
       ? { id: destination.bottle.id, revision: destination.bottle.revision }
       : null;
   useEffect(() => {

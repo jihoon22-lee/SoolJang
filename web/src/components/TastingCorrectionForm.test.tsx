@@ -12,7 +12,7 @@ import type {
 } from "@/api/types";
 import { TastingCorrectionForm } from "@/components/TastingCorrectionForm";
 import { getCorrectionBlockReason, submitTastingCorrection } from "@/sync/corrections";
-import { activateDatabase, db } from "@/sync/db";
+import { activateDatabase, databaseIdentity, db } from "@/sync/db";
 import { getLocalTasting } from "@/sync/tastingHistory";
 
 vi.mock("@/sync/corrections", () => ({
@@ -79,10 +79,12 @@ function productFor(context: ProductSkuContext, volume = context.volume_ml): Pro
 const saved = vi.fn(),
   cancelled = vi.fn(),
   saving = vi.fn();
-function view(offline = false) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+function view(offline = false, existingClient?: QueryClient) {
+  const client =
+    existingClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
   const props = {
     tastingId: tasting.id,
     offline,
@@ -164,6 +166,83 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await db.transaction("rw", db.tables, async () => {
     for (const table of db.tables) await table.clear();
+  });
+});
+
+it("캐시된 시음의 병 버전 대신 창을 다시 연 뒤 확인한 최신 병 버전으로 정정한다", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  });
+  const identity = databaseIdentity();
+  client.setQueryData(
+    ["tastings", "correction", identity.userId, identity.generation, tasting.id, "server"],
+    structuredClone(tasting),
+  );
+  const fresh = structuredClone(tasting);
+  if (!fresh.bottle) throw new Error("병 fixture 필요");
+  fresh.bottle.revision = "revision-after-later-tastings";
+  fresh.bottle.remaining_ml = 400;
+  let resolveRead!: (value: ContextualTasting) => void;
+  get.mockImplementationOnce(
+    () =>
+      new Promise<ContextualTasting>((resolve) => {
+        resolveRead = resolve;
+      }),
+  );
+  view(false, client);
+  expect(screen.queryByLabelText("시음 메모")).not.toBeInTheDocument();
+  await act(async () => resolveRead(fresh));
+  await ready();
+  await userEvent.type(screen.getByLabelText("시음 메모"), " 수정");
+  await userEvent.click(screen.getByRole("button", { name: "정정 저장" }));
+  await waitFor(() => expect(saved).toHaveBeenCalled());
+  expect(lastInput().expected_bottles).toEqual([
+    { id: "a", revision: "revision-after-later-tastings" },
+  ]);
+});
+
+it("최초 최신 조회가 실패하면 캐시로 정정 폼을 열지 않고 재조회 뒤 연다", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const identity = databaseIdentity();
+  client.setQueryData(
+    ["tastings", "correction", identity.userId, identity.generation, tasting.id, "server"],
+    structuredClone(tasting),
+  );
+  get.mockRejectedValueOnce(new Error("합성 조회 실패"));
+  view(false, client);
+  await screen.findByText("정정할 기록을 확인하지 못했습니다. 저장된 입력은 유지됩니다.");
+  expect(screen.queryByLabelText("시음 메모")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "기록 다시 확인" }));
+  await ready();
+  expect(submitTastingCorrection).not.toHaveBeenCalled();
+});
+
+it("대상 병을 다시 고르면 캐시의 과거 버전 대신 최초 최신 조회 결과를 승인 기준으로 쓴다", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  });
+  client.setQueryData(["bottles", "correction", "u1", "b"], structuredClone(b));
+  const fresh = structuredClone(b);
+  fresh.bottle.revision = "revision-b-after-other-tasting";
+  fresh.bottle.remaining_ml = 700;
+  let resolveTarget!: (value: BottleCorrectionContext) => void;
+  target.mockImplementationOnce(
+    () =>
+      new Promise<BottleCorrectionContext>((resolve) => {
+        resolveTarget = resolve;
+      }),
+  );
+  view(false, client);
+  await ready();
+  await userEvent.selectOptions(screen.getByLabelText("정정할 대상 병"), "b");
+  expect(screen.getByRole("button", { name: "정정 저장" })).toBeDisabled();
+  await act(async () => resolveTarget(fresh));
+  await ready();
+  await userEvent.click(screen.getByRole("button", { name: "정정 저장" }));
+  await waitFor(() => expect(saved).toHaveBeenCalled());
+  expect(lastInput().expected_bottles).toContainEqual({
+    id: "b",
+    revision: "revision-b-after-other-tasting",
   });
 });
 

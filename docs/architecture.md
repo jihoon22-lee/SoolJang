@@ -288,7 +288,8 @@ erDiagram
 | `status` | `enum` | `unopened`/`open`/`finished`/`gifted`/`sold` |
 | `opened_on` | `date` NULL | |
 | `finished_on` | `date` NULL | |
-| `remaining_ml` | `int` NULL | NULL이면 미개봉(= SKU 전량) |
+| `remaining_ml` | `int` NULL | 미개봉의 NULL은 SKU 전량, 개봉의 NULL은 잔량 미기록 |
+| `revision` | `UUID` NOT NULL | 병 변경마다 교체하는 동시성 토큰. schema 0020 |
 | `storage_location` | `text` NULL | |
 | `label_no` | `int` | 구매 건 내 순번. `UNIQUE(purchase_id, label_no)` |
 
@@ -388,7 +389,8 @@ erDiagram
   `entity_id`, `action`, `detail jsonb`(바뀐 칸의
   [이전, 이후]). 재계산할 수 없는 1차 사실이라 저장한다. 동기화 대상이 아니며 과거 이력은
   소급하지 않는다(D222). 구매처·보관 위치는 id로 남기고, 이력 API가 읽을 때 지금 이름을
-  `labels`로 붙인다(D225)
+  `labels`로 붙인다(D225). v1.9.0 정정은 `tasting_session` 이벤트와
+  `{request_id, before, after}` 스냅샷을 추가로 기록하며, 미사용 SKU 복원은 `sku` 이벤트로 남긴다
 - 외부 연결·탐색·관심·가격 감시 테이블(`provider_connection`, `interest`, `external_offer`,
   `price_watch` 등)은 [external-data.md](external-data.md)를 본다
 
@@ -448,7 +450,18 @@ UTC `timestamptz`다.
 구매만으로 계산하고, **가격 순위**(병당·총액·100ml당)에는 0원 제품을 넣지 않는다(D215).
 
 제품 수준 지표는 여러 용량(규격)을 섞은 값이다. 제품 상세의 "용량별" 표는 같은 규칙을
-규격마다 따로 적용해 보여준다(오프라인 계산).
+규격마다 따로 적용해 보여준다. 목록은 제품 한 항목 아래 규격별 재고·실평단가를 표시한다.
+현재 재고가 있는 규격부터 용량순으로 보여주고, 소진 규격과 구매 없는 규격을 구분한다.
+
+규격 원가는 중간 평균을 반올림하지 않고 `SKU 실구매 총액 / SKU 구매 병수 × SKU 재고 병수`를
+계산한 뒤 소수 2자리 HALF_UP으로 확정한다. 제품·전체 원가는 확정한 SKU 원가의 합이다.
+병당 원가이므로 남은 ml 비율을 곱하지 않는다. G05의 70,000원/3병×재고2병은 46,666.67원이다.
+도메인·SQL·IndexedDB가 같은 합성 정답을 사용한다.
+
+구매처·구매일·용량 조건은 **같은 구매 건**에서 AND로 만족해야 한다. 가격 필터·정렬의
+모집단은 조건에 맞는 구매이며, 전체 재고 원가와 별도 값으로 제공한다. 재고 조건은 해당
+구매에 속한 병을 확인한다. 0원 구매를 포함하고 구매 없는 null 가격은 정렬 방향과 무관하게
+뒤에 둔다. 매장 최근/최저/평균과 외부 제안의 비교 기준은 선택한 SKU의 실구매가다.
 
 계산은 `domain/metrics.py`의 순수 함수로 구현하고, 목록·통계 조회 성능이 필요한 경로는 동일
 공식을 SQL 뷰로 이중 구현한다. **두 구현이 같은 결과를 내는지 검증하는 테스트를 둔다.**
@@ -483,7 +496,7 @@ UTC `timestamptz`다.
 
 ### 4.2 엔드포인트
 
-아래 표는 v1.8.2 릴리스 대상 API다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
+아래 표는 v1.9.0 구현 API다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
 라우터 단위로 인증을 요구하고(§6), 사용자 데이터는 소유권을 검사한다. 외부 연결·탐색·가격
 감시 경로의 동작은 [external-data.md](external-data.md)를 본다.
 
@@ -503,6 +516,7 @@ UTC `timestamptz`다.
 | bottles | `GET /bottles` | 병 목록 |
 | bottles | `GET /bottles/{bottle_id}` | 병 조회 |
 | bottles | `GET /bottles/{bottle_id}/history` | 병 변경 이력 |
+| bottles | `GET /bottles/{bottle_id}/correction-context` | 정정용 최신 병·규격·구매 버전 |
 | bottles | `GET /bottles/{bottle_id}/tastings` | 병의 최근 시음 50건, 기존 배열 응답 유지 |
 | bottles | `GET /bottles/{bottle_id}/tastings/page` | 커서로 오래된 시음까지 이어 보기 |
 | bottles | `POST /bottles/{bottle_id}:finish` | 소진 |
@@ -598,7 +612,8 @@ UTC `timestamptz`다.
 | products | `PATCH /products/{product_id}` | 제품 수정 |
 | products | `GET /products/{product_id}/metrics` | 파생 지표만 조회 |
 | products | `POST /products/{product_id}/skus` | 규격 추가 |
-| products | `PATCH /skus/{sku_id}` | 규격 수정 |
+| products | `PATCH /skus/{sku_id}` | 규격 수정. 사용 이력이 있으면 용량 변경 거부 |
+| products | `DELETE /skus/{sku_id}` | 미사용 규격만 삭제 |
 | purchases | `GET /purchases` | 구매 건 목록 |
 | purchases | `POST /purchases` | 구매 건 등록 |
 | purchases | `DELETE /purchases/{purchase_id}` | 구매 건 삭제 |
@@ -606,6 +621,8 @@ UTC `timestamptz`다.
 | purchases | `GET /purchases/{purchase_id}/bottles` | 구매 건의 병 목록 |
 | purchases | `GET /purchases/{purchase_id}/history` | 구매 건 변경 이력 |
 | purchases | `POST /purchases/{purchase_id}:split` | 구매 건 분할 |
+| purchases | `GET /purchases/{purchase_id}/correction-context` | 삭제된 자식까지 포함한 정정 전제조건 |
+| purchases | `POST /purchases/{purchase_id}:correct-sku` | ID·현재 상태를 보존하는 구매 규격 정정 |
 | saved-views | `GET /saved-views` | 저장된 뷰 목록 |
 | saved-views | `POST /saved-views` | 뷰 저장 |
 | saved-views | `DELETE /saved-views/{view_id}` | 뷰 삭제 |
@@ -620,7 +637,12 @@ UTC `timestamptz`다.
 | sync | `POST /sync/conflicts/{conflict_id}:resolve` | 충돌 확인 처리 |
 | tastings | `GET /tastings` | 시음 타임라인 |
 | tastings | `POST /tastings` | 시음 기록 |
-| tastings | `GET /tastings/summary` | 시음 요약 |
+| tastings | `GET /tastings/summary` | 제품·규격·병·기간별 시음 요약 |
+| tastings | `GET /tastings/page` | 맥락을 포함한 전체 커서 조회 |
+| tastings | `GET /tastings/{tasting_id}` | 시음과 판본·규격·병·구매 맥락 |
+| tastings | `GET /tastings/{tasting_id}/attachments` | 시음 첨부 |
+| tastings | `GET /tastings/{tasting_id}/history` | 시음 정정 이력 |
+| tastings | `POST /tastings/{tasting_id}:correct` | 기록만 정정 또는 양쪽 병 최종 상태 명시 |
 | tastings | `DELETE /tastings/{tasting_id}` | 시음 기록 삭제 |
 | vendors | `GET /vendors` | 구매처 목록 |
 | vendors | `POST /vendors` | 구매처 등록 |
@@ -643,8 +665,30 @@ UTC `timestamptz`다.
 ### 4.3 필터 규약
 
 `GET /products` 필터: `category_id`(하위 포함), `country`, `abv_min`/`abv_max`,
-`price_per_100ml_min`/`_max`, `in_stock`(bool), `rating_min`, `vendor_id`, `tag`,
-`q`(한글 부분 문자열), `vintage_min`/`_max`. 모두 AND로 결합한다.
+`price_per_100ml_min`/`_max`, `in_stock`(bool), `rating_min`, `vendor_id`, `variety`,
+`q`(한글 부분 문자열), `vintage_min`/`_max`, `volume_ml`,
+`purchased_on_min`/`purchased_on_max`. 모두 AND로 결합한다. 구매처·날짜·용량은 같은 구매 건에서
+만족해야 하며, 선택 조건의 가격·재고와 제품 전체 지표를 별도 필드로 제공한다.
+
+### 4.4 기록 탐색과 정정
+
+`GET /tastings/page`는 제품·규격·병·기간 필터와 커서, 판본·구매 맥락을 제공한다.
+REST 시음 응답의 맥락 필드는 추가형이며 sync 원본 DTO는 유지한다. 제품/구매/규격이 삭제된
+자식은 원본을 보존하면서 조회에서 숨긴다. 첫 조회·추가 조회·갱신 실패에도 읽은 목록을 남긴다.
+홈 최근 시음도 같은 소유권·유효 부모 검사와 날짜/ID 내림차순을 사용한다. 같은 날 새로
+기록한 시음이 오래된 기록 뒤에 밀리거나 삭제된 구매의 시음이 다시 나타나지 않는다.
+
+`POST /tastings/{id}:correct`와 `/purchases/{id}:correct-sku`는 online 전용이다.
+사용자·부모·영향받는 병을 잠그고 원본 시음 시각·병 revision·SKU 용량·자식 집합을 검사한다.
+시음 정정은 현재 상태·잔량 유지가 기본이며 `set_final`에서만 영향받는 양쪽 병의 최종값을
+함께 적용한다. 양을 바꾸거나 기록을 삭제했다고 과거 차감량을 자동 복원하지 않는다.
+구매 정정은 삭제된 자식도 버전 검사에 포함하고 ID·시음·첨부·QR 연결을 유지한다.
+사용 중인 SKU의 전역 용량 변경/삭제는 거부한다.
+
+정정의 request ID·입력 fingerprint와 결과를 기존 receipt에 남긴다. 응답 유실은 같은 ID로
+확인하고, 다른 입력의 ID 재사용·stale version은 409다. UI는 초안을 보존하며 최신 상태를
+명시적으로 재확인한다. 과거 receipt를 IndexedDB에 덮지 않고 최신 pull을 기다린다.
+정정 후 사용자가 다른 화면으로 이동했다면 늦은 성공으로 새 탐색 맥락을 바꾸지 않는다.
 
 ## 5. 오프라인 동기화 프로토콜
 
