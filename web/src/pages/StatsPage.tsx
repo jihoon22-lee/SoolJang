@@ -1,3 +1,4 @@
+import type { ProductContext } from "@/router";
 /**
  * 통계 대시보드 화면.
  *
@@ -126,7 +127,7 @@ const CATEGORY_MEASURES: CategoryMeasureDef[] = [
 ];
 
 interface StatsPageProps {
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
   onSelectCategory: (categoryId: string) => void;
   onOpenQuality?: () => void;
 }
@@ -245,6 +246,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
           <dl className="metrics-grid metrics-grid--hero">
             <Metric label="재고" value={`${totals.in_stock_count.toLocaleString("ko-KR")}병`} />
             <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
+            <Metric label="재고 원가" value={formatMoney(totals.inventory_value_at_cost ?? null)} />
             <Metric label="평균 100ml당 가격" value={formatMoney(totals.avg_price_per_100ml)} />
           </dl>
           <details className="metrics-more">
@@ -568,7 +570,7 @@ function RankingList({
   hint?: string;
   entries: RankingEntry[];
   formatValue: (value: string) => string;
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
 }) {
   return (
     <section aria-label={title}>

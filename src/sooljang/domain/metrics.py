@@ -61,6 +61,8 @@ class PurchaseLot:
     volume_ml: int
     unit_list_price: Decimal | None = None
     unit_paid_price: Decimal | None = None
+    purchase_id: str | None = None
+    sku_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.quantity <= 0:
@@ -90,6 +92,7 @@ class BottleRecord:
     status: str
     opened_on: datetime.date | None = None
     finished_on: datetime.date | None = None
+    purchase_id: str | None = None
 
     @property
     def in_stock(self) -> bool:
@@ -274,6 +277,51 @@ class ProductMetrics:
         return self.bottles.finished
 
 
+def _inventory_value_at_cost(
+    lots: Sequence[PurchaseLot], bottles: Sequence[BottleRecord]
+) -> Decimal | None:
+    """SKU별 원가를 확정한 뒤 합산한다. 표시용 평균은 계산 입력으로 재사용하지 않는다."""
+    if not lots:
+        return None
+    if all(lot.purchase_id is None and lot.sku_id is None for lot in lots) and all(
+        bottle.purchase_id is None for bottle in bottles
+    ):
+        # 예전 순수 함수 호출은 단일 규격에 한해서 호환한다. 앱 입력은 연결을 모두 보존한다.
+        if len({lot.volume_ml for lot in lots}) != 1:
+            raise ValueError("여러 규격의 원가를 계산하려면 구매·SKU 연결이 필요합니다")
+        return quantize_money(
+            sum((lot.paid_total for lot in lots), Decimal(0))
+            * Decimal(tally_bottles(bottles).in_stock)
+            / Decimal(sum(lot.quantity for lot in lots))
+        )
+
+    purchases: dict[str, str] = {}
+    amounts: dict[str, Decimal] = {}
+    quantities: dict[str, int] = {}
+    stock: dict[str, int] = {}
+    for lot in lots:
+        if lot.purchase_id is None or lot.sku_id is None:
+            raise ValueError("구매와 SKU 식별자가 필요합니다")
+        if lot.purchase_id in purchases:
+            raise ValueError("구매 식별자가 중복되었습니다")
+        purchases[lot.purchase_id] = lot.sku_id
+        amounts[lot.sku_id] = amounts.get(lot.sku_id, Decimal(0)) + lot.paid_total
+        quantities[lot.sku_id] = quantities.get(lot.sku_id, 0) + lot.quantity
+    for bottle in bottles:
+        if bottle.purchase_id is None or bottle.purchase_id not in purchases:
+            raise ValueError("병에 연결된 유효 구매가 필요합니다")
+        sku_id = purchases[bottle.purchase_id]
+        if bottle.in_stock:
+            stock[sku_id] = stock.get(sku_id, 0) + 1
+    return sum(
+        (
+            quantize_money(amount * Decimal(stock.get(sku_id, 0)) / Decimal(quantities[sku_id]))
+            for sku_id, amount in amounts.items()
+        ),
+        Decimal(0),
+    )
+
+
 def compute_product_metrics(
     lots: Sequence[PurchaseLot], bottles: Sequence[BottleRecord]
 ) -> ProductMetrics:
@@ -291,11 +339,7 @@ def compute_product_metrics(
             f"병 레코드 수({tally.total})가 구매 병수({prices.purchased_count})와 다릅니다"
         )
 
-    inventory_value = (
-        quantize_money(prices.avg_paid_price * Decimal(tally.in_stock))
-        if prices.avg_paid_price is not None
-        else None
-    )
+    inventory_value = _inventory_value_at_cost(lots, bottles)
 
     durations = [bottle.days_to_finish for bottle in bottles if bottle.days_to_finish is not None]
     average_days = (

@@ -4,10 +4,15 @@ import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
 import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
+import type { ProductContext } from "@/router";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
-export function InterestsPage({ onSelectProduct }: { onSelectProduct: (id: string) => void }) {
+export function InterestsPage({
+  onSelectProduct,
+}: {
+  onSelectProduct: (id: string, context?: ProductContext) => void;
+}) {
   const { state } = useSyncStatus();
   const online = state !== "offline";
   const cache = useQueryClient();
@@ -341,7 +346,7 @@ function InterestConversionForm({
   interest: Interest;
   disabled: boolean;
   onClose: () => void;
-  onConverted: (id: string) => void;
+  onConverted: (id: string, context?: ProductContext) => void;
 }) {
   const { triggerSync } = useSyncStatus();
   const formKey = `interest-purchase:${interest.id}`;

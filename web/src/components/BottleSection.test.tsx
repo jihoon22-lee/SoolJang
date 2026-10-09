@@ -145,7 +145,9 @@ describe("BottleSection", () => {
     await seed(bottles);
     renderSection(bottles);
 
-    await userEvent.click(screen.getByRole("button", { name: "한 병 개봉 (2번)" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /한 병 개봉 \(2번 · 700ml · 구매 pu1\)/ }),
+    );
     await waitFor(async () => expect((await db.bottle.get("b2"))?.status).toBe("open"));
     await userEvent.click(screen.getByRole("button", { name: /개봉한 병 다 마심/ }));
     await waitFor(async () => expect((await db.bottle.get("b1"))?.status).toBe("finished"));
@@ -232,4 +234,48 @@ describe("RemainingEditor (병 패널)", () => {
     await userEvent.click(screen.getByRole("button", { name: "다 마심(소진)" }));
     expect(onSet).toHaveBeenLastCalledWith(0);
   });
+});
+
+it("반복 구매의 같은 1번 병을 구매 참조로 구분하고 실제 병 ID를 넘긴다", async () => {
+  const firstPurchase = { ...purchase, id: "purchase-a" };
+  const secondPurchase = { ...purchase, id: "purchase-b" };
+  const onSelectContext = vi.fn();
+  renderWithQuery(
+    <BottleSection
+      bottles={[
+        bottle("b-a", 1, "unopened", { purchase_id: firstPurchase.id }),
+        bottle("b-b", 1, "unopened", { purchase_id: secondPurchase.id }),
+      ]}
+      purchases={[firstPurchase, secondPurchase]}
+      offline
+      selectedSkuId="s1"
+      onSelectContext={onSelectContext}
+    />,
+  );
+  const rows = screen.getAllByRole("button", { name: /^1번 병/ });
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toHaveTextContent("700ml");
+  expect(rows[0]?.textContent).not.toBe(rows[1]?.textContent);
+  await userEvent.click(rows[1] as HTMLElement);
+  expect(onSelectContext).toHaveBeenCalledWith({ skuId: "s1", bottleId: "b-b" });
+});
+
+it("선택한 지난 병은 접힌 과거 목록에서도 펼쳐지고 다른 규격은 실행 대상에 포함하지 않는다", () => {
+  const past = Array.from({ length: 5 }, (_, i) => bottle(`past-${i}`, i + 1, "finished"));
+  renderWithQuery(
+    <BottleSection
+      bottles={[...past, bottle("other", 1, "unopened", { purchase_id: "other-purchase" })]}
+      purchases={[
+        purchase,
+        { ...purchase, id: "other-purchase", sku_id: "other-sku", volume_ml: 350 },
+      ]}
+      offline
+      selectedSkuId="s1"
+      selectedBottleId="past-4"
+    />,
+  );
+  expect(screen.getByRole("button", { name: /^5번 병/ })).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText("개봉일")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /350ml/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /한 병 개봉/ })).not.toBeInTheDocument();
 });

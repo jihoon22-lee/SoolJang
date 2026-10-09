@@ -1,9 +1,14 @@
 import type { Product, ProductMetrics, SortKey, SortOrder } from "@/api/types";
-import { formatAbv, formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
+import { productEdition } from "@/components/productDisplay";
+
+import { SkuSummaryList } from "@/components/SkuMetricsTable";
+import { formatAbv, formatCategoryPath, formatMoney, formatRating } from "@/format";
+import type { ProductContext } from "@/router";
 
 interface ProductListProps {
   products: Product[];
-  onSelect: (productId: string) => void;
+  priceScopeLabel?: string | undefined;
+  onSelect: (productId: string, context?: ProductContext) => void;
   sort: SortKey;
   order: SortOrder;
   onSort: (key: SortKey) => void;
@@ -45,6 +50,7 @@ const COLUMNS: ColumnDef[] = [
  */
 export function ProductList({
   products,
+  priceScopeLabel,
   onSelect,
   sort,
   order,
@@ -115,12 +121,24 @@ export function ProductList({
                   <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
                     {product.name}
                   </button>
+                  {product.age_years !== null ? (
+                    <span className="purchase-context">{Number(product.age_years)}년 숙성</span>
+                  ) : null}
+                  {product.skus.length > 1 ? (
+                    <span className="purchase-context">
+                      {priceScopeLabel ?? "제품 가격: 전체 용량 구매 평균"}
+                    </span>
+                  ) : null}
+                  <SkuSummaryList
+                    product={product}
+                    onSelect={(skuId) => onSelect(product.id, { skuId })}
+                  />
                 </th>
                 <td className="numeric">{product.vintage ?? "—"}</td>
                 <td>{formatCategoryPath(product.category_path)}</td>
                 <td className="numeric">{formatAbv(product.abv)}</td>
                 <td className="numeric">
-                  <StockBadge metrics={product.metrics} />
+                  <StockBadge metrics={product.metrics} allSkus={product.skus.length > 1} />
                 </td>
                 <td className="numeric">
                   {formatMoney(product.metrics.avg_list_price, { short: true })}
@@ -155,14 +173,21 @@ export function ProductList({
             </h3>
             <p className="muted">
               {formatCategoryPath(product.category_path)}
-              {product.vintage !== null && ` · ${product.vintage}`}
-              {product.skus.length > 0 && ` · ${formatVolume(product.skus[0]?.volume_ml)}`}
-              {product.abv !== null && ` · ${formatAbv(product.abv)}`}
+              {productEdition(product) && ` · ${productEdition(product)}`}
             </p>
             {/* 모바일 카드는 두 줄 요약 — 재고와 가격·평점을 한 줄에 모아 한 화면에 더 많이 본다. */}
             <div className="product-card-meta">
-              <StockBadge metrics={product.metrics} />
+              <StockBadge metrics={product.metrics} allSkus={product.skus.length > 1} />
             </div>
+            <SkuSummaryList
+              product={product}
+              onSelect={(skuId) => onSelect(product.id, { skuId })}
+            />
+            {product.skus.length > 1 ? (
+              <p className="muted text-sm">
+                {priceScopeLabel ?? "제품 가격은 전체 용량 구매 기준"}
+              </p>
+            ) : null}
             <dl>
               <dt>평단가</dt>
               <dd>{formatMoney(product.metrics.avg_list_price)}</dd>
@@ -220,12 +245,13 @@ function ColumnHeader({
   );
 }
 
-function StockBadge({ metrics }: { metrics: ProductMetrics }) {
+function StockBadge({ metrics, allSkus = false }: { metrics: ProductMetrics; allSkus?: boolean }) {
   const { in_stock_count: count, opened_count, unopened_count } = metrics;
   const hasStock = count > 0;
   return (
     <>
       <span className={`badge ${hasStock ? "stock-some" : "stock-none"}`}>
+        {allSkus ? "전체 " : ""}
         {hasStock ? `재고 ${count}병` : "재고 없음"}
       </span>
       {hasStock && (

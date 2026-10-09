@@ -86,6 +86,12 @@ export interface ProductMetrics {
   value_for_money: string | null;
 }
 
+export interface SkuSummary {
+  sku_id: string;
+  volume_ml: number;
+  metrics: ProductMetrics;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -103,6 +109,8 @@ export interface Product {
   note: string | null;
   varieties: string[];
   skus: Sku[];
+  /** 구버전 응답에는 없을 수 있다. 로컬 조회는 항상 계산한다. */
+  sku_summaries?: SkuSummary[];
   metrics: ProductMetrics;
   created_at: string;
   updated_at: string;
@@ -200,6 +208,7 @@ export interface Vendor {
 
 export interface Purchase {
   id: string;
+  created_at?: string;
   sku_id: string;
   volume_ml: number | null;
   vendor_id: string | null;
@@ -477,6 +486,7 @@ export interface CategoryStat {
 }
 
 export interface StatsSummary {
+  inventory_value_at_cost?: Money;
   purchased_count: number;
   consumed_count: number;
   in_stock_count: number;

@@ -14,10 +14,13 @@ import { useToast } from "@/components/Toast";
 import { downloadCsv } from "@/csvExport";
 import { todayLocal } from "@/format";
 import { setLastVendorName } from "@/lastVendor";
+import { readProductListState, saveProductListState } from "@/productListState";
+import type { ProductContext } from "@/router";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
-import { db } from "@/sync/db";
+import { databaseIdentity, db } from "@/sync/db";
 import { clearFormDraft } from "@/sync/drafts";
 import { enqueue } from "@/sync/outbox";
+import { resolveProductContext } from "@/sync/productContext";
 import { enqueueProductDelete } from "@/sync/productDelete";
 import {
   filterAndSortProducts,
@@ -41,11 +44,14 @@ import { captureWriteSession } from "@/sync/writeSession";
 
 const DEFAULT_FILTERS: ProductFilters = { sort: "name", order: "asc", limit: 30 };
 const PAGE_SIZE = DEFAULT_FILTERS.limit ?? 30;
+const listScroller = () =>
+  document.querySelector<HTMLElement>(".product-list-results .table-scroll");
 
 interface ProductsPageProps {
   /** 상세로 진입한 제품 id. `null` 이면 목록을 보여준다. App 이 URL 해시로 제어한다. */
   selectedProductId: string | null;
-  onSelectProduct: (productId: string) => void;
+  context?: ProductContext;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
   onDeselectProduct: () => void;
   /** 통계 탭 등 다른 화면에서 주종 필터를 걸고 들어올 때만 준다. 마운트 시점에만
    * `filters.category_id` 를 시딩한다(`ProductForm` 의 `initialValues` 와 같은 패턴) —
@@ -77,6 +83,7 @@ async function enqueueCategoryChange(productId: string, categoryId: string | nul
 
 export function ProductsPage({
   selectedProductId,
+  context = {},
   onSelectProduct,
   onDeselectProduct,
   initialCategoryId,
@@ -86,10 +93,14 @@ export function ProductsPage({
   const toast = useToast();
   const { state } = useSyncStatus();
   const offline = state === "offline";
+  const owner = databaseIdentity().userId ?? "";
+  const [restoredList] = useState(() =>
+    initialCategoryId || initialVendorId ? null : readProductListState(owner),
+  );
   const [filters, setFilters] = useState<ProductFilters>(() => {
     if (initialCategoryId) return { ...DEFAULT_FILTERS, category_id: initialCategoryId };
     if (initialVendorId) return { ...DEFAULT_FILTERS, vendor_id: initialVendorId };
-    return DEFAULT_FILTERS;
+    return restoredList?.filters ?? DEFAULT_FILTERS;
   });
   // 재고 우선 정렬 켬/끔. 기기별 표시 설정이라 `filters`(서버 쿼리 계약)와 분리해 두고
   // `localStorage` 에 기억한다(`stockFirstPreference.ts`, `lastVendor.ts` 와 같은 패턴).
@@ -120,7 +131,7 @@ export function ProductsPage({
   // ProductForm 은 마운트 시점에만 initialValues 를 반영한다 — 폼이 이미 열려 있는 상태로
   // 라벨을 다시 스캔하면(재촬영) 이 값을 바꿔 강제로 다시 마운트시켜야 새 프리필이 반영된다.
   const [formInstance, setFormInstance] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [visibleCount, setVisibleCount] = useState(restoredList?.visibleCount ?? PAGE_SIZE);
   // 대량 편집(여러 제품 주종 일괄 변경) 상태. 온라인 전용이다(선택한 제품들에 PATCH 반복).
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -162,19 +173,43 @@ export function ProductsPage({
   // 상세로 들어가기 직전 스크롤 위치를 기억해 뒤로 왔을 때 되돌린다. `visibleCount`
   // ("더 보기" 로 펼친 개수)는 이 컴포넌트가 상세 진입/복귀 사이에 언마운트되지 않아
   // 별도 처리 없이도 이미 유지된다 — 스크롤 위치만 브라우저가 기억해 주지 않는다.
-  const savedScrollY = useRef<number | null>(null);
+  const savedScrollY = useRef<number | null>(restoredList?.scrollY ?? null);
+  const savedTableScroll = useRef(restoredList?.tableScrollTop ?? 0);
   useEffect(() => {
     // `null` 이면 아직 상세로 들어간 적이 없다는 뜻이다(최초 마운트 포함) — 되돌릴 위치가
     // 없으니 그냥 둔다.
-    if (selectedProductId === null && savedScrollY.current !== null) {
+    if (selectedProductId === null && allProducts !== undefined && savedScrollY.current !== null) {
       window.scrollTo(0, savedScrollY.current);
+      const scroller = listScroller();
+      if (scroller) scroller.scrollTop = savedTableScroll.current;
       savedScrollY.current = null;
     }
-  }, [selectedProductId]);
+  }, [selectedProductId, allProducts]);
 
-  function selectProduct(productId: string): void {
+  useEffect(() => {
+    if (selectedProductId !== null || allProducts === undefined) return;
+    const remember = () =>
+      saveProductListState(owner, {
+        filters,
+        visibleCount,
+        scrollY: window.scrollY,
+        tableScrollTop: listScroller()?.scrollTop ?? 0,
+      });
+    remember();
+    document.addEventListener("scroll", remember, { passive: true, capture: true });
+    return () => document.removeEventListener("scroll", remember, true);
+  }, [owner, filters, visibleCount, selectedProductId, allProducts]);
+
+  function selectProduct(productId: string, target?: ProductContext): void {
     savedScrollY.current = window.scrollY;
-    onSelectProduct(productId);
+    savedTableScroll.current = listScroller()?.scrollTop ?? 0;
+    saveProductListState(owner, {
+      filters,
+      visibleCount,
+      scrollY: window.scrollY,
+      tableScrollTop: savedTableScroll.current,
+    });
+    onSelectProduct(productId, target);
   }
 
   // 키보드 단축키: "/" 로 이름 검색 포커스, Esc 로 등록 폼 닫기. 이미 입력 중일 때는
@@ -322,7 +357,10 @@ export function ProductsPage({
   if (selectedProductId !== null) {
     return (
       <ProductDetailView
+        key={selectedProductId}
         productId={selectedProductId}
+        context={context}
+        onSelectContext={(next) => onSelectProduct(selectedProductId, next)}
         onBack={onDeselectProduct}
         vendorNames={vendorNames}
       />
@@ -343,7 +381,7 @@ export function ProductsPage({
         onStockFirstChange={updateStockFirst}
       />
 
-      <section aria-labelledby="products-heading">
+      <section aria-labelledby="products-heading" className="product-list-results">
         <div className="section-header">
           <h2 id="products-heading" className="page-title">
             내 술 {(allProducts?.length ?? 0) > 0 && `(${allProducts?.length})`}
@@ -558,16 +596,24 @@ function valuesFromProduct(product: Product): Partial<ProductFormValues> {
 
 function ProductDetailView({
   productId,
+  context,
+  onSelectContext,
   onBack,
   vendorNames,
 }: {
   productId: string;
+  context: ProductContext;
+  onSelectContext: (context: ProductContext) => void;
   onBack: () => void;
   vendorNames: string[];
 }) {
   const toast = useToast();
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
+  const target = useLiveQuery(
+    () => resolveProductContext(productId, context),
+    [productId, context.skuId, context.bottleId, context.tastingId],
+  );
   const product = useLiveQuery(() => getProduct(productId), [productId]);
   const purchases = useLiveQuery(() => getPurchasesForProduct(productId), [productId]);
   const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
@@ -716,7 +762,7 @@ function ProductDetailView({
     onSuccess: () => triggerSync(),
   });
 
-  if (product === undefined) {
+  if (product === undefined || target === undefined) {
     return <LoadingState label="상세 정보를 불러오고 있습니다…" />;
   }
 
@@ -728,6 +774,22 @@ function ProductDetailView({
         </p>
         <button type="button" onClick={onBack}>
           ← 목록으로
+        </button>
+      </>
+    );
+  }
+
+  if (target === null) {
+    return (
+      <>
+        <p role="alert" className="alert">
+          선택한 규격·병·시음이 삭제되었거나 이 술에 속하지 않습니다.
+        </p>
+        <button type="button" onClick={() => onSelectContext({})}>
+          제품 전체 보기
+        </button>
+        <button type="button" onClick={onBack}>
+          목록으로
         </button>
       </>
     );
@@ -751,6 +813,10 @@ function ProductDetailView({
     <ProductDetail
       key={product.id}
       product={product}
+      selectedSkuId={target.skuId}
+      selectedBottleId={target.bottleId}
+      selectedTastingId={target.tastingId}
+      onSelectContext={onSelectContext}
       purchases={purchases ?? []}
       bottles={bottles ?? []}
       offline={offline}
@@ -836,6 +902,7 @@ function exportProducts(products: Product[]): void {
       "구매(병)",
       "평단가",
       "실평단가",
+      "재고 원가",
       "100ml당",
       "내 평점",
     ],
@@ -848,6 +915,7 @@ function exportProducts(products: Product[]): void {
       product.metrics.purchased_count,
       product.metrics.avg_list_price,
       product.metrics.avg_paid_price,
+      product.metrics.inventory_value_at_cost,
       product.metrics.price_per_100ml,
       product.personal_rating,
     ]),

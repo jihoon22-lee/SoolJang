@@ -54,4 +54,4 @@ offline reconnect: remainingMl=670, original IDs retained
 지연 저장 보호는 Vitest 검증이며 실브라우저에 인위 지연을 주지는 않았다. 오프라인은
 이미 로드한 앱 범위다(`serviceWorkerControlled=false`). 설치·cold start·SW 업데이트,
 실기기·유료/외부 실연결·운영 복구/배포는 미실행이다. 전체 S01~S20 수용은 WP06에서
-별도로 실행한다. 운영 버전·DB·키·실제 기록은 변경하지 않았다. 원격 CI·머지는 대기 중이다.
+별도로 실행한다. 운영 버전·DB·키·실제 기록은 변경하지 않았다. [#162](https://github.com/jihoon22-lee/SoolJang/pull/162)의 [CI](https://github.com/jihoon22-lee/SoolJang/actions/runs/37958640737) 전체 통과 후 merge commit `c6d00c1`로 통합했다.

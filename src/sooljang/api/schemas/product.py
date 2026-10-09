@@ -89,7 +89,8 @@ class ProductUpdate(BaseModel):
 class ProductMetricsOut(BaseModel):
     """파생 지표. 저장하지 않고 매번 계산한다(`docs/architecture.md` §3).
 
-    금액이 `null` 인 것은 0원이 아니라 **가격 정보가 없다**는 뜻이다.
+    구매가 없으면 금액은 null이다. 구매 가격 공란은 0원으로 평균에 포함한다.
+    제품 원가는 SKU별로 확정한 원가의 합이며 평균 가격은 제품 전체 구매 기준이다.
     """
 
     purchased_count: int = 0
@@ -117,6 +118,14 @@ class ProductMetricsOut(BaseModel):
     )
 
 
+class SkuSummaryOut(BaseModel):
+    """동일 SKU의 전체 유효 구매와 현재 병에서 파생한 요약."""
+
+    sku_id: uuid.UUID
+    volume_ml: int
+    metrics: ProductMetricsOut
+
+
 class ProductOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -136,6 +145,7 @@ class ProductOut(BaseModel):
     note: str | None
     varieties: list[str] = Field(default_factory=list)
     skus: list[SkuOut] = Field(default_factory=list)
+    sku_summaries: list[SkuSummaryOut] = Field(default_factory=list)
     metrics: ProductMetricsOut = Field(default_factory=ProductMetricsOut)
     #: "등록일" 정렬(`SortKey.created_at`/`updated_at`)에 쓴다. 오프라인 Dexie 미러의
     #: `SyncRow` 는 이미 이 값들을 갖고 있었는데 온라인 응답에만 빠져 있었다 — 정렬
@@ -235,6 +245,7 @@ class PurchaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    created_at: datetime.datetime
     sku_id: uuid.UUID
     volume_ml: int | None = None
     vendor_id: uuid.UUID | None

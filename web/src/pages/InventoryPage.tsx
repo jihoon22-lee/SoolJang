@@ -1,3 +1,4 @@
+import type { ProductContext } from "@/router";
 /**
  * 보관 위치와 재고 실사.
  *
@@ -20,9 +21,10 @@ import {
 } from "@/api/collection";
 import { BottleQr, BottleQrCamera } from "@/components/BottleQr";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
+import { productEdition, purchaseReference } from "@/components/productDisplay";
 import { useToast } from "@/components/Toast";
 import { downloadCsv } from "@/csvExport";
-import { todayLocal } from "@/format";
+import { formatDate, formatVolume, todayLocal } from "@/format";
 import { matchesQuery } from "@/search";
 import { applyBottleTransitions, undoBottleTransitions } from "@/sync/bottleActions";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
@@ -56,7 +58,11 @@ function isInStock(bottle: InventoryBottle): boolean {
   return bottle.status === "open" || bottle.status === "unopened";
 }
 
-export function InventoryPage({ onSelectProduct }: { onSelectProduct: (id: string) => void }) {
+export function InventoryPage({
+  onSelectProduct,
+}: {
+  onSelectProduct: (id: string, context?: ProductContext) => void;
+}) {
   const { state } = useSyncStatus();
   const online = state !== "offline";
   const cache = useQueryClient();
@@ -194,7 +200,7 @@ function BottleLocations({
   online: boolean;
   pending: boolean;
   run: (work: () => Promise<unknown>) => Promise<void>;
-  onSelectProduct: (id: string) => void;
+  onSelectProduct: (id: string, context?: ProductContext) => void;
   locationName: (id: string | null) => string;
 }) {
   const toast = useToast();
@@ -307,7 +313,7 @@ function BottleLocations({
                   <td className="select-col">
                     <input
                       type="checkbox"
-                      aria-label={`${bottle.name} ${bottle.label_no}번 병 선택`}
+                      aria-label={`${inventoryBottleLabel(bottle, bottles)} 선택`}
                       checked={selected.has(bottle.id)}
                       onChange={() => toggle(bottle.id)}
                     />
@@ -316,9 +322,9 @@ function BottleLocations({
                     <button
                       type="button"
                       className="link-like"
-                      onClick={() => onSelectProduct(bottle.product_id)}
+                      onClick={() => onSelectProduct(bottle.product_id, { bottleId: bottle.id })}
                     >
-                      {bottle.name} #{bottle.label_no}
+                      {inventoryBottleLabel(bottle, bottles)}
                     </button>
                     {bottle.legacy_location ? (
                       <span className="muted text-sm"> · 기존 메모: {bottle.legacy_location}</span>
@@ -326,7 +332,7 @@ function BottleLocations({
                   </th>
                   <td>
                     <select
-                      aria-label={`${bottle.name} ${bottle.label_no}번 병 위치`}
+                      aria-label={`${inventoryBottleLabel(bottle, bottles)} 위치`}
                       disabled={!online || pending}
                       value={bottle.location_id ?? ""}
                       onChange={(event) => {
@@ -422,9 +428,7 @@ function BottleQrCard({
   });
   return (
     <section className="card">
-      <h3>
-        {bottle.name} #{bottle.label_no}
-      </h3>
+      <h3>{inventoryBottleLabel(bottle, [bottle])}</h3>
       <BottleQr code={bottle.bottle_code} />
       <button type="button" onClick={() => window.print()}>
         QR 인쇄
@@ -590,8 +594,8 @@ function StocktakePanel({
   pending: boolean;
   run: (work: () => Promise<unknown>) => Promise<void>;
   sessionId: string;
-  setSessionId: (id: string) => void;
-  onSelectProduct: (id: string) => void;
+  setSessionId: (id: string, context?: ProductContext) => void;
+  onSelectProduct: (id: string, context?: ProductContext) => void;
   locationName: (id: string | null) => string;
 }) {
   const toast = useToast();
@@ -881,12 +885,12 @@ function StocktakePanel({
                           })
                         }
                       />
-                      {bottle.name} #{bottle.label_no}
+                      {inventoryBottleLabel(bottle, bottles)}
                     </label>{" "}
                     <button
                       type="button"
                       className="sort-button"
-                      onClick={() => onSelectProduct(bottle.product_id)}
+                      onClick={() => onSelectProduct(bottle.product_id, { bottleId: bottle.id })}
                     >
                       제품 보기
                     </button>
@@ -1091,4 +1095,26 @@ function ObservationCorrection({
       </div>
     </form>
   );
+}
+
+function inventoryBottleLabel(bottle: InventoryBottle, bottles: InventoryBottle[]): string {
+  const context = [
+    bottle.volume_ml ? formatVolume(bottle.volume_ml) : null,
+    productEdition({
+      vintage: bottle.vintage ?? null,
+      age_years: bottle.age_years ?? null,
+      abv: bottle.abv ?? null,
+    }),
+    bottle.purchased_on ? formatDate(bottle.purchased_on) : null,
+    bottle.vendor_name,
+    bottle.purchase_id
+      ? purchaseReference(
+          bottle.purchase_id,
+          bottles.flatMap((item) => (item.purchase_id ? [item.purchase_id] : [])),
+        )
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return `${bottle.name} ${bottle.label_no}번 병${context ? ` · ${context}` : ""}`;
 }

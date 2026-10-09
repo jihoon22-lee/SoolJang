@@ -321,7 +321,10 @@ describe("ProductDetail", () => {
       expect(screen.getByRole("heading", { name: /병 2개/ })).toHaveTextContent("재고 1");
       // 구매가 여러 건이면 어느 구매의 병인지 구매일·구매처를 함께 보인다.
       const labels = screen.getAllByText(/^\d번 병/).map((el) => el.textContent);
-      expect(labels).toEqual(["1번 병 · 2026-03-01 · 가상마트", "2번 병 · 2026-03-01 · 가상마트"]);
+      expect(labels).toEqual([
+        "1번 병 · 700ml · 12년 숙성 · 46% · 2026-03-01 · 가상마트 · 구매 pu1",
+        "2번 병 · 700ml · 12년 숙성 · 46% · 2026-03-01 · 가상마트 · 구매 pu1",
+      ]);
     });
 
     it("병을 누르면 펼쳐져 상세 패널이 나온다", async () => {
@@ -681,4 +684,75 @@ describe("구매 저장 중 입력 보호", () => {
     expect(screen.getByLabelText("구매처")).toHaveValue("새 입력");
     expect(Object.values(localStorage).join()).toContain("새 입력");
   });
+});
+
+it("선택한 SKU의 구매와 병을 펼치고 전체 제품 지표 및 선택 가격의 범위를 구분한다", async () => {
+  const onSelectContext = vi.fn();
+  const otherSku = {
+    id: "s2",
+    volume_ml: 350,
+    barcode: null,
+    barcode_type: null,
+    package_note: null,
+  };
+  const selectedMetrics = {
+    ...metrics,
+    in_stock_count: 1,
+    purchased_count: 1,
+    avg_paid_price: "5000",
+    price_per_100ml_paid: "1428.57",
+  };
+  setup({
+    product: {
+      ...product,
+      vintage: 2020,
+      skus: [...product.skus, otherSku],
+      sku_summaries: [
+        { sku_id: "s1", volume_ml: 700, metrics },
+        { sku_id: "s2", volume_ml: 350, metrics: selectedMetrics },
+      ],
+    },
+    purchases: [
+      purchases[0] as Purchase,
+      { ...(purchases[1] as Purchase), sku_id: "s2", volume_ml: 350 },
+    ],
+    bottles: [
+      {
+        id: "large-bottle",
+        purchase_id: "pu1",
+        label_no: 1,
+        status: "unopened",
+        opened_on: null,
+        finished_on: null,
+        remaining_ml: null,
+        storage_location: null,
+        note: null,
+      },
+      {
+        id: "small-bottle",
+        purchase_id: "pu2",
+        label_no: 1,
+        status: "unopened",
+        opened_on: null,
+        finished_on: null,
+        remaining_ml: null,
+        storage_location: null,
+        note: null,
+      },
+    ],
+    offline: true,
+    selectedSkuId: "s2",
+    selectedBottleId: "small-bottle",
+    onSelectContext,
+  });
+  const purchaseTable = screen.getByRole("table", { name: "구매 이력" });
+  expect(purchaseTable).toHaveTextContent("350ml2020 빈티지 · 12년 숙성 · 46%구매 pu2");
+  expect(purchaseTable).not.toHaveTextContent("구매 pu1");
+  expect(screen.getByRole("button", { name: /^1번 병/ })).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText(/전체 용량 구매 평균/)).toBeInTheDocument();
+  expect(
+    screen.getByText("350ml의 전체 구매 실평단가를 외부 제안과 비교합니다."),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "700ml" }));
+  expect(onSelectContext).toHaveBeenCalledWith({ skuId: "s1" });
 });

@@ -6,6 +6,7 @@ import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
 import { ToastProvider } from "@/components/Toast";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ProductsPage } from "@/pages/ProductsPage";
+import type { ProductContext } from "@/router";
 import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
@@ -58,6 +59,8 @@ function product(id: string, name: string): Product {
 
 const emptyTree: CategoryTree = { items: [], max_depth: 0, depth_limit: 8 };
 
+beforeEach(() => sessionStorage.clear());
+
 afterEach(() => {
   vi.unstubAllGlobals();
   // 구매 완료 시 마지막 구매처 이름을 localStorage 에 남긴다(`lastVendor.ts`) — 다음
@@ -82,10 +85,15 @@ describe("ProductsPage", () => {
   /** App.tsx 가 URL 해시로 하는 선택 상태 제어를, 테스트에서는 로컬 state 로 흉내낸다. */
   function ProductsPageHarness() {
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+    const [context, setContext] = useState<ProductContext>({});
     return (
       <ProductsPage
         selectedProductId={selectedProductId}
-        onSelectProduct={setSelectedProductId}
+        context={context}
+        onSelectProduct={(id, next = {}) => {
+          setSelectedProductId(id);
+          setContext(next);
+        }}
         onDeselectProduct={() => setSelectedProductId(null)}
         onOpenStoreMode={vi.fn()}
       />
@@ -172,7 +180,7 @@ describe("ProductsPage", () => {
       await seedProduct(`p${i}`, `술 ${String(i).padStart(2, "0")}`);
     }
 
-    renderProductsPage();
+    const view = renderProductsPage();
     await screen.findByRole("table");
     expect(screen.getByRole("heading", { name: "내 술 (31)" })).toBeInTheDocument();
 
@@ -185,6 +193,11 @@ describe("ProductsPage", () => {
       expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(32);
     });
     expect(screen.queryByRole("button", { name: "더 보기" })).not.toBeInTheDocument();
+    view.unmount();
+    renderProductsPage();
+    await waitFor(() =>
+      expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(32),
+    );
   });
 
   it("이름으로 검색하면 일치하는 제품만 남는다", async () => {
@@ -296,7 +309,7 @@ describe("ProductsPage", () => {
       const table = screen.getByRole("table");
       // 정렬 헤더도 버튼이라 tbody 로 좁혀 제품 이름 버튼만 본다.
       const rows = within(table).getAllByRole("row").slice(1);
-      const names = rows.map((row) => within(row).getByRole("button").textContent);
+      const names = rows.map((row) => within(row).getAllByRole("button")[0]?.textContent);
       expect(names).toEqual(["비싼 술", "저렴한 술"]);
     });
   });
@@ -312,7 +325,7 @@ describe("ProductsPage", () => {
     await waitFor(() => {
       const table = screen.getByRole("table");
       const rows = within(table).getAllByRole("row").slice(1);
-      const names = rows.map((row) => within(row).getByRole("button").textContent);
+      const names = rows.map((row) => within(row).getAllByRole("button")[0]?.textContent);
       expect(names).toEqual(["나재고", "가없음"]);
     });
   });
@@ -331,7 +344,7 @@ describe("ProductsPage", () => {
     await waitFor(() => {
       const table = screen.getByRole("table");
       const rows = within(table).getAllByRole("row").slice(1);
-      const names = rows.map((row) => within(row).getByRole("button").textContent);
+      const names = rows.map((row) => within(row).getAllByRole("button")[0]?.textContent);
       expect(names).toEqual(["가없음", "나재고"]);
     });
   });
@@ -805,10 +818,16 @@ describe("ProductsPage", () => {
 
     renderProductsPage();
     const [link] = await screen.findAllByRole("button", { name: "스크롤 대상" });
+    const scroller = document.querySelector<HTMLElement>(".product-list-results .table-scroll");
+    if (!scroller) throw new Error("목록 스크롤 영역 누락");
+    scroller.scrollTop = 330;
     await userEvent.click(link as Element);
     await userEvent.click(await screen.findByRole("button", { name: "← 목록으로" }));
 
     expect(scrollToSpy).toHaveBeenCalledWith(0, 500);
+    expect(
+      document.querySelector<HTMLElement>(".product-list-results .table-scroll")?.scrollTop,
+    ).toBe(330);
     scrollToSpy.mockRestore();
     Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
   });

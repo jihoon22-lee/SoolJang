@@ -108,6 +108,7 @@ class StatsSummary:
     discount_rate: Decimal | None
     avg_personal_rating: Decimal | None
     vendor_count: int
+    inventory_value_at_cost: Decimal | None = None
 
 
 def _money(value: Any) -> Decimal | None:
@@ -313,6 +314,7 @@ async def get_summary(session: AsyncSession, *, user_id: uuid.UUID) -> StatsSumm
         discount_rate=discount_rate,
         avg_personal_rating=_mean(row.personal_rating for row in rows),
         vendor_count=vendor_count,
+        inventory_value_at_cost=_sum_decimal(row.inventory_value_at_cost for row in rows),
     )
 
 

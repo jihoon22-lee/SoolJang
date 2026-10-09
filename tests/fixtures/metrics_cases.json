@@ -259,5 +259,742 @@
       "disposed": 2,
       "total": 6
     }
-  }
+  },
+  "product_metrics_cases": [
+    {
+      "name": "g01_finished_small_sku_keeps_large_sku_cost",
+      "skus": [
+        {
+          "sku_id": "sku-500",
+          "volume_ml": 500
+        },
+        {
+          "sku_id": "sku-750",
+          "volume_ml": 750
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "10000",
+          "unit_paid_price": "10000"
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-750",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "finished",
+          "remaining_ml": 0
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-2",
+          "status": "unopened",
+          "remaining_ml": null
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 2,
+          "consumed_count": 1,
+          "in_stock_count": 1,
+          "unopened_count": 1,
+          "opened_count": 0,
+          "avg_list_price": "20000.00",
+          "avg_paid_price": "20000.00",
+          "list_total": "40000.00",
+          "paid_total": "40000.00",
+          "price_per_100ml": "3200.00",
+          "price_per_100ml_paid": "3200.00",
+          "total_volume_ml": 1250,
+          "inventory_value_at_cost": "30000.00"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-750",
+            "volume_ml": 750,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 1,
+              "unopened_count": 1,
+              "opened_count": 0,
+              "consumed_count": 0,
+              "avg_paid_price": "30000.00",
+              "price_per_100ml": "4000.00",
+              "inventory_value_at_cost": "30000.00"
+            }
+          },
+          {
+            "sku_id": "sku-500",
+            "volume_ml": 500,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 0,
+              "unopened_count": 0,
+              "opened_count": 0,
+              "consumed_count": 1,
+              "avg_paid_price": "10000.00",
+              "price_per_100ml": "2000.00",
+              "inventory_value_at_cost": "0.00"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "g04_reversed_sku_insertion_keeps_identical_summary",
+      "skus": [
+        {
+          "sku_id": "sku-750",
+          "volume_ml": 750
+        },
+        {
+          "sku_id": "sku-500",
+          "volume_ml": 500
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-750",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        },
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "10000",
+          "unit_paid_price": "10000"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-2",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "finished",
+          "remaining_ml": 0
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 2,
+          "consumed_count": 1,
+          "in_stock_count": 1,
+          "unopened_count": 1,
+          "opened_count": 0,
+          "avg_list_price": "20000.00",
+          "avg_paid_price": "20000.00",
+          "list_total": "40000.00",
+          "paid_total": "40000.00",
+          "price_per_100ml": "3200.00",
+          "price_per_100ml_paid": "3200.00",
+          "total_volume_ml": 1250,
+          "inventory_value_at_cost": "30000.00"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-750",
+            "volume_ml": 750,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 1,
+              "unopened_count": 1,
+              "opened_count": 0,
+              "consumed_count": 0,
+              "avg_paid_price": "30000.00",
+              "price_per_100ml": "4000.00",
+              "inventory_value_at_cost": "30000.00"
+            }
+          },
+          {
+            "sku_id": "sku-500",
+            "volume_ml": 500,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 0,
+              "unopened_count": 0,
+              "opened_count": 0,
+              "consumed_count": 1,
+              "avg_paid_price": "10000.00",
+              "price_per_100ml": "2000.00",
+              "inventory_value_at_cost": "0.00"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "g04_stock_in_small_sku_uses_small_sku_cost",
+      "skus": [
+        {
+          "sku_id": "sku-500",
+          "volume_ml": 500
+        },
+        {
+          "sku_id": "sku-750",
+          "volume_ml": 750
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "10000",
+          "unit_paid_price": "10000"
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-750",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-2",
+          "status": "finished",
+          "remaining_ml": 0
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 2,
+          "consumed_count": 1,
+          "in_stock_count": 1,
+          "unopened_count": 1,
+          "opened_count": 0,
+          "avg_list_price": "20000.00",
+          "avg_paid_price": "20000.00",
+          "list_total": "40000.00",
+          "paid_total": "40000.00",
+          "price_per_100ml": "3200.00",
+          "price_per_100ml_paid": "3200.00",
+          "total_volume_ml": 1250,
+          "inventory_value_at_cost": "10000.00"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-500",
+            "volume_ml": 500,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 1,
+              "unopened_count": 1,
+              "opened_count": 0,
+              "consumed_count": 0,
+              "avg_paid_price": "10000.00",
+              "inventory_value_at_cost": "10000.00"
+            }
+          },
+          {
+            "sku_id": "sku-750",
+            "volume_ml": 750,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 0,
+              "unopened_count": 0,
+              "opened_count": 0,
+              "consumed_count": 1,
+              "avg_paid_price": "30000.00",
+              "inventory_value_at_cost": "0.00"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "g04_all_finished_skus_have_zero_cost",
+      "skus": [
+        {
+          "sku_id": "sku-500",
+          "volume_ml": 500
+        },
+        {
+          "sku_id": "sku-750",
+          "volume_ml": 750
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "10000",
+          "unit_paid_price": "10000"
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-750",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "finished",
+          "remaining_ml": 0
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-2",
+          "status": "finished",
+          "remaining_ml": 0
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 2,
+          "consumed_count": 2,
+          "in_stock_count": 0,
+          "unopened_count": 0,
+          "opened_count": 0,
+          "avg_list_price": "20000.00",
+          "avg_paid_price": "20000.00",
+          "list_total": "40000.00",
+          "paid_total": "40000.00",
+          "price_per_100ml": "3200.00",
+          "price_per_100ml_paid": "3200.00",
+          "total_volume_ml": 1250,
+          "inventory_value_at_cost": "0.00"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-500",
+            "volume_ml": 500,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 0,
+              "unopened_count": 0,
+              "opened_count": 0,
+              "consumed_count": 1,
+              "avg_paid_price": "10000.00",
+              "price_per_100ml": "2000.00",
+              "inventory_value_at_cost": "0.00"
+            }
+          },
+          {
+            "sku_id": "sku-750",
+            "volume_ml": 750,
+            "metrics": {
+              "purchased_count": 1,
+              "in_stock_count": 0,
+              "unopened_count": 0,
+              "opened_count": 0,
+              "consumed_count": 1,
+              "avg_paid_price": "30000.00",
+              "price_per_100ml": "4000.00",
+              "inventory_value_at_cost": "0.00"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "g04_free_purchases_unknown_open_remaining_and_unpurchased_sku",
+      "skus": [
+        {
+          "sku_id": "sku-700",
+          "volume_ml": 700
+        },
+        {
+          "sku_id": "sku-1000",
+          "volume_ml": 1000
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-700",
+          "quantity": 1,
+          "unit_list_price": null,
+          "unit_paid_price": null
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-700",
+          "quantity": 1,
+          "unit_list_price": "0",
+          "unit_paid_price": "0"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-2",
+          "status": "open",
+          "remaining_ml": null
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 2,
+          "in_stock_count": 2,
+          "unopened_count": 1,
+          "opened_count": 1,
+          "avg_paid_price": "0.00",
+          "avg_list_price": "0.00",
+          "discount_rate": null,
+          "inventory_value_at_cost": "0.00",
+          "total_volume_ml": 1400
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-700",
+            "volume_ml": 700,
+            "metrics": {
+              "purchased_count": 2,
+              "in_stock_count": 2,
+              "unopened_count": 1,
+              "opened_count": 1,
+              "avg_paid_price": "0.00",
+              "inventory_value_at_cost": "0.00"
+            }
+          },
+          {
+            "sku_id": "sku-1000",
+            "volume_ml": 1000,
+            "metrics": {
+              "purchased_count": 0,
+              "in_stock_count": 0,
+              "unopened_count": 0,
+              "opened_count": 0,
+              "avg_paid_price": null,
+              "avg_list_price": null,
+              "price_per_100ml": null,
+              "paid_total": null,
+              "inventory_value_at_cost": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "g05_cost_uses_unrounded_sku_average",
+      "skus": [
+        {
+          "sku_id": "sku-700",
+          "volume_ml": 700
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-700",
+          "quantity": 2,
+          "unit_list_price": "20000",
+          "unit_paid_price": "20000"
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-700",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-1",
+          "status": "open",
+          "remaining_ml": 200
+        },
+        {
+          "bottle_id": "bottle-3",
+          "purchase_id": "purchase-2",
+          "status": "finished",
+          "remaining_ml": 0
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 3,
+          "consumed_count": 1,
+          "in_stock_count": 2,
+          "unopened_count": 1,
+          "opened_count": 1,
+          "avg_paid_price": "23333.33",
+          "paid_total": "70000.00",
+          "price_per_100ml_paid": "3333.33",
+          "total_volume_ml": 2100,
+          "inventory_value_at_cost": "46666.67"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-700",
+            "volume_ml": 700,
+            "metrics": {
+              "purchased_count": 3,
+              "in_stock_count": 2,
+              "unopened_count": 1,
+              "opened_count": 1,
+              "consumed_count": 1,
+              "avg_paid_price": "23333.33",
+              "inventory_value_at_cost": "46666.67"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "sku_costs_are_rounded_before_product_sum",
+      "skus": [
+        {
+          "sku_id": "sku-500",
+          "volume_ml": 500
+        },
+        {
+          "sku_id": "sku-750",
+          "volume_ml": 750
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-500",
+          "quantity": 2,
+          "unit_list_price": "20000",
+          "unit_paid_price": "20000"
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        },
+        {
+          "purchase_id": "purchase-3",
+          "sku_id": "sku-750",
+          "quantity": 2,
+          "unit_list_price": "20000",
+          "unit_paid_price": "20000"
+        },
+        {
+          "purchase_id": "purchase-4",
+          "sku_id": "sku-750",
+          "quantity": 1,
+          "unit_list_price": "30000",
+          "unit_paid_price": "30000"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-1",
+          "status": "open",
+          "remaining_ml": 200
+        },
+        {
+          "bottle_id": "bottle-3",
+          "purchase_id": "purchase-2",
+          "status": "finished",
+          "remaining_ml": 0
+        },
+        {
+          "bottle_id": "bottle-4",
+          "purchase_id": "purchase-3",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-5",
+          "purchase_id": "purchase-3",
+          "status": "open",
+          "remaining_ml": 200
+        },
+        {
+          "bottle_id": "bottle-6",
+          "purchase_id": "purchase-4",
+          "status": "finished",
+          "remaining_ml": 0
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 6,
+          "in_stock_count": 4,
+          "consumed_count": 2,
+          "avg_paid_price": "23333.33",
+          "paid_total": "140000.00",
+          "inventory_value_at_cost": "93333.34"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-500",
+            "volume_ml": 500,
+            "metrics": {
+              "purchased_count": 3,
+              "in_stock_count": 2,
+              "avg_paid_price": "23333.33",
+              "inventory_value_at_cost": "46666.67"
+            }
+          },
+          {
+            "sku_id": "sku-750",
+            "volume_ml": 750,
+            "metrics": {
+              "purchased_count": 3,
+              "in_stock_count": 2,
+              "avg_paid_price": "23333.33",
+              "inventory_value_at_cost": "46666.67"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "no_skus_no_purchases_keep_null_cost",
+      "skus": [],
+      "lots": [],
+      "bottles": [],
+      "expected": {
+        "metrics": {
+          "purchased_count": 0,
+          "in_stock_count": 0,
+          "avg_paid_price": null,
+          "inventory_value_at_cost": null
+        },
+        "sku_summaries": []
+      }
+    },
+    {
+      "name": "unpurchased_sku_has_null_prices_and_cost",
+      "skus": [
+        {
+          "sku_id": "sku-750",
+          "volume_ml": 750
+        }
+      ],
+      "lots": [],
+      "bottles": [],
+      "expected": {
+        "metrics": {
+          "purchased_count": 0,
+          "in_stock_count": 0,
+          "avg_paid_price": null,
+          "inventory_value_at_cost": null
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-750",
+            "volume_ml": 750,
+            "metrics": {
+              "purchased_count": 0,
+              "in_stock_count": 0,
+              "avg_paid_price": null,
+              "inventory_value_at_cost": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "half_cent_sku_cost_rounds_up",
+      "skus": [
+        {
+          "sku_id": "sku-500",
+          "volume_ml": 500
+        }
+      ],
+      "lots": [
+        {
+          "purchase_id": "purchase-1",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "0.01",
+          "unit_paid_price": "0.01"
+        },
+        {
+          "purchase_id": "purchase-2",
+          "sku_id": "sku-500",
+          "quantity": 1,
+          "unit_list_price": "0",
+          "unit_paid_price": "0"
+        }
+      ],
+      "bottles": [
+        {
+          "bottle_id": "bottle-1",
+          "purchase_id": "purchase-1",
+          "status": "unopened",
+          "remaining_ml": null
+        },
+        {
+          "bottle_id": "bottle-2",
+          "purchase_id": "purchase-2",
+          "status": "finished",
+          "remaining_ml": 0
+        }
+      ],
+      "expected": {
+        "metrics": {
+          "purchased_count": 2,
+          "in_stock_count": 1,
+          "avg_paid_price": "0.01",
+          "inventory_value_at_cost": "0.01"
+        },
+        "sku_summaries": [
+          {
+            "sku_id": "sku-500",
+            "volume_ml": 500,
+            "metrics": {
+              "purchased_count": 2,
+              "in_stock_count": 1,
+              "avg_paid_price": "0.01",
+              "inventory_value_at_cost": "0.01"
+            }
+          }
+        ]
+      }
+    }
+  ]
 }

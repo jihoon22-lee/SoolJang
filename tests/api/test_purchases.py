@@ -185,6 +185,9 @@ def test_same_product_records_multiple_purchases(api_client: TestClient, prefix:
 def test_bottles_are_created_per_quantity(api_client: TestClient, prefix: str) -> None:
     _, sku_id = _product_with_sku(api_client, prefix)
     purchase = _post(api_client, f"{prefix}/purchases", {"sku_id": sku_id, "quantity": 3})
+    assert isinstance(purchase["created_at"], str)
+    listed = api_client.get(f"{prefix}/purchases").json()
+    assert listed[0]["created_at"] == purchase["created_at"]
 
     bottles = api_client.get(f"{prefix}/purchases/{purchase['id']}/bottles").json()
 

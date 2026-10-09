@@ -9,11 +9,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { collectionApi } from "@/api/collection";
-import type { Bottle, BottleStatus, Purchase } from "@/api/types";
+import type { Bottle, BottleStatus, Product, Purchase } from "@/api/types";
 import { BottlePanel, formatRemaining, STATUS_LABELS } from "@/components/BottlePanel";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
+import { productEdition, purchaseReference } from "@/components/productDisplay";
 import { useToast } from "@/components/Toast";
-import { formatDate } from "@/format";
+import { formatDate, formatVolume } from "@/format";
+import type { ProductContext } from "@/router";
 import {
   applyBottleTransitions,
   type BulkTransitionResult,
@@ -35,31 +37,39 @@ const ACTION_LABELS: Partial<Record<TransitionAction, string>> = {
 /** 지난 병(소진·증여·판매)이 이보다 많으면 접어 둔다. 지금 마실 수 있는 병이 먼저 보이게. */
 const PAST_VISIBLE_LIMIT = 3;
 
-function purchaseLabel(purchase: Purchase | undefined): string | null {
-  if (!purchase) return null;
-  const date = purchase.purchased_on ? formatDate(purchase.purchased_on) : null;
-  return [date, purchase.vendor_name].filter(Boolean).join(" · ") || null;
-}
-
 export function BottleSection({
+  product,
+  selectedSkuId,
+  selectedBottleId,
+  selectedTastingId,
+  onSelectContext,
+  onSavingChange,
   bottles,
   purchases,
   offline,
 }: {
+  product?: Product | undefined;
+  selectedSkuId?: string | undefined;
+  selectedBottleId?: string | undefined;
+  selectedTastingId?: string | undefined;
+  onSelectContext?: ((context: ProductContext) => void) | undefined;
+  onSavingChange?: ((saving: boolean) => void) | undefined;
   bottles: Bottle[];
   purchases: Purchase[];
   offline: boolean;
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [localExpandedId, setExpandedId] = useState<string | null>(null);
+  const expandedId = selectedBottleId ?? localExpandedId;
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [handOver, setHandOver] = useState<HandOverAction | null>(null);
   const [moving, setMoving] = useState(false);
   const [showPast, setShowPast] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [savingBottle, setSavingBottle] = useState(false);
+  const [savingBottleId, setSavingBottleId] = useState<string | null>(null);
+  const savingBottle = savingBottleId !== null && savingBottleId === expandedId;
   const [error, setError] = useState<string | null>(null);
 
   const purchaseById = useMemo(
@@ -67,7 +77,42 @@ export function BottleSection({
     [purchases],
   );
   // 구매가 여러 건이면 번호만으로는 어느 병인지 모른다 — 구매일·구매처를 함께 보인다.
-  const showPurchase = purchases.length > 1;
+  const visibleBottles = useMemo(
+    () =>
+      selectedSkuId
+        ? bottles.filter((bottle) => purchaseById.get(bottle.purchase_id)?.sku_id === selectedSkuId)
+        : bottles,
+    [bottles, purchaseById, selectedSkuId],
+  );
+  const purchaseIds = purchases.map((purchase) => purchase.id);
+  function bottleContext(bottle: Bottle): string {
+    const purchase = purchaseById.get(bottle.purchase_id);
+    const sku = product?.skus.find((sku) => sku.id === purchase?.sku_id);
+    return [
+      formatVolume(purchase?.volume_ml ?? sku?.volume_ml),
+      product ? productEdition(product) : null,
+      purchase ? formatDate(purchase.purchased_on) : null,
+      purchase?.vendor_name ?? "구매처 미기록",
+      purchaseReference(bottle.purchase_id, purchaseIds),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  function actionContext(bottle: Bottle): string {
+    const purchase = purchaseById.get(bottle.purchase_id);
+    const sku = product?.skus.find((sku) => sku.id === purchase?.sku_id);
+    return `${formatVolume(purchase?.volume_ml ?? sku?.volume_ml)} · ${purchaseReference(bottle.purchase_id, purchaseIds)}`;
+  }
+  function expandBottle(bottle: Bottle): void {
+    if (savingBottle) return;
+    const next = expandedId === bottle.id ? null : bottle.id;
+    if (onSelectContext)
+      onSelectContext({
+        ...(selectedSkuId ? { skuId: selectedSkuId } : {}),
+        ...(next ? { bottleId: next } : {}),
+      });
+    else setExpandedId(next);
+  }
 
   const locations = useQuery({
     queryKey: ["collection", "locations"],
@@ -79,24 +124,31 @@ export function BottleSection({
   const sorted = useMemo(() => {
     const order = (bottle: Bottle) => (IN_STOCK.includes(bottle.status) ? 0 : 1);
     const day = (bottle: Bottle) => purchaseById.get(bottle.purchase_id)?.purchased_on ?? "";
-    return [...bottles].sort(
-      (a, b) => order(a) - order(b) || day(a).localeCompare(day(b)) || a.label_no - b.label_no,
+    return [...visibleBottles].sort(
+      (a, b) =>
+        order(a) - order(b) ||
+        day(a).localeCompare(day(b)) ||
+        a.label_no - b.label_no ||
+        a.id.localeCompare(b.id),
     );
-  }, [bottles, purchaseById]);
+  }, [visibleBottles, purchaseById]);
   const inStock = sorted.filter((bottle) => IN_STOCK.includes(bottle.status));
   const past = sorted.filter((bottle) => !IN_STOCK.includes(bottle.status));
-  const visiblePast = showPast || past.length <= PAST_VISIBLE_LIMIT ? past : [];
+  const visiblePast =
+    showPast || past.length <= PAST_VISIBLE_LIMIT
+      ? past
+      : past.filter((bottle) => bottle.id === expandedId);
 
   // 목록이 바뀌면(동기화·삭제) 사라진 병은 선택에서 뺀다.
   const liveSelected = useMemo(
-    () => new Set([...selected].filter((id) => bottles.some((bottle) => bottle.id === id))),
-    [selected, bottles],
+    () => new Set([...selected].filter((id) => visibleBottles.some((bottle) => bottle.id === id))),
+    [selected, visibleBottles],
   );
-  const selectedBottles = bottles.filter((bottle) => liveSelected.has(bottle.id));
+  const selectedBottles = visibleBottles.filter((bottle) => liveSelected.has(bottle.id));
   const possible = (action: TransitionAction) =>
     selectedBottles.filter((bottle) => canTransition(bottle.status, action)).length;
 
-  if (bottles.length === 0) {
+  if (visibleBottles.length === 0) {
     return (
       <>
         <h3>병</h3>
@@ -207,7 +259,7 @@ export function BottleSection({
     .sort((a, b) => (a.opened_on ?? "").localeCompare(b.opened_on ?? ""))[0];
 
   function renderRow(bottle: Bottle) {
-    const context = showPurchase ? purchaseLabel(purchaseById.get(bottle.purchase_id)) : null;
+    const context = bottleContext(bottle);
     const summary = (
       <>
         <span className="bottle-list-label">
@@ -240,12 +292,22 @@ export function BottleSection({
           className="bottle-list-item"
           aria-expanded={expandedId === bottle.id}
           disabled={savingBottle}
-          onClick={() => setExpandedId(expandedId === bottle.id ? null : bottle.id)}
+          onClick={() => expandBottle(bottle)}
         >
           {summary}
         </button>
         {expandedId === bottle.id ? (
-          <BottlePanel bottle={bottle} offline={offline} onSavingChange={setSavingBottle} />
+          <BottlePanel
+            key={bottle.id}
+            bottle={bottle}
+            offline={offline}
+            contextLabel={context}
+            selectedTastingId={selectedTastingId}
+            onSavingChange={(saving) => {
+              setSavingBottleId(saving ? bottle.id : null);
+              onSavingChange?.(saving);
+            }}
+          />
         ) : null}
       </li>
     );
@@ -255,7 +317,7 @@ export function BottleSection({
     <section className="bottle-section" aria-labelledby="bottle-section-heading">
       <div className="section-heading-row">
         <h3 id="bottle-section-heading">
-          병 {bottles.length}개 <span className="muted">· 재고 {inStock.length}</span>
+          병 {visibleBottles.length}개 <span className="muted">· 재고 {inStock.length}</span>
         </h3>
         <button
           type="button"
@@ -275,7 +337,7 @@ export function BottleSection({
               disabled={busy || savingBottle}
               onClick={() => void run("open", {}, [nextToOpen.id])}
             >
-              한 병 개봉 ({nextToOpen.label_no}번)
+              한 병 개봉 ({nextToOpen.label_no}번 · {actionContext(nextToOpen)})
             </button>
           ) : null}
           {oldestOpen ? (
@@ -284,7 +346,7 @@ export function BottleSection({
               disabled={busy || savingBottle}
               onClick={() => void run("finish", {}, [oldestOpen.id])}
             >
-              개봉한 병 다 마심 ({oldestOpen.label_no}번)
+              개봉한 병 다 마심 ({oldestOpen.label_no}번 · {actionContext(oldestOpen)})
             </button>
           ) : null}
         </div>

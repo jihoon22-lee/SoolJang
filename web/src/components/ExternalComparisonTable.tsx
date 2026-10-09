@@ -6,12 +6,6 @@ import { formatMoney } from "@/format";
 import { sourceOutcomeLabel } from "@/sourceOutcome";
 import { OfferComparison } from "./OfferComparison";
 
-function toNumber(money: Money): number | null {
-  if (money === null) return null;
-  const value = Number(money);
-  return Number.isNaN(value) ? null : value;
-}
-
 function formatFetchedAt(iso: string | null): string {
   if (iso === null) return "—";
   const date = new Date(iso);
@@ -24,16 +18,16 @@ export function ExternalComparisonTable({
   productId,
   offline,
   myPricePer100ml,
+  selectedVolumeMl,
   onChanged,
 }: {
   results: SourceLookupResult[];
   productId: string;
   offline: boolean;
   myPricePer100ml: Money;
+  selectedVolumeMl?: number | null | undefined;
   onChanged: () => void;
 }) {
-  const myPrice = toNumber(myPricePer100ml);
-
   return (
     <>
       <OfferComparison
@@ -41,6 +35,8 @@ export function ExternalComparisonTable({
         productId={productId}
         offline={offline}
         onChanged={onChanged}
+        myPricePer100ml={myPricePer100ml}
+        selectedVolumeMl={selectedVolumeMl}
       />
       <div className="table-scroll table-scroll--always">
         <table className="stats-table external-compare-table">
@@ -56,16 +52,11 @@ export function ExternalComparisonTable({
           </thead>
           <tbody>
             {results.map((result) => {
-              const per100 = toNumber(result.normalized.price_per_100ml);
               return (
                 <ExternalInfoRow
                   key={result.source_id}
                   result={result}
-                  deltaPercent={
-                    per100 !== null && myPrice !== null && myPrice > 0
-                      ? Math.round(((per100 - myPrice) / myPrice) * 100)
-                      : null
-                  }
+                  deltaPercent={null}
                   productId={productId}
                   offline={offline}
                   onChanged={onChanged}

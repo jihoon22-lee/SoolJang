@@ -103,3 +103,14 @@ describe("routeToHash", () => {
     }
   });
 });
+
+it("선택한 SKU·병·시음 맥락은 새로고침 가능한 URL로 왕복한다", () => {
+  const route = {
+    view: "products" as const,
+    productId: "product",
+    skuId: "sku",
+    bottleId: "bottle",
+    tastingId: "tasting",
+  };
+  expect(parseHash(routeToHash(route))).toMatchObject(route);
+});

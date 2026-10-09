@@ -6,6 +6,11 @@ import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { ProductAttachments } from "@/components/ProductAttachments";
 import { type EditPurchaseInput, PurchaseEditForm } from "@/components/PurchaseEditForm";
+import {
+  productEdition,
+  productSkuSummaries,
+  purchaseReference,
+} from "@/components/productDisplay";
 import { SkuMetricsTable } from "@/components/SkuMetricsTable";
 import {
   formatAbv,
@@ -18,6 +23,7 @@ import {
   todayLocal,
 } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
+import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
@@ -41,6 +47,10 @@ export interface SplitPart {
 }
 
 interface ProductDetailProps {
+  selectedSkuId?: string | undefined;
+  selectedBottleId?: string | undefined;
+  selectedTastingId?: string | undefined;
+  onSelectContext?: ((context: ProductContext) => void) | undefined;
   product: Product;
   purchases: Purchase[];
   bottles: Bottle[];
@@ -95,6 +105,10 @@ export function ProductDetail({
   product,
   purchases,
   bottles,
+  selectedSkuId,
+  selectedBottleId,
+  selectedTastingId,
+  onSelectContext,
   offline,
   onBack,
   onEdit,
@@ -115,6 +129,31 @@ export function ProductDetail({
   actionError,
 }: ProductDetailProps) {
   const { metrics } = product;
+  const [localContext, setLocalContext] = useState<ProductContext>({});
+  const contextSkuId = selectedSkuId ?? localContext.skuId;
+  const contextBottleId = selectedBottleId ?? localContext.bottleId;
+  const contextTastingId = selectedTastingId ?? localContext.tastingId;
+  const selectedBottle = bottles.find((bottle) => bottle.id === contextBottleId);
+  const activeSkuId =
+    contextSkuId ??
+    purchases.find((purchase) => purchase.id === selectedBottle?.purchase_id)?.sku_id;
+  const selectedSku = product.skus.find((sku) => sku.id === activeSkuId);
+  const selectedSummary = productSkuSummaries(product)?.find(
+    (row) =>
+      row.sku_id === (activeSkuId ?? (product.skus.length === 1 ? product.skus[0]?.id : undefined)),
+  );
+  const [savingBottleContext, setSavingBottleContext] = useState<string | null>(null);
+  const bottleContextKey = `${product.id}:${activeSkuId ?? ""}:${contextBottleId ?? ""}`;
+  const savingBottle = savingBottleContext === bottleContextKey;
+  const setSavingBottle = useCallback(
+    (saving: boolean) => setSavingBottleContext(saving ? bottleContextKey : null),
+    [bottleContextKey],
+  );
+  const selectContext = (context: ProductContext) => {
+    if (savingBottle || savingPurchase || addingPurchase) return;
+    if (onSelectContext) onSelectContext(context);
+    else setLocalContext(context);
+  };
   const [savingTarget, setSavingTarget] = useState<string | null>(null);
   const savingPurchase = savingTarget === product.id;
   const setSavingPurchase = useCallback(
@@ -131,13 +170,17 @@ export function ProductDetail({
         <button
           type="button"
           className="btn-quiet"
-          disabled={savingPurchase || addingPurchase}
+          disabled={savingBottle || savingPurchase || addingPurchase}
           onClick={onBack}
         >
           ← 목록으로
         </button>
         <div className="button-row">
-          <button type="button" disabled={savingPurchase || addingPurchase} onClick={onEdit}>
+          <button
+            type="button"
+            disabled={savingBottle || savingPurchase || addingPurchase}
+            onClick={onEdit}
+          >
             수정
           </button>
           <div className="overflow-menu">
@@ -165,7 +208,7 @@ export function ProductDetail({
                     setMoreOpen(false);
                     if (window.confirm(message)) onDelete();
                   }}
-                  disabled={deleting || savingPurchase || addingPurchase}
+                  disabled={deleting || savingBottle || savingPurchase || addingPurchase}
                 >
                   {deleting ? "삭제 중…" : "삭제"}
                 </button>
@@ -220,13 +263,17 @@ export function ProductDetail({
           <Metric
             label="재고"
             value={`${metrics.in_stock_count}병`}
-            hint={`미개봉 ${metrics.unopened_count} · 개봉 ${metrics.opened_count}`}
+            hint={`${product.skus.length > 1 ? "전체 규격 · " : ""}미개봉 ${metrics.unopened_count} · 개봉 ${metrics.opened_count}`}
           />
-          <Metric label="실평단가" value={formatMoney(metrics.avg_paid_price)} />
+          <Metric
+            label="실평단가"
+            value={formatMoney(metrics.avg_paid_price)}
+            hint={product.skus.length > 1 ? "전체 용량 구매 평균" : undefined}
+          />
           <Metric
             label="100ml당 가격"
             value={formatMoney(metrics.price_per_100ml)}
-            hint="정가 기준"
+            hint={product.skus.length > 1 ? "전체 용량 · 정가 기준" : "정가 기준"}
           />
         </dl>
         <details className="metrics-more">
@@ -240,7 +287,7 @@ export function ProductDetail({
             <Metric
               label="재고 자산가치"
               value={formatMoney(metrics.inventory_value_at_cost)}
-              hint="실평단가 기준"
+              hint="규격별 실평단가 × 재고 병 수의 합계"
             />
           </dl>
           <p className="muted text-sm">
@@ -249,11 +296,22 @@ export function ProductDetail({
         </details>
       </section>
 
-      <SkuMetricsTable product={product} purchases={purchases} bottles={bottles} />
+      <SkuMetricsTable
+        product={product}
+        selectedSkuId={activeSkuId}
+        onSelect={(skuId) => selectContext(skuId ? { skuId } : {})}
+        disabled={savingBottle || savingPurchase || addingPurchase}
+      />
+      {selectedSku ? (
+        <output className="selected-sku-context">
+          {formatVolume(selectedSku.volume_ml)}의 구매·병을 보고 있습니다.
+        </output>
+      ) : null}
 
       <PurchaseSection
         key={`purchase:${product.id}`}
         onSavingChange={setSavingPurchase}
+        selectedSkuId={activeSkuId}
         product={product}
         purchases={purchases}
         offline={offline}
@@ -271,7 +329,17 @@ export function ProductDetail({
         addingSku={addingSku}
       />
 
-      <BottleSection bottles={bottles} purchases={purchases} offline={offline} />
+      <BottleSection
+        product={product}
+        bottles={bottles}
+        purchases={purchases}
+        offline={offline}
+        selectedSkuId={activeSkuId}
+        selectedBottleId={contextBottleId}
+        selectedTastingId={contextTastingId}
+        onSelectContext={selectContext}
+        onSavingChange={setSavingBottle}
+      />
 
       <ProductAttachments key={product.id} productId={product.id} offline={offline} />
 
@@ -288,19 +356,35 @@ export function ProductDetail({
           />
         )}
       </details>
+      {product.skus.length > 1 ? (
+        <p className="muted text-sm">
+          {selectedSummary
+            ? `${formatVolume(selectedSummary.volume_ml)}의 전체 구매 실평단가를 외부 제안과 비교합니다.`
+            : "내 가격과 비교하려면 용량을 선택하세요."}
+        </p>
+      ) : null}
       <ExternalInfoCard
         open={externalInfoOpen}
         onOpenChange={setExternalInfoOpen}
         productId={product.id}
         productName={product.name}
         offline={offline}
-        myPricePer100ml={metrics.price_per_100ml_paid}
+        myPricePer100ml={selectedSummary?.metrics.price_per_100ml_paid ?? null}
+        selectedVolumeMl={selectedSummary?.volume_ml ?? null}
       />
     </article>
   );
 }
 
-function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Metric({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string | undefined;
+}) {
   return (
     <div className="metric">
       <dt>
@@ -316,6 +400,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint?: s
 
 function PurchaseSection({
   product,
+  selectedSkuId,
   purchases,
   offline,
   onAddPurchase,
@@ -334,6 +419,7 @@ function PurchaseSection({
 }: {
   onSavingChange: (saving: boolean) => void;
   product: Product;
+  selectedSkuId?: string | undefined;
   purchases: Purchase[];
   offline: boolean;
   onAddPurchase:
@@ -351,6 +437,10 @@ function PurchaseSection({
   onAddSku: (volumeMl: number) => void;
   addingSku: boolean;
 }) {
+  const visiblePurchases = selectedSkuId
+    ? purchases.filter((purchase) => purchase.sku_id === selectedSkuId)
+    : purchases;
+  const purchaseIds = purchases.map((purchase) => purchase.id);
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [splittingId, setSplittingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -443,7 +533,7 @@ function PurchaseSection({
         />
       )}
 
-      {purchases.length === 0 ? (
+      {visiblePurchases.length === 0 ? (
         <output className="notice">
           구매 기록이 없습니다. 같은 술을 여러 번 샀다면 구매 건을 각각 추가해 구매처와 가격을 따로
           남길 수 있습니다.
@@ -454,6 +544,7 @@ function PurchaseSection({
             <caption className="sr-only">구매 이력</caption>
             <thead>
               <tr>
+                <th scope="col">규격 · 판본 · 구매 건</th>
                 <th scope="col">구매일</th>
                 <th scope="col">구매처</th>
                 <th scope="col" className="numeric">
@@ -472,9 +563,21 @@ function PurchaseSection({
               </tr>
             </thead>
             <tbody>
-              {purchases.map((purchase) => (
+              {visiblePurchases.map((purchase) => (
                 <Fragment key={purchase.id}>
                   <tr>
+                    <td className="purchase-identity" data-label="규격 · 판본 · 구매 건">
+                      <span>
+                        {formatVolume(
+                          purchase.volume_ml ??
+                            product.skus.find((sku) => sku.id === purchase.sku_id)?.volume_ml,
+                        )}
+                      </span>
+                      <span className="purchase-context">{productEdition(product)}</span>
+                      <span className="purchase-context" title={purchase.id}>
+                        {purchaseReference(purchase.id, purchaseIds)}
+                      </span>
+                    </td>
                     <td data-label="구매일">{formatDate(purchase.purchased_on)}</td>
                     <td data-label="구매처">{purchase.vendor_name ?? "미기록"}</td>
                     <td data-label="병수" className="numeric">
@@ -541,7 +644,7 @@ function PurchaseSection({
                   </tr>
                   {editingId === purchase.id && onUpdatePurchase && (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <PurchaseEditForm
                           key={purchase.id}
                           purchase={purchase}
@@ -581,7 +684,7 @@ function PurchaseSection({
                   )}
                   {splittingId === purchase.id && (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <SplitPurchaseForm
                           totalQuantity={purchase.quantity}
                           submitting={splittingPurchaseId === purchase.id}

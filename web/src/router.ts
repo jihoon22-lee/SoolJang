@@ -49,7 +49,13 @@ const VIEW_IDS: readonly View[] = [
   "status",
 ];
 
-export interface Route {
+export interface ProductContext {
+  skuId?: string | undefined;
+  bottleId?: string | undefined;
+  tastingId?: string | undefined;
+}
+
+export interface Route extends ProductContext {
   view: View;
   /** `view === "products"` 일 때만 의미가 있다 — 상세로 진입한 제품 id. */
   productId?: string | undefined;
@@ -79,13 +85,26 @@ export function parseHash(hash: string): Route {
   const params = new URLSearchParams(queryPart ?? "");
   const categoryId = params.get("category") ?? undefined;
   const vendorId = params.get("vendor") ?? undefined;
-  return { view, productId, categoryId, vendorId };
+  return {
+    view,
+    productId,
+    categoryId,
+    vendorId,
+    ...(params.has("sku") ? { skuId: params.get("sku") || undefined } : {}),
+    ...(params.has("bottle") ? { bottleId: params.get("bottle") || undefined } : {}),
+    ...(params.has("tasting") ? { tastingId: params.get("tasting") || undefined } : {}),
+  };
 }
 
 /** 라우트를 `#` 로 시작하는 해시 문자열로 되돌린다. `parseHash` 의 역함수다. */
 export function routeToHash(route: Route): string {
   if (route.view === "products" && route.productId) {
-    return `#products/${route.productId}`;
+    const params = new URLSearchParams();
+    if (route.skuId) params.set("sku", route.skuId);
+    if (route.bottleId) params.set("bottle", route.bottleId);
+    if (route.tastingId) params.set("tasting", route.tastingId);
+    const query = params.toString();
+    return `#products/${route.productId}${query ? `?${query}` : ""}`;
   }
   if (route.view === "products" && route.categoryId) {
     return `#products?category=${route.categoryId}`;

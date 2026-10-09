@@ -755,3 +755,59 @@ it("이전 시음 폼의 늦은 성공은 다시 연 폼의 새 초안을 지우
   expect(Object.values(localStorage).join()).toContain('"90"');
   save.mockRestore();
 });
+
+it("전달받은 시음 ID를 현재 페이지에서 강조하고 해당 기록에 초점을 둔다", async () => {
+  const target = bottle();
+  const tasting: Tasting = {
+    id: "selected-tasting",
+    bottle_id: target.id,
+    sku_id: "sku1",
+    tasted_on: "2026-01-01",
+    poured_ml: 30,
+    rating: null,
+    nose: null,
+    palate: null,
+    finish: null,
+    note: null,
+    place: null,
+    companions: null,
+  };
+  stubTastings(target.id, { tastings: [tasting] });
+  const { container } = renderWithQuery(
+    <BottlePanel
+      bottle={target}
+      selectedTastingId={tasting.id}
+      contextLabel="700ml · 구매 fixture"
+    />,
+  );
+  await waitFor(() => expect(container.querySelector('[aria-current="true"]')).toHaveFocus());
+  expect(container.querySelector('[aria-current="true"]')).toHaveTextContent("2026-01-01");
+  expect(screen.getByText("700ml · 구매 fixture")).toBeInTheDocument();
+});
+
+it("선택 시음이 현재 페이지 밖에 있으면 삭제로 단정하지 않고 이전 기록 경로를 남긴다", async () => {
+  stubRoutes([
+    { match: "/bottles/b1/tastings/page", body: { items: [], next_cursor: "older-page" } },
+    {
+      match: "/tastings/summary",
+      body: {
+        session_count: 0,
+        rated_count: 0,
+        average_rating: null,
+        first_rating: null,
+        latest_rating: null,
+        rating_change: null,
+        total_poured_ml: 0,
+        first_tasted_on: null,
+        latest_tasted_on: null,
+      },
+    },
+  ]);
+  renderWithQuery(<BottlePanel bottle={bottle()} selectedTastingId="older-tasting" />);
+  expect(
+    await screen.findByText(
+      "선택한 시음은 아직 이 목록에 없습니다. 이전 기록 더 보기로 확인하세요.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "이전 기록 더 보기" })).toBeInTheDocument();
+});

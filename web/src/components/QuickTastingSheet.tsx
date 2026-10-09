@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { collectionApi } from "@/api/collection";
+import { productEdition, purchaseReference } from "@/components/productDisplay";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { useToast } from "@/components/Toast";
 import { formatDate, formatVolume, todayLocal } from "@/format";
+import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import {
@@ -41,20 +43,31 @@ function emptyValues(): TastingFieldValues {
   };
 }
 
-function purchaseLabel(bottle: DrinkableBottle): string {
-  return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"}`;
+function purchaseLabel(bottle: DrinkableBottle, purchaseIds: readonly string[]): string {
+  return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"} · ${purchaseReference(bottle.purchaseId, purchaseIds)}`;
+}
+function bottleProductLabel(bottle: DrinkableBottle): string {
+  const edition = productEdition({
+    vintage: bottle.vintage,
+    abv: bottle.abv,
+    age_years: bottle.ageYears,
+  });
+  return edition ? `${bottle.productName} · ${edition}` : bottle.productName;
 }
 
 export function QuickTastingSheet({
   onClose,
   returnFocusRef,
+  onSelectProduct,
 }: {
   onClose: () => void;
+  onSelectProduct?: ((productId: string, context?: ProductContext) => void) | undefined;
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const dialogRef = useModalDialog(returnFocusRef);
   const [session] = useState(captureWriteSession);
   const bottles = useLiveQuery(() => getDrinkableBottles(), [session.userId]);
+  const purchaseIds = (bottles ?? []).map((bottle) => bottle.purchaseId);
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useDraftState(SELECTION_FORM, EMPTY_SELECTION);
   const [scope, setScope] = useState<"all" | "sku" | null>(null);
@@ -116,7 +129,7 @@ export function QuickTastingSheet({
     const rows: (DrinkableBottle & { unopenedCount?: number })[] = [];
     for (const item of bottles ?? []) {
       if (scope === "sku" && item.skuId !== selection.skuId) continue;
-      if (query.trim() && !matchesQuery(item.productName, query)) continue;
+      if (query.trim() && !matchesQuery(bottleProductLabel(item), query)) continue;
       if (scope !== "sku" && item.status === "unopened") {
         const seen = counts.get(item.skuId) ?? 0;
         counts.set(item.skuId, seen + 1);
@@ -138,7 +151,7 @@ export function QuickTastingSheet({
     setSelection({
       bottleId: bottle.bottleId,
       skuId: bottle.skuId,
-      productName: bottle.productName,
+      productName: bottleProductLabel(bottle),
       labelNo: bottle.labelNo,
       volumeLabel: formatVolume(bottle.volumeMl),
     });
@@ -159,7 +172,11 @@ export function QuickTastingSheet({
       >
         <div className="section-heading-row">
           <h2 id="quick-tasting-heading" className="mb-0">
-            {choosing ? "무엇을 마셨나요?" : (selectedBottle?.productName ?? selection.productName)}
+            {choosing
+              ? "무엇을 마셨나요?"
+              : selectedBottle
+                ? bottleProductLabel(selectedBottle)
+                : selection.productName}
           </h2>
           <button
             type="button"
@@ -172,6 +189,23 @@ export function QuickTastingSheet({
             닫기
           </button>
         </div>
+        {!choosing && selectedBottle && onSelectProduct ? (
+          <button
+            type="button"
+            className="link-like"
+            disabled={saving}
+            onClick={() => {
+              if (savingRef.current) return;
+              onClose();
+              onSelectProduct(selectedBottle.productId, {
+                skuId: selectedBottle.skuId,
+                bottleId: selectedBottle.bottleId,
+              });
+            }}
+          >
+            이 병 상세
+          </button>
+        ) : null}
         {choosing ? (
           <>
             {recovery ? (
@@ -217,7 +251,7 @@ export function QuickTastingSheet({
                 <li key={item.bottleId}>
                   <button type="button" onClick={() => choose(item)}>
                     <span>
-                      {item.productName} · {formatVolume(item.volumeMl)}{" "}
+                      {bottleProductLabel(item)} · {formatVolume(item.volumeMl)}{" "}
                       {item.status === "open" || scope === "sku" ? `#${item.labelNo}` : ""}
                     </span>
                     <span className={`bottle-badge bottle-badge-${item.status}`}>
@@ -227,9 +261,9 @@ export function QuickTastingSheet({
                           : "개봉"
                         : `미개봉 ${item.unopenedCount ?? 1}병`}
                     </span>
-                    {scope === "sku" ? (
+                    {scope === "sku" || item.status === "open" ? (
                       <span className="muted text-sm">
-                        {purchaseLabel(item)} · {locationLabel(item.bottleId)}
+                        {purchaseLabel(item, purchaseIds)} · {locationLabel(item.bottleId)}
                       </span>
                     ) : null}
                   </button>
@@ -241,6 +275,7 @@ export function QuickTastingSheet({
           <QuickTastingForm
             key={selection.bottleId}
             selection={selection}
+            purchaseIds={purchaseIds}
             bottle={selectedBottle}
             loading={bottles === undefined}
             location={locationLabel(selection.bottleId)}
@@ -274,6 +309,7 @@ export function QuickTastingSheet({
 
 function QuickTastingForm({
   selection,
+  purchaseIds,
   bottle,
   loading,
   location,
@@ -287,6 +323,7 @@ function QuickTastingForm({
   onChooseAnother,
 }: {
   selection: BottleSelection;
+  purchaseIds: readonly string[];
   bottle: DrinkableBottle | null;
   loading: boolean;
   location: string;
@@ -398,7 +435,7 @@ function QuickTastingForm({
     >
       <p className="muted text-sm mt-0">
         {bottle
-          ? `${formatVolume(bottle.volumeMl)} · ${purchaseLabel(bottle)}`
+          ? `${formatVolume(bottle.volumeMl)} · ${purchaseLabel(bottle, purchaseIds)}`
           : `${selection.volumeLabel} · #${selection.labelNo}`}{" "}
         · {location}
       </p>
@@ -420,11 +457,7 @@ function QuickTastingForm({
         <TastingFields
           values={values}
           remainingMl={
-            bottle
-              ? bottle.status === "open"
-                ? (bottle.remainingMl ?? bottle.volumeMl)
-                : bottle.volumeMl
-              : null
+            bottle ? (bottle.status === "open" ? bottle.remainingMl : bottle.volumeMl) : null
           }
           onChange={(patch) => {
             if (isSaving()) return;
