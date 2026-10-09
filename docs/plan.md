@@ -14,23 +14,24 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-10-09 — 실사용 리뷰 PR 1 [#157](https://github.com/jihoon22-lee/SoolJang/pull/157) 검토 준비 완료. PR 2 [#158](https://github.com/jihoon22-lee/SoolJang/pull/158) 완료, PR 3 누적 기록·실사·모바일 검토 준비 완료 |
-| 현재 마일스톤 | 실사용 리뷰 후속(릴리스 미포함). 직전 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) 완료(메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
-| 진행 브랜치 | `feature/review-history-usability` (PR 3) |
-| 버전 | 코드·패키지 `1.8.1`, schema head `0019_record_event` |
-| 운영 | API·웹 `1.8.1`, schema `0019_record_event`(2026-10-05 배포, 백업 `sooljang-20261005T075522111604Z-16fe607e`) |
+| 최종 갱신 | 2026-10-09 — 실사용 리뷰 #157·#158·#159 머지, v1.8.2 릴리스 준비 |
+| 현재 마일스톤 | 실사용 리뷰 후속 v1.8.2. F1~F10·21개 시나리오 수용, 사용자 머지·태그·릴리스·운영 배포 승인 |
+| 진행 브랜치 | `feature/v182-release` (문서·버전 갱신) |
+| 버전 | 코드·패키지 `1.8.2`, schema head `0019_record_event` |
+| 운영 | API·웹 `1.8.1`, schema `0019_record_event`. v1.8.2 백업·릴리스·배포 대기 |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
 
 ## 2. 실사용 리뷰 후속
 
 | 묶음 | 요구사항·수용 시나리오 | 상태 |
 |---|---|---|
-| PR 1 `feature/review-sync-ownership` | F1 로그아웃 후 대기열, F2 오프라인 저장, F3 구매처 권한 | [#157](https://github.com/jihoon22-lee/SoolJang/pull/157) 검토 가능 ([기록](../workthrough/2026-10-09-review-sync-ownership.md)) |
-| PR 2 `feature/review-record-entry` | F4 수량 재증가, F5 첫 규격, F6 병 선택, F7 초안 복구 | [#158](https://github.com/jihoon22-lee/SoolJang/pull/158) 검토 가능 ([기록](../workthrough/2026-10-09-review-record-entry.md)) |
-| PR 3 `feature/review-history-usability` | F8 시음 페이지, F9 실사 정정, F10 모바일 지표 | 검토 준비 완료·21개 통합 시나리오 통과 ([기록](../workthrough/2026-10-09-review-history-usability.md)) |
+| PR 1 `feature/review-sync-ownership` | F1 로그아웃 후 대기열, F2 오프라인 저장, F3 구매처 권한 | [#157](https://github.com/jihoon22-lee/SoolJang/pull/157) 머지 완료 ([기록](../workthrough/2026-10-09-review-sync-ownership.md)) |
+| PR 2 `feature/review-record-entry` | F4 수량 재증가, F5 첫 규격, F6 병 선택, F7 초안 복구 | [#158](https://github.com/jihoon22-lee/SoolJang/pull/158) 머지 완료 ([기록](../workthrough/2026-10-09-review-record-entry.md)) |
+| PR 3 `feature/review-history-usability` | F8 시음 페이지, F9 실사 정정, F10 모바일 지표 | [#159](https://github.com/jihoon22-lee/SoolJang/pull/159) 머지 완료·21개 통합 시나리오 통과 ([기록](../workthrough/2026-10-09-review-history-usability.md)) |
 
-세 묶음은 순차 브랜치/PR로 연결한다. 원본 보존·구버전 PWA 호환을 유지하고 최종 묶음에서
-합성 데이터 21개 사용 시나리오를 재검증한다. 버전 변경·머지·릴리스·운영 배포는 포함하지 않는다.
+세 묶음을 순서대로 main에 머지했다. 원본 보존·구버전 PWA 호환과 합성 데이터 21개 사용
+시나리오를 검증했다. 후속 사용자 승인으로 문서·버전 갱신 PR과 v1.8.2 태그·릴리스·운영
+배포를 진행한다. [릴리스 검증 기록](../workthrough/2026-10-09-v182-release.md)에 결과를 모은다.
 
 ### 직전 마일스톤: v1.8.0 (완료)
 
@@ -60,6 +61,10 @@
   현재 계정으로 자동 귀속·재전송하거나 결과 불명 pending을 폐기하지 않는다.
 - **D229**: 빠른 시음은 사용자가 선택한 "규격별 기본 선택 + 개별 병 변경"으로 구현한다.
   계정·탭·병별 초안, 시음 커서 페이지, 명시적 실사 위치 정정을 제공한다. 스키마·버전 변경 없음.
+
+- **D230**: F1~F10 수용 후 사용자 승인에 따라 v1.8.2 PATCH로 릴리스·운영 배포한다.
+  기존 schema `0019_record_event`와 암호화 키를 유지하고 태그 전 백업·격리 복원, 전환 직전
+  최신 백업, 새 이미지 readiness·읽기 검증을 각각 기록한다.
 
 ## 5. 열린 질문
 
