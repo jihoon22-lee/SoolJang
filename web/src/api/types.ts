@@ -407,6 +407,125 @@ export interface TastingPage {
   next_cursor: string | null;
 }
 
+export interface ProductSkuContext {
+  product_id: string;
+  product_name: string;
+  vintage: number | null;
+  age_years: string | null;
+  abv: string | null;
+  sku_id: string;
+  volume_ml: number;
+}
+
+export interface PurchaseContext {
+  id: string;
+  updated_at: string;
+  sku_id: string;
+  purchased_on: string | null;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  quantity: number;
+}
+
+/** 정정 확인 시점의 현재 병 상태. 과거 시음 당시의 상태가 아니다. */
+export interface BottleSnapshot {
+  id: string;
+  revision: string;
+  purchase_id: string;
+  label_no: number;
+  status: BottleStatus;
+  remaining_ml: number | null;
+  opened_on: string | null;
+  finished_on: string | null;
+  deleted_at: string | null;
+}
+
+export interface ContextualTasting extends Tasting {
+  updated_at: string;
+  context: ProductSkuContext;
+  purchase: PurchaseContext | null;
+  bottle: BottleSnapshot | null;
+}
+
+export interface ContextualTastingPage {
+  items: ContextualTasting[];
+  next_cursor: string | null;
+}
+
+export interface TastingFilters {
+  product_id?: string | undefined;
+  sku_id?: string | undefined;
+  bottle_id?: string | undefined;
+  tasted_on_min?: string | undefined;
+  tasted_on_max?: string | undefined;
+}
+
+export interface BottleCorrectionContext {
+  context: ProductSkuContext;
+  purchase: PurchaseContext;
+  bottle: BottleSnapshot;
+}
+
+export type CorrectionBottleOption = BottleCorrectionContext;
+
+export interface PurchaseCorrectionContext {
+  purchase: Purchase & { updated_at: string };
+  context: ProductSkuContext;
+  bottles: BottleSnapshot[];
+  tastings: {
+    id: string;
+    bottle_id: string;
+    sku_id: string;
+    updated_at: string;
+    deleted_at: string | null;
+  }[];
+}
+
+export interface BottleGuard {
+  id: string;
+  revision: string;
+}
+
+export interface FinalBottleState {
+  id: string;
+  status: BottleStatus;
+  remaining_ml: number | null;
+  opened_on: string | null;
+  finished_on: string | null;
+}
+
+export interface TastingCorrectionInput {
+  request_id: string;
+  expected_updated_at: string;
+  changes: {
+    bottle_id?: string | null;
+    sku_id?: string;
+    tasted_on?: string;
+    poured_ml?: number | null;
+    rating?: string | null;
+    nose?: string | null;
+    palate?: string | null;
+    finish?: string | null;
+    note?: string | null;
+    place?: string | null;
+    companions?: string | null;
+  };
+  expected_bottles: BottleGuard[];
+  remaining_mode: "preserve" | "set_final";
+  final_bottles: FinalBottleState[];
+  target_sku_expected_volume_ml?: number;
+}
+
+export interface PurchaseSkuCorrectionInput {
+  request_id: string;
+  expected_updated_at: string;
+  target_sku_id: string;
+  target_sku_expected_volume_ml: number;
+  expected_bottles: BottleGuard[];
+  expected_tastings: { id: string; updated_at: string }[];
+  final_bottles: FinalBottleState[];
+}
+
 export interface TastingInput {
   tasted_on: string;
   bottle_id?: string | undefined;

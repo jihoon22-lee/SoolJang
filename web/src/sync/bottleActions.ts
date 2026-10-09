@@ -55,9 +55,10 @@ export function canTransition(status: string, action: TransitionAction): boolean
 }
 
 export async function bottleVolumeMl(purchaseId: string): Promise<number | null> {
+  if (!purchaseId) return null;
   const purchase = await db.purchase.get(purchaseId);
-  if (!purchase) return null;
-  const sku = await db.sku.get(purchase.sku_id as string);
+  if (!purchase || typeof purchase.sku_id !== "string" || !purchase.sku_id) return null;
+  const sku = await db.sku.get(purchase.sku_id);
   return (sku?.volume_ml as number | undefined) ?? null;
 }
 

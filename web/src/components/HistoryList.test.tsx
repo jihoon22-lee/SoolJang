@@ -5,6 +5,32 @@ import { describeHistory, HistoryDetails } from "@/components/HistoryList";
 import { renderWithQuery } from "@/testing";
 
 describe("HistoryList", () => {
+  it("정정 이력은 바뀐 내용만 보여주고 요청·revision 식별자는 표시하지 않는다", () => {
+    expect(
+      describeHistory({
+        at: "2026-01-01",
+        action: "correct",
+        detail: {
+          request_id: "secret-looking-internal-id",
+          before: {
+            sku_id: "s1",
+            bottle_id: "b1",
+            note: "이전",
+            revision: "r1",
+            updated_at: "old",
+          },
+          after: { sku_id: "s2", bottle_id: "b2", note: "정정", revision: "r2", updated_at: "new" },
+        },
+      }),
+    ).toBe("규격 변경 · 대상 병 변경 · 메모 이전 → 정정");
+    expect(
+      describeHistory({
+        at: "x",
+        action: "correct",
+        detail: { before: { revision: "r1" }, after: { revision: "r2" } },
+      }),
+    ).toBe("기록 정정에 따른 상태 확인");
+  });
   it("바뀐 칸을 이전 → 이후 문장으로 보인다", () => {
     expect(
       describeHistory({

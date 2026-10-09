@@ -22,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
   tasting: "시음",
   move: "위치 이동",
   update: "수정",
+  correct: "정정",
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -38,6 +39,12 @@ const FIELD_LABELS: Record<string, string> = {
   poured_ml: "따른 양(ml)",
   tasted_on: "마신 날",
   note: "메모",
+  rating: "평점",
+  nose: "향",
+  palate: "맛",
+  finish: "피니시",
+  place: "장소",
+  companions: "동석자",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -71,6 +78,29 @@ function show(field: string, value: unknown, labels: Record<string, string>): st
 
 /** 이력 한 줄의 바뀐 칸 설명. [이전, 이후] 쌍은 "이전 → 이후" 로, 나머지는 값 그대로. */
 export function describeHistory(entry: HistoryEntry): string {
+  if (entry.action === "correct") {
+    const before = entry.detail.before;
+    const after = entry.detail.after;
+    if (before && after && typeof before === "object" && typeof after === "object") {
+      const old = before as Record<string, unknown>;
+      const ignored = new Set(["id", "user_id", "created_at", "updated_at", "revision"]);
+      const links: Record<string, string> = {
+        sku_id: "규격 변경",
+        bottle_id: "대상 병 변경",
+        purchase_id: "구매 연결 변경",
+      };
+      const fields = Object.entries(after)
+        .filter(
+          ([key, value]) => !ignored.has(key) && JSON.stringify(old[key]) !== JSON.stringify(value),
+        )
+        .map(
+          ([key, value]) =>
+            links[key] ??
+            `${FIELD_LABELS[key] ?? key} ${show(key, old[key], entry.labels ?? {})} → ${show(key, value, entry.labels ?? {})}`,
+        );
+      return fields.join(" · ") || "기록 정정에 따른 상태 확인";
+    }
+  }
   const parts: string[] = [];
   const labels = entry.labels ?? {};
   if ("from_location_id" in entry.detail || "to_location_id" in entry.detail) {

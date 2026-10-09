@@ -10,11 +10,14 @@ import type {
   AttachmentResponse,
   BarcodeLookupResponse,
   Bottle,
+  BottleCorrectionContext,
   CategoryStat,
   CategoryTree,
   ConnectionCreate,
   ConnectionProbeResult,
   ConnectionUpdate,
+  ContextualTasting,
+  ContextualTastingPage,
   DeleteStrategy,
   ExternalMatchInput,
   ExternalSource,
@@ -38,7 +41,9 @@ import type {
   ProviderConnection,
   ProviderDefinition,
   Purchase,
+  PurchaseCorrectionContext,
   PurchaseCreateInput,
+  PurchaseSkuCorrectionInput,
   PurchaseUpdateInput,
   Rankings,
   SavedView,
@@ -57,6 +62,8 @@ import type {
   SyncOperationRequest,
   SyncPullResponse,
   Tasting,
+  TastingCorrectionInput,
+  TastingFilters,
   TastingInput,
   TastingPage,
   TastingSummary,
@@ -302,6 +309,18 @@ export const vendorsApi = {
 };
 
 export const purchasesApi = {
+  correctionContext: (id: string, signal?: AbortSignal) =>
+    request<PurchaseCorrectionContext>(`/purchases/${id}/correction-context`, {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
+
+  correctSku: (id: string, input: PurchaseSkuCorrectionInput) =>
+    request<PurchaseCorrectionContext>(`/purchases/${id}:correct-sku`, {
+      method: "POST",
+      body: input,
+    }),
+
   list: (params: { product_id?: string; sku_id?: string }, signal?: AbortSignal) =>
     request<Purchase[]>("/purchases", { params, ...(signal ? { signal } : {}) }),
 
@@ -400,6 +419,12 @@ export const authApi = {
 
 /** 병 상태 전이. 상태·잔량·날짜가 얽혀 있어 서버가 함께 갱신한다. */
 export const bottlesApi = {
+  correctionContext: (id: string, signal?: AbortSignal) =>
+    request<BottleCorrectionContext>(`/bottles/${id}/correction-context`, {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
+
   list: (params: { status?: string; in_stock?: boolean }, signal?: AbortSignal) =>
     request<Bottle[]>("/bottles", { params, ...(signal ? { signal } : {}) }),
 
@@ -448,13 +473,43 @@ export const bottlesApi = {
 };
 
 export const tastingsApi = {
+  get: (id: string, signal?: AbortSignal) =>
+    request<ContextualTasting>(`/tastings/${id}`, {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
+
+  page: (
+    params: TastingFilters & { limit?: number; cursor?: string | null },
+    signal?: AbortSignal,
+  ) =>
+    request<ContextualTastingPage>("/tastings/page", {
+      params: { ...params },
+      ...(signal ? { signal } : {}),
+    }),
+
+  correct: (id: string, input: TastingCorrectionInput) =>
+    request<ContextualTasting>(`/tastings/${id}:correct`, { method: "POST", body: input }),
+
+  attachments: (id: string, signal?: AbortSignal) =>
+    request<AttachmentResponse[]>(`/tastings/${id}/attachments`, {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
+
+  history: (id: string, signal?: AbortSignal) =>
+    request<HistoryEntry[]>(`/tastings/${id}/history`, signal ? { signal } : {}),
+
   create: (input: TastingInput) => request<Tasting>("/tastings", { method: "POST", body: input }),
 
   list: (params: { sku_id?: string; bottle_id?: string }, signal?: AbortSignal) =>
     request<Tasting[]>("/tastings", { params, ...(signal ? { signal } : {}) }),
 
-  summary: (params: { sku_id?: string; bottle_id?: string }, signal?: AbortSignal) =>
-    request<TastingSummary>("/tastings/summary", { params, ...(signal ? { signal } : {}) }),
+  summary: (params: TastingFilters, signal?: AbortSignal) =>
+    request<TastingSummary>("/tastings/summary", {
+      params: { ...params },
+      ...(signal ? { signal } : {}),
+    }),
 
   remove: (id: string) => request<void>(`/tastings/${id}`, { method: "DELETE" }),
 };

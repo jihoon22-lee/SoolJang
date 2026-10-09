@@ -1,7 +1,13 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, productsApi, purchasesApi } from "@/api/client";
-import type { Product, ProductFilters, PurchaseScope, SortKey } from "@/api/types";
+import { ApiError, productsApi, purchasesApi, tastingsApi } from "@/api/client";
+import type {
+  ContextualTasting,
+  Product,
+  ProductFilters,
+  PurchaseScope,
+  SortKey,
+} from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { LabelOcrPanel } from "@/components/LabelOcrPanel";
 import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/components/ProductDetail";
@@ -33,6 +39,7 @@ import {
   getVendors,
 } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { getLocalTasting } from "@/sync/tastingHistory";
 import {
   PartialProductCreationError,
   resolveProducerIdOffline,
@@ -92,9 +99,98 @@ export function ProductsPage({
   onOpenStoreMode,
 }: ProductsPageProps) {
   const toast = useToast();
-  const { state } = useSyncStatus();
+  const { state, triggerSync, lastError } = useSyncStatus();
   const offline = state === "offline";
   const owner = databaseIdentity().userId ?? "";
+  const navigationSignature = JSON.stringify([selectedProductId, context]);
+  const latestNavigation = useRef(navigationSignature);
+  latestNavigation.current = navigationSignature;
+  const correctionOriginNavigation = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [pendingCorrection, setPendingCorrection] = useState<{
+    id: string;
+    navigation: string;
+    record: ContextualTasting | null;
+  } | null>(null);
+  const correctedLocal = useLiveQuery(
+    async () =>
+      pendingCorrection
+        ? {
+            record: await getLocalTasting(pendingCorrection.id),
+            raw: await db.tasting_session.get(pendingCorrection.id),
+          }
+        : null,
+    [pendingCorrection?.id],
+  );
+  useEffect(() => {
+    if (!pendingCorrection) return;
+    if (navigationSignature !== pendingCorrection.navigation) {
+      setPendingCorrection(null);
+      return;
+    }
+    if (correctedLocal?.raw?.deleted_at) {
+      setPendingCorrection(null);
+      if (selectedProductId) onSelectProduct(selectedProductId, {});
+      toast.show({
+        message: "정정 후 기록이 삭제되었습니다. 제품 전체에서 최신 상태를 확인하세요.",
+      });
+      return;
+    }
+    if (
+      !pendingCorrection.record ||
+      !correctedLocal?.record ||
+      Date.parse(correctedLocal.record.updated_at) < Date.parse(pendingCorrection.record.updated_at)
+    )
+      return;
+    setPendingCorrection(null);
+    onSelectProduct(correctedLocal.record.context.product_id, {
+      skuId: correctedLocal.record.sku_id,
+      bottleId: correctedLocal.record.bottle_id ?? undefined,
+      tastingId: correctedLocal.record.id,
+    });
+  }, [
+    pendingCorrection,
+    correctedLocal,
+    navigationSignature,
+    onSelectProduct,
+    selectedProductId,
+    toast,
+  ]);
+  function checkCorrectedTasting(id: string, navigation: string): void {
+    const session = captureWriteSession();
+    setPendingCorrection({ id, navigation, record: null });
+    void tastingsApi
+      .get(id)
+      .then((record) => {
+        if (mounted.current && session.isCurrent() && latestNavigation.current === navigation) {
+          setPendingCorrection({ id, navigation, record });
+          triggerSync();
+        }
+      })
+      .catch((error: unknown) => {
+        if (!mounted.current || !session.isCurrent() || latestNavigation.current !== navigation)
+          return;
+        if (error instanceof ApiError && error.status === 404) {
+          setPendingCorrection(null);
+          if (selectedProductId) onSelectProduct(selectedProductId, {});
+        }
+        toast.show({
+          message: "정정은 저장됐지만 최신 기록을 확인하지 못했습니다. 동기화 후 다시 열어 주세요.",
+        });
+      });
+  }
+  function followCorrectedTasting(result: ContextualTasting): void {
+    const navigation = correctionOriginNavigation.current;
+    if (navigation === null || navigation !== latestNavigation.current) return;
+    toast.show({ message: "시음 기록을 정정했습니다. 최신 연결을 확인합니다." });
+    checkCorrectedTasting(result.id, navigation);
+  }
   const [restoredList] = useState(() =>
     initialCategoryId || initialVendorId ? null : readProductListState(owner),
   );
@@ -380,20 +476,53 @@ export function ProductsPage({
     if (context.purchaseScope && !catalog)
       return <LoadingState label="선택한 구매 조건을 불러오고 있습니다…" />;
     return (
-      <ProductDetailView
-        key={selectedProductId}
-        productId={selectedProductId}
-        context={context}
-        matchingPurchaseIds={matchingPurchaseIds}
-        onSelectContext={(next) =>
-          onSelectProduct(selectedProductId, {
-            ...next,
-            purchaseScope: "purchaseScope" in next ? next.purchaseScope : context.purchaseScope,
-          })
-        }
-        onBack={onDeselectProduct}
-        vendorNames={vendorNames}
-      />
+      <>
+        {pendingCorrection ? (
+          <div className="notice">
+            <output>정정은 저장됐습니다. 최신 기록 연결을 동기화하고 있습니다.</output>
+            {lastError ? <p>{lastError}</p> : null}
+            <div className="button-row">
+              <button
+                type="button"
+                disabled={offline}
+                onClick={() =>
+                  checkCorrectedTasting(pendingCorrection.id, pendingCorrection.navigation)
+                }
+              >
+                정정한 기록 다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingCorrection(null);
+                  onSelectProduct(selectedProductId, {});
+                }}
+              >
+                제품 전체 보기
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <ProductDetailView
+          key={selectedProductId}
+          productId={selectedProductId}
+          context={context}
+          matchingPurchaseIds={matchingPurchaseIds}
+          onTastingCorrected={followCorrectedTasting}
+          correctionSynchronizing={Boolean(pendingCorrection)}
+          onCorrectionSavingChange={(saving) => {
+            if (saving) correctionOriginNavigation.current = latestNavigation.current;
+          }}
+          onSelectContext={(next) =>
+            onSelectProduct(selectedProductId, {
+              ...next,
+              purchaseScope: "purchaseScope" in next ? next.purchaseScope : context.purchaseScope,
+            })
+          }
+          onBack={onDeselectProduct}
+          vendorNames={vendorNames}
+        />
+      </>
     );
   }
 
@@ -636,7 +765,13 @@ function ProductDetailView({
   onSelectContext,
   onBack,
   vendorNames,
+  onTastingCorrected,
+  correctionSynchronizing,
+  onCorrectionSavingChange,
 }: {
+  onCorrectionSavingChange: (saving: boolean) => void;
+  onTastingCorrected: (record: ContextualTasting) => void;
+  correctionSynchronizing: boolean;
   productId: string;
   context: ProductContext;
   matchingPurchaseIds?: readonly string[] | undefined;
@@ -647,11 +782,19 @@ function ProductDetailView({
   const toast = useToast();
   const { state, triggerSync } = useSyncStatus();
   const offline = state === "offline";
-  const target = useLiveQuery(
+  const [correctionBusy, setCorrectionBusy] = useState(false);
+  const targetRecord = useLiveQuery(
     () => resolveProductContext(productId, context),
     [productId, context.skuId, context.bottleId, context.tastingId],
   );
-  const product = useLiveQuery(() => getProduct(productId), [productId]);
+  const productRecord = useLiveQuery(() => getProduct(productId), [productId]);
+  const retained = useRef<{ product: Product; target: ProductContext } | null>(null);
+  if (productRecord && targetRecord)
+    retained.current = { product: productRecord, target: targetRecord };
+  // Pull이 연결을 바꿔도 저장 중인 폼의 완료 콜백이 먼저 사라지지 않게 한다.
+  const retaining = correctionBusy || correctionSynchronizing;
+  const product = productRecord ?? (retaining ? retained.current?.product : productRecord);
+  const target = targetRecord ?? (retaining ? retained.current?.target : targetRecord);
   const purchases = useLiveQuery(() => getPurchasesForProduct(productId), [productId]);
   const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
@@ -848,6 +991,8 @@ function ProductDetailView({
   }
 
   if (target === null) {
+    if (correctionSynchronizing)
+      return <p className="notice">정정을 저장했습니다. 최신 기록 연결을 동기화하고 있습니다.</p>;
     return (
       <>
         <p role="alert" className="alert">
@@ -886,6 +1031,11 @@ function ProductDetailView({
       selectedBottleId={target.bottleId}
       selectedTastingId={target.tastingId}
       onSelectContext={onSelectContext}
+      onTastingCorrected={onTastingCorrected}
+      onCorrectionSavingChange={(saving) => {
+        setCorrectionBusy(saving);
+        onCorrectionSavingChange(saving);
+      }}
       purchases={purchases ?? []}
       bottles={bottles ?? []}
       offline={offline}
