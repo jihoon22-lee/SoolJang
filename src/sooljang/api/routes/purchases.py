@@ -320,7 +320,8 @@ async def update_purchase(
     # 병합/일괄 수정과 같은 Vendor → Purchase 순서로 잠근다.
     if "vendor_id" in fields and fields["vendor_id"] is not None:
         await _owned_vendor(session, user_id, fields["vendor_id"])
-    purchase = await _owned_purchase(session, user_id, purchase_id)
+    # 병수 비교부터 번호 발급까지 구매 건 하나를 잠가 두 기기의 수량 수정을 직렬화한다.
+    purchase = await owned(session, Purchase, user_id, purchase_id)
     if "currency" in fields and fields["currency"]:
         fields["currency"] = fields["currency"].upper()
     before = {key: getattr(purchase, key) for key in [*fields, "quantity"]}
@@ -360,7 +361,12 @@ async def _resize_bottles(
         )
     )
     if quantity > len(bottles):
-        start = (bottles[-1].label_no + 1) if bottles else 1
+        # 지운 병도 원래 번호와 이력을 보존한다. 살아 있는 마지막 번호를 재사용하면
+        # 3 → 2 → 3 수정에서 soft delete 된 3번 병과 유일성 제약이 충돌한다.
+        last_label = await session.scalar(
+            select(func.max(Bottle.label_no)).where(Bottle.purchase_id == purchase.id)
+        )
+        start = (last_label or 0) + 1
         _add_bottles(session, user_id, purchase, count=quantity - len(bottles), start=start)
     elif quantity < len(bottles):
         removable = [bottle for bottle in reversed(bottles) if bottle.status == "unopened"]

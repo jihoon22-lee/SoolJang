@@ -1,5 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { cloneElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Product, ProductMetrics, Purchase } from "@/api/types";
 import { ProductDetail } from "@/components/ProductDetail";
@@ -125,7 +126,7 @@ function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
   const onDeletePurchase = vi.fn();
   const onSplitPurchase = vi.fn();
   const onAddSku = vi.fn();
-  renderWithQuery(
+  const element = (
     <ProductDetail
       product={product}
       purchases={purchases}
@@ -147,9 +148,19 @@ function setup(overrides: Partial<Parameters<typeof ProductDetail>[0]> = {}) {
       onAddSku={onAddSku}
       addingSku={false}
       {...overrides}
-    />,
+    />
   );
-  return { onBack, onEdit, onDelete, onAddPurchase, onDeletePurchase, onSplitPurchase, onAddSku };
+  const view = renderWithQuery(element);
+  return {
+    onBack,
+    onEdit,
+    onDelete,
+    onAddPurchase,
+    onDeletePurchase,
+    onSplitPurchase,
+    onAddSku,
+    rerenderProduct: (next: Product) => view.rerender(cloneElement(element, { product: next })),
+  };
 }
 
 describe("ProductDetail", () => {
@@ -551,4 +562,35 @@ describe("ProductDetail", () => {
       ).toBeInTheDocument();
     });
   });
+});
+
+it("첫 규격을 추가한 같은 폼에서 바로 구매를 저장한다", async () => {
+  const { onAddPurchase, onAddSku, rerenderProduct } = setup({ product: { ...product, skus: [] } });
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+  await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
+  expect(onAddSku).toHaveBeenCalledWith(700);
+  rerenderProduct(product);
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  expect(onAddPurchase).toHaveBeenCalledWith(expect.objectContaining({ skuId: "s1", quantity: 1 }));
+  expect(screen.queryByText("규격을 선택하세요")).not.toBeInTheDocument();
+});
+
+it("규격 목록이 바뀌어도 유효한 선택과 구매 입력은 보존하고 없어진 선택만 보정한다", async () => {
+  const other = { ...product.skus[0]!, id: "s2", volume_ml: 350 };
+  const { onAddPurchase, rerenderProduct } = setup({
+    product: { ...product, skus: [...product.skus, other] },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.selectOptions(screen.getByLabelText("규격"), "s2");
+  await userEvent.clear(screen.getByLabelText("병수"));
+  await userEvent.type(screen.getByLabelText("병수"), "3");
+  rerenderProduct({
+    ...product,
+    skus: [...product.skus, other, { ...other, id: "s3", volume_ml: 1000 }],
+  });
+  expect(screen.getByLabelText("규격")).toHaveValue("s2");
+  rerenderProduct(product);
+  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  expect(onAddPurchase).toHaveBeenCalledWith(expect.objectContaining({ skuId: "s1", quantity: 3 }));
 });

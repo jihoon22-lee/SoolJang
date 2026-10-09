@@ -14,9 +14,9 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-10-09 — 실사용 리뷰 PR 1 저장·계정 보호 구현·검증 완료. PR 2 구매·시음 입력 대기 |
+| 최종 갱신 | 2026-10-09 — 실사용 리뷰 PR 1 [#157](https://github.com/jihoon22-lee/SoolJang/pull/157) 검토 준비 완료. PR 2 구매·시음 입력 구현·검증 완료 |
 | 현재 마일스톤 | 실사용 리뷰 후속(릴리스 미포함). 직전 [v1.8.0](https://github.com/jihoon22-lee/SoolJang/milestone/2) 완료(메인 [#147](https://github.com/jihoon22-lee/SoolJang/issues/147)) |
-| 진행 브랜치 | `feature/review-sync-ownership` (PR 1) |
+| 진행 브랜치 | `feature/review-record-entry` (PR 2) |
 | 버전 | 코드·패키지 `1.8.1`, schema head `0019_record_event` |
 | 운영 | API·웹 `1.8.1`, schema `0019_record_event`(2026-10-05 배포, 백업 `sooljang-20261005T075522111604Z-16fe607e`) |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
@@ -25,8 +25,8 @@
 
 | 묶음 | 요구사항·수용 시나리오 | 상태 |
 |---|---|---|
-| PR 1 `feature/review-sync-ownership` | F1 로그아웃 후 대기열, F2 오프라인 저장, F3 구매처 권한 | 구현·검증 완료, PR 준비 ([기록](../workthrough/2026-10-09-review-sync-ownership.md)) |
-| PR 2 `feature/review-record-entry` | F4 수량 재증가, F5 첫 규격, F6 병 선택, F7 초안 복구 | PR 1 뒤 진행 |
+| PR 1 `feature/review-sync-ownership` | F1 로그아웃 후 대기열, F2 오프라인 저장, F3 구매처 권한 | [#157](https://github.com/jihoon22-lee/SoolJang/pull/157) 검토 가능 ([기록](../workthrough/2026-10-09-review-sync-ownership.md)) |
+| PR 2 `feature/review-record-entry` | F4 수량 재증가, F5 첫 규격, F6 병 선택, F7 초안 복구 | 구현·검증 완료, PR 준비 ([기록](../workthrough/2026-10-09-review-record-entry.md)) |
 | PR 3 `feature/review-history-usability` | F8 시음 페이지, F9 실사 정정, F10 모바일 지표 | PR 2 뒤 진행 |
 
 세 묶음은 순차 브랜치/PR로 연결한다. 원본 보존·구버전 PWA 호환을 유지하고 최종 묶음에서

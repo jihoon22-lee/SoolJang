@@ -550,6 +550,14 @@ function AddPurchaseForm({
   const [newVolumeMl, setNewVolumeMl] = useDraftState(`purchase:${product.id}:newVolumeMl`, "");
   const [localError, setLocalError] = useState<string | null>(null);
 
+  // 첫 규격 생성 응답과 오래된 초안을 모두 반영하되 사용자의 유효한 선택은 유지한다.
+  useEffect(() => {
+    if (product.skus.length > 0 && !product.skus.some((sku) => sku.id === skuId)) {
+      setSkuId(product.skus[0]?.id ?? "");
+      setLocalError(null);
+    }
+  }, [product.skus, skuId, setSkuId]);
+
   const vendorSuggestions = useMemo(
     () => rankByQuery(vendorNames, vendorName, (name) => name).slice(0, MAX_SUGGESTIONS),
     [vendorNames, vendorName],

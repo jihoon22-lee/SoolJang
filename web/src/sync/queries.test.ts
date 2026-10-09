@@ -5,6 +5,7 @@ import {
   getBottles,
   getCategoryRollup,
   getCategoryTree,
+  getDrinkableBottles,
   getProducts,
   getStatsRankings,
   getStatsSummary,
@@ -25,6 +26,76 @@ function row(overrides: Record<string, unknown>) {
 
 beforeEach(async () => {
   await db.open();
+});
+
+describe("getDrinkableBottles", () => {
+  it("미개봉은 구매일·생성시각·번호·ID 순서이고 날짜 미기록은 마지막이다", async () => {
+    await db.product.put(row({ id: "product", name: "합성 위스키" }));
+    await db.sku.bulkPut([
+      row({ id: "small", product_id: "product", volume_ml: 200 }),
+      row({ id: "large", product_id: "product", volume_ml: 700 }),
+    ]);
+    await db.vendor.put(row({ id: "shop", name: "합성 매장" }));
+    await db.purchase.bulkPut([
+      row({ id: "dated", sku_id: "large", purchased_on: "2025-01-01", vendor_id: "shop" }),
+      row({ id: "newer", sku_id: "small", purchased_on: "2025-02-01" }),
+      row({ id: "undated", sku_id: "large", purchased_on: null }),
+    ]);
+    await db.bottle.bulkPut([
+      row({ id: "last-id", purchase_id: "dated", status: "unopened", label_no: 2 }),
+      row({ id: "first-id", purchase_id: "dated", status: "unopened", label_no: 2 }),
+      row({ id: "lower-number", purchase_id: "dated", status: "unopened", label_no: 1 }),
+      row({
+        id: "earlier-created",
+        purchase_id: "dated",
+        status: "unopened",
+        label_no: 99,
+        created_at: "2025-12-31T00:00:00Z",
+      }),
+      row({ id: "newer-purchase", purchase_id: "newer", status: "unopened", label_no: 1 }),
+      row({
+        id: "unknown-date",
+        purchase_id: "undated",
+        status: "unopened",
+        label_no: 1,
+        created_at: "2020-01-01T00:00:00Z",
+      }),
+      row({
+        id: "opened",
+        purchase_id: "newer",
+        status: "open",
+        label_no: 2,
+        opened_on: "2026-01-01",
+      }),
+      row({ id: "gifted", purchase_id: "dated", status: "gifted", label_no: 3 }),
+      row({ id: "sold", purchase_id: "dated", status: "sold", label_no: 4 }),
+      row({
+        id: "deleted",
+        purchase_id: "dated",
+        status: "unopened",
+        label_no: 5,
+        deleted_at: NOW,
+      }),
+    ]);
+
+    const bottles = await getDrinkableBottles();
+    expect(bottles.map((bottle) => bottle.bottleId)).toEqual([
+      "opened",
+      "earlier-created",
+      "lower-number",
+      "first-id",
+      "last-id",
+      "newer-purchase",
+      "unknown-date",
+    ]);
+    expect(bottles.find((bottle) => bottle.bottleId === "earlier-created")).toMatchObject({
+      skuId: "large",
+      purchaseId: "dated",
+      volumeMl: 700,
+      purchasedOn: "2025-01-01",
+      vendorName: "합성 매장",
+    });
+  });
 });
 
 afterEach(async () => {
