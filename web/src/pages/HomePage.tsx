@@ -1,12 +1,12 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
-
 import type { RankingEntry } from "@/api/types";
+import { productEdition, purchaseReference } from "@/components/productDisplay";
 import { QuickTastingSheet } from "@/components/QuickTastingSheet";
 import { LoadingState } from "@/components/StatusViews";
 import { daysSince, openedShelfLife } from "@/domain/openedShelfLife";
 import { formatDate, formatMoney, formatRating, formatVolume, todayLocal } from "@/format";
-import type { View } from "@/router";
+import type { ProductContext, View } from "@/router";
 import {
   getDrinkableBottles,
   getRecentProducts,
@@ -16,7 +16,7 @@ import {
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
 interface HomePageProps {
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
   onSelectCategory: (categoryId: string) => void;
   /** 홈 바로가기(보관·실사, 가격 감시 등 설정 메뉴 안 화면)로 이동. */
   onNavigate?: ((view: View) => void) | undefined;
@@ -77,7 +77,11 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
         </button>
       </div>
       {tastingOpen ? (
-        <QuickTastingSheet returnFocusRef={tastingButton} onClose={() => setTastingOpen(false)} />
+        <QuickTastingSheet
+          onSelectProduct={onSelectProduct}
+          returnFocusRef={tastingButton}
+          onClose={() => setTastingOpen(false)}
+        />
       ) : null}
 
       {pendingCount > 0 || lastError ? (
@@ -95,6 +99,7 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
         <dl className="metrics-grid metrics-grid--hero">
           <Metric label="재고" value={`${totals.in_stock_count.toLocaleString("ko-KR")}병`} />
           <Metric label="개봉 중" value={`${totals.opened_count.toLocaleString("ko-KR")}병`} />
+          <Metric label="재고 원가" value={formatMoney(totals.inventory_value_at_cost ?? null)} />
           <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
         </dl>
         <p className="muted text-sm home-summary-secondary">
@@ -114,9 +119,21 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
                 <button
                   type="button"
                   className="link-like"
-                  onClick={() => onSelectProduct(item.productId)}
+                  onClick={() =>
+                    onSelectProduct(item.productId, { skuId: item.skuId, bottleId: item.bottleId })
+                  }
                 >
-                  {item.productName} #{item.labelNo}
+                  {item.productName} #{item.labelNo} · {formatVolume(item.volumeMl)}
+                  {productEdition({
+                    vintage: item.vintage,
+                    age_years: item.ageYears,
+                    abv: item.abv,
+                  }) &&
+                    ` · ${productEdition({ vintage: item.vintage, age_years: item.ageYears, abv: item.abv })}`}
+                  {` · ${purchaseReference(
+                    item.purchaseId,
+                    drinkable.map((bottle) => bottle.purchaseId),
+                  )}`}
                 </button>
                 <span className="muted">
                   개봉 {days}일째 · {life.label} 권장 {life.days}일
@@ -138,9 +155,21 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
                 <button
                   type="button"
                   className="link-like"
-                  onClick={() => onSelectProduct(item.productId)}
+                  onClick={() =>
+                    onSelectProduct(item.productId, { skuId: item.skuId, bottleId: item.bottleId })
+                  }
                 >
-                  {item.productName} #{item.labelNo}
+                  {item.productName} #{item.labelNo} · {formatVolume(item.volumeMl)}
+                  {productEdition({
+                    vintage: item.vintage,
+                    age_years: item.ageYears,
+                    abv: item.abv,
+                  }) &&
+                    ` · ${productEdition({ vintage: item.vintage, age_years: item.ageYears, abv: item.abv })}`}
+                  {` · ${purchaseReference(
+                    item.purchaseId,
+                    drinkable.map((bottle) => bottle.purchaseId),
+                  )}`}
                 </button>
                 <span className="muted">
                   {item.remainingMl !== null ? `${item.remainingMl}ml 남음` : "잔량 미기록"}
@@ -246,9 +275,25 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
                       <button
                         type="button"
                         className="link-like"
-                        onClick={() => onSelectProduct(tasting.productId as string)}
+                        onClick={() =>
+                          onSelectProduct(tasting.productId as string, {
+                            skuId: tasting.skuId,
+                            bottleId: tasting.bottleId ?? undefined,
+                            tastingId: tasting.id,
+                          })
+                        }
                       >
-                        {tasting.productName}
+                        {tasting.productName} · {formatVolume(tasting.volumeMl)}
+                        {tasting.labelNo ? ` · ${tasting.labelNo}번 병` : ""}
+                        {tasting.purchaseId
+                          ? ` · ${purchaseReference(
+                              tasting.purchaseId,
+                              recentTastings.flatMap((entry) =>
+                                entry.purchaseId ? [entry.purchaseId] : [],
+                              ),
+                            )}`
+                          : ""}
+                        {tasting.vintage ? ` · ${tasting.vintage}` : ""}
                       </button>
                     ) : (
                       <span>{tasting.productName}</span>
@@ -288,7 +333,7 @@ function MiniRanking({
   hint?: string;
   entries: RankingEntry[];
   formatValue: (value: string) => string;
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: string, context?: ProductContext) => void;
 }) {
   return (
     <section aria-label={title}>

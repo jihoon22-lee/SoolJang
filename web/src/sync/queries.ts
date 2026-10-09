@@ -21,8 +21,10 @@ import type {
   OfflineStatsSummary,
   Product,
   ProductFilters,
+  ProductMetrics,
   Purchase,
   RankingEntry,
+  SkuSummary,
   SortKey,
   Vendor,
 } from "@/api/types";
@@ -32,6 +34,7 @@ import {
   bottleTallyInStock,
   computePriceMetrics,
   computeProductMetrics,
+  type ProductMetrics as DomainProductMetrics,
   type BottleRecord as MetricsBottleRecord,
   type PriceMetrics,
   type PurchaseLot,
@@ -224,20 +227,23 @@ function assembleOneProduct(
       // 서버 제약상 생기지 않지만, 손상된 로컬 행 하나가 `RangeError` 로 목록·통계 전체를
       // 빈 화면으로 만들지 않게 그 구매만 지표에서 뺀다.
       if (!(quantity > 0) || !(volumeMl > 0)) continue;
-      lots.push(
-        purchaseLot(
+      lots.push({
+        ...purchaseLot(
           quantity,
           volumeMl,
           toDecimalOrNull(purchase.unit_list_price),
           toDecimalOrNull(purchase.unit_paid_price),
         ),
-      );
+        purchaseId: purchase.id,
+        skuId: sku.id,
+      });
       const vendorId = purchase.vendor_id as string | null;
       if (vendorId) vendorIds.add(vendorId);
       const purchasedOn = purchase.purchased_on as string | null;
       if (purchasedOn) purchaseDates.push(purchasedOn);
       for (const bottle of bottlesByPurchase.get(purchase.id) ?? []) {
         bottleRecords.push({
+          purchaseId: purchase.id,
           status: bottle.status as string,
           openedOn: (bottle.opened_on as string | null) ?? null,
           finishedOn: (bottle.finished_on as string | null) ?? null,
@@ -368,30 +374,58 @@ function toProduct(
       barcode_type: (sku.barcode_type as string | null) ?? null,
       package_note: (sku.package_note as string | null) ?? null,
     })),
-    metrics: {
-      purchased_count: metrics.prices.purchasedCount,
-      consumed_count: metrics.bottles.finished,
-      in_stock_count: bottleTallyInStock(metrics.bottles),
-      unopened_count: metrics.bottles.unopened,
-      opened_count: metrics.bottles.open,
-      gifted_count: metrics.bottles.gifted,
-      sold_count: metrics.bottles.sold,
-      avg_list_price: metrics.prices.avgListPrice?.toFixed(2) ?? null,
-      avg_paid_price: metrics.prices.avgPaidPrice?.toFixed(2) ?? null,
-      price_per_100ml: metrics.prices.pricePer100ml?.toFixed(2) ?? null,
-      price_per_100ml_paid: metrics.prices.pricePer100mlPaid?.toFixed(2) ?? null,
-      list_total: metrics.prices.listTotal?.toFixed(2) ?? null,
-      paid_total: metrics.prices.paidTotal?.toFixed(2) ?? null,
-      discount_rate: metrics.prices.discountRate?.toFixed(4) ?? null,
-      total_volume_ml: metrics.prices.totalVolumeMl,
-      inventory_value_at_cost: metrics.inventoryValueAtCost?.toFixed(2) ?? null,
-      value_for_money:
-        valueForMoney(
-          personalRating ? new Decimal(personalRating) : null,
-          metrics.prices.pricePer100ml,
-        )?.toFixed(4) ?? null,
-    },
+    sku_summaries: skuSummaries(assembly, personalRating),
+    metrics: serializeMetrics(metrics, personalRating),
   };
+}
+
+export function serializeMetrics(
+  metrics: DomainProductMetrics,
+  personalRating: string | null = null,
+): ProductMetrics {
+  return {
+    purchased_count: metrics.prices.purchasedCount,
+    consumed_count: metrics.bottles.finished,
+    in_stock_count: bottleTallyInStock(metrics.bottles),
+    unopened_count: metrics.bottles.unopened,
+    opened_count: metrics.bottles.open,
+    gifted_count: metrics.bottles.gifted,
+    sold_count: metrics.bottles.sold,
+    avg_list_price: metrics.prices.avgListPrice?.toFixed(2) ?? null,
+    avg_paid_price: metrics.prices.avgPaidPrice?.toFixed(2) ?? null,
+    price_per_100ml: metrics.prices.pricePer100ml?.toFixed(2) ?? null,
+    price_per_100ml_paid: metrics.prices.pricePer100mlPaid?.toFixed(2) ?? null,
+    list_total: metrics.prices.listTotal?.toFixed(2) ?? null,
+    paid_total: metrics.prices.paidTotal?.toFixed(2) ?? null,
+    discount_rate: metrics.prices.discountRate?.toFixed(4) ?? null,
+    total_volume_ml: metrics.prices.totalVolumeMl,
+    inventory_value_at_cost: metrics.inventoryValueAtCost?.toFixed(2) ?? null,
+    value_for_money:
+      valueForMoney(
+        personalRating ? new Decimal(personalRating) : null,
+        metrics.prices.pricePer100ml,
+      )?.toFixed(4) ?? null,
+  };
+}
+
+function skuSummaries(assembly: ProductAssembly, rating: string | null): SkuSummary[] {
+  return assembly.skus
+    .map((sku) => {
+      const lots = assembly.lots.filter((lot) => lot.skuId === sku.id);
+      const purchaseIds = new Set(lots.map((lot) => lot.purchaseId));
+      const bottles = assembly.bottles.filter((bottle) => purchaseIds.has(bottle.purchaseId));
+      return {
+        sku_id: sku.id,
+        volume_ml: Number(sku.volume_ml),
+        metrics: serializeMetrics(computeProductMetrics(lots, bottles), rating),
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.metrics.in_stock_count > 0) - Number(a.metrics.in_stock_count > 0) ||
+        a.volume_ml - b.volume_ml ||
+        a.sku_id.localeCompare(b.sku_id),
+    );
 }
 
 async function categoryPathMap(): Promise<Map<string, string[]>> {
@@ -670,6 +704,7 @@ export async function getPurchasesForProduct(productId: string): Promise<Purchas
     const unitPaid = toDecimalOrNull(p.unit_paid_price) ?? new Decimal(0);
     return {
       id: p.id,
+      created_at: p.created_at,
       sku_id: p.sku_id as string,
       volume_ml: (sku?.volume_ml as number | undefined) ?? null,
       vendor_id: vendorId,
@@ -738,6 +773,9 @@ export async function getBottlesForProduct(productId: string): Promise<Bottle[]>
 
 /** "오늘 마셨어요" 에서 고를 수 있는 병(재고). 개봉 병을 먼저, 최근 개봉 순. */
 export interface DrinkableBottle {
+  vintage: number | null;
+  abv: string | null;
+  ageYears: string | null;
   bottleId: string;
   skuId: string;
   purchaseId: string;
@@ -782,6 +820,9 @@ export async function getDrinkableBottles(): Promise<DrinkableBottle[]> {
       purchaseId: purchase.id,
       productId: product.id,
       productName: String(product.name),
+      vintage: (product.vintage as number | null) ?? null,
+      abv: (product.abv as string | null) ?? null,
+      ageYears: (product.age_years as string | null) ?? null,
       purchasedOn: (purchase.purchased_on as string | null) || null,
       vendorName:
         (vendorById.get(purchase.vendor_id as string)?.name as string | undefined) ?? null,
@@ -860,6 +901,7 @@ interface StatsRow {
   abv: string | null;
   personalRating: string | null;
   prices: PriceMetrics;
+  inventoryValueAtCost: Decimal | null;
   tally: BottleTally;
   bottles: MetricsBottleRecord[];
 }
@@ -898,6 +940,8 @@ async function statsRows(): Promise<StatsData> {
     abv: (assembly.row.abv as string | null) ?? null,
     personalRating: (assembly.row.personal_rating as string | null) ?? null,
     prices: computePriceMetrics(assembly.lots),
+    inventoryValueAtCost: computeProductMetrics(assembly.lots, assembly.bottles)
+      .inventoryValueAtCost,
     tally: tallyBottles(assembly.bottles),
     bottles: assembly.bottles,
   }));
@@ -1121,6 +1165,8 @@ export async function getStatsSummary(data?: StatsData): Promise<OfflineStatsSum
       : null;
 
   return {
+    inventory_value_at_cost:
+      sumDecimal(rows.map((row) => row.inventoryValueAtCost))?.toFixed(2) ?? null,
     purchased_count: purchasedCount,
     consumed_count: rows.reduce((sum, row) => sum + row.tally.finished, 0),
     in_stock_count: rows.reduce((sum, row) => sum + bottleTallyInStock(row.tally), 0),
@@ -1176,6 +1222,12 @@ export interface RecentProduct {
 }
 
 export interface RecentTasting {
+  labelNo: number | null;
+  purchaseId: string | null;
+  skuId: string;
+  bottleId: string | null;
+  volumeMl: number | null;
+  vintage: number | null;
   id: string;
   productId: string | null;
   productName: string;
@@ -1199,7 +1251,12 @@ export async function getRecentProducts(limit = 5): Promise<RecentProduct[]> {
 /** 최근 시음(`tasted_on` 내림차순). 제품 이름은 sku→product 로 붙인다. */
 export async function getRecentTastings(limit = 5): Promise<RecentTasting[]> {
   const tastings = await db.tasting_session.filter((row) => row.deleted_at === null).toArray();
-  const [skus, products] = await Promise.all([liveTable("sku"), liveTable("product")]);
+  const [skus, products, bottles] = await Promise.all([
+    liveTable("sku"),
+    liveTable("product"),
+    liveTable("bottle"),
+  ]);
+  const bottleById = new Map(bottles.map((bottle) => [bottle.id, bottle]));
   const skuById = new Map(skus.map((sku) => [sku.id, sku]));
   const productById = new Map(products.map((product) => [product.id, product]));
   // 삭제한 제품의 시음은 최근 활동에 다시 띄우지 않는다(기록 자체는 보존된다).
@@ -1216,6 +1273,12 @@ export async function getRecentTastings(limit = 5): Promise<RecentTasting[]> {
     const product = sku ? productById.get(sku.product_id as string) : undefined;
     return {
       id: t.id,
+      labelNo: (bottleById.get(String(t.bottle_id))?.label_no as number | undefined) ?? null,
+      purchaseId: (bottleById.get(String(t.bottle_id))?.purchase_id as string | undefined) ?? null,
+      skuId: String(t.sku_id),
+      bottleId: (t.bottle_id as string | null) ?? null,
+      volumeMl: sku ? Number(sku.volume_ml) : null,
+      vintage: (product?.vintage as number | null) ?? null,
       productId: product?.id ?? null,
       productName: product ? String(product.name) : "알 수 없는 술",
       tastedOn: String(t.tasted_on),

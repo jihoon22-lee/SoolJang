@@ -9,6 +9,14 @@ export interface Location {
   bottle_count: number;
 }
 export interface InventoryBottle {
+  sku_id?: string;
+  purchase_id?: string;
+  volume_ml?: number | null;
+  vintage?: number | null;
+  abv?: string | null;
+  age_years?: string | null;
+  purchased_on?: string | null;
+  vendor_name?: string | null;
   id: string;
   product_id: string;
   name: string;

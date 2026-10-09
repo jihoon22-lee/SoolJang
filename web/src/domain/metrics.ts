@@ -65,6 +65,8 @@ export const IN_STOCK_STATES: ReadonlySet<string> = new Set([
 export const DISPOSED_STATES: ReadonlySet<string> = new Set([BottleState.GIFTED, BottleState.SOLD]);
 
 export interface PurchaseLot {
+  purchaseId?: string;
+  skuId?: string;
   quantity: number;
   volumeMl: number;
   unitListPrice: Decimal | null;
@@ -96,6 +98,7 @@ function lotTotalVolumeMl(lot: PurchaseLot): number {
 }
 
 export interface BottleRecord {
+  purchaseId?: string;
   status: string;
   openedOn: string | null;
   finishedOn: string | null;
@@ -308,10 +311,7 @@ export function computeProductMetrics(
     warnings.push(`병 레코드 수(${bottleCount})가 구매 병수(${prices.purchasedCount})와 다릅니다`);
   }
 
-  const inventoryValueAtCost =
-    prices.avgPaidPrice !== null
-      ? quantizeMoney(prices.avgPaidPrice.times(bottleTallyInStock(tally)))
-      : null;
+  const inventoryValueAtCost = inventoryCost(lots, bottles);
 
   return {
     prices,
@@ -320,4 +320,48 @@ export function computeProductMetrics(
     averageDaysToFinish: averageDaysToFinish(bottles),
     consistencyWarnings: warnings,
   };
+}
+
+/** SKU 전체 구매 평균을 중간 반올림 없이 사용하고 SKU 원가만 2자리로 확정한다. */
+function inventoryCost(
+  lots: readonly PurchaseLot[],
+  bottles: readonly BottleRecord[],
+): Decimal | null {
+  if (lots.length === 0) return null;
+  const linked =
+    lots.some((lot) => lot.purchaseId !== undefined || lot.skuId !== undefined) ||
+    bottles.some((bottle) => bottle.purchaseId !== undefined);
+  if (!linked) {
+    if (new Set(lots.map((lot) => lot.volumeMl)).size > 1) {
+      throw new Error("여러 규격의 원가 계산에는 구매·SKU 연결이 필요합니다");
+    }
+    const total = lots.reduce((sum, lot) => sum.plus(lotPaidTotal(lot)), new Decimal(0));
+    return quantizeMoney(
+      total
+        .times(bottles.filter(bottleInStock).length)
+        .dividedBy(lots.reduce((sum, lot) => sum + lot.quantity, 0)),
+    );
+  }
+  const purchaseSkus = new Map<string, string>();
+  const groups = new Map<string, { amount: Decimal; quantity: number; stock: number }>();
+  for (const lot of lots) {
+    if (!lot.purchaseId || !lot.skuId) throw new Error("구매·SKU 연결이 누락되었습니다");
+    if (purchaseSkus.has(lot.purchaseId)) throw new Error("구매 식별자가 중복되었습니다");
+    purchaseSkus.set(lot.purchaseId, lot.skuId);
+    const group = groups.get(lot.skuId) ?? { amount: new Decimal(0), quantity: 0, stock: 0 };
+    group.amount = group.amount.plus(lotPaidTotal(lot));
+    group.quantity += lot.quantity;
+    groups.set(lot.skuId, group);
+  }
+  for (const bottle of bottles) {
+    const sku = bottle.purchaseId ? purchaseSkus.get(bottle.purchaseId) : undefined;
+    const group = sku ? groups.get(sku) : undefined;
+    if (!group) throw new Error("병의 구매 연결이 누락되었습니다");
+    if (bottleInStock(bottle)) group.stock += 1;
+  }
+  return [...groups.values()].reduce(
+    (sum, group) =>
+      sum.plus(quantizeMoney(group.amount.times(group.stock).dividedBy(group.quantity))),
+    new Decimal(0),
+  );
 }

@@ -295,8 +295,8 @@ def test_product_metrics_combine_prices_and_bottles() -> None:
 
     assert metrics.in_stock_count == 2
     assert metrics.consumed_count == 1
-    # 실평단가 102666.67 × 재고 2병
-    assert metrics.inventory_value_at_cost == Decimal("205333.34")
+    # (308000 / 3) × 재고 2병. 표시용 실평단가 102666.67을 재사용하지 않는다.
+    assert metrics.inventory_value_at_cost == Decimal("205333.33")
     assert metrics.consistency_warnings == ()
 
 

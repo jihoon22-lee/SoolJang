@@ -81,6 +81,7 @@ def _summary_out(summary: StatsSummary) -> StatsSummaryOut:
         discount_rate=summary.discount_rate,
         avg_personal_rating=summary.avg_personal_rating,
         vendor_count=summary.vendor_count,
+        inventory_value_at_cost=summary.inventory_value_at_cost,
     )
 
 

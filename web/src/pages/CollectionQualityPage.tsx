@@ -1,3 +1,4 @@
+import type { ProductContext } from "@/router";
 /**
  * 데이터 품질 — 누락·중복을 찾아 필요한 것만 한 번에 정리한다.
  *
@@ -37,7 +38,7 @@ const SECTIONS: { reason: string; title: string; fix?: FixKind; hint: string }[]
 export function CollectionQualityPage({
   onSelectProduct,
 }: {
-  onSelectProduct: (id: string) => void;
+  onSelectProduct: (id: string, context?: ProductContext) => void;
 }) {
   const { state, pendingCount, triggerSync } = useSyncStatus();
   const online = state !== "offline";

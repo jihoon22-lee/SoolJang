@@ -204,6 +204,7 @@ def _purchase_out(
     quantity = Decimal(purchase.quantity)
     return PurchaseOut(
         id=purchase.id,
+        created_at=purchase.created_at,
         sku_id=purchase.sku_id,
         volume_ml=volume_ml,
         vendor_id=purchase.vendor_id,

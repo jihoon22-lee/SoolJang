@@ -46,12 +46,16 @@ interface BottlePanelProps {
   /** 시음 기록 삭제는 서버 상태만 갖고 있어 온라인에서만 할 수 있다. */
   offline?: boolean;
   onSavingChange?: (saving: boolean) => void;
+  contextLabel?: string | undefined;
+  selectedTastingId?: string | undefined;
 }
 
 export function BottlePanel({
   bottle,
   offline = false,
   onSavingChange,
+  contextLabel,
+  selectedTastingId,
 }: BottlePanelProps): React.JSX.Element {
   const [savingTarget, setSavingTarget] = useState<string | null>(null);
   const savingTasting = savingTarget === bottle.id;
@@ -72,6 +76,25 @@ export function BottlePanel({
       (timeline.data?.pages.flatMap((page) => page.items) ?? []).map((item) => [item.id, item]),
     ).values(),
   ];
+
+  const selectedTastingLoaded = tastingItems.some((item) => item.id === selectedTastingId);
+  const selectedTastingRef = useRef<HTMLLIElement>(null);
+  const focusedTasting = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!selectedTastingId) {
+      focusedTasting.current = undefined;
+      return;
+    }
+    if (
+      !selectedTastingLoaded ||
+      !selectedTastingRef.current ||
+      focusedTasting.current === selectedTastingId
+    )
+      return;
+    focusedTasting.current = selectedTastingId;
+    selectedTastingRef.current.scrollIntoView?.({ block: "nearest" });
+    selectedTastingRef.current.focus({ preventScroll: true });
+  }, [selectedTastingId, selectedTastingLoaded]);
 
   const summary = useQuery({
     queryKey: ["tastings", "summary", bottle.id],
@@ -152,6 +175,7 @@ export function BottlePanel({
           </span>
         </h3>
         <p className="bottle-remaining">{formatRemaining(bottle)}</p>
+        {contextLabel ? <p className="muted bottle-context">{contextLabel}</p> : null}
       </header>
 
       <dl className="bottle-dates">
@@ -317,7 +341,14 @@ export function BottlePanel({
         ) : null}
         <ul>
           {tastingItems.map((item) => (
-            <li key={item.id}>
+            <li
+              key={item.id}
+              id={`tasting-${item.id}`}
+              className={item.id === selectedTastingId ? "tasting-selected" : undefined}
+              ref={item.id === selectedTastingId ? selectedTastingRef : undefined}
+              tabIndex={item.id === selectedTastingId ? -1 : undefined}
+              aria-current={item.id === selectedTastingId ? "true" : undefined}
+            >
               <span className="tasting-date">{item.tasted_on}</span>
               <span className="tasting-rating">
                 {item.rating ? `${item.rating}점` : "평점 없음"}
@@ -344,6 +375,15 @@ export function BottlePanel({
             </li>
           ))}
         </ul>
+        {selectedTastingId &&
+        timeline.data &&
+        !tastingItems.some((item) => item.id === selectedTastingId) ? (
+          <output className="muted">
+            {timeline.hasNextPage
+              ? "선택한 시음은 아직 이 목록에 없습니다. 이전 기록 더 보기로 확인하세요."
+              : "선택한 시음을 현재 목록에서 확인할 수 없습니다."}
+          </output>
+        ) : null}
         {timeline.isFetchNextPageError ? (
           <p role="alert">이전 기록을 더 불러오지 못했습니다. 이미 불러온 내역은 유지됩니다.</p>
         ) : null}

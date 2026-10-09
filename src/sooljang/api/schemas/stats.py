@@ -51,6 +51,7 @@ class StatsSummaryOut(BaseModel):
     discount_rate: Decimal | None
     avg_personal_rating: Decimal | None
     vendor_count: int
+    inventory_value_at_cost: Decimal | None = None
 
 
 # --- 통계 v2: 피벗·시계열 (Task 20) -----------------------------------------

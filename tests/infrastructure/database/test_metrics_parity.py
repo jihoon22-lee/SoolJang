@@ -93,21 +93,36 @@ async def _build(
             )
         )
     await session.flush()
+    domain_lots = [
+        PurchaseLot(
+            quantity=lot.quantity,
+            volume_ml=lot.volume_ml,
+            unit_list_price=lot.unit_list_price,
+            unit_paid_price=lot.unit_paid_price,
+            purchase_id=str(purchase.id),
+            sku_id=str(purchase.sku_id),
+        )
+        for purchase, lot in zip(purchases, domain_lots, strict=True)
+    ]
 
-    # 병은 첫 구매 건에 몰아서 붙인다. 지표는 제품 수준 집계라 배치가 결과를 바꾸지 않는다.
+    # 실제 구매 수량에 맞춰 병을 배치해 SKU 연결을 보존한다.
     domain_bottles: list[BottleRecord] = []
     if purchases and bottle_statuses:
-        for index, status in enumerate(bottle_statuses, start=1):
+        purchase_slots = [purchase for purchase in purchases for _ in range(purchase.quantity)]
+        labels: dict[uuid.UUID, int] = {}
+        for index, status in enumerate(bottle_statuses):
+            purchase = purchase_slots[index]
+            labels[purchase.id] = labels.get(purchase.id, 0) + 1
             session.add(
                 Bottle(
                     user_id=user_id,
-                    purchase_id=purchases[0].id,
-                    label_no=index,
+                    purchase_id=purchase.id,
+                    label_no=labels[purchase.id],
                     status=status,
                     remaining_ml=0 if status is BottleStatus.FINISHED else None,
                 )
             )
-            domain_bottles.append(BottleRecord(status.value))
+            domain_bottles.append(BottleRecord(status.value, purchase_id=str(purchase.id)))
         await session.flush()
 
     return product.id, domain_lots, domain_bottles
@@ -154,7 +169,7 @@ async def _compare(
     assert row.gifted == expected.bottles.gifted, "증여"
     assert row.sold == expected.bottles.sold, "판매"
     assert row.in_stock == expected.bottles.in_stock, "재고"
-    _assert_close(row.inventory_value_at_cost, expected.inventory_value_at_cost, "재고 자산가치")
+    assert row.inventory_value_at_cost == expected.inventory_value_at_cost, "SKU 원가의 정확한 합"
     return row
 
 

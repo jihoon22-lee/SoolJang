@@ -9,6 +9,7 @@
 
 import datetime
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -21,7 +22,7 @@ from sqlalchemy.orm import selectinload
 from sooljang.api.errors import NotFoundError
 from sooljang.application.categories import descendant_ids_query, load_tree
 from sooljang.domain.metrics import quantize_money, quantize_ratio, value_for_money
-from sooljang.infrastructure.database.metrics_sql import product_metrics_query
+from sooljang.infrastructure.database.metrics_sql import product_metrics_query, sku_metrics_query
 from sooljang.infrastructure.database.models import (
     Bottle,
     Category,
@@ -380,6 +381,36 @@ async def ensure_category_exists(
     )
     if found is None:
         raise NotFoundError(f"카테고리를 찾을 수 없습니다: {category_id}")
+
+
+async def sku_summaries_for_products(
+    session: AsyncSession, *, user_id: uuid.UUID, products: Sequence[Product]
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """한 페이지의 SKU 요약을 한 번에 읽는다. 카드·SKU별 추가 조회를 만들지 않는다."""
+    if not products:
+        return {}
+    ratings = {product.id: product.personal_rating for product in products}
+    metrics = sku_metrics_query(user_id).subquery("visible_sku_metrics")
+    rows = await session.execute(
+        select(metrics)
+        .where(metrics.c.product_id.in_(ratings))
+        .order_by(
+            metrics.c.product_id,
+            (metrics.c.in_stock > 0).desc(),
+            metrics.c.volume_ml,
+            metrics.c.sku_id,
+        )
+    )
+    summaries: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for row in rows:
+        summaries.setdefault(row.product_id, []).append(
+            {
+                "sku_id": row.sku_id,
+                "volume_ml": row.volume_ml,
+                "metrics": metrics_from_row(row, personal_rating=ratings[row.product_id]),
+            }
+        )
+    return summaries
 
 
 def metrics_from_row(row: Any, *, personal_rating: Decimal | None = None) -> dict[str, Any]:

@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
@@ -20,6 +20,7 @@ from sooljang.infrastructure.database.models import (
     Sku,
     Stocktake,
     StorageLocation,
+    Vendor,
 )
 
 
@@ -67,18 +68,37 @@ async def owned_many[T: EntityMixin](
 
 async def list_bottles(session: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
     rows = await session.execute(
-        select(Bottle, Product, BottlePlacement)
+        select(
+            Bottle,
+            Product,
+            BottlePlacement,
+            Sku.id,
+            Sku.volume_ml,
+            Purchase.purchased_on,
+            Vendor.name,
+        )
         .join(Purchase, Bottle.purchase_id == Purchase.id)
         .join(Sku, Purchase.sku_id == Sku.id)
         .join(Product, Sku.product_id == Product.id)
+        .outerjoin(
+            Vendor,
+            and_(
+                Vendor.id == Purchase.vendor_id,
+                Vendor.user_id == user_id,
+                Vendor.deleted_at.is_(None),
+            ),
+        )
         .outerjoin(BottlePlacement, BottlePlacement.bottle_id == Bottle.id)
         .where(
             Bottle.user_id == user_id,
             Bottle.deleted_at.is_(None),
             # 이전 버전에서 제품만 삭제되고 하위 병이 남은 기록도 목록에서 뺀다.
             Purchase.deleted_at.is_(None),
+            Purchase.user_id == user_id,
             Sku.deleted_at.is_(None),
+            Sku.user_id == user_id,
             Product.deleted_at.is_(None),
+            Product.user_id == user_id,
         )
         .order_by(Product.name, Bottle.label_no)
     )
@@ -86,7 +106,15 @@ async def list_bottles(session: AsyncSession, user_id: uuid.UUID) -> list[dict[s
         {
             "id": str(bottle.id),
             "product_id": str(product.id),
+            "sku_id": str(sku_id),
+            "purchase_id": str(bottle.purchase_id),
+            "volume_ml": volume_ml,
             "name": product.name,
+            "vintage": product.vintage,
+            "abv": str(product.abv) if product.abv is not None else None,
+            "age_years": str(product.age_years) if product.age_years is not None else None,
+            "purchased_on": purchased_on.isoformat() if purchased_on is not None else None,
+            "vendor_name": vendor_name,
             "label_no": bottle.label_no,
             "status": bottle.status,
             "location_id": str(placement.location_id)
@@ -95,7 +123,7 @@ async def list_bottles(session: AsyncSession, user_id: uuid.UUID) -> list[dict[s
             "legacy_location": bottle.storage_location,
             "bottle_code": f"sooljang:bottle:{bottle.id}",
         }
-        for bottle, product, placement in rows
+        for bottle, product, placement, sku_id, volume_ml, purchased_on, vendor_name in rows
     ]
 
 

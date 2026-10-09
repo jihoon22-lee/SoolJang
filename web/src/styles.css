@@ -3108,3 +3108,124 @@ legend {
   border-radius: var(--radius);
   background: var(--warn-surface);
 }
+
+/* 제품 전체 지표와 규격별 재고를 같은 목록 안에서 구분한다. */
+.sku-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-xs) 0 0;
+  display: grid;
+  gap: var(--space-xs);
+  font-weight: normal;
+}
+
+.sku-summary-button {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  white-space: normal;
+  font-size: var(--text-sm);
+  background: var(--surface-raised);
+}
+
+.sku-summary-title {
+  font-weight: 600;
+}
+
+.sku-selected,
+.tasting-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--surface-raised);
+}
+
+.selected-sku-context {
+  padding: var(--space-sm);
+  border-left: 3px solid var(--accent);
+}
+
+.purchase-context,
+.bottle-list-label > .muted {
+  display: block;
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  font-weight: normal;
+}
+
+.bottle-context,
+.bottle-section .quick-actions button {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.bottle-section .quick-actions button {
+  text-align: left;
+  max-width: 100%;
+}
+
+@media (max-width: 599px) {
+  .bottle-list-item {
+    flex-wrap: wrap;
+  }
+  .bottle-list-label {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .sku-metrics .table-scroll {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 599px) {
+  .purchase-cards td.purchase-identity {
+    grid-column: 1 / -1;
+    display: block;
+    text-align: left;
+  }
+  .purchase-cards td.purchase-identity::before {
+    display: block;
+    margin-bottom: var(--space-xs);
+  }
+}
+
+@media (max-width: 599px) {
+  .sku-metrics .table-scroll {
+    overflow: visible;
+  }
+  .sku-metrics-table,
+  .sku-metrics-table tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .sku-metrics-table thead {
+    display: none;
+  }
+  .sku-metrics-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .sku-metrics-table th {
+    grid-column: 1 / -1;
+  }
+  .sku-metrics-table td,
+  .sku-metrics-table th {
+    border: 0;
+    padding: var(--space-xs);
+    white-space: normal;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .sku-metrics-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+}

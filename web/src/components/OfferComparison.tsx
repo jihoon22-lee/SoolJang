@@ -25,11 +25,15 @@ export function OfferComparison({
   productId,
   offline,
   onChanged,
+  myPricePer100ml,
+  selectedVolumeMl,
 }: {
   results: SourceLookupResult[];
   productId: string;
   offline: boolean;
   onChanged: () => void;
+  myPricePer100ml?: string | null | undefined;
+  selectedVolumeMl?: number | null | undefined;
 }) {
   const preference = useMutation({
     mutationFn: ({ source, offer }: { source: SourceLookupResult; offer: ExternalOffer }) =>
@@ -104,6 +108,12 @@ export function OfferComparison({
                 </td>
                 <td>
                   <strong>{price(offer)}</strong>
+                  <OfferPriceDifference
+                    offer={offer}
+                    source={source}
+                    myPricePer100ml={myPricePer100ml}
+                    selectedVolumeMl={selectedVolumeMl}
+                  />
                   <div>
                     {offer.volume_ml === null ? "용량 미확인" : `${offer.volume_ml}ml`} ·{" "}
                     {offer.units === null ? "수량 미확인" : `${offer.units}개`}
@@ -144,5 +154,41 @@ export function OfferComparison({
         </table>
       </div>
     </section>
+  );
+}
+
+function OfferPriceDifference({
+  offer,
+  source,
+  myPricePer100ml,
+  selectedVolumeMl,
+}: {
+  offer: ExternalOffer;
+  source: SourceLookupResult;
+  myPricePer100ml?: string | null | undefined;
+  selectedVolumeMl?: number | null | undefined;
+}) {
+  const eligible =
+    selectedVolumeMl &&
+    offer.volume_ml === selectedVolumeMl &&
+    offer.currency === "KRW" &&
+    offer.units === 1 &&
+    !offer.is_set &&
+    offer.comparison_group &&
+    !offer.needs_confirmation &&
+    !source.needs_confirmation &&
+    !offer.last_good &&
+    !source.degraded;
+  if (!eligible) return null;
+  if (myPricePer100ml === null || myPricePer100ml === undefined)
+    return <div className="muted text-sm">같은 규격 구매 이력 없음</div>;
+  const own = Number(myPricePer100ml);
+  if (!(own > 0)) return <div className="muted text-sm">0원 구매 기준으로 비율 비교 불가</div>;
+  const delta = Math.round((((Number(offer.amount) * 100) / selectedVolumeMl - own) / own) * 100);
+  return (
+    <div className="muted text-sm">
+      같은 규격 내 가격 대비 {delta > 0 ? "+" : ""}
+      {delta}%
+    </div>
   );
 }

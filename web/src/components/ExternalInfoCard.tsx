@@ -8,6 +8,7 @@ export function ExternalInfoCard({
   productName,
   offline,
   myPricePer100ml,
+  selectedVolumeMl,
   open: controlledOpen,
   onOpenChange,
 }: {
@@ -15,6 +16,7 @@ export function ExternalInfoCard({
   productName: string;
   offline: boolean;
   myPricePer100ml?: Money;
+  selectedVolumeMl?: number | null | undefined;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -36,6 +38,7 @@ export function ExternalInfoCard({
           initialName={productName}
           offline={offline}
           myPricePer100ml={myPricePer100ml ?? null}
+          selectedVolumeMl={selectedVolumeMl}
         />
       )}
     </details>

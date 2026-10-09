@@ -368,3 +368,47 @@ it("저장 transaction 대기 중 입력·별점·프리셋 편집을 막아 최
   expect((await db.tasting_session.toArray())[0]?.nose).toBe("제출한 노트");
   expect(Object.keys(localStorage).some((key) => key.includes("quick-tasting:"))).toBe(false);
 });
+
+it("동일 이름·용량의 다른 빈티지를 구분하고 선택한 실제 병의 상세 맥락을 전달한다", async () => {
+  await db.product.update("product", { vintage: 2020, abv: "46", age_years: null });
+  await db.product.put(
+    row({ id: "edition-product", name: "합성 위스키", vintage: 2021, abv: "46", age_years: null }),
+  );
+  await db.sku.put(row({ id: "edition-sku", product_id: "edition-product", volume_ml: 700 }));
+  await db.purchase.put(
+    row({ id: "edition-purchase", sku_id: "edition-sku", purchased_on: "2025-01-01", quantity: 1 }),
+  );
+  await db.bottle.put(
+    row({
+      id: "edition-bottle",
+      purchase_id: "edition-purchase",
+      label_no: 1,
+      status: "unopened",
+      opened_on: null,
+      remaining_ml: null,
+    }),
+  );
+  const onSelectProduct = vi.fn();
+  const onClose = vi.fn();
+  renderWithQuery(
+    <SyncStatusProvider>
+      <ToastProvider>
+        <QuickTastingSheet onClose={onClose} onSelectProduct={onSelectProduct} />
+      </ToastProvider>
+    </SyncStatusProvider>,
+  );
+  expect(
+    await screen.findByRole("button", { name: /합성 위스키.*2020 빈티지.*700ml.*미개봉 2병/ }),
+  ).toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: /합성 위스키.*2021 빈티지.*700ml.*미개봉 1병/ }),
+  );
+  expect(screen.getByRole("heading", { name: /2021 빈티지/ })).toBeInTheDocument();
+  expect(await screen.findByText(/700ml.*#1.*구매.*purchase/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "이 병 상세" }));
+  expect(onSelectProduct).toHaveBeenCalledWith("edition-product", {
+    skuId: "edition-sku",
+    bottleId: "edition-bottle",
+  });
+  expect(onClose).toHaveBeenCalled();
+});

@@ -144,7 +144,7 @@ describe("ExternalInfoCard", () => {
     expect(emartRow?.textContent).not.toContain("최저");
   });
 
-  it("내 실평단가를 주면 소스 가격과의 델타를 보여준다", async () => {
+  it("판매 조건이 없는 소스 요약 가격에는 내 가격 비율을 붙이지 않는다", async () => {
     stubRoutes([
       {
         match: "/products/p1/external-lookup",
@@ -171,7 +171,8 @@ describe("ExternalInfoCard", () => {
 
     await lookup();
 
-    expect(await screen.findByText(/내 가격 대비 \+10%/)).toBeInTheDocument();
+    expect(await screen.findByText("5,500원")).toBeInTheDocument();
+    expect(screen.queryByText(/내 가격 대비/)).not.toBeInTheDocument();
   });
 
   it("표준 키가 아닌 값은 상세에서 손실 없이 보인다", async () => {
@@ -497,4 +498,55 @@ it("실패 후 마지막 관측과 미확인 판매 조건을 별도로 표시�
   expect(await screen.findByText("최근 조회 실패 · 마지막 확인 가격")).toBeInTheDocument();
   expect(screen.getByText("제품·규격 확인 필요")).toBeInTheDocument();
   expect(screen.queryByText("확인한 판매처 중 동일 조건 최저가")).not.toBeInTheDocument();
+});
+
+it("G08의 선택한 750ml 실평단가와 확인된 같은 규격 제안은 0%다", async () => {
+  stubRoutes([
+    {
+      match: "/products/p1/external-lookup",
+      method: "POST",
+      body: [result({ offers: [offer({ volume_ml: 750, amount: "24000" })] })],
+    },
+  ]);
+  renderWithQuery(
+    <ExternalInfoCard
+      productId="p1"
+      productName="합성 술"
+      offline={false}
+      myPricePer100ml="3200.00"
+      selectedVolumeMl={750}
+    />,
+  );
+  await lookup();
+  expect(await screen.findByText("같은 규격 내 가격 대비 0%")).toBeInTheDocument();
+});
+
+it.each([
+  { volume_ml: 375 },
+  { needs_confirmation: true },
+  { comparison_group: null },
+  { is_set: true },
+  { units: 2 },
+  { currency: "USD" },
+  { last_good: true },
+] satisfies Partial<ExternalOffer>[])("규격·조건·관측이 비교에 맞지 않으면 비율을 숨긴다: %j", async (change) => {
+  stubRoutes([
+    {
+      match: "/products/p1/external-lookup",
+      method: "POST",
+      body: [result({ offers: [offer({ volume_ml: 750, amount: "24000", ...change })] })],
+    },
+  ]);
+  renderWithQuery(
+    <ExternalInfoCard
+      productId="p1"
+      productName="합성 술"
+      offline={false}
+      myPricePer100ml="3200.00"
+      selectedVolumeMl={750}
+    />,
+  );
+  await lookup();
+  await screen.findByText(/24,000 (KRW|USD)/);
+  expect(screen.queryByText(/내 가격 대비/)).not.toBeInTheDocument();
 });

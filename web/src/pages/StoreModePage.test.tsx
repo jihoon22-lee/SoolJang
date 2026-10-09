@@ -157,7 +157,7 @@ describe("StoreModePage", () => {
     await selectResult("이동 테스트 술");
     await userEvent.click(await screen.findByRole("button", { name: /상세로 이동/ }));
 
-    expect(onOpenDetail).toHaveBeenCalledWith("p3");
+    expect(onOpenDetail).toHaveBeenCalledWith("p3", { skuId: "p3-sku" });
   });
 
   it("요약 화면에 외부 정보 조회 버튼을 보여준다", async () => {
@@ -257,4 +257,31 @@ describe("StoreModePage", () => {
     expect(productCalls).toHaveLength(1);
     expect(purchaseCalls).toBe(2);
   });
+});
+
+it("다중 규격은 선택한 용량의 최근·최저·평균과 이동 맥락을 사용한다", async () => {
+  await seedProductWithPurchase("multi", "다중 용량", { unitPaidPrice: "6000" });
+  await db.sku.update("multi-sku", { volume_ml: 375 });
+  await db.sku.put(row({ id: "large", product_id: "multi", volume_ml: 750 }));
+  await db.purchase.put(
+    row({
+      id: "large-purchase",
+      sku_id: "large",
+      quantity: 1,
+      unit_paid_price: "24000",
+      unit_list_price: "24000",
+      purchased_on: "2026-01-01",
+    }),
+  );
+  const { onOpenDetail } = renderStoreMode();
+  await userEvent.type(screen.getByLabelText("이름으로 찾기"), "다중");
+  await selectResult("다중 용량");
+  await screen.findByText("평균 구매가");
+  const average = () => screen.getByText("평균 구매가").parentElement;
+  expect(average()).toHaveTextContent("가격 정보 없음");
+  await userEvent.selectOptions(screen.getByLabelText("비교할 용량"), "large");
+  expect(average()).toHaveTextContent("24,000원");
+  expect(screen.getByText("최저 구매가").parentElement).toHaveTextContent("24,000원");
+  await userEvent.click(screen.getByRole("button", { name: /상세로 이동/ }));
+  expect(onOpenDetail).toHaveBeenCalledWith("multi", { skuId: "large" });
 });

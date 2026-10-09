@@ -273,7 +273,7 @@ it("실사를 시작·중지·재개하고 위치 불일치를 반영하며 미�
   await userEvent.click(screen.getByRole("button", { name: "발견 기록" }));
   expect(await screen.findByText("등록 전 병", { selector: "li" })).toBeInTheDocument();
 
-  await userEvent.click(screen.getByRole("checkbox", { name: "합성 위스키 #1" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "합성 위스키 1번 병" }));
   await userEvent.click(screen.getByRole("button", { name: "선택한 1병 소진 처리" }));
   await waitFor(async () => expect((await db.bottle.get("b1"))?.status).toBe("finished"));
   expect((await db.outbox.toArray()).map((entry) => entry.action)).toEqual(["finish"]);

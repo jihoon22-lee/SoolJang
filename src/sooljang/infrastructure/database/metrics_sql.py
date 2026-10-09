@@ -3,9 +3,9 @@
 `domain/metrics.py` 와 **같은 공식**을 SQL 로 구현한다. 목록·통계 조회에서 제품 수백~수천
 건의 지표를 한 번에 계산해야 하므로, 행마다 파이썬으로 계산하면 왕복이 과도해진다.
 
-두 구현이 갈라지면 화면과 API 가 다른 값을 보여주게 된다. `tests/domain/test_metrics_parity.py`
-가 같은 데이터에 대해 두 결과가 일치하는지 검증한다. 공식을 바꿀 때는 **반드시 양쪽을 함께**
-고친다.
+두 구현이 갈라지면 화면과 API 가 다른 값을 보여주게 된다.
+`tests/infrastructure/database/test_metrics_parity.py`가 같은 데이터의 결과를 비교한다.
+공식을 바꿀 때는 **반드시 양쪽을 함께** 고친다.
 """
 
 import uuid
@@ -38,7 +38,7 @@ def _purchased_volume() -> ColumnElement[Any]:
     return cast(Sku.volume_ml, _MONEY) * cast(Purchase.quantity, _MONEY)
 
 
-def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
+def product_price_metrics_query(user_id: uuid.UUID, *, by_sku: bool = False) -> Select[Any]:
     """제품별 금액 파생 지표를 한 번에 계산한다.
 
     `domain.metrics.compute_price_metrics` 와 같은 규칙을 따른다.
@@ -66,6 +66,7 @@ def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
     return (
         select(
             Product.id.label("product_id"),
+            *([Sku.id.label("sku_id")] if by_sku else []),
             func.coalesce(func.sum(Purchase.quantity), literal(0)).label("purchased_count"),
             func.coalesce(list_quantity, literal(0)).label("priced_quantity"),
             func.coalesce(paid_quantity, literal(0)).label("paid_quantity"),
@@ -92,10 +93,20 @@ def product_price_metrics_query(user_id: uuid.UUID) -> Select[Any]:
             discount_paid.label("discount_paid_total"),
         )
         .select_from(Product)
-        .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))
-        .join(Purchase, and_(Purchase.sku_id == Sku.id, Purchase.deleted_at.is_(None)))
+        .join(
+            Sku,
+            and_(Sku.product_id == Product.id, Sku.user_id == user_id, Sku.deleted_at.is_(None)),
+        )
+        .join(
+            Purchase,
+            and_(
+                Purchase.sku_id == Sku.id,
+                Purchase.user_id == user_id,
+                Purchase.deleted_at.is_(None),
+            ),
+        )
         .where(Product.user_id == user_id, Product.deleted_at.is_(None))
-        .group_by(Product.id)
+        .group_by(Product.id, *([Sku.id] if by_sku else []))
     )
 
 
@@ -103,7 +114,7 @@ def _status_count(status: BottleStatus) -> ColumnElement[Any]:
     return func.count(case((Bottle.status == status, literal(1))))
 
 
-def product_bottle_tally_query(user_id: uuid.UUID) -> Select[Any]:
+def product_bottle_tally_query(user_id: uuid.UUID, *, by_sku: bool = False) -> Select[Any]:
     """제품별 상태 병수를 집계한다. `domain.metrics.tally_bottles` 와 같은 규칙이다."""
     unopened = _status_count(BottleStatus.UNOPENED)
     open_count = _status_count(BottleStatus.OPEN)
@@ -111,6 +122,7 @@ def product_bottle_tally_query(user_id: uuid.UUID) -> Select[Any]:
     return (
         select(
             Product.id.label("product_id"),
+            *([Sku.id.label("sku_id")] if by_sku else []),
             unopened.label("unopened"),
             open_count.label("open"),
             _status_count(BottleStatus.FINISHED).label("finished"),
@@ -119,55 +131,128 @@ def product_bottle_tally_query(user_id: uuid.UUID) -> Select[Any]:
             (unopened + open_count).label("in_stock"),
         )
         .select_from(Product)
-        .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))
-        .join(Purchase, and_(Purchase.sku_id == Sku.id, Purchase.deleted_at.is_(None)))
-        .join(Bottle, and_(Bottle.purchase_id == Purchase.id, Bottle.deleted_at.is_(None)))
+        .join(
+            Sku,
+            and_(Sku.product_id == Product.id, Sku.user_id == user_id, Sku.deleted_at.is_(None)),
+        )
+        .join(
+            Purchase,
+            and_(
+                Purchase.sku_id == Sku.id,
+                Purchase.user_id == user_id,
+                Purchase.deleted_at.is_(None),
+            ),
+        )
+        .join(
+            Bottle,
+            and_(
+                Bottle.purchase_id == Purchase.id,
+                Bottle.user_id == user_id,
+                Bottle.deleted_at.is_(None),
+            ),
+        )
         .where(Product.user_id == user_id, Product.deleted_at.is_(None))
-        .group_by(Product.id)
+        .group_by(Product.id, *([Sku.id] if by_sku else []))
+    )
+
+
+def sku_metrics_query(user_id: uuid.UUID) -> Select[Any]:
+    """SKU의 모든 유효 구매·병을 집계한다. 구매 없는 규격도 가격 null로 남긴다."""
+    prices = product_price_metrics_query(user_id, by_sku=True).subquery("sku_prices")
+    tally = product_bottle_tally_query(user_id, by_sku=True).subquery("sku_bottles")
+    in_stock = func.coalesce(tally.c.in_stock, literal(0))
+    # SKU별로 2자리를 확정한 뒤 상위 합계에 더한다. 표시용 평균은 재사용하지 않는다.
+    inventory_value = func.round(
+        prices.c.paid_total * cast(in_stock, _MONEY) / func.nullif(prices.c.purchased_count, 0), 2
+    )
+    return (
+        select(
+            Sku.product_id.label("product_id"),
+            Sku.id.label("sku_id"),
+            Sku.volume_ml,
+            *[
+                func.coalesce(prices.c[name], literal(0)).label(name)
+                for name in (
+                    "purchased_count",
+                    "priced_quantity",
+                    "paid_quantity",
+                    "total_volume_ml",
+                    "list_volume",
+                )
+            ],
+            *[
+                prices.c[name]
+                for name in (
+                    "list_total",
+                    "paid_total",
+                    "avg_list_price",
+                    "avg_paid_price",
+                    "price_per_100ml",
+                    "price_per_100ml_paid",
+                    "discount_rate",
+                    "discount_list_total",
+                    "discount_paid_total",
+                )
+            ],
+            *[
+                func.coalesce(tally.c[name], literal(0)).label(name)
+                for name in ("unopened", "open", "finished", "gifted", "sold", "in_stock")
+            ],
+            inventory_value.label("inventory_value_at_cost"),
+        )
+        .select_from(Sku)
+        .join(
+            Product,
+            and_(
+                Product.id == Sku.product_id,
+                Product.user_id == user_id,
+                Product.deleted_at.is_(None),
+            ),
+        )
+        .outerjoin(prices, prices.c.sku_id == Sku.id)
+        .outerjoin(tally, tally.c.sku_id == Sku.id)
+        .where(Sku.user_id == user_id, Sku.deleted_at.is_(None))
     )
 
 
 def product_metrics_query(user_id: uuid.UUID) -> Select[Any]:
-    """금액과 병수 지표를 합쳐 제품별 한 행으로 만든다.
-
-    병 레코드가 없는 제품도 남기려면 병수 집계를 LEFT JOIN 해야 한다. 임포트 직후처럼
-    구매 건만 있고 병이 아직 없는 상태에서도 금액 지표는 보여야 한다.
-    """
-    prices = product_price_metrics_query(user_id).subquery("price_metrics")
-    tally = product_bottle_tally_query(user_id).subquery("bottle_tally")
-
-    inventory_value = prices.c.avg_paid_price * cast(
-        func.coalesce(tally.c.in_stock, literal(0)), _MONEY
-    )
-
-    return (
-        select(
-            prices.c.product_id,
-            prices.c.purchased_count,
-            prices.c.priced_quantity,
-            prices.c.paid_quantity,
-            prices.c.list_total,
-            prices.c.paid_total,
-            prices.c.avg_list_price,
-            prices.c.avg_paid_price,
-            prices.c.price_per_100ml,
-            prices.c.price_per_100ml_paid,
-            prices.c.discount_rate,
-            prices.c.total_volume_ml,
-            func.coalesce(tally.c.unopened, literal(0)).label("unopened"),
-            func.coalesce(tally.c.open, literal(0)).label("open"),
-            func.coalesce(tally.c.finished, literal(0)).label("finished"),
-            func.coalesce(tally.c.gifted, literal(0)).label("gifted"),
-            func.coalesce(tally.c.sold, literal(0)).label("sold"),
-            func.coalesce(tally.c.in_stock, literal(0)).label("in_stock"),
-            inventory_value.label("inventory_value_at_cost"),
-            prices.c.list_volume,
-            prices.c.discount_list_total,
-            prices.c.discount_paid_total,
-        )
-        .select_from(prices)
-        .outerjoin(tally, tally.c.product_id == prices.c.product_id)
-    )
+    """SKU별 확정 원가를 합산한다. 제품 평균은 원본 금액·수량으로 계산한다."""
+    skus = sku_metrics_query(user_id).subquery("sku_metrics")
+    quantity = func.sum(skus.c.purchased_count)
+    volume = func.sum(skus.c.total_volume_ml)
+    list_amount = func.sum(skus.c.list_total)
+    paid_amount = func.sum(skus.c.paid_total)
+    discount_list = func.sum(skus.c.discount_list_total)
+    discount_paid = func.sum(skus.c.discount_paid_total)
+    return select(
+        skus.c.product_id,
+        *[
+            func.sum(skus.c[name]).label(name)
+            for name in (
+                "purchased_count",
+                "priced_quantity",
+                "paid_quantity",
+                "list_total",
+                "paid_total",
+                "total_volume_ml",
+                "list_volume",
+                "discount_list_total",
+                "discount_paid_total",
+                "unopened",
+                "open",
+                "finished",
+                "gifted",
+                "sold",
+                "in_stock",
+                "inventory_value_at_cost",
+            )
+        ],
+        (list_amount / func.nullif(quantity, 0)).label("avg_list_price"),
+        (paid_amount / func.nullif(quantity, 0)).label("avg_paid_price"),
+        (list_amount * literal(ML_PER_UNIT) / func.nullif(volume, 0)).label("price_per_100ml"),
+        (paid_amount * literal(ML_PER_UNIT) / func.nullif(volume, 0)).label("price_per_100ml_paid"),
+        (literal(1) - discount_paid / func.nullif(discount_list, 0)).label("discount_rate"),
+    ).group_by(skus.c.product_id)
 
 
 def single_product_metrics_query(user_id: uuid.UUID, product_id: uuid.UUID) -> Select[Any]:
@@ -212,8 +297,18 @@ def purchase_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
             ).label("both_priced_paid_amount"),
         )
         .select_from(Product)
-        .join(Sku, and_(Sku.product_id == Product.id, Sku.deleted_at.is_(None)))
-        .join(Purchase, and_(Purchase.sku_id == Sku.id, Purchase.deleted_at.is_(None)))
+        .join(
+            Sku,
+            and_(Sku.product_id == Product.id, Sku.user_id == user_id, Sku.deleted_at.is_(None)),
+        )
+        .join(
+            Purchase,
+            and_(
+                Purchase.sku_id == Sku.id,
+                Purchase.user_id == user_id,
+                Purchase.deleted_at.is_(None),
+            ),
+        )
         .where(Product.user_id == user_id, Product.deleted_at.is_(None))
     )
 
@@ -254,6 +349,7 @@ def product_stats_rows_query(user_id: uuid.UUID) -> Select[Any]:
             metrics.c.gifted,
             metrics.c.sold,
             metrics.c.in_stock,
+            metrics.c.inventory_value_at_cost,
         )
         .select_from(Product)
         .outerjoin(metrics, metrics.c.product_id == Product.id)

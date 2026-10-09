@@ -5,7 +5,8 @@ import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { ProductForm } from "@/components/ProductForm";
 import { LoadingState } from "@/components/StatusViews";
-import { formatCategoryPath, formatMoney, formatRating } from "@/format";
+import { formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
+import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
 import {
   getCategoryTree,
@@ -31,7 +32,11 @@ const MAX_RESULTS = 8;
  * 매장은 통신이 나쁠 수 있다 — 로컬 정보(구매 이력·평점)는 Dexie 에서 즉시 읽어 보여주고,
  * 외부 조회(`ExternalInfoCard`)는 별도 컴포넌트라 그 실패·지연이 나머지 화면을 막지 않는다.
  */
-export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: string) => void }) {
+export function StoreModePage({
+  onOpenDetail,
+}: {
+  onOpenDetail: (productId: string, context?: ProductContext) => void;
+}) {
   const { state } = useSyncStatus();
   const offline = state === "offline";
   const [query, setQuery] = useState("");
@@ -62,6 +67,7 @@ export function StoreModePage({ onOpenDetail }: { onOpenDetail: (productId: stri
   if (selectedProductId !== null) {
     return (
       <StoreModeSummary
+        key={selectedProductId}
         productId={selectedProductId}
         offline={offline}
         onOpenDetail={onOpenDetail}
@@ -143,7 +149,7 @@ function StoreModeRegister({
   initialName: string;
   existingProducts: { id: string; name: string }[];
   vendorNames: string[];
-  onDone: (productId: string) => void;
+  onDone: (productId: string, context?: ProductContext) => void;
   onCancel: () => void;
 }) {
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
@@ -191,9 +197,10 @@ function StoreModeSummary({
 }: {
   productId: string;
   offline: boolean;
-  onOpenDetail: (productId: string) => void;
+  onOpenDetail: (productId: string, context?: ProductContext) => void;
   onBack: () => void;
 }) {
+  const [selectedSkuId, setSelectedSkuId] = useState("");
   const product = useLiveQuery(() => getProduct(productId), [productId]);
   const purchases = useLiveQuery(() => getPurchasesForProduct(productId), [productId]);
 
@@ -214,7 +221,14 @@ function StoreModeSummary({
     );
   }
 
-  const { latest, lowest } = priceHighlights(purchases);
+  const skuId = selectedSkuId || (product.skus.length === 1 ? product.skus[0]?.id : undefined);
+  const sku = product.skus.find((item) => item.id === skuId);
+  const metrics =
+    product.sku_summaries?.find((item) => item.sku_id === skuId)?.metrics ??
+    (product.skus.length === 1 ? product.metrics : undefined);
+  const { latest, lowest } = priceHighlights(
+    purchases.filter((purchase) => purchase.sku_id === skuId),
+  );
 
   return (
     <section aria-labelledby="store-mode-summary-heading" className="panel">
@@ -226,10 +240,28 @@ function StoreModeSummary({
       </h2>
       <p className="muted mt-0">{formatCategoryPath(product.category_path)}</p>
 
+      {product.skus.length > 1 && (
+        <label>
+          비교할 용량
+          <select value={selectedSkuId} onChange={(event) => setSelectedSkuId(event.target.value)}>
+            <option value="">용량을 선택하세요</option>
+            {product.skus.map((item) => (
+              <option key={item.id} value={item.id}>
+                {formatVolume(item.volume_ml)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <p className="muted">
+        {sku
+          ? `${formatVolume(sku.volume_ml)}의 전체 구매 이력`
+          : "용량을 고르면 같은 규격의 가격을 비교합니다"}
+      </p>
       <dl className="product-card-dl">
         <div>
           <dt className="muted">재고</dt>
-          <dd>{product.metrics.in_stock_count}병</dd>
+          <dd>{metrics?.in_stock_count ?? product.metrics.in_stock_count}병</dd>
         </div>
         <div>
           <dt className="muted">내 평점</dt>
@@ -245,14 +277,14 @@ function StoreModeSummary({
         </div>
         <div>
           <dt className="muted">평균 구매가</dt>
-          <dd>{formatMoney(product.metrics.avg_paid_price)}</dd>
+          <dd>{formatMoney(metrics?.avg_paid_price ?? null)}</dd>
         </div>
       </dl>
 
       {product.note && <p className="pre-wrap">{product.note}</p>}
 
       <div className="button-row">
-        <button type="button" onClick={() => onOpenDetail(productId)}>
+        <button type="button" onClick={() => onOpenDetail(productId, { skuId })}>
           상세로 이동 (구매 추가·시음 기록 등)
         </button>
       </div>
@@ -261,7 +293,8 @@ function StoreModeSummary({
         productId={productId}
         productName={product.name}
         offline={offline}
-        myPricePer100ml={product.metrics.price_per_100ml_paid}
+        myPricePer100ml={metrics?.price_per_100ml_paid ?? null}
+        selectedVolumeMl={sku?.volume_ml ?? null}
       />
     </section>
   );
@@ -275,8 +308,11 @@ function priceHighlights(purchases: Purchase[]): { latest: string | null; lowest
 
   if (priced.length === 0) return { latest: null, lowest: null };
 
-  const latest = [...priced].sort((a, b) =>
-    (b.purchase.purchased_on ?? "").localeCompare(a.purchase.purchased_on ?? ""),
+  const latest = [...priced].sort(
+    (a, b) =>
+      (b.purchase.purchased_on ?? "").localeCompare(a.purchase.purchased_on ?? "") ||
+      (b.purchase.created_at ?? "").localeCompare(a.purchase.created_at ?? "") ||
+      b.purchase.id.localeCompare(a.purchase.id),
   )[0];
   const lowest = priced.reduce((min, entry) =>
     Number(entry.price) < Number(min.price) ? entry : min,

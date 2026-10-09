@@ -218,3 +218,75 @@ describe("ProductList", () => {
     expect(within(header).queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+it("첫 등록 규격이 소진돼도 현재 재고 규격과 그 구매 가격을 먼저 보여주고 SKU로 이동한다", async () => {
+  const onSelect = vi.fn();
+  const mixed = product({
+    skus: [
+      { id: "small", volume_ml: 500, barcode: null, barcode_type: null, package_note: null },
+      { id: "large", volume_ml: 750, barcode: null, barcode_type: null, package_note: null },
+    ],
+    metrics: { ...emptyMetrics, in_stock_count: 1, avg_paid_price: "20000" },
+    sku_summaries: [
+      {
+        sku_id: "small",
+        volume_ml: 500,
+        metrics: { ...emptyMetrics, purchased_count: 1, avg_paid_price: "10000" },
+      },
+      {
+        sku_id: "large",
+        volume_ml: 750,
+        metrics: {
+          ...emptyMetrics,
+          purchased_count: 1,
+          in_stock_count: 1,
+          unopened_count: 1,
+          avg_paid_price: "30000",
+        },
+      },
+    ],
+  });
+  renderList({ products: [mixed], onSelect });
+  const card = screen.getByRole("list", { name: /카드 보기/ });
+  const summaries = within(card).getByRole("list", { name: "규격별 재고와 실평단가" });
+  const rows = within(summaries).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("750ml재고 1병 · 개봉 0 · 미개봉 1실평단가 30,000원");
+  expect(rows[1]).toHaveTextContent("500ml · 지난 규격");
+  expect(within(card).getByText("전체 재고 1병")).toBeInTheDocument();
+  await userEvent.click(within(rows[0] as HTMLElement).getByRole("button"));
+  expect(onSelect).toHaveBeenCalledWith("p1", { skuId: "large" });
+});
+
+it("다중 SKU 구응답은 첫 규격의 재고나 가격을 추정하지 않는다", () => {
+  const multi = product({
+    skus: [
+      { id: "small", volume_ml: 500, barcode: null, barcode_type: null, package_note: null },
+      { id: "large", volume_ml: 750, barcode: null, barcode_type: null, package_note: null },
+    ],
+  });
+  renderList({ products: [multi] });
+  const card = screen.getByRole("list", { name: /카드 보기/ });
+  expect(within(card).getByText("규격별 정보 준비 중")).toBeInTheDocument();
+  expect(within(card).queryByText(/500ml/)).not.toBeInTheDocument();
+});
+
+it("계산 모집단 설명을 받으면 전체 용량 평균으로 다시 표시하지 않는다", () => {
+  const mixed = product({
+    skus: [
+      { id: "s1", volume_ml: 350, barcode: null, barcode_type: null, package_note: null },
+      { id: "s2", volume_ml: 700, barcode: null, barcode_type: null, package_note: null },
+    ],
+  });
+  render(
+    <ProductList
+      products={[mixed]}
+      priceScopeLabel="조건에 맞는 구매 평균"
+      onSelect={vi.fn()}
+      sort="name"
+      order="asc"
+      onSort={vi.fn()}
+    />,
+  );
+  expect(screen.getAllByText("조건에 맞는 구매 평균")).toHaveLength(2);
+  expect(screen.queryByText(/제품 가격.*전체 용량/)).not.toBeInTheDocument();
+});

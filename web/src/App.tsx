@@ -391,7 +391,9 @@ export function App() {
             {route.view === "discover" && <DiscoverPage key={user?.id} />}
             {route.view === "home" && (
               <HomePage
-                onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+                onSelectProduct={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
                 onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
                 onNavigate={(view) => navigate({ view })}
               />
@@ -399,7 +401,10 @@ export function App() {
             {route.view === "products" && (
               <ProductsPage
                 selectedProductId={route.productId ?? null}
-                onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+                context={route}
+                onSelectProduct={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
                 onDeselectProduct={() => navigate({ view: "products" })}
                 initialCategoryId={route.categoryId}
                 initialVendorId={route.vendorId}
@@ -407,7 +412,11 @@ export function App() {
               />
             )}
             {route.view === "scan" && (
-              <StoreModePage onOpenDetail={(id) => navigate({ view: "products", productId: id })} />
+              <StoreModePage
+                onOpenDetail={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
+              />
             )}
             {route.view === "categories" && (
               <CategoriesPage
@@ -421,23 +430,31 @@ export function App() {
             {route.view === "stats" && (
               <StatsPage
                 onOpenQuality={() => navigate({ view: "quality" })}
-                onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+                onSelectProduct={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
                 onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
               />
             )}
             {route.view === "interests" && (
               <InterestsPage
-                onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+                onSelectProduct={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
               />
             )}
             {route.view === "inventory" && (
               <InventoryPage
-                onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+                onSelectProduct={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
               />
             )}
             {route.view === "quality" && (
               <CollectionQualityPage
-                onSelectProduct={(id) => navigate({ view: "products", productId: id })}
+                onSelectProduct={(id, context) =>
+                  navigate({ view: "products", productId: id, ...context })
+                }
               />
             )}
             {route.view === "import" && <ImportPage />}

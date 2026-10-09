@@ -41,6 +41,7 @@ from sooljang.application.products import (
     producer_name_map,
     resolve_producer_id,
     resolve_variety_ids,
+    sku_summaries_for_products,
     soft_delete_product,
     sort_column_for,
 )
@@ -57,6 +58,7 @@ def _to_out(
     metrics: dict[str, Any],
     category_paths: dict[uuid.UUID, list[str]],
     producer_names: dict[uuid.UUID, str],
+    sku_summaries: list[dict[str, Any]],
 ) -> ProductOut:
     return ProductOut(
         id=product.id,
@@ -75,6 +77,7 @@ def _to_out(
         note=product.note,
         varieties=[link.variety.name for link in product.varieties if link.deleted_at is None],
         skus=[SkuOut.model_validate(sku) for sku in product.skus if sku.deleted_at is None],
+        sku_summaries=sku_summaries,
         metrics=ProductMetricsOut(**metrics),
         created_at=product.created_at,
         updated_at=product.updated_at,
@@ -147,6 +150,9 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
 
     has_more = len(rows) > page_size
     visible = rows[:page_size]
+    summaries = await sku_summaries_for_products(
+        session, user_id=user_id, products=[row[0] for row in visible]
+    )
 
     items = [
         _to_out(
@@ -154,6 +160,7 @@ async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드�
             metrics=metrics_from_row(row, personal_rating=row[0].personal_rating),
             category_paths=category_paths,
             producer_names=producer_names,
+            sku_summaries=summaries.get(row[0].id, []),
         )
         for row in visible
     ]
@@ -414,11 +421,13 @@ async def _detail(session: SessionDep, user_id: uuid.UUID, product_id: uuid.UUID
     row = (await session.execute(single_product_metrics_query(user_id, product_id))).first()
     category_paths = await category_path_map(session, user_id)
     producer_names = await producer_name_map(session, user_id)
+    summaries = await sku_summaries_for_products(session, user_id=user_id, products=[product])
     return _to_out(
         product,
         metrics=metrics_from_row(row, personal_rating=product.personal_rating),
         category_paths=category_paths,
         producer_names=producer_names,
+        sku_summaries=summaries.get(product.id, []),
     )
 
 

@@ -48,12 +48,14 @@ export function DiscoveryPanel({
   initialName = "",
   offline = false,
   myPricePer100ml = null,
+  selectedVolumeMl,
 }: {
   productId?: string;
   interest?: Interest;
   initialName?: string;
   offline?: boolean;
   myPricePer100ml?: Money;
+  selectedVolumeMl?: number | null | undefined;
 }) {
   const cache = useQueryClient();
   const formId = `discover-${interest?.id ?? productId ?? "new"}`;
@@ -500,6 +502,7 @@ export function DiscoveryPanel({
           productId={productId}
           offline={offline}
           myPricePer100ml={myPricePer100ml}
+          selectedVolumeMl={selectedVolumeMl}
           onChanged={submit}
         />
       )}

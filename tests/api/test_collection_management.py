@@ -30,6 +30,51 @@ def sample(client: TestClient, prefix: str) -> tuple[str, str, list[dict[str, An
     return vendor["id"], purchase["id"], bottles
 
 
+def test_storage_bottles_identify_edition_volume_and_repeated_purchases(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = post(
+        api_client,
+        prefix,
+        "/products",
+        {
+            "name": "판본과 규격",
+            "vintage": 2020,
+            "abv": "46",
+            "age_years": "12",
+            "skus": [{"volume_ml": 500}, {"volume_ml": 750}],
+        },
+    )
+    vendor = post(api_client, prefix, "/vendors", {"name": "같은 매장"})
+    purchases = [
+        post(
+            api_client,
+            prefix,
+            "/purchases",
+            {
+                "sku_id": sku["id"],
+                "vendor_id": vendor["id"],
+                "quantity": 1,
+                "purchased_on": "2026-10-01",
+            },
+        )
+        for sku in [product["skus"][0], product["skus"][1], product["skus"][1]]
+    ]
+    rows = api_client.get(f"{prefix}/collection/bottles").json()
+    assert len(rows) == 3
+    assert {row["purchase_id"] for row in rows} == {purchase["id"] for purchase in purchases}
+    assert {row["sku_id"] for row in rows} == {sku["id"] for sku in product["skus"]}
+    assert {row["volume_ml"] for row in rows} == {500, 750}
+    for row in rows:
+        assert row["label_no"] == 1
+        assert row["product_id"] == product["id"]
+        assert row["vintage"] == 2020
+        assert row["abv"] == "46.00"
+        assert row["age_years"] == "12.0"
+        assert row["purchased_on"] == "2026-10-01"
+        assert row["vendor_name"] == "같은 매장"
+
+
 def test_vendor_preview_preserves_totals_and_retry_is_idempotent(
     api_client: TestClient, prefix: str
 ) -> None:
