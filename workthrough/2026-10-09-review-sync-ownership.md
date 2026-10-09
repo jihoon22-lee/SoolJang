@@ -37,3 +37,9 @@ QUARANTINE_AND_NORMAL_SYNC { pending: 0, quarantines: 1, normal: 1, invalid: 0 }
 
 최종 PWA 빌드(5174)에서도 같은 흐름을 재검증했다. "별도로 보관한 기록" 안내와 원본
 내보내기 버튼이 표시되고 정상 제품만 전송되는 것을 확인했다.
+
+## CI 의존성 감사 보완
+
+첫 원격 CI는 Python·웹 코드/커버리지·빌드·컨테이너·migration 검사가 통과했으나
+기존 `source-map-js` 1.2.1의 GHSA-68fv-2mgg-jv7q 감사가 실패했다. 해당 간접 의존성만
+1.2.2로 갱신했고 `npm audit`는 취약점 0건이다. 나머지 의존성·앱 버전은 바꾸지 않았다.
