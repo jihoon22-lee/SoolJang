@@ -43,6 +43,7 @@ const ACTION_LABELS: Record<string, string> = {
   sell: "판매",
   reopen: "되돌리기",
   unopen: "개봉 취소",
+  undo: "실행 취소",
   set_remaining: "잔량 조정",
   move: "위치 이동",
   update: "수정",

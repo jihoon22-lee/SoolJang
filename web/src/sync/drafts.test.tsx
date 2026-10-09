@@ -1,7 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { activateDatabase, lockDatabase } from "@/sync/db";
-import { clearFormDraft, useDraftState } from "@/sync/drafts";
+import {
+  captureFormDraft,
+  clearFormDraft,
+  clearSubmittedDraft,
+  useDraftState,
+} from "@/sync/drafts";
 
 beforeEach(async () => {
   await activateDatabase("draft-owner");
@@ -57,4 +62,29 @@ it("이전 브라우저 세션의 입력은 새 탭에서 명시적으로 복원
   expect(source).toBe("old-session");
   act(() => restoreFormDraft("product:create", source ?? ""));
   expect(current.result.current[0].name).toBe("이전 세션의 입력");
+});
+
+it("같은 값을 다시 작성해도 이전 제출 버전으로는 새 초안을 지우지 않는다", () => {
+  const form = renderHook(() => useDraftState("tasting:b1:nose", ""));
+  act(() => form.result.current[1]("바닐라"));
+  const submitted = captureFormDraft("tasting:b1");
+  act(() => form.result.current[1]("바닐라"));
+  expect(clearSubmittedDraft(submitted)).toBe(false);
+  expect(Object.values(localStorage).join()).toContain("바닐라");
+  expect(clearSubmittedDraft(captureFormDraft("tasting:b1"))).toBe(true);
+  expect(localStorage.length).toBe(0);
+});
+
+it("새 필드 입력과 같은 계정의 재로그인도 이전 제출의 초안 정리를 막는다", async () => {
+  const form = renderHook(() => useDraftState("purchase:p1:quantity", "1"));
+  const emptySubmission = captureFormDraft("purchase:p1");
+  act(() => form.result.current[1]("2"));
+  expect(clearSubmittedDraft(emptySubmission)).toBe(false);
+  const submitted = captureFormDraft("purchase:p1");
+  lockDatabase();
+  await activateDatabase("draft-owner");
+  expect(clearSubmittedDraft(submitted)).toBe(false);
+  act(() => form.result.current[1]("99"));
+  expect(Object.values(localStorage).join()).toContain('"2"');
+  expect(Object.values(localStorage).join()).not.toContain('"99"');
 });

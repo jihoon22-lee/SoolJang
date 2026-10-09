@@ -37,9 +37,15 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sooljang.api.errors import NotFoundError, ValidationFailedError
+from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
 from sooljang.api.pagination import Cursor
 from sooljang.application.barcodes import InvalidBarcodeError, normalize_optional
+from sooljang.application.bottle_commands import (
+    RESTORE_FIELDS,
+    require_no_tasting,
+    require_revision,
+    undo_bottle_command,
+)
 from sooljang.application.categories import (
     CategoryError,
     create_category,
@@ -332,6 +338,8 @@ class OperationResult:
     status: str  # "applied" | "conflict" | "failed"
     detail: str | None = None
     snapshot: dict[str, Any] | None = None
+    effects: dict[str, Any] | None = None
+    undo: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,7 +411,10 @@ async def apply_batch(
                 OperationResult(
                     idempotency_key=op.idempotency_key,
                     status=existing.status,
-                    snapshot=existing.response_snapshot,
+                    snapshot={
+                        k: v for k, v in existing.response_snapshot.items() if not k.startswith("_")
+                    },
+                    effects=existing.response_snapshot.get("_effects"),
                 )
             )
             continue
@@ -413,6 +424,7 @@ async def apply_batch(
                 outcome = await _dispatch(session, user_id=user_id, op=op)
         except (
             NotFoundError,
+            ConflictError,
             ValidationFailedError,
             CategoryError,
             BottleTransitionError,
@@ -473,7 +485,11 @@ async def apply_batch(
                 operation=op.op,
                 entity_id=op.entity_id,
                 status=outcome.status,
-                response_snapshot=outcome.snapshot or {},
+                response_snapshot={
+                    **(outcome.snapshot or {}),
+                    **({"_effects": outcome.effects} if outcome.effects is not None else {}),
+                    **({"_undo": outcome.undo} if outcome.undo is not None else {}),
+                },
             )
         )
         await session.flush()
@@ -976,6 +992,16 @@ async def _dispatch_bottle_action(
     session: AsyncSession, *, user_id: uuid.UUID, op: SyncOperation
 ) -> OperationResult:
     bottle = await _load_bottle(session, user_id=user_id, bottle_id=op.entity_id)
+    before = {name: serialize_row(bottle)[name] for name in RESTORE_FIELDS}
+    if op.action in {"undo", "unopen", "reopen", "set_remaining"}:
+        await require_revision(
+            session,
+            bottle,
+            expected_revision=_uuid(op.fields.get("expected_revision")),
+            expected_operation_id=_uuid(op.fields.get("expected_operation_id")),
+        )
+    if op.action == "unopen":
+        await require_no_tasting(session, bottle)
     try:
         await _apply_bottle_action(session, bottle, op)
     except BottleInputError as error:
@@ -1005,12 +1031,28 @@ async def _dispatch_bottle_action(
             detail=f"다른 기기의 변경이 먼저 반영돼 서버 상태를 유지했습니다: {error}",
             snapshot=serialize_row(bottle),
         )
-    return await _applied(session, op, bottle)
+    await session.refresh(bottle)
+    snapshot = serialize_row(bottle)
+    return OperationResult(
+        idempotency_key=op.idempotency_key,
+        status="applied",
+        snapshot=snapshot,
+        effects={"bottle": snapshot},
+        undo={"action": op.action, "before": before, "after_revision": str(bottle.revision)},
+    )
 
 
 async def _apply_bottle_action(session: AsyncSession, bottle: Bottle, op: SyncOperation) -> None:
     fields = op.fields
-    if op.action == "open":
+    if op.action == "undo":
+        await undo_bottle_command(
+            session,
+            bottle,
+            origin_operation_id=_required_uuid(
+                fields.get("origin_operation_id"), field_name="origin_operation_id"
+            ),
+        )
+    elif op.action == "open":
         await open_bottle(
             session,
             bottle,
@@ -1097,4 +1139,13 @@ async def _dispatch_tasting_action(
     except InsufficientRemainingError as error:
         raise ValidationFailedError(str(error)) from error
 
-    return await _applied(session, op, record)
+    result = await _applied(session, op, record)
+    if bottle is None:
+        return result
+    await session.refresh(bottle)
+    return OperationResult(
+        idempotency_key=result.idempotency_key,
+        status=result.status,
+        snapshot=result.snapshot,
+        effects={"bottle": serialize_row(bottle)},
+    )

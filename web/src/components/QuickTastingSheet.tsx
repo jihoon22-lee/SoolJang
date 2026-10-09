@@ -8,7 +8,14 @@ import { useToast } from "@/components/Toast";
 import { formatDate, formatVolume, todayLocal } from "@/format";
 import { matchesQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
-import { clearFormDraft, recoverableDraft, restoreFormDraft, useDraftState } from "@/sync/drafts";
+import {
+  captureFormDraft,
+  clearFormDraft,
+  clearSubmittedDraft,
+  recoverableDraft,
+  restoreFormDraft,
+  useDraftState,
+} from "@/sync/drafts";
 import { type DrinkableBottle, getDrinkableBottles } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
@@ -332,6 +339,8 @@ function QuickTastingForm({
   async function save(): Promise<void> {
     if (!bottle || !beginSaving()) return;
     setError(null);
+    const submittedDraft = captureFormDraft(formId);
+    const submittedSelection = captureFormDraft(SELECTION_FORM);
     try {
       session.assertCurrent();
       const effect = await session.store.transaction("rw", session.store.tables, async () => {
@@ -367,10 +376,10 @@ function QuickTastingForm({
       });
       session.assertCurrent();
       rememberTastingContext({ place: values.place.trim(), companions: values.companions.trim() });
-      clearFormDraft(formId, session.userId);
-      clearFormDraft(SELECTION_FORM, session.userId);
+      const cleared = clearSubmittedDraft(submittedDraft);
+      const selectionCleared = clearSubmittedDraft(submittedSelection);
       toast.show({ message: `${bottle.productName} 시음을 기록했습니다${effect}` });
-      onClose();
+      if (cleared && selectionCleared) onClose();
     } catch (cause) {
       if (session.isCurrent())
         setError(cause instanceof Error ? cause.message : "기록하지 못했습니다");

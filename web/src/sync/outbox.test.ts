@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { confirmedBottleOperationKey, localBottleOperationKey } from "@/sync/bottleRevision";
 import { activateDatabase, db } from "@/sync/db";
 import { OUTBOX_CHANGED, syncEvents } from "@/sync/events";
 import {
@@ -23,6 +24,7 @@ afterEach(async () => {
   await db.purchase.clear();
   await db.sku.clear();
   await db.product.clear();
+  await db.sync_meta.clear();
 });
 
 describe("enqueue", () => {
@@ -263,6 +265,147 @@ it("실패 명령을 수정하면 FIFO 위치와 대상은 보존하고 새 멱�
   expect(replacement?.fields.name).toBe("fixed");
   expect(replacement?.status).toBe("pending");
   expect(await db.outbox.get(oldKey)).toBeUndefined();
+});
+
+it("실패한 병 명령 수정은 후속 undo의 receipt 참조만 바꾸고 순서와 최신 marker를 보존한다", async () => {
+  const original = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "finish",
+    fields: { finished_on: "2025-01-01" },
+  });
+  const undo = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "undo",
+    fields: {
+      origin_operation_id: original,
+      expected_operation_id: original,
+      note: original,
+      metadata: { origin_operation_id: original },
+    },
+  });
+  const foreign = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b2",
+    action: "undo",
+    fields: { expected_operation_id: original },
+  });
+  await db.sync_meta.put({ key: localBottleOperationKey("b1"), value: undo });
+  const before = await db.outbox.get(original);
+  const undoBefore = await db.outbox.get(undo);
+  await db.outbox.update(original, { status: "failed", error: "소진일이 개봉일보다 앞섭니다" });
+
+  const replacement = await replaceFailedEntry(original, { finished_on: "2026-10-01" });
+
+  expect(await db.outbox.get(original)).toBeUndefined();
+  expect(await db.outbox.get(replacement)).toMatchObject({
+    sequence_key: before?.sequence_key,
+    created_at: before?.created_at,
+    status: "pending",
+  });
+  expect(await db.outbox.get(undo)).toEqual({
+    ...undoBefore,
+    fields: {
+      origin_operation_id: replacement,
+      expected_operation_id: replacement,
+      note: original,
+      metadata: { origin_operation_id: original },
+    },
+  });
+  expect((await db.outbox.get(foreign))?.fields.expected_operation_id).toBe(original);
+  expect((await db.sync_meta.get(localBottleOperationKey("b1")))?.value).toBe(undo);
+});
+
+it("실패한 시음 재시도는 후속 잔량 정정과 로컬 marker를 새 키로 연결한다", async () => {
+  const tasting = await enqueue({
+    entity: "tasting_session",
+    op: "action",
+    entityId: "t1",
+    action: "record_tasting",
+    fields: { bottle_id: "b1", tasted_on: "invalid" },
+    touchedIds: ["b1"],
+  });
+  const remaining = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "set_remaining",
+    fields: { expected_operation_id: tasting, remaining_ml: 350 },
+  });
+  await db.sync_meta.put({ key: localBottleOperationKey("b1"), value: tasting });
+  await db.sync_meta.put({ key: confirmedBottleOperationKey("b1"), value: "confirmed receipt" });
+  await db.outbox.update(tasting, { status: "failed" });
+
+  const replacement = await replaceFailedEntry(tasting, {
+    bottle_id: "b1",
+    tasted_on: "2026-10-01",
+  });
+
+  expect((await db.outbox.get(remaining))?.fields).toEqual({
+    expected_operation_id: replacement,
+    remaining_ml: 350,
+  });
+  expect((await db.sync_meta.get(localBottleOperationKey("b1")))?.value).toBe(replacement);
+  expect((await db.sync_meta.get(confirmedBottleOperationKey("b1")))?.value).toBe(
+    "confirmed receipt",
+  );
+});
+
+it("이미 실패 결과가 확정된 후속 명령과 결과 불명 부모는 자동으로 바꾸지 않는다", async () => {
+  const parent = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "finish",
+    fields: {},
+  });
+  const child = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "undo",
+    fields: { origin_operation_id: parent },
+  });
+  await expect(replaceFailedEntry(parent, {})).rejects.toThrow("실패 명령");
+  expect(await db.outbox.get(parent)).toBeDefined();
+  await db.outbox.update(parent, { status: "failed" });
+  await db.outbox.update(child, { status: "failed" });
+  const before = await db.outbox.get(child);
+  await replaceFailedEntry(parent, {});
+  expect(await db.outbox.get(child)).toEqual(before);
+});
+
+it("marker 저장 실패 시 부모 교체와 후속 참조 갱신도 함께 롤백한다", async () => {
+  const parent = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "finish",
+    fields: {},
+  });
+  const child = await enqueue({
+    entity: "bottle",
+    op: "action",
+    entityId: "b1",
+    action: "undo",
+    fields: { origin_operation_id: parent },
+  });
+  await db.outbox.update(parent, { status: "failed" });
+  await db.sync_meta.put({ key: localBottleOperationKey("b1"), value: parent });
+  const before = await db.outbox.toArray();
+  const put = vi.spyOn(db.sync_meta, "put").mockRejectedValueOnce(new Error("storage failed"));
+  try {
+    await expect(replaceFailedEntry(parent, {})).rejects.toThrow("storage failed");
+  } finally {
+    put.mockRestore();
+  }
+  expect(await db.outbox.toArray()).toEqual(before);
+  expect((await db.outbox.get(child))?.fields.origin_operation_id).toBe(parent);
+  expect((await db.sync_meta.get(localBottleOperationKey("b1")))?.value).toBe(parent);
 });
 
 describe("실패 명령 일괄 처리", () => {

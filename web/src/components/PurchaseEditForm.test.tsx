@@ -73,3 +73,24 @@ describe("PurchaseEditForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("미개봉 병 1개만");
   });
 });
+
+it("저장 중에는 구매 입력·취소·중복 제출을 막는다", async () => {
+  const onSubmit = vi.fn();
+  const onCancel = vi.fn();
+  renderWithQuery(
+    <PurchaseEditForm
+      purchase={purchase}
+      vendorNames={[]}
+      submitting
+      error={null}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+    />,
+  );
+  expect(screen.getByLabelText("병수")).toBeDisabled();
+  expect(screen.getByLabelText("구매처")).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "취소" }));
+  await userEvent.click(screen.getByRole("button", { name: "저장 중…" }));
+  expect(onSubmit).not.toHaveBeenCalled();
+  expect(onCancel).not.toHaveBeenCalled();
+});

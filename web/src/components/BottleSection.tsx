@@ -59,6 +59,7 @@ export function BottleSection({
   const [moving, setMoving] = useState(false);
   const [showPast, setShowPast] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [savingBottle, setSavingBottle] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const purchaseById = useMemo(
@@ -142,8 +143,15 @@ export function BottleSection({
           ? {
               actionLabel: "실행 취소",
               onAction: async () => {
-                await undoBottleTransitions(result.applied);
-                toast.show({ message: `${result.applied.length}병을 원래 상태로 되돌렸습니다` });
+                const undone = await undoBottleTransitions(result.applied);
+                toast.show({
+                  message:
+                    `${undone.applied.length}병 취소 기록 저장` +
+                    (undone.skipped.length
+                      ? ` · ${undone.skipped.length}병은 이후 변경이 있어 유지했습니다`
+                      : ""),
+                  tone: undone.skipped.length ? "warn" : "info",
+                });
               },
             }
           : {}),
@@ -231,11 +239,14 @@ export function BottleSection({
           type="button"
           className="bottle-list-item"
           aria-expanded={expandedId === bottle.id}
+          disabled={savingBottle}
           onClick={() => setExpandedId(expandedId === bottle.id ? null : bottle.id)}
         >
           {summary}
         </button>
-        {expandedId === bottle.id ? <BottlePanel bottle={bottle} offline={offline} /> : null}
+        {expandedId === bottle.id ? (
+          <BottlePanel bottle={bottle} offline={offline} onSavingChange={setSavingBottle} />
+        ) : null}
       </li>
     );
   }
@@ -249,6 +260,7 @@ export function BottleSection({
         <button
           type="button"
           aria-pressed={selecting}
+          disabled={savingBottle}
           onClick={() => (selecting ? finishSelection() : setSelecting(true))}
         >
           {selecting ? "선택 끝내기" : "여러 병 선택"}
@@ -260,7 +272,7 @@ export function BottleSection({
           {nextToOpen ? (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || savingBottle}
               onClick={() => void run("open", {}, [nextToOpen.id])}
             >
               한 병 개봉 ({nextToOpen.label_no}번)
@@ -269,7 +281,7 @@ export function BottleSection({
           {oldestOpen ? (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || savingBottle}
               onClick={() => void run("finish", {}, [oldestOpen.id])}
             >
               개봉한 병 다 마심 ({oldestOpen.label_no}번)
@@ -376,13 +388,13 @@ export function BottleSection({
                 <button
                   key={row.id}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || savingBottle}
                   onClick={() => void moveTo(row.id)}
                 >
                   {row.name}
                 </button>
               ))}
-            <button type="button" disabled={busy} onClick={() => void moveTo(null)}>
+            <button type="button" disabled={busy || savingBottle} onClick={() => void moveTo(null)}>
               미지정
             </button>
           </div>

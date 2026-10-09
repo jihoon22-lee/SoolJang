@@ -15,6 +15,7 @@ class BottleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    revision: uuid.UUID
     purchase_id: uuid.UUID
     label_no: int
     status: BottleStatus
@@ -48,7 +49,12 @@ class HandOverRequest(BaseModel):
     note: str | None = None
 
 
-class SetRemainingRequest(BaseModel):
+class BottleRevisionRequest(BaseModel):
+    expected_revision: uuid.UUID | None = None
+    expected_operation_id: uuid.UUID | None = None
+
+
+class SetRemainingRequest(BottleRevisionRequest):
     """개봉 병 잔량 조정. 0 이면 소진 처리한다."""
 
     remaining_ml: int = Field(ge=0, le=100_000)

@@ -253,6 +253,7 @@ export interface PurchaseCreateInput {
 export type BottleStatus = "unopened" | "open" | "finished" | "gifted" | "sold";
 
 export interface Bottle {
+  revision?: string;
   id: string;
   purchase_id: string;
   label_no: number;
@@ -429,6 +430,7 @@ export interface SyncOperationResult {
   status: "applied" | "conflict" | "failed";
   detail: string | null;
   snapshot: Record<string, unknown> | null;
+  effects?: { bottle?: Record<string, unknown> } | null;
 }
 
 export interface SyncBatchResponse {

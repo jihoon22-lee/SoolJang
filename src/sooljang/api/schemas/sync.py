@@ -36,6 +36,7 @@ class SyncOperationResultOut(BaseModel):
     status: str = Field(description="applied | conflict | failed")
     detail: str | None = None
     snapshot: dict[str, Any] | None = None
+    effects: dict[str, Any] | None = None
 
 
 class SyncBatchOut(BaseModel):

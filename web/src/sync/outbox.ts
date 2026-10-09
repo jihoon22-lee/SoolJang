@@ -7,6 +7,7 @@
  * 참조할 수 있다(구매 건 → 병 연쇄 생성).
  */
 
+import { localBottleOperationKey } from "@/sync/bottleRevision";
 import {
   databaseIdentity,
   db,
@@ -180,7 +181,7 @@ export async function replaceFailedEntry(
   const newKey = newId();
   await store.transaction(
     "rw",
-    [store.outbox, ...SYNC_ENTITIES.map((entity) => store.table(entity))],
+    [store.outbox, store.sync_meta, ...SYNC_ENTITIES.map((entity) => store.table(entity))],
     async () => {
       const entry = await store.outbox.get(idempotencyKey);
       if (!entry || entry.status !== "failed")
@@ -194,6 +195,46 @@ export async function replaceFailedEntry(
         status: "pending",
         error: null,
       });
+      const bottleId =
+        entry.entity === "bottle"
+          ? entry.entity_id
+          : entry.entity === "tasting_session" && typeof entry.fields.bottle_id === "string"
+            ? entry.fields.bottle_id
+            : null;
+      if (bottleId !== null) {
+        // failed 부모 뒤의 pending 명령은 FIFO 때문에 아직 실행되지 않았다.
+        // 업무 입력은 유지하고 서버 receipt를 가리키는 두 필드만 새 키로 연결한다.
+        const queue = (await store.outbox.toArray()).sort(
+          (a, b) =>
+            a.created_at.localeCompare(b.created_at) ||
+            (a.sequence_key ?? a.idempotency_key).localeCompare(
+              b.sequence_key ?? b.idempotency_key,
+            ),
+        );
+        const later = queue.slice(queue.findIndex((item) => item.idempotency_key === newKey) + 1);
+        for (const successor of later) {
+          if (
+            successor.status !== "pending" ||
+            successor.user_id !== entry.user_id ||
+            successor.entity !== "bottle" ||
+            successor.entity_id !== bottleId ||
+            successor.op !== "action"
+          )
+            continue;
+          const references = { ...successor.fields };
+          let changed = false;
+          for (const key of ["expected_operation_id", "origin_operation_id"] as const) {
+            if (references[key] === idempotencyKey) {
+              references[key] = newKey;
+              changed = true;
+            }
+          }
+          if (changed) await store.outbox.update(successor.idempotency_key, { fields: references });
+        }
+        const markerKey = localBottleOperationKey(bottleId);
+        if ((await store.sync_meta.get(markerKey))?.value === idempotencyKey)
+          await store.sync_meta.put({ key: markerKey, value: newKey });
+      }
       if (entry.op === "create" || entry.op === "update")
         await store.table(entry.entity).update(entry.entity_id, fields);
     },

@@ -7,6 +7,7 @@
  */
 
 import { bottleVolumeMl } from "@/sync/bottleActions";
+import { markBottleOperation } from "@/sync/bottleRevision";
 import { databaseIdentity, db } from "@/sync/db";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
@@ -89,7 +90,7 @@ export async function recordTasting(input: TastingRecordInput): Promise<string> 
       place: clean(input.place),
       companions: clean(input.companions),
     };
-    await enqueue({
+    const operationId = await enqueue({
       entity: "tasting_session",
       op: "action",
       entityId: tastingId,
@@ -104,7 +105,7 @@ export async function recordTasting(input: TastingRecordInput): Promise<string> 
       },
       // 병 상태·잔량도 이 명령의 부작용으로 바뀐다. 보호 id 로 남겨 동시에 도는 pull 이
       // 방금 바꾼 잔량을 이전 서버 값으로 덮지 않게 한다.
-      touchedIds: Object.keys(updates).length > 0 ? [input.bottleId] : undefined,
+      touchedIds: [input.bottleId],
       optimisticRow: {
         id: tastingId,
         user_id: input.userId,
@@ -120,6 +121,7 @@ export async function recordTasting(input: TastingRecordInput): Promise<string> 
         ...text,
       },
     });
+    await markBottleOperation(store, input.bottleId, operationId);
     if (Object.keys(updates).length > 0) {
       await store.bottle.update(input.bottleId, { ...updates, updated_at: now });
     }

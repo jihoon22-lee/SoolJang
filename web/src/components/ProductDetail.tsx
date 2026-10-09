@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bottle, Product, Purchase } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottleSection } from "@/components/BottleSection";
@@ -20,7 +20,8 @@ import {
 import { getLastVendorName } from "@/lastVendor";
 import { rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
-import { useDraftState } from "@/sync/drafts";
+import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
+import { captureWriteSession } from "@/sync/writeSession";
 
 //: `ProductForm` 과 같은 값 — 405종 목록에서도 스크롤 없이 훑을 수 있는 후보 수.
 const MAX_SUGGESTIONS = 8;
@@ -49,7 +50,9 @@ interface ProductDetailProps {
   onDelete: () => void;
   deleting: boolean;
 
-  onAddPurchase: (input: AddPurchaseInput) => void;
+  onAddPurchase:
+    | ((input: AddPurchaseInput) => void)
+    | ((input: AddPurchaseInput) => Promise<unknown>);
   addingPurchase: boolean;
   addPurchaseError: unknown;
   /** 구매 추가 폼의 구매처 자동완성 후보. */
@@ -112,6 +115,12 @@ export function ProductDetail({
   actionError,
 }: ProductDetailProps) {
   const { metrics } = product;
+  const [savingTarget, setSavingTarget] = useState<string | null>(null);
+  const savingPurchase = savingTarget === product.id;
+  const setSavingPurchase = useCallback(
+    (saving: boolean) => setSavingTarget(saving ? product.id : null),
+    [product.id],
+  );
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [externalInfoOpen, setExternalInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -119,11 +128,16 @@ export function ProductDetail({
   return (
     <article aria-labelledby="detail-heading">
       <div className="detail-toolbar">
-        <button type="button" className="btn-quiet" onClick={onBack}>
+        <button
+          type="button"
+          className="btn-quiet"
+          disabled={savingPurchase || addingPurchase}
+          onClick={onBack}
+        >
           ← 목록으로
         </button>
         <div className="button-row">
-          <button type="button" onClick={onEdit}>
+          <button type="button" disabled={savingPurchase || addingPurchase} onClick={onEdit}>
             수정
           </button>
           <div className="overflow-menu">
@@ -151,7 +165,7 @@ export function ProductDetail({
                     setMoreOpen(false);
                     if (window.confirm(message)) onDelete();
                   }}
-                  disabled={deleting}
+                  disabled={deleting || savingPurchase || addingPurchase}
                 >
                   {deleting ? "삭제 중…" : "삭제"}
                 </button>
@@ -238,6 +252,8 @@ export function ProductDetail({
       <SkuMetricsTable product={product} purchases={purchases} bottles={bottles} />
 
       <PurchaseSection
+        key={`purchase:${product.id}`}
+        onSavingChange={setSavingPurchase}
         product={product}
         purchases={purchases}
         offline={offline}
@@ -314,11 +330,15 @@ function PurchaseSection({
   splitError,
   onAddSku,
   addingSku,
+  onSavingChange,
 }: {
+  onSavingChange: (saving: boolean) => void;
   product: Product;
   purchases: Purchase[];
   offline: boolean;
-  onAddPurchase: (input: AddPurchaseInput) => void;
+  onAddPurchase:
+    | ((input: AddPurchaseInput) => void)
+    | ((input: AddPurchaseInput) => Promise<unknown>);
   addingPurchase: boolean;
   addPurchaseError: unknown;
   vendorNames: string[];
@@ -338,19 +358,71 @@ function PurchaseSection({
     pending: false,
     error: null,
   });
-  // 구매 추가가 성공해 끝나면 폼을 닫는다(실패면 열어 둔 채 오류를 보인다).
+  const flight = useRef(false);
+  const mounted = useRef(true);
+  const [addingLocally, setAddingLocally] = useState(false);
+  const addSnapshot = useRef<ReturnType<typeof captureFormDraft> | null>(null);
+  const promiseAdding = useRef(false);
   const wasAdding = useRef(false);
   useEffect(() => {
-    if (wasAdding.current && !addingPurchase && !addPurchaseError) setAddFormOpen(false);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (wasAdding.current && !addingPurchase && !promiseAdding.current) {
+      if (!addPurchaseError && addSnapshot.current && clearSubmittedDraft(addSnapshot.current))
+        setAddFormOpen(false);
+      flight.current = false;
+      setAddingLocally(false);
+      onSavingChange(false);
+    }
     wasAdding.current = addingPurchase;
-  }, [addingPurchase, addPurchaseError]);
+  }, [addingPurchase, addPurchaseError, onSavingChange]);
+  const busy = editing.pending || addingPurchase || addingLocally;
+
+  function submitPurchase(input: AddPurchaseInput): void {
+    if (flight.current || busy) return;
+    flight.current = true;
+    setAddingLocally(true);
+    onSavingChange(true);
+    const session = captureWriteSession();
+    const snapshot = captureFormDraft(`purchase:${product.id}`);
+    addSnapshot.current = snapshot;
+    const result = onAddPurchase({ ...input });
+    if (result && typeof result.then === "function") {
+      promiseAdding.current = true;
+      void result
+        .then(() => {
+          const cleared = clearSubmittedDraft(snapshot);
+          if (mounted.current && session.isCurrent() && cleared) setAddFormOpen(false);
+        })
+        .catch(() => {
+          // The parent's mutation exposes the error and preserves the draft.
+        })
+        .finally(() => {
+          if (!mounted.current || !session.isCurrent()) return;
+          promiseAdding.current = false;
+          flight.current = false;
+          setAddingLocally(false);
+          onSavingChange(false);
+        });
+    }
+  }
 
   return (
     <>
       <div className="section-header">
         <h3>구매 이력</h3>
         {!offline && (
-          <button type="button" onClick={() => setAddFormOpen((open) => !open)}>
+          <button
+            type="button"
+            disabled={busy || addingSku}
+            onClick={() => {
+              if (!flight.current) setAddFormOpen((open) => !open);
+            }}
+          >
             {addFormOpen ? "취소" : "구매 추가"}
           </button>
         )}
@@ -362,12 +434,10 @@ function PurchaseSection({
       {addFormOpen && (
         <AddPurchaseForm
           product={product}
-          onSubmit={(input) => {
-            onAddPurchase(input);
-          }}
+          onSubmit={submitPurchase}
           onAddSku={onAddSku}
           addingSku={addingSku}
-          submitting={addingPurchase}
+          submitting={addingPurchase || addingLocally}
           error={addPurchaseError}
           vendorNames={vendorNames}
         />
@@ -426,8 +496,10 @@ function PurchaseSection({
                             <button
                               type="button"
                               aria-label="구매 기록 수정"
+                              disabled={busy}
                               aria-expanded={editingId === purchase.id}
                               onClick={() => {
+                                if (flight.current) return;
                                 setEditing({ pending: false, error: null });
                                 setEditingId(editingId === purchase.id ? null : purchase.id);
                               }}
@@ -438,6 +510,7 @@ function PurchaseSection({
                           {purchase.quantity > 1 && (
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() =>
                                 setSplittingId(splittingId === purchase.id ? null : purchase.id)
                               }
@@ -449,7 +522,7 @@ function PurchaseSection({
                             type="button"
                             className="danger"
                             aria-label="구매 기록 삭제"
-                            disabled={deletingPurchaseId === purchase.id}
+                            disabled={busy || deletingPurchaseId === purchase.id}
                             onClick={() => {
                               if (
                                 window.confirm(
@@ -470,19 +543,37 @@ function PurchaseSection({
                     <tr>
                       <td colSpan={7}>
                         <PurchaseEditForm
+                          key={purchase.id}
                           purchase={purchase}
                           vendorNames={vendorNames}
                           submitting={editing.pending}
                           error={editing.error}
-                          onCancel={() => setEditingId(null)}
+                          onCancel={() => {
+                            if (!flight.current) setEditingId(null);
+                          }}
                           onSubmit={(input) => {
+                            if (flight.current) return;
+                            flight.current = true;
+                            onSavingChange(true);
+                            const session = captureWriteSession();
+                            const draft = captureFormDraft(`purchase-edit:${purchase.id}`);
                             setEditing({ pending: true, error: null });
-                            onUpdatePurchase(purchase.id, input)
+                            void onUpdatePurchase(purchase.id, { ...input })
                               .then(() => {
+                                const cleared = clearSubmittedDraft(draft);
+                                if (!mounted.current || !session.isCurrent()) return;
                                 setEditing({ pending: false, error: null });
-                                setEditingId(null);
+                                if (cleared) setEditingId(null);
                               })
-                              .catch((error: unknown) => setEditing({ pending: false, error }));
+                              .catch((error: unknown) => {
+                                if (mounted.current && session.isCurrent())
+                                  setEditing({ pending: false, error });
+                              })
+                              .finally(() => {
+                                if (!mounted.current || !session.isCurrent()) return;
+                                flight.current = false;
+                                onSavingChange(false);
+                              });
                           }}
                         />
                       </td>
@@ -601,6 +692,7 @@ function AddPurchaseForm({
       className="panel"
       onSubmit={(event) => {
         event.preventDefault();
+        if (submitting) return;
         if (!skuId) {
           setLocalError("규격을 선택하세요");
           return;
@@ -620,95 +712,97 @@ function AddPurchaseForm({
         });
       }}
     >
-      <DraftRecoveryButton form={`purchase:${product.id}`} />
-      {errorMessage && (
-        <p className="alert" role="alert">
-          {errorMessage}
-        </p>
-      )}
+      <fieldset disabled={submitting} style={{ border: 0, padding: 0 }}>
+        <DraftRecoveryButton form={`purchase:${product.id}`} />
+        {errorMessage && (
+          <p className="alert" role="alert">
+            {errorMessage}
+          </p>
+        )}
 
-      {product.skus.length > 1 && (
-        <div className="field">
-          <label htmlFor="purchase-sku">규격</label>
-          <select
-            id="purchase-sku"
-            value={skuId}
-            onChange={(event) => setSkuId(event.target.value)}
-          >
-            {product.skus.map((sku) => (
-              <option key={sku.id} value={sku.id}>
-                {formatVolume(sku.volume_ml)}
-              </option>
-            ))}
-          </select>
+        {product.skus.length > 1 && (
+          <div className="field">
+            <label htmlFor="purchase-sku">규격</label>
+            <select
+              id="purchase-sku"
+              value={skuId}
+              onChange={(event) => setSkuId(event.target.value)}
+            >
+              {product.skus.map((sku) => (
+                <option key={sku.id} value={sku.id}>
+                  {formatVolume(sku.volume_ml)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="purchase-quantity">병수</label>
+            <input
+              id="purchase-quantity"
+              type="number"
+              inputMode="numeric"
+              step={1}
+              min={1}
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="purchase-date">구매일</label>
+            <input
+              id="purchase-date"
+              type="date"
+              value={purchasedOn}
+              onChange={(event) => setPurchasedOn(event.target.value)}
+            />
+          </div>
         </div>
-      )}
 
-      <div className="field-row">
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="purchase-list-price">병당 정가 (원)</label>
+            <input
+              id="purchase-list-price"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min={0}
+              value={unitListPrice}
+              onChange={(event) => setUnitListPrice(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="purchase-paid-price">병당 실구매가 (원)</label>
+            <input
+              id="purchase-paid-price"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min={0}
+              value={unitPaidPrice}
+              onChange={(event) => setUnitPaidPrice(event.target.value)}
+            />
+          </div>
+        </div>
+
         <div className="field">
-          <label htmlFor="purchase-quantity">병수</label>
-          <input
-            id="purchase-quantity"
-            type="number"
-            inputMode="numeric"
-            step={1}
-            min={1}
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
+          <label htmlFor="purchase-vendor">구매처</label>
+          <AutocompleteInput
+            id="purchase-vendor"
+            value={vendorName}
+            placeholder="없으면 비워 두세요"
+            onChange={setVendorName}
+            suggestions={vendorSuggestions}
           />
         </div>
-        <div className="field">
-          <label htmlFor="purchase-date">구매일</label>
-          <input
-            id="purchase-date"
-            type="date"
-            value={purchasedOn}
-            onChange={(event) => setPurchasedOn(event.target.value)}
-          />
-        </div>
-      </div>
 
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor="purchase-list-price">병당 정가 (원)</label>
-          <input
-            id="purchase-list-price"
-            type="number"
-            inputMode="decimal"
-            step="any"
-            min={0}
-            value={unitListPrice}
-            onChange={(event) => setUnitListPrice(event.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="purchase-paid-price">병당 실구매가 (원)</label>
-          <input
-            id="purchase-paid-price"
-            type="number"
-            inputMode="decimal"
-            step="any"
-            min={0}
-            value={unitPaidPrice}
-            onChange={(event) => setUnitPaidPrice(event.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="field">
-        <label htmlFor="purchase-vendor">구매처</label>
-        <AutocompleteInput
-          id="purchase-vendor"
-          value={vendorName}
-          placeholder="없으면 비워 두세요"
-          onChange={setVendorName}
-          suggestions={vendorSuggestions}
-        />
-      </div>
-
-      <button type="submit" className="primary" disabled={submitting}>
-        {submitting ? "저장 중…" : "구매 추가"}
-      </button>
+        <button type="submit" className="primary" disabled={submitting}>
+          {submitting ? "저장 중…" : "구매 추가"}
+        </button>
+      </fieldset>
     </form>
   );
 }

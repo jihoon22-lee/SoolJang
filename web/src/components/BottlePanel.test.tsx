@@ -1,10 +1,11 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Tasting, TastingSummary } from "@/api/types";
 import { BottlePanel, formatRatingChange, formatRemaining } from "@/components/BottlePanel";
 import { todayLocal } from "@/format";
 import { activateDatabase, db } from "@/sync/db";
+import * as tastingActions from "@/sync/tastingActions";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
 const NOW = "2026-01-01T00:00:00Z";
@@ -23,6 +24,7 @@ function row(overrides: Record<string, unknown>) {
 function bottle(overrides: Partial<Bottle> = {}): Bottle {
   return {
     id: "b1",
+    revision: "00000000-0000-4000-8000-000000000001",
     purchase_id: "pu1",
     label_no: 1,
     status: "unopened",
@@ -606,7 +608,7 @@ describe("BottlePanel", () => {
       });
     });
 
-    it("병 상태에 영향 없는 시음 기록(따른 양 없음)은 touched_ids 를 남기지 않는다", async () => {
+    it("따른 양 없는 후속 시음도 병을 touched_ids 로 남긴다", async () => {
       const target = bottle({ status: "open", opened_on: "2026-01-01", remaining_ml: 200 });
       await seedContext(target);
       stubTastings(target.id);
@@ -617,7 +619,7 @@ describe("BottlePanel", () => {
       await waitFor(async () => {
         const [entry] = await db.outbox.toArray();
         expect(entry?.entity).toBe("tasting_session");
-        expect(entry?.touched_ids).toBeUndefined();
+        expect(entry?.touched_ids).toEqual([target.id]);
       });
     });
 
@@ -694,4 +696,62 @@ describe("BottlePanel", () => {
       });
     });
   });
+});
+
+it("시음 저장 중 입력과 상태 변경을 잠그고 제출 당시 내용만 한 번 저장한다", async () => {
+  const target = bottle({ status: "open", remaining_ml: 700 });
+  await seedContext(target);
+  stubTastings(target.id);
+  let complete!: (value: string) => void;
+  const save = vi.spyOn(tastingActions, "recordTasting").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const onSavingChange = vi.fn();
+  renderWithQuery(<BottlePanel bottle={target} onSavingChange={onSavingChange} />);
+  const poured = screen.getByLabelText(/직접 입력\(ml\)/);
+  await userEvent.type(poured, "30");
+  const submit = screen.getByRole("button", { name: "기록 저장" });
+  const form = submit.closest("form");
+  if (!form) throw new Error("시음 폼을 찾을 수 없습니다");
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(poured).toBeDisabled();
+  expect(screen.getByRole("button", { name: "소진" })).toBeDisabled();
+  expect(onSavingChange).toHaveBeenCalledWith(true);
+  fireEvent.change(poured, { target: { value: "90" } });
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ bottleId: "b1", pouredMl: 30 }));
+  await act(async () => complete("saved-tasting"));
+  await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(false));
+  expect(poured).toHaveValue(null);
+  save.mockRestore();
+});
+
+it("이전 시음 폼의 늦은 성공은 다시 연 폼의 새 초안을 지우지 않는다", async () => {
+  const target = bottle({ status: "open", remaining_ml: 700 });
+  await seedContext(target);
+  stubTastings(target.id);
+  let complete!: (value: string) => void;
+  const save = vi.spyOn(tastingActions, "recordTasting").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const first = renderWithQuery(<BottlePanel bottle={target} />);
+  await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "30");
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  first.unmount();
+  renderWithQuery(<BottlePanel bottle={target} />);
+  const poured = screen.getByLabelText(/직접 입력\(ml\)/);
+  await userEvent.clear(poured);
+  await userEvent.type(poured, "90");
+  await act(async () => complete("saved-tasting"));
+  expect(poured).toHaveValue(90);
+  expect(Object.values(localStorage).join()).toContain('"90"');
+  save.mockRestore();
 });

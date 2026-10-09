@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.history import changes, log_event
 from sooljang.clock import local_today
+from sooljang.infrastructure.database.base import new_uuid
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
@@ -83,6 +84,7 @@ def _log_transition(
     session: AsyncSession, bottle: Bottle, action: str, before: dict[str, Any], **extra: Any
 ) -> None:
     """상태 전이 이력. 바뀐 칸만 [이전, 이후] 로 남긴다(병 위치 이동은 `BottleMovement`)."""
+    bottle.revision = new_uuid()
     log_event(
         session,
         user_id=bottle.user_id,

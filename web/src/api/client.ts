@@ -420,10 +420,18 @@ export const bottlesApi = {
     request<Bottle>(`/bottles/${id}:sell`, { method: "POST", body }),
 
   /** 잘못 눌렀을 때 되돌리기. 기록을 지우지 않고 상태만 개봉으로 바꾼다. */
-  reopen: (id: string) => request<Bottle>(`/bottles/${id}:reopen`, { method: "POST" }),
+  reopen: (id: string, expectedRevision: string) =>
+    request<Bottle>(`/bottles/${id}:reopen`, {
+      method: "POST",
+      body: { expected_revision: expectedRevision },
+    }),
 
   /** 개봉을 실수로 눌렀을 때 되돌리기. 개봉 상태만 미개봉으로 되돌릴 수 있다. */
-  unopen: (id: string) => request<Bottle>(`/bottles/${id}:unopen`, { method: "POST" }),
+  unopen: (id: string, expectedRevision: string) =>
+    request<Bottle>(`/bottles/${id}:unopen`, {
+      method: "POST",
+      body: { expected_revision: expectedRevision },
+    }),
 
   tastings: (id: string, signal?: AbortSignal) =>
     request<Tasting[]>(`/bottles/${id}/tastings`, signal ? { signal } : {}),

@@ -658,7 +658,6 @@ function ProductDetailView({
       });
     },
     onSuccess: (_result, input) => {
-      clearFormDraft(`purchase:${productId}`);
       if (input.vendorName) setLastVendorName(input.vendorName);
       triggerSync();
       toast.show({ message: `구매 ${input.quantity}병을 추가했습니다` });
@@ -750,6 +749,7 @@ function ProductDetailView({
 
   return (
     <ProductDetail
+      key={product.id}
       product={product}
       purchases={purchases ?? []}
       bottles={bottles ?? []}
@@ -758,7 +758,7 @@ function ProductDetailView({
       onEdit={() => setEditing(true)}
       onDelete={() => remove.mutate()}
       deleting={remove.isPending}
-      onAddPurchase={(input) => addPurchase.mutate(input)}
+      onAddPurchase={(input) => addPurchase.mutateAsync(input)}
       addingPurchase={addPurchase.isPending}
       addPurchaseError={addPurchase.error}
       vendorNames={vendorNames}

@@ -54,6 +54,42 @@ export function clearFormDraft(form: string, userId = databaseIdentity().userId)
     if (key === prefix || key.startsWith(`${prefix}:`)) localStorage.removeItem(key);
   draftEvents.dispatchEvent(new Event("saved"));
 }
+/** 제출한 탭·계정 세대와 초안 전체 버전을 보관한다. */
+export function captureFormDraft(form: string) {
+  const identity = databaseIdentity();
+  const prefix = identity.userId ? storageKey(form, identity.userId) : null;
+  const entries = prefix
+    ? Object.keys(localStorage)
+        .filter((key) => key === prefix || key.startsWith(`${prefix}:`))
+        .sort()
+        .map((key) => [key, localStorage.getItem(key)] as const)
+    : [];
+  return { identity, prefix, entries };
+}
+
+/** 이전 저장의 성공으로 이후 입력이나 재로그인한 세션의 초안을 지우지 않는다. */
+export function clearSubmittedDraft(snapshot: ReturnType<typeof captureFormDraft>): boolean {
+  const current = databaseIdentity();
+  if (
+    !snapshot.prefix ||
+    snapshot.identity.userId !== current.userId ||
+    snapshot.identity.generation !== current.generation
+  )
+    return false;
+  const keys = Object.keys(localStorage)
+    .filter((key) => key === snapshot.prefix || key.startsWith(`${snapshot.prefix}:`))
+    .sort();
+  if (
+    keys.length !== snapshot.entries.length ||
+    snapshot.entries.some(
+      ([key, value], index) => keys[index] !== key || localStorage.getItem(key) !== value,
+    )
+  )
+    return false;
+  for (const key of keys) localStorage.removeItem(key);
+  draftEvents.dispatchEvent(new Event("saved"));
+  return true;
+}
 /** 다른 탭/이전 세션의 입력은 자동으로 덮어쓰지 않고 명시적으로 복원한다. */
 export function recoverableDraft(form: string): string | null {
   const userId = databaseIdentity().userId;
@@ -105,6 +141,7 @@ export function useDraftState<T>(
         .detail;
       if (
         !key ||
+        identity.generation !== databaseIdentity().generation ||
         detail.userId !== identity.userId ||
         !(form === detail.form || form.startsWith(`${detail.form}:`))
       )
@@ -115,7 +152,10 @@ export function useDraftState<T>(
         if (!stored) return;
         const restored = (JSON.parse(stored) as { value: T }).value;
         if (containsSecret(restored)) return;
-        localStorage.setItem(key, JSON.stringify({ value: restored, updatedAt: Date.now() }));
+        localStorage.setItem(
+          key,
+          JSON.stringify({ value: restored, updatedAt: Date.now(), revision: crypto.randomUUID() }),
+        );
         setValue((previous) => decodeDraft(restored, previous));
       } catch {
         draftEvents.dispatchEvent(new Event("storage-error"));
@@ -123,18 +163,26 @@ export function useDraftState<T>(
     };
     draftEvents.addEventListener("restore", restore);
     return () => draftEvents.removeEventListener("restore", restore);
-  }, [form, identity.userId, key]);
+  }, [form, identity.userId, identity.generation, key]);
   const setDraft: Dispatch<SetStateAction<T>> = (next) => {
     setValue((previous) => {
       const updated = typeof next === "function" ? (next as (prev: T) => T)(previous) : next;
       if (
         key &&
         identity.userId === databaseIdentity().userId &&
+        identity.generation === databaseIdentity().generation &&
         !containsSecret(updated) &&
         !/password|secret|token|api.?key|credential/i.test(form)
       ) {
         try {
-          localStorage.setItem(key, JSON.stringify({ value: updated, updatedAt: Date.now() }));
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              value: updated,
+              updatedAt: Date.now(),
+              revision: crypto.randomUUID(),
+            }),
+          );
         } catch {
           draftEvents.dispatchEvent(new Event("storage-error"));
         }
