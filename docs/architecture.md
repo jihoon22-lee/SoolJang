@@ -297,15 +297,20 @@ erDiagram
 
 구매 건 저장 시 `quantity`만큼 `bottle` 행을 자동 생성한다. 레거시 임포트는 `소비` 병수만큼
 `finished`, `미개봉`만큼 `unopened`, `개봉`만큼 `open`으로 초기화한다.
+수량 수정은 구매 행을 잠근 뒤 처리한다. 줄일 때는 번호가 큰 미개봉 병부터 soft delete하고,
+다시 늘릴 때는 삭제된 병까지 포함한 최대 번호 다음부터 생성해 기존 병 ID·시음을 보존한다.
+구매 분할은 명시한 구매처와 상속할 구매처의 소유권·삭제 여부를 모두 검증한다. 기존에
+잘못 연결된 타 계정 구매처의 이름도 구매 조회 응답에 노출하지 않는다.
 
 #### `tasting_session` — 시음 세션
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
-| `bottle_id` | `UUID` FK | |
-| `tasted_at` | `timestamptz` | |
-| `pour_ml` | `int` NULL | 기록 시 `bottle.remaining_ml` 차감 |
-| `rating` | `numeric(3,1)` NULL | `CHECK (0 < rating <= 6)`, 0.5 단위 |
+| `bottle_id` | `UUID` FK NULL | 내 병에서 마신 경우에만 연결 |
+| `sku_id` | `UUID` FK | 시음한 규격 |
+| `tasted_on` | `date` | 마신 날 |
+| `poured_ml` | `int` NULL | 기록 시 연결된 병의 `remaining_ml` 차감 |
+| `rating` | `numeric(3,1)` NULL | `CHECK (0 <= rating <= 6)`, 0.5 단위 |
 | `nose`, `palate`, `finish` | `text` NULL | |
 | `note` | `text` NULL | |
 | `companions`, `place` | `text` NULL | |
@@ -379,7 +384,8 @@ erDiagram
   보관 위치·병 배치·이동 이력·재고 실사·정리 미리보기(v1.7.0). 온라인 전용이며 동기화 대상이
   아니다. 실사 관찰은 `stocktake.observations` JSONB에 둔다(개인 규모라 행 재작성 비용이 작다, D218)
 - `record_event`(0019, v1.8.0): 병 상태 전이·잔량 조정·시음으로 인한 병 변화와 구매 수정의
-  변경 이력. `entity`(`bottle`|`purchase`), `entity_id`, `action`, `detail jsonb`(바뀐 칸의
+  변경 이력. v1.8.2부터 실사 관찰 정정도 기록한다. `entity`(`bottle`|`purchase`|`stocktake`),
+  `entity_id`, `action`, `detail jsonb`(바뀐 칸의
   [이전, 이후]). 재계산할 수 없는 1차 사실이라 저장한다. 동기화 대상이 아니며 과거 이력은
   소급하지 않는다(D222). 구매처·보관 위치는 id로 남기고, 이력 API가 읽을 때 지금 이름을
   `labels`로 붙인다(D225)
@@ -469,7 +475,7 @@ UTC `timestamptz`다.
   "errors": [{ "field": "remaining_ml", "code": "exceeds_volume" }] }
 ```
 
-- 목록은 **커서 페이지네이션**. `?limit=50&cursor=<opaque>` → `{ "items": [...],
+- 커서 목록은 `?limit=50&cursor=<opaque>` → `{ "items": [...],
   "next_cursor": "..." }`. offset 방식은 데이터가 바뀌면 중복·누락이 생겨 무한 스크롤에
   부적합하다
 - 정렬은 `?sort=price_per_100ml&order=asc`. 정렬 키에는 항상 `id`를 tie-breaker로 추가해
@@ -477,7 +483,7 @@ UTC `timestamptz`다.
 
 ### 4.2 엔드포인트
 
-아래 표는 v1.8.0 앱의 OpenAPI에서 생성했다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
+아래 표는 v1.8.2 릴리스 대상 API다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
 라우터 단위로 인증을 요구하고(§6), 사용자 데이터는 소유권을 검사한다. 외부 연결·탐색·가격
 감시 경로의 동작은 [external-data.md](external-data.md)를 본다.
 
@@ -497,7 +503,8 @@ UTC `timestamptz`다.
 | bottles | `GET /bottles` | 병 목록 |
 | bottles | `GET /bottles/{bottle_id}` | 병 조회 |
 | bottles | `GET /bottles/{bottle_id}/history` | 병 변경 이력 |
-| bottles | `GET /bottles/{bottle_id}/tastings` | 병의 시음 타임라인 |
+| bottles | `GET /bottles/{bottle_id}/tastings` | 병의 최근 시음 50건, 기존 배열 응답 유지 |
+| bottles | `GET /bottles/{bottle_id}/tastings/page` | 커서로 오래된 시음까지 이어 보기 |
 | bottles | `POST /bottles/{bottle_id}:finish` | 소진 |
 | bottles | `POST /bottles/{bottle_id}:gift` | 증여 |
 | bottles | `POST /bottles/{bottle_id}:open` | 개봉 |
@@ -530,6 +537,7 @@ UTC `timestamptz`다.
 | collection | `PATCH /collection/stocktakes/{stocktake_id}` | Update Stocktake |
 | collection | `POST /collection/stocktakes/{stocktake_id}/found` | Found |
 | collection | `POST /collection/stocktakes/{stocktake_id}/scan` | Scan |
+| collection | `PATCH /collection/stocktakes/{stocktake_id}/observations/{bottle_id}` | 실사 관찰 위치 정정 |
 | collection | `POST /collection/stocktakes/{stocktake_id}:apply-locations` | Apply Locations |
 | connections | `GET /connections` | List Connections |
 | connections | `POST /connections` | Register Connection |
@@ -620,6 +628,18 @@ UTC `timestamptz`다.
 | vendors | `PATCH /vendors/{vendor_id}` | 구매처 수정 |
 | vendors | `POST /vendors/{vendor_id}:merge` | 구매처 병합 |
 
+병 시음 `/tastings/page`는 `{items, next_cursor}`를 반환하며 `limit`은 기본 50, 최대 200이다.
+`(tasted_on, id)` 내림차순 커서로 같은 날의 기록도 빠짐없이 이어 읽는다. 웹은 이미 읽은
+내역을 추가 조회 실패 때도 유지하고 재시도를 제공한다. 기존 배열 API는 그대로 지원한다.
+
+실사 관찰 PATCH의 `observed_location_id`와 `expected_observed_location_id`는 모두 필수이며
+`null` 또는 UUID다. active 실사의 `checked`·`unexpected`·`location_mismatch` 관찰만 정정한다.
+최초 `recorded_location_id`를 보존해 결과·집계를 다시 계산하고, 실제 병 위치·재고는 바꾸지
+않는다. 현재 관찰이 이미 원하는 값이면 재시도도 200, 예상 이전값과 다르면 409다. 완료·위치
+반영 후 정정은 409, 존재하지 않거나 삭제된 대상·타 계정 참조는 404로 거절한다. 응답은 갱신된
+실사 전체다. 스캔·정정·위치 반영·삭제는 위치 → 실사 → 병 → 배치 순서로 필요한 행을 잠그며,
+잠금 사이 대상이 바뀌면 재검증한다.
+
 ### 4.3 필터 규약
 
 `GET /products` 필터: `category_id`(하위 포함), `country`, `abv_min`/`abv_max`,
@@ -632,6 +652,9 @@ UTC `timestamptz`다.
 
 단일 사용자 전제이므로 복잡한 CRDT가 필요 없다. **레코드 단위 last-write-wins**로 충분하다.
 다만 충돌이 발생한 사실은 로그로 남겨 사용자가 확인할 수 있게 한다.
+로컬 저장소는 계정별로 분리한다. 로그아웃은 접근을 잠그며 저장소·미전송 명령을 지우지 않는다.
+쓰기 시작 시 사용자·저장소·세대 번호를 고정하고, 비동기 작업 뒤에도 같은 세션인지 검사해
+이전 계정의 지연 응답·후속 요청·완료 콜백이 새 계정에 적용되지 않게 한다.
 
 ### 5.2 쓰기 경로 (outbox)
 
@@ -644,6 +667,7 @@ sequenceDiagram
     U->>D: 술 등록 (UUIDv7 클라이언트 생성)
     D->>D: 낙관적 반영 (즉시 화면 갱신)
     D->>O: 변경 큐 적재 (idempotency_key = UUIDv7)
+    Note over D,O: 낙관적 반영과 큐 적재는 같은 IndexedDB transaction
     Note over O: 오프라인이면 대기
     O->>S: POST /sync/batch (순서 보장, 재시도)
     S->>S: idempotency_key 중복 확인
@@ -653,6 +677,8 @@ sequenceDiagram
 
 - PK를 클라이언트가 생성하므로 오프라인에서 만든 레코드를 서버 왕복 없이 즉시 참조할 수 있다
   (구매 건 → 병 → 시음 세션 연쇄 생성이 오프라인에서 가능해진다)
+- 로컬 쓰기는 연결 여부와 관계없이 즉시 실행하며 낙관적 행과 outbox를 함께 커밋한다.
+  `user_id`가 현재 계정과 다르거나 로그아웃 상태면 적재하지 않는다
 - `idempotency_key`는 `outbox_receipt`에 30일 보관한다. 재전송 시 같은 키면 이전 결과를 반환한다
 - 전송은 **순서 보장**이 필요하다. 부모 레코드보다 자식이 먼저 도착하면 FK가 깨진다.
   outbox는 단일 직렬 큐로 처리하고, **입력 자체가 거부된 실패**(검증 오류·없는 부모)는 뒤
@@ -664,6 +690,11 @@ sequenceDiagram
 - 여러 병·술의 일괄 처리(개봉·소진·증여·판매, 주종 변경, 삭제)도 항목마다 outbox 명령 하나로
   적재한다. 실행 취소는 역방향 명령(`reopen`·`unopen`·`set_remaining`, 원래 주종)으로 보낸다(D217)
 - 실패 명령이 남아 있어도 받기(풀)는 계속한다. 대기 중인 행은 보호해 덮어쓰지 않는다
+- 전송 전 소유자가 없거나 다른 과거 명령과 그 의존 명령을 원본·미러 스냅샷과 함께
+  `sync_meta`의 격리 묶음으로 보관한다. 원본 보관과 활성 큐 분리는 한 transaction으로 처리해
+  저장 실패 시 모두 유지한다. 관련 없는 명령은 계속 전송하며, 뒤늦게 들어온 의존 명령도
+  배치마다 다시 검사한다. 격리 원본은 자동 재전송·삭제하거나 새 멱등키로 바꾸지 않는다.
+  화면에는 건수와 보관 상태를 알리고, 내보내기에서도 다른 계정 소유가 확인된 내용을 제외한다
 
 ### 5.3 읽기 경로 (델타 풀)
 
@@ -690,6 +721,17 @@ sequenceDiagram
 것과 같은 규칙, D214). 시음 기록은 지우지 않는다. 이전 버전에서 제품만 지워져 남은 하위 행은
 조회(보관·실사 목록, 병 목록, 구매처 집계, 품질 보고, 최근 시음)에서 부모 삭제를 함께 확인해
 제외한다. 주종 삭제는 온라인·동기화 모두 하위 주종·소속 제품이 있으면 거부한다.
+
+### 5.6 빠른 시음과 작성 중 초안
+
+빠른 시음은 개봉 병을 먼저 보여 주고 미개봉 병은 SKU별로 묶는다. 기본 병은 구매일이 오래된
+순서로 고르되 날짜 미기록은 뒤에 두며, 구매처·구매일·위치를 보고 개별 병을 바꿀 수 있다.
+위치는 온라인 조회 결과이며 오프라인에는 확인 불가로 표시한다.
+
+선택한 병과 입력 초안은 계정·탭·병별로 보존한다. 닫기·재열기·새로고침 뒤 복원할 수 있고,
+다른 병의 기존 초안을 자동으로 덮어쓰지 않는다. 저장 중에는 닫기·Escape·입력 변경을 막아
+이전 저장의 완료 처리가 새 초안을 지우지 않게 한다. 작성 중 초안은 아직 outbox에 적재되지
+않은 입력이며, 저장 성공 뒤 해당 초안을 정리한다.
 
 ## 6. 인증과 권한
 

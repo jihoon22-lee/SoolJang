@@ -25,7 +25,7 @@
 | `SOOLJANG_SECRET_KEY` | LLM API 키 등 **DB 에 저장되는 비밀값을 암호화하는 Fernet 마스터 키**. 이 값 자체를 잃어버리면 이미 저장된 비밀값을 전부 다시 입력해야 한다 | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` 로 생성 | **필수** — 없으면 앱이 기동을 거부한다 |
 | `POSTGRES_USER` / `POSTGRES_DB` | Docker Compose `db` 서비스 초기화 값(운영 DB) | `sooljang` | 아니오 (기본값 있음) |
 | `POSTGRES_PASSWORD` | 운영 DB 비밀번호 | — | **필수** — 비우면 `docker compose up` 이 기동을 거부한다 |
-| `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.8.0` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
+| `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.8.2` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
 | `SOOLJANG_SEARCH_API_KEY` | Task 18 원 사양의 "검색 API로 아무 주종이나 조회" 기능용. **이 기능 자체가 현재 범위 밖**(`adapter` 방식으로 대체됨, `docs/plan.md` 참조)이라 지금은 안 쓰인다 | — | 아니오 (미사용) |
 
 **로그인 후 "설정" 화면에서 관리하는 값**(`.env` 에 넣지 않는다):
@@ -114,7 +114,9 @@ bash scripts/backup.sh --local --restore <백업_디렉터리> \
 
 복원 뒤 manifest의 전체 행 수·스키마·첨부 참조·파일 내용과 암호문 복호화를 대조한다.
 FK 설치/검증도 `pg_restore` 트랜잭션에 포함된다. 그 다음 **격리 API**를 복원 DB와 uploads에
-연결하고 로그인·제품/구매/병/시음 합계·대표 첨부 열람을 검증한 후 전환 여부를 결정한다.
+연결한다. 격리 API는 `SOOLJANG_PRICE_WATCH_WORKER_ENABLED=false`로 가격 감시 worker를
+끄고 운영 복제본에서 외부 조회·알림이 발생하지 않게 한다. 로그인·제품/구매/병/시음 합계·
+대표 첨부 열람을 검증한 후 전환 여부를 결정한다.
 신규 사용자 데이터가 생긴 뒤 이전 백업으로 돌아가면 그 이후 변경이 사라진다. 최신 데이터
 백업 및 데이터 병합/이전 계획 없이 구 스키마로 downgrade하거나 이전 이미지로 되돌리지 않는다.
 
@@ -205,8 +207,8 @@ gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
 /usr/bin/sg docker -c "docker compose up -d --no-deps web"
 ```
 
-`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.8.0은 `0019_record_event`(새 테이블만
-추가하는 additive 변경)를 적용한다. migration 실패 시 다음 명령으로
+`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.8.0에서 `0019_record_event`를
+적용했으며 v1.8.2도 같은 head를 사용한다. migration 실패 시 다음 명령으로
 넘어가지 않는다. PostgreSQL 트랜잭션 밖에서 실행되는 변경이 있으면 해당 migration의
 별도 복구 절차가 필요하다. 이전 앱은 **그 앱에 포함된 schema head와 DB가 정확히 같은
 경우에만** 재개한다. 현재는 구·미래·복수 불일치 리비전의 호환성을 가정하지 않는다.
