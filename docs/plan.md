@@ -1,7 +1,7 @@
 # 작업 계획과 진행 현황
 
 **작업을 재개할 때 §1부터 읽는다.** 이 문서는 지금 진행 중인 일과 남은 결정만 담는다.
-지난 릴리스·Task·결정 로그(D1~D227)는 [history.md](history.md), 동작 설계는
+지난 릴리스·Task·결정 로그(D1~D230)는 [history.md](history.md), 동작 설계는
 [architecture.md](architecture.md)·[external-data.md](external-data.md), 개발·검증 절차는
 [development.md](development.md), 운영·배포는 [operations.md](operations.md)를 따른다.
 
@@ -14,24 +14,26 @@
 
 | 항목 | 값 |
 |---|---|
-| 최종 갱신 | 2026-10-09 — 실사용 리뷰 #157·#158·#159 머지, v1.8.2 릴리스 준비 |
-| 현재 마일스톤 | 실사용 리뷰 후속 v1.8.2. F1~F10·21개 시나리오 수용, 사용자 머지·태그·릴리스·운영 배포 승인 |
-| 진행 브랜치 | `feature/v182-release` (문서·버전 갱신) |
+| 최종 갱신 | 2026-10-09 — v1.8.2 릴리스·운영 배포 완료, 문서에 실행 증거 반영 |
+| 현재 마일스톤 | 실사용 리뷰 후속 v1.8.2 완료. F1~F10·21개 시나리오 및 백업·복원·운영 수용 완료 |
+| 진행 브랜치 | `main` (v1.8.2 완료) |
 | 버전 | 코드·패키지 `1.8.2`, schema head `0019_record_event` |
-| 운영 | API·웹 `1.8.1`, schema `0019_record_event`. v1.8.2 백업·릴리스·배포 대기 |
+| 운영 | API·웹 `1.8.2`, schema `0019_record_event`, release SHA `48be241`, 백업 `sooljang-20261009T145034819949Z-814d7768` |
 | 이연 후속 | 국내 가격 2출처 실허용 사례 [#142](https://github.com/jihoon22-lee/SoolJang/issues/142), 실제 기기 푸시 수용 [#143](https://github.com/jihoon22-lee/SoolJang/issues/143) |
 
-## 2. 실사용 리뷰 후속
+## 2. 실사용 리뷰 후속 (v1.8.2 완료)
 
 | 묶음 | 요구사항·수용 시나리오 | 상태 |
 |---|---|---|
 | PR 1 `feature/review-sync-ownership` | F1 로그아웃 후 대기열, F2 오프라인 저장, F3 구매처 권한 | [#157](https://github.com/jihoon22-lee/SoolJang/pull/157) 머지 완료 ([기록](../workthrough/2026-10-09-review-sync-ownership.md)) |
 | PR 2 `feature/review-record-entry` | F4 수량 재증가, F5 첫 규격, F6 병 선택, F7 초안 복구 | [#158](https://github.com/jihoon22-lee/SoolJang/pull/158) 머지 완료 ([기록](../workthrough/2026-10-09-review-record-entry.md)) |
 | PR 3 `feature/review-history-usability` | F8 시음 페이지, F9 실사 정정, F10 모바일 지표 | [#159](https://github.com/jihoon22-lee/SoolJang/pull/159) 머지 완료·21개 통합 시나리오 통과 ([기록](../workthrough/2026-10-09-review-history-usability.md)) |
+| 릴리스·문서 | 버전 1.8.2·보안 패치·문서·백업·복원·운영 검증 | [#160](https://github.com/jihoon22-lee/SoolJang/pull/160) 머지, [릴리스](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.8.2)·운영 배포 완료 ([기록](../workthrough/2026-10-09-v182-release.md)) |
 
 세 묶음을 순서대로 main에 머지했다. 원본 보존·구버전 PWA 호환과 합성 데이터 21개 사용
-시나리오를 검증했다. 후속 사용자 승인으로 문서·버전 갱신 PR과 v1.8.2 태그·릴리스·운영
-배포를 진행한다. [릴리스 검증 기록](../workthrough/2026-10-09-v182-release.md)에 결과를 모은다.
+시나리오를 검증했다. 사용자 승인에 따라 v1.8.2 태그·릴리스·운영 배포를 완료했다.
+[릴리스 검증 기록](../workthrough/2026-10-09-v182-release.md)에 CI·백업·복원·이미지·운영 결과와
+미실행 항목을 구분했다.
 
 ### 직전 마일스톤: v1.8.0 (완료)
 
@@ -54,17 +56,10 @@
 4. [development.md](development.md) §2의 변경별 검증을 하고, 계획·구현·실검증·배포를 구분해
    `workthrough/`에 남긴다.
 
-## 4. 결정(진행 중 마일스톤)
+## 4. 결정
 
-- **D228**: 실제 Chromium·격리 PostgreSQL로 재현한 F1~F10을 3개 PR로 개선한다. 기존
-  소유자 불명 명령은 원본·연결 행을 `sync_meta`에 원자적으로 보존한 뒤 활성 큐에서 격리한다.
-  현재 계정으로 자동 귀속·재전송하거나 결과 불명 pending을 폐기하지 않는다.
-- **D229**: 빠른 시음은 사용자가 선택한 "규격별 기본 선택 + 개별 병 변경"으로 구현한다.
-  계정·탭·병별 초안, 시음 커서 페이지, 명시적 실사 위치 정정을 제공한다. 스키마·버전 변경 없음.
-
-- **D230**: F1~F10 수용 후 사용자 승인에 따라 v1.8.2 PATCH로 릴리스·운영 배포한다.
-  기존 schema `0019_record_event`와 암호화 키를 유지하고 태그 전 백업·격리 복원, 전환 직전
-  최신 백업, 새 이미지 readiness·읽기 검증을 각각 기록한다.
+v1.8.2 결정 D228~D230은 [history.md](history.md)에 옮겼다. 새 작업은 승인된 범위에서
+다음 결정 번호로 이어가며, 이연된 #142·#143은 이번 배포로 수용 처리하지 않는다.
 
 ## 5. 열린 질문
 
