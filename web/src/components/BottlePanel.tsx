@@ -9,12 +9,12 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useLiveQuery } from "dexie-react-hooks";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { bottlesApi, tastingsApi } from "@/api/client";
-import type { Bottle, BottleStatus } from "@/api/types";
+import type { Bottle, BottleStatus, ContextualTasting } from "@/api/types";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
 import { HistoryDetails } from "@/components/HistoryList";
 import { RemainingEditor } from "@/components/RemainingEditor";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
-import { todayLocal } from "@/format";
+import { TastingRow } from "@/components/TastingRow";
 import {
   applyBottleTransition,
   type TransitionAction,
@@ -22,8 +22,10 @@ import {
 } from "@/sync/bottleActions";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { db } from "@/sync/db";
-import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
-import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
+import { captureFormDraft, clearSubmittedDraft } from "@/sync/drafts";
+import { recordTasting, rememberTastingContext } from "@/sync/tastingActions";
+import { emptyTastingValues, tastingDraftKey, useTastingDraft } from "@/sync/tastingDraft";
+import { getLocalTasting } from "@/sync/tastingHistory";
 import { useSessionMutation } from "@/sync/useSessionMutation";
 import { captureWriteSession } from "@/sync/writeSession";
 
@@ -48,6 +50,8 @@ interface BottlePanelProps {
   onSavingChange?: (saving: boolean) => void;
   contextLabel?: string | undefined;
   selectedTastingId?: string | undefined;
+  onCorrect?: ((item: ContextualTasting) => void) | undefined;
+  onDeleted?: ((item: ContextualTasting) => void) | undefined;
 }
 
 export function BottlePanel({
@@ -56,7 +60,10 @@ export function BottlePanel({
   onSavingChange,
   contextLabel,
   selectedTastingId,
+  onCorrect,
+  onDeleted,
 }: BottlePanelProps): React.JSX.Element {
+  const [justSaved, setJustSaved] = useState<ContextualTasting | null>(null);
   const [savingTarget, setSavingTarget] = useState<string | null>(null);
   const savingTasting = savingTarget === bottle.id;
   const queryClient = useQueryClient();
@@ -151,19 +158,6 @@ export function BottlePanel({
       setError(cause instanceof Error ? cause.message : "상태를 바꿀 수 없습니다");
     },
   });
-
-  const deleteTasting = useSessionMutation({
-    networkMode: "online",
-    mutationFn: (tastingId: string) => tastingsApi.remove(tastingId),
-    onSuccess: refresh,
-  });
-  const deletingTastingId = deleteTasting.isPending ? (deleteTasting.variables ?? null) : null;
-
-  function handleDeleteTasting(tastingId: string): void {
-    // 잔량은 되돌리지 않는다(백엔드 정책) — 지우기 전에 그 사실을 알려준다.
-    if (!window.confirm("이 시음 기록을 삭제할까요? 병의 잔량은 되돌리지 않습니다.")) return;
-    deleteTasting.mutate(tastingId);
-  }
 
   return (
     <section className="bottle-panel">
@@ -295,6 +289,32 @@ export function BottlePanel({
         online={!offline}
       />
 
+      {justSaved ? (
+        <section className="notice" aria-label="저장한 시음">
+          <p>시음을 기기에 저장했습니다. 서버 반영 상태는 동기화 표시에서 확인하세요.</p>
+          <div className="button-row">
+            {onCorrect ? (
+              <button type="button" onClick={() => onCorrect(justSaved)}>
+                방금 기록 수정
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setJustSaved(null);
+                const form = document.getElementById(`tasting-form-${bottle.id}`);
+                form?.scrollIntoView?.({ block: "nearest" });
+                form?.querySelector<HTMLInputElement>("input")?.focus();
+              }}
+            >
+              같은 병에 새 기록
+            </button>
+          </div>
+          <p className="muted">
+            새 기록은 따른 양을 다시 차감합니다. 잘못 기록한 내용은 수정하세요.
+          </p>
+        </section>
+      ) : null}
       <TastingForm
         key={bottle.id}
         onSavingChange={(saving) => {
@@ -303,7 +323,11 @@ export function BottlePanel({
         }}
         bottleId={bottle.id}
         remainingMl={bottle.status === "open" ? bottle.remaining_ml : null}
-        onSaved={refresh}
+        onSaved={async (id) => {
+          const record = await getLocalTasting(id);
+          if (session.isCurrent()) setJustSaved(record);
+          await refresh();
+        }}
       />
 
       <div className="tasting-timeline">
@@ -349,29 +373,13 @@ export function BottlePanel({
               tabIndex={item.id === selectedTastingId ? -1 : undefined}
               aria-current={item.id === selectedTastingId ? "true" : undefined}
             >
-              <span className="tasting-date">{item.tasted_on}</span>
-              <span className="tasting-rating">
-                {item.rating ? `${item.rating}점` : "평점 없음"}
-              </span>
-              {item.poured_ml ? <span className="tasting-poured">{item.poured_ml}ml</span> : null}
-              {item.nose ? <p className="tasting-note">향: {item.nose}</p> : null}
-              {item.palate ? <p className="tasting-note">맛: {item.palate}</p> : null}
-              {item.finish ? <p className="tasting-note">피니시: {item.finish}</p> : null}
-              {item.place || item.companions ? (
-                <p className="tasting-meta">
-                  {[item.place, item.companions].filter(Boolean).join(" · ")}
-                </p>
-              ) : null}
-              {!offline && (
-                <button
-                  type="button"
-                  className="sort-button tasting-delete"
-                  onClick={() => handleDeleteTasting(item.id)}
-                  disabled={savingTasting || deletingTastingId === item.id}
-                >
-                  {deletingTastingId === item.id ? "삭제 중…" : "삭제"}
-                </button>
-              )}
+              <TastingRow
+                item={item}
+                offline={offline}
+                disabled={savingTasting}
+                onCorrect={onCorrect ?? (() => undefined)}
+                onDeleted={onDeleted}
+              />
             </li>
           ))}
         </ul>
@@ -400,9 +408,6 @@ export function BottlePanel({
                 : "이전 기록 더 보기"}
           </button>
         ) : null}
-        {deleteTasting.error ? (
-          <p role="alert">시음 기록을 삭제하지 못했습니다. 다시 시도하세요.</p>
-        ) : null}
         {offline ? <p className="muted">시음 기록 삭제는 온라인일 때만 할 수 있습니다.</p> : null}
       </div>
     </section>
@@ -421,7 +426,7 @@ export function formatRatingChange(change: string | null): string {
 interface TastingFormProps {
   bottleId: string;
   remainingMl?: number | null | undefined;
-  onSaved: () => Promise<void>;
+  onSaved: (id: string) => Promise<void>;
   onSavingChange: (saving: boolean) => void;
 }
 
@@ -440,40 +445,9 @@ function TastingForm({
       mounted.current = false;
     };
   }, []);
-  const context = lastTastingContext();
-  const [tastedOn, setTastedOn] = useDraftState(`tasting:${bottleId}:tastedOn`, () => todayLocal());
-  const [pouredMl, setPouredMl] = useDraftState(`tasting:${bottleId}:pouredMl`, "");
-  const [rating, setRating] = useDraftState(`tasting:${bottleId}:rating`, "");
-  const [nose, setNose] = useDraftState(`tasting:${bottleId}:nose`, "");
-  const [palate, setPalate] = useDraftState(`tasting:${bottleId}:palate`, "");
-  const [finish, setFinish] = useDraftState(`tasting:${bottleId}:finish`, "");
-  const [place, setPlace] = useDraftState(`tasting:${bottleId}:place`, context.place);
-  const [companions, setCompanions] = useDraftState(
-    `tasting:${bottleId}:companions`,
-    context.companions,
-  );
+  const [values, setValues] = useTastingDraft(bottleId);
   const [error, setError] = useState<string | null>(null);
-
-  const values: TastingFieldValues = {
-    tastedOn,
-    pouredMl,
-    rating,
-    nose,
-    palate,
-    finish,
-    place,
-    companions,
-  };
-  const setters: Record<keyof TastingFieldValues, (value: string) => void> = {
-    tastedOn: setTastedOn,
-    pouredMl: setPouredMl,
-    rating: setRating,
-    nose: setNose,
-    palate: setPalate,
-    finish: setFinish,
-    place: setPlace,
-    companions: setCompanions,
-  };
+  const formKey = tastingDraftKey(bottleId);
 
   const mutation = useSessionMutation<string, { bottleId: string; values: TastingFieldValues }>({
     mutationFn: ({ bottleId: targetId, values: submitted }, session) =>
@@ -494,25 +468,28 @@ function TastingForm({
     onSavingChange(true);
     const session = captureWriteSession();
     const submitted = { ...values };
-    const draft = captureFormDraft(`tasting:${bottleId}`);
+    const draft = captureFormDraft(formKey);
+    const legacyDraft = captureFormDraft(`tasting:${bottleId}`);
     try {
-      await mutation.mutateAsync({ bottleId, values: submitted });
+      const id = await mutation.mutateAsync({ bottleId, values: submitted });
       if (!session.isCurrent()) return;
       rememberTastingContext({
         place: submitted.place.trim(),
         companions: submitted.companions.trim(),
       });
       const cleared = clearSubmittedDraft(draft);
+      if (cleared) clearSubmittedDraft(legacyDraft);
       if (!mounted.current) return;
       setError(null);
       if (cleared) {
-        setPouredMl("");
-        setRating("");
-        setNose("");
-        setPalate("");
-        setFinish("");
+        setValues({
+          ...emptyTastingValues(),
+          tastedOn: submitted.tastedOn,
+          place: submitted.place,
+          companions: submitted.companions,
+        });
       }
-      await onSaved();
+      await onSaved(id);
     } catch (cause) {
       if (mounted.current && session.isCurrent())
         setError(cause instanceof Error ? cause.message : "기록에 실패했습니다");
@@ -526,9 +503,9 @@ function TastingForm({
   }
 
   return (
-    <form className="tasting-form" onSubmit={handleSubmit}>
+    <form id={`tasting-form-${bottleId}`} className="tasting-form" onSubmit={handleSubmit}>
       <fieldset disabled={pending} style={{ border: 0, padding: 0 }}>
-        <DraftRecoveryButton form={`tasting:${bottleId}`} />
+        <DraftRecoveryButton form={formKey} />
         <h4>시음 기록하기</h4>
 
         <TastingFields
@@ -536,9 +513,7 @@ function TastingForm({
           remainingMl={remainingMl}
           onChange={(patch) => {
             if (saving.current) return;
-            for (const [key, value] of Object.entries(patch)) {
-              setters[key as keyof TastingFieldValues](value as string);
-            }
+            setValues((current) => ({ ...current, ...patch }));
           }}
         />
 

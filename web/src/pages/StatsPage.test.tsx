@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StatsPage } from "@/pages/StatsPage";
-import { db } from "@/sync/db";
+import { activateDatabase, db } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -44,7 +44,7 @@ async function openSection(name: string) {
 }
 
 beforeEach(async () => {
-  await db.open();
+  await activateDatabase("u1");
 });
 
 afterEach(async () => {
@@ -62,6 +62,7 @@ afterEach(async () => {
 describe("StatsPage", () => {
   it("빈 컬렉션이면 가격 정보 없음과 안내 문구를 보여준다", async () => {
     renderStatsPage();
+    await openSection("상세 합계");
 
     // null 은 0원이 아니라 "가격 정보 없음"이어야 한다(D35).
     expect((await screen.findAllByText("가격 정보 없음")).length).toBeGreaterThan(0);
@@ -143,6 +144,7 @@ describe("StatsPage", () => {
     ]);
 
     renderStatsPage();
+    await openSection("상세 합계");
 
     // 요약: 핵심 지표(재고 2병)와 "지표 더 보기" 안의 구매처 수.
     const summarySection = (await screen.findByRole("heading", { name: "전체 합계" })).closest(
@@ -211,6 +213,7 @@ describe("StatsPage", () => {
       }),
     ]);
     renderStatsPage();
+    await openSection("상세 합계");
 
     const summarySection = (await screen.findByRole("heading", { name: "전체 합계" })).closest(
       "section",
@@ -372,4 +375,16 @@ describe("StatsPage", () => {
       expect(categoryRowNames(table)).toEqual(["양주", "맥주"]);
     });
   });
+});
+
+it("첫 화면은 인사이트이고 기존 합계·집계·피벗은 보조 보기로 유지한다", async () => {
+  renderStatsPage();
+  expect(await screen.findByRole("tab", { name: "인사이트" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await screen.findByRole("heading", { name: "지금 보유한 술" });
+  await openSection("상세 합계");
+  expect(await screen.findByRole("heading", { name: "전체 합계" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "피벗·추이" })).toBeInTheDocument();
 });

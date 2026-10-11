@@ -17,11 +17,19 @@ export interface DiscoveryDocument extends Evidence {
   fetched_at: string;
   published_at: string | null;
   evidence: "search_excerpt" | "provider_text";
-  kind: "info" | "review" | "seller_note" | "customer_tasting" | "service_review" | "unknown";
+  kind:
+    | "info"
+    | "offer"
+    | "review"
+    | "seller_note"
+    | "customer_tasting"
+    | "service_review"
+    | "unknown";
   discovered_by: string[];
   rating: number | null;
   rating_scale: number | null;
   rating_count: number | null;
+  origins?: { provider: string; channel: string; rank: number; query: string; language: string }[];
 }
 export interface SearchResponse {
   connection_id: string;
@@ -33,10 +41,10 @@ export interface SearchResponse {
 export type DiscoverySource = SourceLookupResult & Evidence;
 export type SourceMatch = InterestSourceMatch;
 export const discoveryApi = {
-  search: (connection_id: string, query: string, signal: AbortSignal) =>
+  search: (connection_id: string, query: string, signal: AbortSignal, language = "ko") =>
     request<SearchResponse>("/discovery/search", {
       method: "POST",
-      body: { connection_id, query, page: 1, language: "ko" },
+      body: { connection_id, query, page: 1, language },
       signal,
       cache: "no-store",
     }),
@@ -96,9 +104,10 @@ export const discoveryApi = {
     identity: InterestIdentity,
     source_matches: Record<string, SourceMatch>,
     request_id: string,
+    reference_urls?: string[],
   ) =>
     request<Interest>("/interests", {
       method: "POST",
-      body: { identity, source_matches, request_id },
+      body: { identity, source_matches, request_id, reference_urls },
     }),
 };

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extractChosung, matchesQuery, normalizeNameForMatching, rankByQuery } from "@/search";
+import {
+  expandSearchQueries,
+  extractChosung,
+  matchesQuery,
+  normalizeNameForMatching,
+  rankByQuery,
+} from "@/search";
 
 describe("extractChosung", () => {
   it("한글 음절을 초성으로 분해한다", () => {
@@ -78,4 +84,34 @@ describe("matchesQuery", () => {
   it("빈 검색어는 항상 true", () => {
     expect(matchesQuery("아무거나", "")).toBe(true);
   });
+});
+
+import searchCases from "../../tests/fixtures/search_cases.json";
+
+describe("한영 검색 공통 정답", () => {
+  for (const item of searchCases.cases) {
+    it(item.id, () => expect(matchesQuery(item.name, item.query)).toBe(item.match));
+  }
+});
+
+it("외부 확장 질의는 브랜드 이외의 숙성·규격·배치 단위를 보존한다", () => {
+  expect(expandSearchQueries("글렌알라키 12년 700ml 배치 3")).toEqual([
+    "글렌알라키 12년 700ml 배치 3",
+    "GlenAllachie 12년 700ml 배치 3",
+  ]);
+  expect(expandSearchQueries("GlenAllachie 12 years old, 0.7L (Batch 3)")[1]).toBe(
+    "글렌알라키 12 years old, 0.7L (Batch 3)",
+  );
+  expect(expandSearchQueries("미확인브랜드")).toEqual(["미확인브랜드"]);
+});
+
+it.each([
+  ["The Glenlivet 12", "The", true],
+  ["The Glenlivet 12", "The Glen", true],
+  ["The Glenlivet 12", "The Glenlivet 1", false],
+  ["ガ 12", "カ 12", false],
+  ["ガ 12", "カ\u3099 12", true],
+  ["Kahlúa", "Kahlua", true],
+])("원문 부분검색과 비Latin 결합문자 보존: %s / %s", (name, query, expected) => {
+  expect(matchesQuery(name as string, query as string)).toBe(expected);
 });

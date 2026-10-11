@@ -109,6 +109,7 @@ export interface Product {
   id: string;
   name: string;
   name_en: string | null;
+  search_aliases?: string[];
   category_id: string | null;
   category_path: string[];
   producer_id: string | null;
@@ -189,6 +190,7 @@ export type PurchaseScope = Pick<
 export interface ProductCreateInput {
   name: string;
   name_en?: string | null;
+  search_aliases?: string[];
   category_id?: string | null;
   country?: string | null;
   region?: string | null;
@@ -616,6 +618,15 @@ export interface CategoryStat {
   category_id: string | null;
   /** 카테고리가 없으면 "주종 미지정". */
   name: string;
+  product_count: number;
+  in_stock_count: number;
+  unopened_count: number;
+  opened_count: number;
+  consumed_count: number;
+  gifted_count: number;
+  sold_count: number;
+  parent_category_id: string | null;
+  inventory_value_at_cost: Money;
   bottle_count: number;
   total_spend: Money;
   avg_abv: string | null;

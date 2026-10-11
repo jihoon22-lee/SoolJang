@@ -33,7 +33,7 @@ def product_context(sku: Sku, product: Product) -> dict[str, Any]:
         product_id=product.id,
         product_name=product.name,
         vintage=product.vintage,
-        age_years=product.age_years,
+        age_years=None if product.age_years is None else str(product.age_years),
         abv=None if product.abv is None else str(product.abv),
         sku_id=sku.id,
         volume_ml=sku.volume_ml,

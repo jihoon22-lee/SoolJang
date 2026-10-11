@@ -181,6 +181,18 @@ afterEach(() => {
 });
 
 describe("ProductDetail", () => {
+  it("구매 근거에서 진입하면 같은 SKU 중 해당 구매를 표시하고 그 기록을 수정한다", async () => {
+    setup({ selectedPurchaseId: "pu2", onUpdatePurchase: vi.fn().mockResolvedValue(undefined) });
+    const selected = screen.getByText("선택한 구매").closest("tr");
+    expect(selected).not.toBeNull();
+    if (!selected) throw new Error("선택 구매 행 없음");
+    expect(selected).toHaveAttribute("aria-current", "true");
+    expect(within(selected).getByText("구매 pu2")).toBeInTheDocument();
+    await userEvent.click(within(selected).getByRole("button", { name: "구매 기록 수정" }));
+    expect(screen.getByRole("form", { name: "구매 건 수정" })).toBeInTheDocument();
+    expect(screen.getByLabelText("병수")).toHaveValue(1);
+  });
+
   it("이름과 주종 경로를 보여준다", () => {
     setup();
 

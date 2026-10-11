@@ -11,6 +11,7 @@ from sooljang.api.pagination import Cursor
 from sooljang.api.schemas.tasting import TastingOut
 from sooljang.infrastructure.database.models import Bottle, User
 from sooljang.infrastructure.database.session import get_session_factory
+from tests.api.tasting_helpers import remove_tasting_record
 from tests.api.test_purchases import _post
 from tests.api.test_tastings import _create_product_with_bottle
 
@@ -38,7 +39,7 @@ def test_bottle_tasting_pages_reach_oldest_note_without_duplicates_after_insert_
         {"bottle_id": other_bottle_id, "tasted_on": "2026-10-02", "note": "다른 병의 시음"},
     )
     removed = records.pop(10)
-    assert api_client.delete(f"{prefix}/tastings/{removed['id']}").status_code == 204
+    assert remove_tasting_record(api_client, prefix, removed["id"]).status_code == 200
     expected = sorted(records, key=lambda row: (row["tasted_on"], row["id"]), reverse=True)
     expected_records = [{key: row[key] for key in TastingOut.model_fields} for row in expected]
     path = f"{prefix}/bottles/{bottle_id}/tastings"
@@ -62,7 +63,7 @@ def test_bottle_tasting_pages_reach_oldest_note_without_duplicates_after_insert_
         f"{prefix}/tastings",
         {"bottle_id": bottle_id, "tasted_on": "2026-10-02", "note": "새로 추가한 시음"},
     )
-    assert api_client.delete(f"{prefix}/tastings/{first['items'][-1]['id']}").status_code == 204
+    assert remove_tasting_record(api_client, prefix, first["items"][-1]["id"]).status_code == 200
     second_response = api_client.get(f"{path}/page", params={"cursor": first["next_cursor"]})
     assert second_response.status_code == 200, second_response.text
     second = second_response.json()

@@ -1,9 +1,11 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, interestsApi } from "@/api/interests";
 import { InterestsPage } from "@/pages/InterestsPage";
+import { activateDatabase, lockDatabase } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery } from "@/testing";
 
@@ -17,8 +19,9 @@ const item: Interest = {
   product_id: null,
   updated_at: "2026-09-07T00:00:00Z",
 };
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear();
+  await activateDatabase("interest-page-owner");
   vi.spyOn(interestsApi, "list").mockResolvedValue([
     item,
     { ...item, id: "interest-2", name: "다른 몰트", identity: { name: "다른 몰트" }, note: null },
@@ -42,6 +45,7 @@ beforeEach(() => {
   vi.spyOn(vendorsApi, "list").mockResolvedValue([{ id: "vendor-1", name: "합성 샵" }] as never[]);
 });
 afterEach(() => {
+  lockDatabase();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -56,17 +60,19 @@ function renderPage() {
 }
 it("관심의 규격·도수·빈티지·노트를 저장하고 두 관심을 비교한다", async () => {
   renderPage();
+  await userEvent.click(screen.getByRole("button", { name: "관심 추가" }));
   await userEvent.type(screen.getByLabelText("관심 제품 이름"), "신규 관심");
-  await userEvent.type(screen.getByLabelText("용량 ml (선택)"), "500");
-  await userEvent.type(screen.getByLabelText("도수 % (선택)"), "40");
-  await userEvent.type(screen.getByLabelText("빈티지 (선택)"), "2022");
+  await userEvent.type(screen.getByLabelText("용량 ml (여러 규격은 쉼표로 구분)"), "500");
+  await userEvent.type(screen.getByLabelText("도수 %"), "40");
+  await userEvent.type(screen.getByLabelText("빈티지"), "2022");
   await userEvent.type(screen.getByLabelText("관심 노트"), "나중에 살 술");
   await userEvent.click(screen.getByRole("button", { name: "관심 저장" }));
   await waitFor(() =>
     expect(interestsApi.create).toHaveBeenCalledWith(
-      { name: "신규 관심", volumes_ml: [500], abv: "40", vintage: 2022 },
+      expect.objectContaining({ name: "신규 관심", volumes_ml: [500], abv: "40", vintage: 2022 }),
       "나중에 살 술",
       expect.any(String),
+      [],
     ),
   );
   const choices = await screen.findAllByLabelText("비교 선택");
@@ -75,15 +81,19 @@ it("관심의 규격·도수·빈티지·노트를 저장하고 두 관심을 �
   expect(screen.getByRole("table")).toHaveTextContent("용량");
   expect(screen.getByRole("table")).toHaveTextContent("미상");
   await userEvent.click(choices[1] as HTMLElement);
-  await userEvent.clear(screen.getByLabelText("합성 몰트 노트"));
-  await userEvent.type(screen.getByLabelText("합성 몰트 노트"), "업데이트 노트");
   const row = screen.getByRole("heading", { name: "합성 몰트" }).closest("li");
-  await userEvent.click(within(row as HTMLElement).getByRole("button", { name: "노트 저장" }));
+  await userEvent.click(within(row as HTMLElement).getByRole("button", { name: "수정" }));
+  await userEvent.clear(screen.getByLabelText("관심 노트"));
+  await userEvent.type(screen.getByLabelText("관심 노트"), "업데이트 노트");
+  await userEvent.click(screen.getByRole("button", { name: "변경 저장" }));
   await waitFor(() =>
-    expect(interestsApi.update).toHaveBeenCalledWith(item.id, {
-      note: "업데이트 노트",
-      expected_updated_at: item.updated_at,
-    }),
+    expect(interestsApi.update).toHaveBeenCalledWith(
+      item.id,
+      expect.objectContaining({
+        note: "업데이트 노트",
+        expected_updated_at: item.updated_at,
+      }),
+    ),
   );
   await userEvent.click(within(row as HTMLElement).getByRole("button", { name: "관심 보관" }));
   await waitFor(() =>
@@ -151,7 +161,7 @@ it("기존 제품·규격을 확정하고 보관 목록에서 연결 제품으�
       expect.objectContaining({ sku_id: "sku-1", unit_paid_price: null }),
     ),
   );
-  await userEvent.click(screen.getByLabelText("보관한 관심 보기"));
+  await userEvent.selectOptions(screen.getByLabelText("관심 상태"), "purchased");
   await userEvent.click(await screen.findByRole("button", { name: "구매 전환한 제품 보기" }));
   expect(onSelectProduct).toHaveBeenCalledWith("linked-product");
   await userEvent.click(screen.getByRole("button", { name: "관심 복원" }));
@@ -165,6 +175,7 @@ it("기존 제품·규격을 확정하고 보관 목록에서 연결 제품으�
 it("관심 저장 실패를 알리고 입력을 유지한다", async () => {
   vi.mocked(interestsApi.create).mockRejectedValue(new Error("저장 실패"));
   renderPage();
+  await userEvent.click(screen.getByRole("button", { name: "관심 추가" }));
   await userEvent.type(screen.getByLabelText("관심 제품 이름"), "유지할 관심");
   await userEvent.click(screen.getByRole("button", { name: "관심 저장" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("저장 실패");
@@ -175,19 +186,31 @@ it("다른 화면의 갱신 후에도 작성 시작 시점의 revision으로 노
   const refreshed = { ...item, note: "서버에서 변경한 노트", updated_at: "2026-09-07T01:00:00Z" };
   vi.mocked(interestsApi.list).mockResolvedValueOnce([item]).mockResolvedValue([refreshed]);
   vi.mocked(interestsApi.update).mockRejectedValueOnce(new Error("다른 화면에서 변경했습니다"));
-  renderPage();
-  await userEvent.clear(await screen.findByLabelText("합성 몰트 노트"));
-  await userEvent.type(screen.getByLabelText("합성 몰트 노트"), "내가 작성한 노트");
-  await userEvent.type(screen.getByLabelText("관심 제품 이름"), "다른 관심 저장");
-  await userEvent.click(screen.getByRole("button", { name: "관심 저장" }));
-  await screen.findByRole("button", { name: "최신 노트 불러오기" });
-  await userEvent.click(screen.getByRole("button", { name: "노트 저장" }));
-  expect(await screen.findByText("다른 화면에서 변경했습니다")).toBeInTheDocument();
-  expect(interestsApi.update).toHaveBeenCalledWith(item.id, {
-    note: "내가 작성한 노트",
-    expected_updated_at: item.updated_at,
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  expect(screen.getByLabelText("합성 몰트 노트")).toHaveValue("내가 작성한 노트");
-  await userEvent.click(screen.getByRole("button", { name: "최신 노트 불러오기" }));
-  expect(screen.getByLabelText("합성 몰트 노트")).toHaveValue("서버에서 변경한 노트");
+  renderWithQuery(
+    <QueryClientProvider client={client}>
+      <SyncStatusProvider>
+        <InterestsPage onSelectProduct={vi.fn()} />
+      </SyncStatusProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "수정" }));
+  await userEvent.clear(screen.getByLabelText("관심 노트"));
+  await userEvent.type(screen.getByLabelText("관심 노트"), "내가 작성한 노트");
+  act(() => client.setQueryData(["interests"], [refreshed]));
+  await screen.findByRole("button", { name: "최신 관심 정보 불러오기" });
+  await userEvent.click(screen.getByRole("button", { name: "변경 저장" }));
+  expect(await screen.findByText("다른 화면에서 변경했습니다")).toBeInTheDocument();
+  expect(interestsApi.update).toHaveBeenCalledWith(
+    item.id,
+    expect.objectContaining({
+      note: "내가 작성한 노트",
+      expected_updated_at: item.updated_at,
+    }),
+  );
+  expect(screen.getByLabelText("관심 노트")).toHaveValue("내가 작성한 노트");
+  await userEvent.click(screen.getByRole("button", { name: "최신 관심 정보 불러오기" }));
+  expect(screen.getByLabelText("관심 노트")).toHaveValue("서버에서 변경한 노트");
 });

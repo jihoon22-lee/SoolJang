@@ -11,6 +11,7 @@ export interface TastingFieldValues {
   tastedOn: string;
   pouredMl: string;
   rating: string;
+  note: string;
   nose: string;
   palate: string;
   finish: string;
@@ -25,15 +26,18 @@ export function TastingFields({
   values,
   onChange,
   remainingMl,
+  mode = "full",
 }: {
   values: TastingFieldValues;
   onChange: (patch: Partial<TastingFieldValues>) => void;
   /** 남은 양을 알면 넘는 프리셋을 막고 안내한다. */
   remainingMl?: number | null | undefined;
+  mode?: "full" | "summary" | "advanced";
 }) {
   const ids = {
     date: useId(),
     poured: useId(),
+    note: useId(),
     nose: useId(),
     palate: useId(),
     finish: useId(),
@@ -49,115 +53,136 @@ export function TastingFields({
   ].some((value) => value.trim() !== "");
   return (
     <div className="tasting-fields">
-      <div className="field">
-        <label htmlFor={ids.date}>마신 날</label>
-        <input
-          id={ids.date}
-          type="date"
-          required
-          max={todayLocal()}
-          value={values.tastedOn}
-          onChange={(event) => onChange({ tastedOn: event.target.value })}
-        />
-      </div>
-
-      <RatingStars value={values.rating} onChange={(rating) => onChange({ rating })} />
-
-      <fieldset className="pour-presets">
-        <legend>따른 양</legend>
-        <div className="button-row">
-          {POUR_PRESETS.map((ml) => (
-            <button
-              key={ml}
-              type="button"
-              aria-pressed={values.pouredMl === String(ml)}
-              disabled={remainingMl !== null && remainingMl !== undefined && ml > remainingMl}
-              onClick={() =>
-                onChange({ pouredMl: values.pouredMl === String(ml) ? "" : String(ml) })
-              }
-            >
-              {ml}ml
-            </button>
-          ))}
-          {/* 캔·작은 병은 한 번에 다 마시는 경우가 많다. 남은 양을 모두 따르면 소진으로 기록된다. */}
-          {remainingMl && !POUR_PRESETS.includes(remainingMl) ? (
-            <button
-              type="button"
-              aria-pressed={values.pouredMl === String(remainingMl)}
-              onClick={() =>
-                onChange({
-                  pouredMl: values.pouredMl === String(remainingMl) ? "" : String(remainingMl),
-                })
-              }
-            >
-              남은 양 전부({remainingMl}ml)
-            </button>
-          ) : null}
+      {mode !== "summary" ? (
+        <div className="field">
+          <label htmlFor={ids.date}>마신 날</label>
+          <input
+            id={ids.date}
+            type="date"
+            required
+            max={todayLocal()}
+            value={values.tastedOn}
+            onChange={(event) => onChange({ tastedOn: event.target.value })}
+          />
         </div>
-        {remainingMl && values.pouredMl === String(remainingMl) ? (
-          <p className="muted text-sm">저장하면 이 병을 다 마신 것으로(소진) 기록합니다.</p>
-        ) : null}
-        <label htmlFor={ids.poured}>
-          직접 입력(ml)
-          {remainingMl ? <span className="muted"> · 남은 양 {remainingMl}ml</span> : null}
-        </label>
-        <input
-          id={ids.poured}
-          type="number"
-          min={1}
-          step={1}
-          inputMode="numeric"
-          placeholder="기억나지 않으면 비워 두세요"
-          value={values.pouredMl}
-          onChange={(event) => onChange({ pouredMl: event.target.value })}
-        />
-      </fieldset>
+      ) : null}
 
-      <details className="tasting-details" open={hasDetails}>
-        <summary>자세히 기록 (향·맛·피니시·장소·동석자)</summary>
-        <div className="field-row">
-          <div className="field">
-            <label htmlFor={ids.nose}>향</label>
-            <input
-              id={ids.nose}
-              value={values.nose}
-              onChange={(event) => onChange({ nose: event.target.value })}
+      {mode !== "advanced" ? (
+        <>
+          <RatingStars value={values.rating} onChange={(rating) => onChange({ rating })} />
+
+          <label className="field" htmlFor={ids.note}>
+            시음 메모
+            <textarea
+              id={ids.note}
+              value={values.note ?? ""}
+              rows={2}
+              placeholder="이 시음에서 기억할 한마디"
+              onChange={(event) => onChange({ note: event.target.value })}
             />
-          </div>
-          <div className="field">
-            <label htmlFor={ids.palate}>맛</label>
+          </label>
+        </>
+      ) : null}
+
+      {mode !== "summary" ? (
+        <>
+          <fieldset className="pour-presets">
+            <legend>따른 양</legend>
+            <div className="button-row">
+              {POUR_PRESETS.map((ml) => (
+                <button
+                  key={ml}
+                  type="button"
+                  aria-pressed={values.pouredMl === String(ml)}
+                  disabled={remainingMl !== null && remainingMl !== undefined && ml > remainingMl}
+                  onClick={() =>
+                    onChange({ pouredMl: values.pouredMl === String(ml) ? "" : String(ml) })
+                  }
+                >
+                  {ml}ml
+                </button>
+              ))}
+              {/* 캔·작은 병은 한 번에 다 마시는 경우가 많다. 남은 양을 모두 따르면 소진으로 기록된다. */}
+              {remainingMl && !POUR_PRESETS.includes(remainingMl) ? (
+                <button
+                  type="button"
+                  aria-pressed={values.pouredMl === String(remainingMl)}
+                  onClick={() =>
+                    onChange({
+                      pouredMl: values.pouredMl === String(remainingMl) ? "" : String(remainingMl),
+                    })
+                  }
+                >
+                  남은 양 전부({remainingMl}ml)
+                </button>
+              ) : null}
+            </div>
+            {remainingMl && values.pouredMl === String(remainingMl) ? (
+              <p className="muted text-sm">저장하면 이 병을 다 마신 것으로(소진) 기록합니다.</p>
+            ) : null}
+            <label htmlFor={ids.poured}>
+              직접 입력(ml)
+              {remainingMl ? <span className="muted"> · 남은 양 {remainingMl}ml</span> : null}
+            </label>
             <input
-              id={ids.palate}
-              value={values.palate}
-              onChange={(event) => onChange({ palate: event.target.value })}
+              id={ids.poured}
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              placeholder="기억나지 않으면 비워 두세요"
+              value={values.pouredMl}
+              onChange={(event) => onChange({ pouredMl: event.target.value })}
             />
-          </div>
-          <div className="field">
-            <label htmlFor={ids.finish}>피니시</label>
-            <input
-              id={ids.finish}
-              value={values.finish}
-              onChange={(event) => onChange({ finish: event.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={ids.place}>장소</label>
-            <input
-              id={ids.place}
-              value={values.place}
-              onChange={(event) => onChange({ place: event.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={ids.companions}>동석자</label>
-            <input
-              id={ids.companions}
-              value={values.companions}
-              onChange={(event) => onChange({ companions: event.target.value })}
-            />
-          </div>
-        </div>
-      </details>
+          </fieldset>
+
+          <details className="tasting-details" open={hasDetails}>
+            <summary>자세히 기록 (향·맛·피니시·장소·동석자)</summary>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor={ids.nose}>향</label>
+                <input
+                  id={ids.nose}
+                  value={values.nose}
+                  onChange={(event) => onChange({ nose: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={ids.palate}>맛</label>
+                <input
+                  id={ids.palate}
+                  value={values.palate}
+                  onChange={(event) => onChange({ palate: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={ids.finish}>피니시</label>
+                <input
+                  id={ids.finish}
+                  value={values.finish}
+                  onChange={(event) => onChange({ finish: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={ids.place}>장소</label>
+                <input
+                  id={ids.place}
+                  value={values.place}
+                  onChange={(event) => onChange({ place: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={ids.companions}>동석자</label>
+                <input
+                  id={ids.companions}
+                  value={values.companions}
+                  onChange={(event) => onChange({ companions: event.target.value })}
+                />
+              </div>
+            </div>
+          </details>
+        </>
+      ) : null}
     </div>
   );
 }

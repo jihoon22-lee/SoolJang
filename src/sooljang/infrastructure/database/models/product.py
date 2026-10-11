@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +48,7 @@ class Product(Base, EntityMixin):
 
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     name_en: Mapped[str | None] = mapped_column(String(300), default=None)
+    search_aliases: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     # 중복 판정 키. 공백·구두점·대소문자를 정규화한 값을 저장한다.
     normalized_name: Mapped[str] = mapped_column(String(300), nullable=False)
 

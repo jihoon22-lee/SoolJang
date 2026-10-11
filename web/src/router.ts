@@ -53,8 +53,10 @@ const VIEW_IDS: readonly View[] = [
 export interface ProductContext {
   purchaseScope?: PurchaseScope | undefined;
   skuId?: string | undefined;
+  purchaseId?: string | undefined;
   bottleId?: string | undefined;
   tastingId?: string | undefined;
+  editTasting?: boolean | undefined;
 }
 
 export interface Route extends ProductContext {
@@ -105,8 +107,10 @@ export function parseHash(hash: string): Route {
     categoryId,
     vendorId,
     ...(params.has("sku") ? { skuId: params.get("sku") || undefined } : {}),
+    ...(params.has("purchase") ? { purchaseId: params.get("purchase") || undefined } : {}),
     ...(params.has("bottle") ? { bottleId: params.get("bottle") || undefined } : {}),
     ...(params.has("tasting") ? { tastingId: params.get("tasting") || undefined } : {}),
+    ...(params.get("editTasting") === "1" && params.has("tasting") ? { editTasting: true } : {}),
   };
 }
 
@@ -115,8 +119,10 @@ export function routeToHash(route: Route): string {
   if (route.view === "products" && route.productId) {
     const params = new URLSearchParams();
     if (route.skuId) params.set("sku", route.skuId);
+    if (route.purchaseId) params.set("purchase", route.purchaseId);
     if (route.bottleId) params.set("bottle", route.bottleId);
     if (route.tastingId) params.set("tasting", route.tastingId);
+    if (route.tastingId && route.editTasting) params.set("editTasting", "1");
     const scope = route.purchaseScope;
     if (scope?.volume_ml !== undefined) params.set("scopeVolume", String(scope.volume_ml));
     if (scope?.vendor_id) params.set("scopeVendor", scope.vendor_id);

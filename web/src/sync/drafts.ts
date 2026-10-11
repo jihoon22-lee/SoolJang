@@ -36,6 +36,17 @@ function tabId(): string {
 function storageKey(form: string, userId: string): string {
   return `${PREFIX}${encodeURIComponent(userId)}:${tabId()}:${form}`;
 }
+/** 같은 계정·탭의 이전 입력만 읽는다. 이전 저장 형식도 지우지 않고 이어 쓸 수 있다. */
+export function readFormDraftValue<T>(form: string, fallback: T): T {
+  const userId = databaseIdentity().userId;
+  if (!userId) return fallback;
+  try {
+    const raw = localStorage.getItem(storageKey(form, userId));
+    return raw ? decodeDraft(JSON.parse(raw)?.value, fallback) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 function containsSecret(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsSecret);
   return (

@@ -13,8 +13,11 @@ import { renderWithQuery } from "@/testing";
 interface DetailProps {
   product: Product;
   selectedSkuId?: string | undefined;
+  selectedPurchaseId?: string | undefined;
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
+  editTasting?: boolean | undefined;
+  onTastingDeleted?: ((record: ContextualTasting) => void) | undefined;
   onCorrectionSavingChange?: ((saving: boolean) => void) | undefined;
   onTastingCorrected?: ((record: ContextualTasting) => void) | undefined;
 }
@@ -261,7 +264,7 @@ it("정정 pull이 성공 콜백보다 먼저 연결을 옮겨도 저장 중 상
   await waitFor(() => expect(controls.renders).toBeGreaterThan(renders));
   expect(screen.getByTestId("detail-instance")).toHaveTextContent(instance as string);
   expect(controls.mounts).toBe(1);
-  expect(screen.queryByText(/선택한 규격·병·시음이 삭제/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/선택한 규격·구매·병·시음이 삭제/)).not.toBeInTheDocument();
   await act(async () => {
     detail.onTastingCorrected?.(corrected());
     detail.onCorrectionSavingChange?.(false);
@@ -333,4 +336,46 @@ it("최신 미러를 기다리는 동안 전체 보기로 복구하면 뒤늦은
   await waitFor(() => expect(screen.getByTestId("detail-bottle")).toHaveTextContent("전체 병"));
   expect(controls.navigate).toHaveBeenCalledTimes(calls);
   expect(parseHash(window.location.hash).productId).toBe("product-a");
+});
+
+it("선택한 시음 삭제 뒤 제품·규격·병 맥락을 유지한다", async () => {
+  renderWithQuery(<Harness />);
+  await screen.findByTestId("detail-instance");
+  expect(controls.detail?.onTastingDeleted).toBeTypeOf("function");
+  await act(async () => controls.detail?.onTastingDeleted?.(corrected("bottle-a", OLD)));
+  await act(async () => {
+    await db.tasting_session.update("tasting-1", { deleted_at: SAVED, updated_at: SAVED });
+  });
+  await waitFor(() =>
+    expect(parseHash(window.location.hash)).toMatchObject({
+      productId: "product-a",
+      skuId: "sku-a",
+      bottleId: "bottle-a",
+    }),
+  );
+  expect(parseHash(window.location.hash).tastingId).toBeUndefined();
+  expect(screen.queryByText(/선택한 규격·구매·병·시음이 삭제/)).not.toBeInTheDocument();
+});
+
+it("홈의 시음 수정 진입 의도를 상세 폼까지 전달한다", async () => {
+  window.history.replaceState(
+    null,
+    "",
+    routeToHash({ view: "products", productId: "product-a", ...sourceContext, editTasting: true }),
+  );
+  renderWithQuery(<Harness />);
+  await screen.findByTestId("detail-instance");
+  expect(controls.detail?.editTasting).toBe(true);
+});
+
+it("인사이트의 구매 근거는 URL에서 검증한 해당 구매를 상세 행까지 전달한다", async () => {
+  window.history.replaceState(
+    null,
+    "",
+    routeToHash({ view: "products", productId: "product-a", purchaseId: "purchase-a" }),
+  );
+  renderWithQuery(<Harness />);
+  await screen.findByTestId("detail-instance");
+  expect(controls.detail?.selectedPurchaseId).toBe("purchase-a");
+  expect(controls.detail?.selectedSkuId).toBe("sku-a");
 });

@@ -1025,9 +1025,8 @@ button:disabled {
   /* `.bar-chart-label` 과 같은 이유로 `.sort-button` 의 `inline-flex` 를 되돌린다. */
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .ranking-value {
@@ -2547,7 +2546,7 @@ legend {
 }
 
 .metrics-grid--hero {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metrics-grid--hero .metric dd {
@@ -2975,10 +2974,6 @@ legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .metrics-grid--hero > .metric:last-child {
-    grid-column: 1 / -1;
-  }
-
   /* 가로로 넘기는 도구 막대에서도 주 동작(새 술 등록)이 맨 앞에 보이게 한다. */
   .products-toolbar > .primary {
     order: -1;
@@ -3290,4 +3285,124 @@ legend {
 .product-tasting-history > .tasting-timeline {
   list-style: none;
   padding: 0;
+}
+
+/* 기록 이름과 실제 출처 링크를 구분한다. 색 대신 위치·초점·행 반응으로 이동을 표현한다. */
+.entity-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.entity-link:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+  text-decoration: none;
+}
+.quality-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  margin-block: 12px;
+}
+.quality-toolbar label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  font-size: 0.9rem;
+}
+.quality-toolbar input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+.quality-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.quality-table th,
+.quality-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.quality-table th:first-child,
+.quality-table td:first-child {
+  text-align: left;
+}
+.quality-table thead {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.quality-table tbody tr:hover {
+  background: var(--bg-raised);
+}
+.inventory-count {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 8px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+.inventory-count[aria-pressed="true"] {
+  background: var(--surface-raised);
+  border-color: var(--accent);
+}
+.inventory-evidence {
+  margin-block: 16px;
+  padding: 16px;
+  background: var(--bg-raised);
+  border-left: 3px solid var(--accent);
+}
+.quality-record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.quality-record-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.quality-record-list li:last-child {
+  border-bottom: 0;
+}
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+@media (max-width: 600px) {
+  .quality-table th,
+  .quality-table td {
+    padding: 6px 3px;
+  }
+  .quality-toolbar {
+    align-items: stretch;
+    gap: 8px;
+  }
+  .quality-toolbar label {
+    min-height: 44px;
+  }
+  .inventory-evidence {
+    padding: 12px;
+  }
+  .quality-table .entity-link {
+    font-size: 0.9rem;
+  }
 }

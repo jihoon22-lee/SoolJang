@@ -83,6 +83,11 @@ export function useCreateProduct() {
           existingProduct ??
           (await productsApi.create({
             name: values.name.trim(),
+            name_en: values.nameEn?.trim() || null,
+            search_aliases: (values.searchAliases ?? "")
+              .split(",")
+              .map((v) => v.trim())
+              .filter(Boolean),
             category_id: values.categoryId || null,
             abv: values.abv || null,
             vintage: values.vintage ? Number(values.vintage) : null,
@@ -182,6 +187,7 @@ async function mirrorProductOptimistically(product: Product, userId: string): Pr
       deleted_at: null,
       name: product.name,
       name_en: product.name_en,
+      search_aliases: product.search_aliases ?? [],
       normalized_name: normalizeNameForMatching(product.name),
       category_id: product.category_id,
       producer_id: product.producer_id,
@@ -302,7 +308,12 @@ async function createProductOfflineChain(
     op: "create",
     entityId: productId,
     fields: {
+      name_en: values.nameEn?.trim() || null,
       name: values.name.trim(),
+      search_aliases: (values.searchAliases ?? "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean),
       category_id: categoryId,
       producer_id: producerId,
       abv,
@@ -318,7 +329,11 @@ async function createProductOfflineChain(
       updated_at: now,
       deleted_at: null,
       name: values.name.trim(),
-      name_en: null,
+      search_aliases: (values.searchAliases ?? "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean),
+      name_en: values.nameEn?.trim() || null,
       category_id: categoryId,
       producer_id: producerId,
       country: null,

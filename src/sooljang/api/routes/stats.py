@@ -56,6 +56,15 @@ def _category_out(stat: CategoryStat) -> CategoryStatOut:
     return CategoryStatOut(
         category_id=stat.category_id,
         name=stat.name,
+        product_count=stat.product_count,
+        in_stock_count=stat.in_stock_count,
+        unopened_count=stat.unopened_count,
+        opened_count=stat.opened_count,
+        consumed_count=stat.consumed_count,
+        gifted_count=stat.gifted_count,
+        sold_count=stat.sold_count,
+        parent_category_id=stat.parent_category_id,
+        inventory_value_at_cost=stat.inventory_value_at_cost,
         bottle_count=stat.bottle_count,
         total_spend=stat.total_spend,
         avg_abv=stat.avg_abv,
@@ -103,9 +112,11 @@ async def list_rankings(
 
 
 @router.get("/by-category", response_model=list[CategoryStatOut], summary="주종별 집계")
-async def list_by_category(session: SessionDep, user_id: UserDep) -> list[CategoryStatOut]:
+async def list_by_category(
+    session: SessionDep, user_id: UserDep, include_children: bool = False
+) -> list[CategoryStatOut]:
     """최상위 주종별 병수·총액·평균 도수·평균 평점·평균 100ml가·할인율."""
-    stats = await get_category_rollup(session, user_id=user_id)
+    stats = await get_category_rollup(session, user_id=user_id, include_children=include_children)
     return [_category_out(stat) for stat in stats]
 
 

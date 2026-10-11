@@ -41,6 +41,7 @@ def identity_from_fields(fields: dict[str, Any]) -> ProductIdentity:
         if fields.get("age_years") is not None
         else None,
         volumes_ml=tuple(fields.get("volumes_ml", [])),
+        search_aliases=tuple(fields.get("search_aliases", [])),
     )
 
 

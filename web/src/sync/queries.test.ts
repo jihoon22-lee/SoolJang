@@ -611,3 +611,11 @@ it("가격 공란인 선물·포인트 구매도 0원으로 상세·평단가·�
   // 공란·선물·포인트 구매는 미상이 아니라 0원으로 알린다.
   expect(dashboard.coverage.zeroPaidPurchaseCount).toBe(2);
 });
+
+it("사용자가 확인한 별칭으로 제품을 찾고 원래 이름을 유지한다", async () => {
+  await db.product.put(
+    row({ id: "custom-alias", name: "Untranslated Wine", search_aliases: ["내 여름 와인"] }),
+  );
+  const results = await getProducts({ q: "여름 와인" });
+  expect(results.map((item) => item.name)).toContain("Untranslated Wine");
+});

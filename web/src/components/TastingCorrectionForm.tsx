@@ -302,6 +302,7 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
   const [loadedRecord, setLoadedRecord] = useState<{
     key: string;
     record: ContextualTasting;
+    unconfirmed: boolean;
   } | null>(null);
   const record = useQuery({
     staleTime: 0,
@@ -319,7 +320,13 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
       session.assertCurrent();
       const item = props.offline
         ? await getLocalTasting(props.tastingId)
-        : await tastingsApi.get(props.tastingId, signal);
+        : await tastingsApi.get(props.tastingId, signal).catch(async (cause: unknown) => {
+            if (!(cause instanceof ApiError) || cause.status !== 404) throw cause;
+            const pending = await getCorrectionBlockReason(session, [props.tastingId]);
+            const local = pending ? await getLocalTasting(props.tastingId) : null;
+            if (!local) throw cause;
+            return { ...local, unconfirmed: true };
+          });
       session.assertCurrent();
       return item;
     },
@@ -330,15 +337,17 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
       return;
     const fresh = record.data;
     setLoadedRecord((previous) =>
-      previous?.key === recordKey ? previous : { key: recordKey, record: fresh },
+      previous?.key === recordKey
+        ? previous
+        : { key: recordKey, record: fresh, unconfirmed: "unconfirmed" in fresh },
     );
   }, [record.isSuccess, record.isFetchedAfterMount, record.isFetching, record.data, recordKey]);
   // Cached context may predate a later tasting on the same bottle. Start from the first fresh
   // read, then retain that baseline while editing; later refetches must not rebase the draft.
   const initialRecord = loadedRecord?.key === recordKey ? loadedRecord.record : null;
   return (
-    <section className="tasting-correction" aria-label="시음 정정">
-      <h3>시음 정정</h3>
+    <section className="tasting-correction" aria-label="시음 기록 수정">
+      <h3>시음 기록 수정</h3>
       {!initialRecord && record.isFetching ? <output>정정할 기록을 불러오는 중…</output> : null}
       {record.isError ? (
         <p role="alert">정정할 기록을 확인하지 못했습니다. 저장된 입력은 유지됩니다.</p>
@@ -360,6 +369,7 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
           key={recordKey}
           {...props}
           initialRecord={initialRecord}
+          initialUnconfirmed={loadedRecord?.unconfirmed ?? false}
           readFailed={record.isError || record.isFetching}
         />
       )}
@@ -376,13 +386,21 @@ function CorrectionEditor({
   onSaved,
   onCancel,
   initialRecord,
+  initialUnconfirmed,
   readFailed,
-}: TastingCorrectionFormProps & { initialRecord: ContextualTasting; readFailed: boolean }) {
+}: TastingCorrectionFormProps & {
+  initialRecord: ContextualTasting;
+  initialUnconfirmed: boolean;
+  readFailed: boolean;
+}) {
   const [session] = useState(captureWriteSession);
   const queryClient = useQueryClient();
   const formKey = `tasting-correction:${tastingId}`;
   const [raw, setRaw] = useDraftState(`${formKey}:data`, "");
-  const [fallback] = useState(() => initialDraft(initialRecord));
+  const [fallback] = useState(() => ({
+    ...initialDraft(initialRecord),
+    reviewRequired: initialUnconfirmed,
+  }));
   const restored = parseDraft(raw, fallback);
   const draft = restored.value;
   const [baseline, setBaseline] = useState(initialRecord);
@@ -760,174 +778,180 @@ function CorrectionEditor({
           {label(baseline.context)} · 시음 {baseline.tasted_on}
         </p>
         <TastingFields
+          mode="summary"
           values={draft.fields}
           onChange={(patch) => edit({ fields: { ...draft.fields, ...patch } })}
         />
-        <label>
-          시음 메모
-          <textarea
-            aria-label="시음 메모"
-            value={draft.fields.note}
-            onChange={(event) => edit({ fields: { ...draft.fields, note: event.target.value } })}
+        <p className="muted">평점과 메모를 고쳐도 병의 현재 잔량은 그대로 유지됩니다.</p>
+        <details className="tasting-correction-advanced">
+          <summary>날짜·양·대상 병·현재 잔량 정정</summary>
+          <TastingFields
+            mode="advanced"
+            values={draft.fields}
+            onChange={(patch) => edit({ fields: { ...draft.fields, ...patch } })}
           />
-        </label>
-        <label>
-          정정할 대상 병
-          <select
-            aria-label="정정할 대상 병"
-            value={draft.fields.bottleId}
-            onChange={(event) => {
-              setConfirmedTarget(null);
-              setConfirmedSku(null);
-              const option = options.find((item) => item.bottle.id === event.target.value);
-              edit({
-                checkedSku: event.target.value ? null : (selectedSkuOption ?? null),
-                fields: {
-                  ...draft.fields,
-                  bottleId: event.target.value,
-                  skuId: option?.context.sku_id ?? draft.fields.skuId,
-                },
-              });
-            }}
-          >
-            <option value="">병 연결 없이 규격에 기록</option>
-            {draft.fields.bottleId &&
-            !options.some((option) => option.bottle.id === draft.fields.bottleId) ? (
-              <option value={draft.fields.bottleId}>이전에 선택한 병 — 현재 상태 확인 필요</option>
-            ) : null}
-            {options
-              .filter((option) => !option.bottle.deleted_at)
-              .map((option) => (
-                <option key={option.bottle.id} value={option.bottle.id}>
-                  {label(option.context)} · {option.bottle.label_no}번 병 ·{" "}
-                  {purchaseReference(option.purchase.id, purchaseIds)} ·{" "}
-                  {option.purchase.purchased_on ?? "구매일 미기록"} ·{" "}
-                  {option.purchase.vendor_name ?? "구매처 미기록"} ·{" "}
-                  {STATUS_LABELS[option.bottle.status]}
-                </option>
-              ))}
-          </select>
-        </label>
-        {!draft.fields.bottleId ? (
           <label>
-            병 없는 시음의 규격
+            정정할 대상 병
             <select
-              aria-label="병 없는 시음의 규격"
-              value={draft.fields.skuId}
+              aria-label="정정할 대상 병"
+              value={draft.fields.bottleId}
               onChange={(event) => {
+                setConfirmedTarget(null);
                 setConfirmedSku(null);
+                const option = options.find((item) => item.bottle.id === event.target.value);
                 edit({
-                  fields: { ...draft.fields, skuId: event.target.value },
-                  checkedSku: skuOptions?.find((sku) => sku.sku_id === event.target.value) ?? null,
+                  checkedSku: event.target.value ? null : (selectedSkuOption ?? null),
+                  fields: {
+                    ...draft.fields,
+                    bottleId: event.target.value,
+                    skuId: option?.context.sku_id ?? draft.fields.skuId,
+                  },
                 });
               }}
             >
-              <option value="">규격을 선택하세요</option>
-              {skuOptions?.map((sku) => (
-                <option key={sku.sku_id} value={sku.sku_id}>
-                  {label(standaloneSku?.sku_id === sku.sku_id ? standaloneSku : sku)}
+              <option value="">병 연결 없이 규격에 기록</option>
+              {draft.fields.bottleId &&
+              !options.some((option) => option.bottle.id === draft.fields.bottleId) ? (
+                <option value={draft.fields.bottleId}>
+                  이전에 선택한 병 — 현재 상태 확인 필요
                 </option>
-              ))}
+              ) : null}
+              {options
+                .filter((option) => !option.bottle.deleted_at)
+                .map((option) => (
+                  <option key={option.bottle.id} value={option.bottle.id}>
+                    {label(option.context)} · {option.bottle.label_no}번 병 ·{" "}
+                    {purchaseReference(option.purchase.id, purchaseIds)} ·{" "}
+                    {option.purchase.purchased_on ?? "구매일 미기록"} ·{" "}
+                    {option.purchase.vendor_name ?? "구매처 미기록"} ·{" "}
+                    {STATUS_LABELS[option.bottle.status]}
+                  </option>
+                ))}
             </select>
           </label>
-        ) : null}
-        {!draft.fields.bottleId && standaloneSku ? (
-          <p>확인한 목표 규격: {label(standaloneSku)}</p>
-        ) : null}
-        {skuUnavailable && !offline ? (
-          <p role="alert">
-            목표 규격의 최신 용량·판본을 확인 중이거나 조회하지 못했습니다. 확인 전에는 저장할 수
-            없습니다.
-          </p>
-        ) : null}
-        {!draft.fields.bottleId && !skuConfirmed && targetSku.isError && !offline ? (
-          <>
-            <p role="alert">{targetSku.error.message}</p>
-            <button type="button" onClick={() => void targetSku.refetch()}>
-              목표 규격 다시 확인
-            </button>
-          </>
-        ) : null}
-        {skuChanged && !retry ? (
-          <p role="alert">
-            선택한 규격의 용량 또는 판본 정보가 바뀌었습니다. 최신 상태를 다시 확인하고 승인해
-            주세요.
-          </p>
-        ) : null}
-        {bottleOptions === undefined || (!draft.fields.bottleId && skuOptions === undefined) ? (
-          <output>선택할 병과 규격을 불러오는 중…</output>
-        ) : null}
-        {targetUnavailable && !offline ? (
-          <p role="alert">
-            대상 병의 최신 상태를 확인 중이거나 조회하지 못했습니다. 확인 전에는 저장할 수 없습니다.
-          </p>
-        ) : null}
-        {needsTarget && !targetConfirmed && target.isError && !offline ? (
-          <button type="button" onClick={() => void target.refetch()}>
-            대상 병 다시 확인
-          </button>
-        ) : null}
-        <fieldset>
-          <legend>현재 병 상태·잔량</legend>
-          <label>
-            <input
-              type="radio"
-              name={`remaining-mode-${tastingId}`}
-              checked={draft.mode === "preserve"}
-              onChange={() => edit({ mode: "preserve" })}
-            />
-            기록만 정정하고 현재 상태·잔량 유지
-          </label>
-          <label>
-            <input
-              type="radio"
-              name={`remaining-mode-${tastingId}`}
-              checked={draft.mode === "set_final"}
-              onChange={() => edit({ mode: "set_final" })}
-            />
-            명시한 최종 상태·잔량으로 함께 정정
-          </label>
-          <p className="muted">
-            시음량 차이를 자동으로 더하거나 빼지 않습니다. 원래 병과 대상 병을 각각 확인하세요.
-          </p>
-          {affected.map((item) =>
-            draft.mode === "set_final" ? (
-              <FinalBottleStateFields
-                key={item.bottle.id}
-                current={item.bottle}
-                value={
-                  draft.finals.find((final) => final.id === item.bottle.id) ??
-                  finalStateOf(item.bottle)
-                }
-                volumeMl={item.context.volume_ml}
-                contextLabel={`${item.bottle.id === baseline.bottle_id ? "원래 병" : "대상 병"} · ${label(item.context)} · ${item.bottle.label_no}번 병`}
-                disabled={busy}
-                onChange={(next) =>
+          {!draft.fields.bottleId ? (
+            <label>
+              병 없는 시음의 규격
+              <select
+                aria-label="병 없는 시음의 규격"
+                value={draft.fields.skuId}
+                onChange={(event) => {
+                  setConfirmedSku(null);
                   edit({
-                    finals: [...draft.finals.filter((final) => final.id !== next.id), next].sort(
-                      (a, b) => a.id.localeCompare(b.id),
-                    ),
-                  })
-                }
+                    fields: { ...draft.fields, skuId: event.target.value },
+                    checkedSku:
+                      skuOptions?.find((sku) => sku.sku_id === event.target.value) ?? null,
+                  });
+                }}
+              >
+                <option value="">규격을 선택하세요</option>
+                {skuOptions?.map((sku) => (
+                  <option key={sku.sku_id} value={sku.sku_id}>
+                    {label(standaloneSku?.sku_id === sku.sku_id ? standaloneSku : sku)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {!draft.fields.bottleId && standaloneSku ? (
+            <p>확인한 목표 규격: {label(standaloneSku)}</p>
+          ) : null}
+          {skuUnavailable && !offline ? (
+            <p role="alert">
+              목표 규격의 최신 용량·판본을 확인 중이거나 조회하지 못했습니다. 확인 전에는 저장할 수
+              없습니다.
+            </p>
+          ) : null}
+          {!draft.fields.bottleId && !skuConfirmed && targetSku.isError && !offline ? (
+            <>
+              <p role="alert">{targetSku.error.message}</p>
+              <button type="button" onClick={() => void targetSku.refetch()}>
+                목표 규격 다시 확인
+              </button>
+            </>
+          ) : null}
+          {skuChanged && !retry ? (
+            <p role="alert">
+              선택한 규격의 용량 또는 판본 정보가 바뀌었습니다. 최신 상태를 다시 확인하고 승인해
+              주세요.
+            </p>
+          ) : null}
+          {bottleOptions === undefined || (!draft.fields.bottleId && skuOptions === undefined) ? (
+            <output>선택할 병과 규격을 불러오는 중…</output>
+          ) : null}
+          {targetUnavailable && !offline ? (
+            <p role="alert">
+              대상 병의 최신 상태를 확인 중이거나 조회하지 못했습니다. 확인 전에는 저장할 수
+              없습니다.
+            </p>
+          ) : null}
+          {needsTarget && !targetConfirmed && target.isError && !offline ? (
+            <button type="button" onClick={() => void target.refetch()}>
+              대상 병 다시 확인
+            </button>
+          ) : null}
+          <fieldset>
+            <legend>현재 병 상태·잔량</legend>
+            <label>
+              <input
+                type="radio"
+                name={`remaining-mode-${tastingId}`}
+                checked={draft.mode === "preserve"}
+                onChange={() => edit({ mode: "preserve" })}
               />
-            ) : (
-              <p key={item.bottle.id}>
-                {item.bottle.id === baseline.bottle_id ? "원래 병" : "대상 병"} ·{" "}
-                {label(item.context)} · {item.bottle.label_no}번 병:{" "}
-                {STATUS_LABELS[item.bottle.status]} ·{" "}
-                {item.bottle.remaining_ml === null
-                  ? item.bottle.status === "unopened"
-                    ? "미개봉 전량"
-                    : "잔량 미기록"
-                  : `${item.bottle.remaining_ml}ml`}{" "}
-                → 그대로 유지
-              </p>
-            ),
-          )}
-        </fieldset>
+              기록만 정정하고 현재 상태·잔량 유지
+            </label>
+            <label>
+              <input
+                type="radio"
+                name={`remaining-mode-${tastingId}`}
+                checked={draft.mode === "set_final"}
+                onChange={() => edit({ mode: "set_final" })}
+              />
+              명시한 최종 상태·잔량으로 함께 정정
+            </label>
+            <p className="muted">
+              시음량 차이를 자동으로 더하거나 빼지 않습니다. 원래 병과 대상 병을 각각 확인하세요.
+            </p>
+            {affected.map((item) =>
+              draft.mode === "set_final" ? (
+                <FinalBottleStateFields
+                  key={item.bottle.id}
+                  current={item.bottle}
+                  value={
+                    draft.finals.find((final) => final.id === item.bottle.id) ??
+                    finalStateOf(item.bottle)
+                  }
+                  volumeMl={item.context.volume_ml}
+                  contextLabel={`${item.bottle.id === baseline.bottle_id ? "원래 병" : "대상 병"} · ${label(item.context)} · ${item.bottle.label_no}번 병`}
+                  disabled={busy}
+                  onChange={(next) =>
+                    edit({
+                      finals: [...draft.finals.filter((final) => final.id !== next.id), next].sort(
+                        (a, b) => a.id.localeCompare(b.id),
+                      ),
+                    })
+                  }
+                />
+              ) : (
+                <p key={item.bottle.id}>
+                  {item.bottle.id === baseline.bottle_id ? "원래 병" : "대상 병"} ·{" "}
+                  {label(item.context)} · {item.bottle.label_no}번 병:{" "}
+                  {STATUS_LABELS[item.bottle.status]} ·{" "}
+                  {item.bottle.remaining_ml === null
+                    ? item.bottle.status === "unopened"
+                      ? "미개봉 전량"
+                      : "잔량 미기록"
+                    : `${item.bottle.remaining_ml}ml`}{" "}
+                  → 그대로 유지
+                </p>
+              ),
+            )}
+          </fieldset>
+        </details>
         {offline ? (
           <p role="alert">
-            정정 저장은 온라인에서 할 수 있습니다. 작성 중인 입력은 이 기기에 유지됩니다.
+            수정 저장은 온라인에서 할 수 있습니다. 작성 중인 입력은 이 기기에 유지됩니다.
           </p>
         ) : null}
         {readFailed ? (
@@ -992,7 +1016,7 @@ function CorrectionEditor({
         {error ? <p role="alert">{error}</p> : null}
         <div className="button-row">
           <button type="submit" className="primary" disabled={busy || blocked}>
-            {pending ? "정정 저장 중…" : retry ? "같은 요청 다시 확인" : "정정 저장"}
+            {pending ? "수정 저장 중…" : retry ? "같은 요청 다시 확인" : "수정 저장"}
           </button>
           <button type="button" disabled={busy} onClick={onCancel}>
             취소

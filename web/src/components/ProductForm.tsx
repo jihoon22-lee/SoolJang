@@ -15,6 +15,8 @@ const MAX_SUGGESTIONS = 8;
 
 export interface ProductFormValues {
   name: string;
+  nameEn?: string;
+  searchAliases?: string;
   categoryId: string;
   producerName: string;
   abv: string;
@@ -39,6 +41,8 @@ function isPositiveInteger(raw: string): boolean {
 
 export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   name: "",
+  nameEn: "",
+  searchAliases: "",
   categoryId: "",
   producerName: "",
   abv: "",
@@ -56,7 +60,7 @@ export const EMPTY_PRODUCT_FORM: ProductFormValues = {
 };
 
 export type ExistingProductCandidate = Pick<Product, "id" | "name"> &
-  Partial<Pick<Product, "vintage" | "abv" | "age_years" | "skus">>;
+  Partial<Pick<Product, "vintage" | "abv" | "age_years" | "skus" | "name_en" | "search_aliases">>;
 
 function candidateLabel(product: ExistingProductCandidate): string {
   const edition = productEdition({
@@ -133,7 +137,11 @@ export function ProductForm({
   const nameSuggestions = useMemo(
     () =>
       Array.from(
-        new Set(rankByQuery(existingProducts, values.name, (p) => p.name).map((p) => p.name)),
+        new Set(
+          rankByQuery(existingProducts, values.name, (p) =>
+            [p.name, p.name_en, ...(p.search_aliases ?? [])].filter(Boolean).join(" / "),
+          ).map((p) => p.name),
+        ),
       ).slice(0, MAX_SUGGESTIONS),
     [existingProducts, values.name],
   );
@@ -175,6 +183,14 @@ export function ProductForm({
     event.preventDefault();
     if (!values.name.trim()) {
       fail("form-name", "이름을 입력하세요");
+      return;
+    }
+    const aliases = (values.searchAliases ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (aliases.length > 20 || aliases.some((value) => value.length > 300)) {
+      fail("form-search-aliases", "검색 별칭은 300자 이하의 이름을 최대 20개 입력하세요");
       return;
     }
     if (values.quantity.trim() && !values.volumeMl.trim()) {
@@ -380,6 +396,28 @@ export function ProductForm({
       </div>
 
       <div className="field">
+        <label>
+          원어명
+          <input
+            value={values.nameEn ?? ""}
+            maxLength={300}
+            onChange={(event) => set({ nameEn: event.target.value })}
+          />
+        </label>
+        <label>
+          검색 별칭
+          <input
+            id="form-search-aliases"
+            {...errorProps("form-search-aliases", "search_aliases")}
+            value={values.searchAliases ?? ""}
+            onChange={(event) => set({ searchAliases: event.target.value })}
+            placeholder="확인한 한글 이름, 다른 표기 (쉼표로 구분)"
+          />
+          {errorText("form-search-aliases", "search_aliases")}
+          <span className="muted text-sm">
+            검색에만 사용하며 제품 이름이나 판본은 바뀌지 않습니다.
+          </span>
+        </label>
         <label htmlFor="form-note">메모</label>
         <textarea
           id="form-note"

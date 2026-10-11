@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EMPTY_PRODUCT_FORM } from "@/components/ProductForm";
 import { activateDatabase, db } from "@/sync/db";
+import { getProducts } from "@/sync/queries";
 import { createProductOffline } from "@/sync/useCreateProduct";
 
 beforeEach(async () => {
@@ -43,4 +44,24 @@ it("체인 마지막 로컬 저장이 실패하면 앞의 제품과 대기열도
   expect(await db.product.count()).toBe(0);
   expect(await db.purchase.count()).toBe(0);
   expect(await db.outbox.count()).toBe(0);
+});
+
+it("오프라인 원어명·별칭은 미러 검색과 보낼 등록 요청에 함께 남는다", async () => {
+  await createProductOffline(
+    {
+      ...EMPTY_PRODUCT_FORM,
+      name: "GlenAllachie 12",
+      nameEn: "The GlenAllachie",
+      searchAliases: "내 셰리, 우리집 위스키",
+    },
+    "chain-owner",
+  );
+  const [entry] = await db.outbox.toArray();
+  expect(entry?.fields).toMatchObject({
+    name_en: "The GlenAllachie",
+    search_aliases: ["내 셰리", "우리집 위스키"],
+  });
+  expect((await getProducts({ q: "우리집" })).map((product) => product.name)).toEqual([
+    "GlenAllachie 12",
+  ]);
 });

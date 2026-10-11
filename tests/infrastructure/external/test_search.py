@@ -22,6 +22,70 @@ CREDENTIALS = {
 }
 
 
+def test_search_keeps_origin_rank_query_language_and_normalizes_provider_dates() -> None:
+    docs = parse_search_response(
+        "naver_hub",
+        {
+            "items": [
+                {
+                    "title": "제품 정보",
+                    "link": "https://example.org/product",
+                    "postdate": "20261011",
+                }
+            ]
+        },
+        fetched_at=datetime(2026, 10, 11, tzinfo=UTC),
+        query="확인한 한국어 질의",
+        language="ko",
+        page=2,
+        channel="blog",
+    )
+    assert docs[0].published_at == "2026-10-11"
+    assert docs[0].origins == [
+        {
+            "provider": "naver_hub",
+            "channel": "blog",
+            "rank": 11,
+            "query": "확인한 한국어 질의",
+            "language": "ko",
+        }
+    ]
+
+
+def test_unknown_or_relative_publication_date_is_not_replaced_by_fetch_time() -> None:
+    docs = parse_search_response(
+        "brave",
+        {
+            "web": {
+                "results": [
+                    {"title": "글", "url": "https://example.org/a", "page_age": "2 days ago"}
+                ]
+            }
+        },
+        fetched_at=datetime(2026, 10, 11, tzinfo=UTC),
+    )
+    assert docs[0].published_at is None
+
+
+def test_purpose_separates_retail_service_from_product_information() -> None:
+    docs = parse_search_response(
+        "exa",
+        {
+            "results": [
+                {
+                    "title": "배송 후기",
+                    "url": "https://example.org/delivery",
+                    "text": "제품 정보와 배송 후기",
+                },
+                {"title": "판매 가격과 구매 안내", "url": "https://example.org/shop"},
+                {"title": "제조사 제품 정보", "url": "https://example.org/info"},
+            ]
+        },
+        fetched_at=datetime(2026, 10, 11, tzinfo=UTC),
+    )
+    assert [doc.kind for doc in docs] == ["service_review", "offer", "info"]
+
+
 @pytest.mark.parametrize("kind", ["naver_hub", "naver_legacy", "brave", "exa"])
 async def test_search_requests_have_bounded_non_generative_contract(kind: str) -> None:
     calls = []
@@ -276,3 +340,28 @@ def test_percent_encoded_credential_reflection_is_discarded(encoded_prefix: str)
         secrets=(secret,),
     )
     assert documents == []
+
+
+def test_duplicate_merge_keeps_rich_text_and_purpose_independent_of_response_order() -> None:
+    from dataclasses import replace
+    from itertools import permutations
+
+    base = parse_search_response(
+        "exa",
+        {
+            "results": [
+                {"url": "https://example.org/shared", "title": "제품 정보", "text": "상세 설명"}
+            ]
+        },
+        fetched_at=datetime(2026, 10, 11, tzinfo=UTC),
+    )[0]
+    variants = [
+        replace(base, title="충실한 설명", excerpt="내용" * 50, kind="unknown"),
+        replace(base, title="판매자 테이스팅", excerpt="판매자", kind="seller_note"),
+        replace(base, title="리뷰", excerpt="설명", kind="review", published_at="2026-10-01"),
+    ]
+    results = [deduplicate_documents(list(order)) for order in permutations(variants)]
+    assert all(result == results[0] for result in results)
+    assert results[0][0].excerpt == "내용" * 50
+    assert results[0][0].kind == "seller_note"
+    assert results[0][0].published_at == "2026-10-01"

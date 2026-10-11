@@ -1,0 +1,12 @@
+{
+  "name": "혼합 상태·다중 SKU·하위 주종·미지정",
+  "lots": [
+    {"category": "child", "volume": 700, "states": ["unopened", "open", "finished", "gifted", "sold"]},
+    {"category": "child", "volume": 200, "states": ["unopened", "open"]},
+    {"category": null, "volume": 500, "states": ["finished", "open"]}
+  ],
+  "expected": {
+    "root": {"product_count": 1, "bottle_count": 7, "in_stock_count": 4, "unopened_count": 2, "opened_count": 2, "consumed_count": 1, "gifted_count": 1, "sold_count": 1},
+    "uncategorized": {"product_count": 1, "bottle_count": 2, "in_stock_count": 1, "unopened_count": 0, "opened_count": 1, "consumed_count": 1, "gifted_count": 0, "sold_count": 0}
+  }
+}

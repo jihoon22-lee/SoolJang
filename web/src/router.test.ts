@@ -130,3 +130,8 @@ it("선택한 구매 조건은 상세 URL의 새로고침에서도 전체 이력
   };
   expect(parseHash(routeToHash(route))).toMatchObject(route);
 });
+
+it("구매 근거 ID가 새로고침 URL에서도 유지된다", () => {
+  const route = { view: "products" as const, productId: "p", skuId: "s", purchaseId: "purchase" };
+  expect(parseHash(routeToHash(route))).toMatchObject(route);
+});

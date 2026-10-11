@@ -17,6 +17,7 @@ class Interest(Base, EntityMixin):
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     identity: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     source_matches: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    reference_urls: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     note: Mapped[str | None] = mapped_column(Text, default=None)
     archived_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), default=None

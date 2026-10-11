@@ -32,11 +32,13 @@ from sooljang.api.schemas.tasting import (
     TastingCreate,
     TastingSummaryOut,
 )
+from sooljang.api.schemas.tasting_lifecycle import TastingLifecycleRequest, TastingLifecycleResult
 from sooljang.application.bottle_commands import require_no_tasting, require_revision
 from sooljang.application.corrections import correct_tasting
 from sooljang.application.history import bottle_history
 from sooljang.application.skus import load_live_sku_for_write
 from sooljang.application.tasting_context import bottle_context, contextual_tastings, owned_tasting
+from sooljang.application.tasting_lifecycle import change_tasting_visibility
 from sooljang.application.tastings import (
     BottleTransitionError,
     InsufficientRemainingError,
@@ -397,48 +399,27 @@ async def summary(
 
 
 @tastings_router.delete(
-    "/{tasting_id}", status_code=status.HTTP_204_NO_CONTENT, summary="시음 기록 삭제"
+    "/{tasting_id}", response_model=TastingLifecycleResult, summary="시음 기록 삭제"
 )
-async def delete_tasting(session: SessionDep, user_id: UserDep, tasting_id: uuid.UUID) -> None:
-    """시음 기록을 지운다.
+async def delete_tasting(
+    session: SessionDep,
+    user_id: UserDep,
+    tasting_id: uuid.UUID,
+    payload: TastingLifecycleRequest | None = None,
+) -> TastingLifecycleResult:
+    if payload is None:
+        raise ConflictError("앱을 업데이트하고 최신 기록을 확인한 뒤 삭제하세요")
+    return await change_tasting_visibility(session, user_id, tasting_id, payload)
 
-    잔량은 되돌리지 않는다. 실제로 마신 양을 되돌릴 방법이 없고, 잘못 입력했다면 병의 잔량을
-    직접 고치는 편이 명확하다.
-    """
-    from sooljang.application.corrections import _lock_rows
-    from sooljang.application.history import log_event
-    from sooljang.infrastructure.database.models import TastingSession
 
-    await lock_user_writes(session, user_id)
-    record = await owned_tasting(session, user_id, tasting_id)
-    original_bottle_id = record.bottle_id
-    bottles = await _lock_rows(
-        session, Bottle, {original_bottle_id} if original_bottle_id else set(), user_id
-    )
-    records = await _lock_rows(session, TastingSession, {tasting_id}, user_id)
-    record = records[tasting_id]
-    if record.bottle_id != original_bottle_id:
-        raise ConflictError("시음 연결이 변경되었습니다")
-    record.deleted_at = datetime.datetime.now(datetime.UTC)
-    for bottle in bottles.values():
-        bottle.revision = uuid.uuid4()
-        log_event(
-            session,
-            user_id=user_id,
-            entity="bottle",
-            entity_id=bottle.id,
-            action="tasting_delete",
-            detail={"tasting_id": tasting_id},
-        )
-    log_event(
-        session,
-        user_id=user_id,
-        entity="tasting_session",
-        entity_id=tasting_id,
-        action="delete",
-        detail={},
-    )
-    await session.flush()
+@tastings_router.post("/{tasting_id}:restore", response_model=TastingLifecycleResult)
+async def restore_tasting(
+    session: SessionDep,
+    user_id: UserDep,
+    tasting_id: uuid.UUID,
+    payload: TastingLifecycleRequest,
+) -> TastingLifecycleResult:
+    return await change_tasting_visibility(session, user_id, tasting_id, payload, restore=True)
 
 
 @tastings_router.get("/page", response_model=ContextualTastingPage)

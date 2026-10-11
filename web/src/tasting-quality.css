@@ -1,0 +1,42 @@
+.tasting-record {
+  min-width: 0;
+  width: 100%;
+  padding-block: 0.6rem;
+}
+.tasting-record p {
+  margin-block: 0.35rem;
+}
+.tasting-record-context {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.tasting-record-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tasting-record > .button-row {
+  margin-top: 0.6rem;
+}
+.tasting-delete-confirm {
+  padding: 0.9rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border, #aaa);
+  border-radius: 0.6rem;
+}
+.tasting-record .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.tasting-record .button-row button {
+  min-height: 44px;
+}
+.tasting-correction-advanced {
+  margin-block: 1rem;
+}
+.tasting-correction-advanced > summary {
+  padding-block: 0.65rem;
+  cursor: pointer;
+}

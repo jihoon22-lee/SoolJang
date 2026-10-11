@@ -1,10 +1,12 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
 import type { RankingEntry } from "@/api/types";
-import { productEdition, purchaseReference } from "@/components/productDisplay";
+import { InventoryBreakdown } from "@/components/InventoryBreakdown";
+import { productEdition } from "@/components/productDisplay";
 import { QuickTastingSheet } from "@/components/QuickTastingSheet";
 import { LoadingState } from "@/components/StatusViews";
-import { daysSince, openedShelfLife } from "@/domain/openedShelfLife";
+import { TastingRow } from "@/components/TastingRow";
+import { daysSince } from "@/domain/openedShelfLife";
 import { formatDate, formatMoney, formatRating, formatVolume, todayLocal } from "@/format";
 import type { ProductContext, View } from "@/router";
 import {
@@ -40,7 +42,8 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
   const recentProducts = useLiveQuery(() => getRecentProducts(5), []);
   const recentTastings = useLiveQuery(() => getRecentTastings(5), []);
   const drinkable = useLiveQuery(() => getDrinkableBottles(), []);
-  const { pendingCount, lastError } = useSyncStatus();
+  const { pendingCount, lastError, state } = useSyncStatus();
+  const [showAllOpen, setShowAllOpen] = useState(false);
   const [tastingOpen, setTastingOpen] = useState(false);
   const tastingButton = useRef<HTMLButtonElement>(null);
 
@@ -48,20 +51,9 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
     return <LoadingState label="불러오는 중…" />;
   }
 
-  const { totals, categories, rankings } = dashboard;
-  const topCategories = [...categories].sort((a, b) => b.bottle_count - a.bottle_count).slice(0, 6);
-  const maxCategory = Math.max(1, ...topCategories.map((stat) => stat.bottle_count));
+  const { totals, rankings } = dashboard;
   const openBottles = drinkable.filter((item) => item.status === "open");
   const today = todayLocal();
-  // 권장 기간을 넘긴 열린 병. 오래 지난 순으로.
-  const overdue = openBottles
-    .map((item) => {
-      const life = openedShelfLife(item.categoryPath);
-      const days = item.openedOn ? daysSince(item.openedOn, today) : null;
-      return life && days !== null && days >= life.days ? { item, life, days } : null;
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null)
-    .sort((a, b) => b.days - a.days);
 
   return (
     <div className="home-page">
@@ -97,83 +89,63 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
           요약
         </h3>
         <dl className="metrics-grid metrics-grid--hero">
-          <Metric label="재고" value={`${totals.in_stock_count.toLocaleString("ko-KR")}병`} />
+          <Metric label="현재 보유" value={`${totals.in_stock_count.toLocaleString("ko-KR")}병`} />
+          <Metric label="미개봉" value={`${totals.unopened_count.toLocaleString("ko-KR")}병`} />
           <Metric label="개봉 중" value={`${totals.opened_count.toLocaleString("ko-KR")}병`} />
           <Metric label="재고 원가" value={formatMoney(totals.inventory_value_at_cost ?? null)} />
-          <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
         </dl>
         <p className="muted text-sm home-summary-secondary">
-          구매 {totals.purchased_count.toLocaleString("ko-KR")}병 · 미개봉{" "}
-          {totals.unopened_count.toLocaleString("ko-KR")}병 · 총 용량{" "}
-          {formatVolume(totals.total_volume_ml)} · 구매처{" "}
-          {totals.vendor_count.toLocaleString("ko-KR")}곳
+          누적 구매 {totals.purchased_count.toLocaleString("ko-KR")}병 · 누적 실구매액{" "}
+          {formatMoney(totals.paid_total)}
+          {" · "}현재 보유 = 미개봉 + 개봉. 소진·증여·판매한 병은 제외합니다.
         </p>
       </section>
 
-      {overdue.length > 0 ? (
-        <section aria-labelledby="home-overdue-heading" className="home-overdue">
-          <h3 id="home-overdue-heading">빨리 마시면 좋은 병</h3>
-          <ul className="activity-list">
-            {overdue.slice(0, 5).map(({ item, life, days }) => (
-              <li key={item.bottleId}>
-                <button
-                  type="button"
-                  className="link-like"
-                  onClick={() =>
-                    onSelectProduct(item.productId, { skuId: item.skuId, bottleId: item.bottleId })
-                  }
-                >
-                  {item.productName} #{item.labelNo} · {formatVolume(item.volumeMl)}
-                  {productEdition({
-                    vintage: item.vintage,
-                    age_years: item.ageYears,
-                    abv: item.abv,
-                  }) &&
-                    ` · ${productEdition({ vintage: item.vintage, age_years: item.ageYears, abv: item.abv })}`}
-                  {` · ${purchaseReference(
-                    item.purchaseId,
-                    drinkable.map((bottle) => bottle.purchaseId),
-                  )}`}
-                </button>
-                <span className="muted">
-                  개봉 {days}일째 · {life.label} 권장 {life.days}일
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       <section aria-labelledby="home-open-heading">
-        <h3 id="home-open-heading">지금 열려 있는 병</h3>
+        <div className="section-header">
+          <h3 id="home-open-heading">
+            지금 열려 있는 병 <span className="muted">{openBottles.length}병</span>
+          </h3>
+          {openBottles.length > 5 && (
+            <button type="button" onClick={() => setShowAllOpen(!showAllOpen)}>
+              {showAllOpen ? "접기" : `전체 ${openBottles.length}병 보기`}
+            </button>
+          )}
+        </div>
         {openBottles.length === 0 ? (
           <p className="muted">열려 있는 병이 없습니다.</p>
         ) : (
-          <ul className="activity-list">
-            {openBottles.slice(0, 5).map((item) => (
+          <ul className="quality-record-list home-open-bottle-list">
+            {(showAllOpen ? openBottles : openBottles.slice(0, 5)).map((item) => (
               <li key={item.bottleId}>
                 <button
                   type="button"
-                  className="link-like"
+                  className="entity-link"
+                  aria-label={`${item.productName} #${item.labelNo} · ${formatVolume(item.volumeMl)}`}
                   onClick={() =>
                     onSelectProduct(item.productId, { skuId: item.skuId, bottleId: item.bottleId })
                   }
                 >
-                  {item.productName} #{item.labelNo} · {formatVolume(item.volumeMl)}
+                  {item.productName}
+                </button>
+                <span className="muted text-sm">
+                  병 #{item.labelNo} · {formatVolume(item.volumeMl)}
                   {productEdition({
                     vintage: item.vintage,
                     age_years: item.ageYears,
                     abv: item.abv,
                   }) &&
                     ` · ${productEdition({ vintage: item.vintage, age_years: item.ageYears, abv: item.abv })}`}
-                  {` · ${purchaseReference(
-                    item.purchaseId,
-                    drinkable.map((bottle) => bottle.purchaseId),
-                  )}`}
-                </button>
-                <span className="muted">
+                </span>
+                <span className="muted text-sm">
                   {item.remainingMl !== null ? `${item.remainingMl}ml 남음` : "잔량 미기록"}
-                  {item.openedOn ? ` · ${formatDate(item.openedOn)} 개봉` : ""}
+                  {item.openedOn ? ` · ${formatDate(item.openedOn)} 개봉` : " · 개봉일 미기록"}
+                  {item.vendorName ? ` · ${item.vendorName}` : ""}
+                </span>
+                <span className="muted text-sm">
+                  {item.openedOn
+                    ? `개봉 후 ${daysSince(item.openedOn, today)}일 경과`
+                    : "개봉일을 입력하면 경과일을 확인할 수 있습니다."}
                 </span>
               </li>
             ))}
@@ -194,31 +166,13 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
 
       <section aria-labelledby="home-categories-heading">
         <h3 id="home-categories-heading">주종별 보유</h3>
-        {topCategories.length === 0 ? (
-          <p className="muted">등록된 술이 없습니다.</p>
-        ) : (
-          <ul className="home-category-list">
-            {topCategories.map((stat) => (
-              <li key={stat.category_id ?? "uncategorized"}>
-                {stat.category_id ? (
-                  <button
-                    type="button"
-                    className="link-like"
-                    onClick={() => onSelectCategory(stat.category_id as string)}
-                  >
-                    {stat.name}
-                  </button>
-                ) : (
-                  <span>{stat.name}</span>
-                )}
-                <span className="home-category-bar" aria-hidden="true">
-                  <span style={{ width: `${(stat.bottle_count / maxCategory) * 100}%` }} />
-                </span>
-                <span className="muted numeric">{stat.bottle_count.toLocaleString("ko-KR")}병</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <InventoryBreakdown
+          stats={dashboard.categoryDetails}
+          tree={dashboard.tree}
+          bottles={drinkable}
+          onSelectProduct={onSelectProduct}
+          onSelectCategory={onSelectCategory}
+        />
       </section>
 
       <section aria-labelledby="home-rankings-heading">
@@ -253,7 +207,7 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
                   <li key={product.id}>
                     <button
                       type="button"
-                      className="link-like"
+                      className="entity-link"
                       onClick={() => onSelectProduct(product.id)}
                     >
                       {product.name}
@@ -271,37 +225,25 @@ export function HomePage({ onSelectProduct, onSelectCategory, onNavigate }: Home
               <ul className="activity-list">
                 {recentTastings.map((tasting) => (
                   <li key={tasting.id}>
-                    {tasting.productId ? (
-                      <button
-                        type="button"
-                        className="link-like"
-                        onClick={() =>
-                          onSelectProduct(tasting.productId as string, {
-                            skuId: tasting.skuId,
-                            bottleId: tasting.bottleId ?? undefined,
-                            tastingId: tasting.id,
-                          })
-                        }
-                      >
-                        {tasting.productName} · {formatVolume(tasting.volumeMl)}
-                        {tasting.labelNo ? ` · ${tasting.labelNo}번 병` : ""}
-                        {tasting.purchaseId
-                          ? ` · ${purchaseReference(
-                              tasting.purchaseId,
-                              recentTastings.flatMap((entry) =>
-                                entry.purchaseId ? [entry.purchaseId] : [],
-                              ),
-                            )}`
-                          : ""}
-                        {tasting.vintage ? ` · ${tasting.vintage}` : ""}
-                      </button>
-                    ) : (
-                      <span>{tasting.productName}</span>
-                    )}
-                    <span className="muted">
-                      {formatDate(tasting.tastedOn)}
-                      {tasting.rating ? ` · ${formatRating(tasting.rating)}` : ""}
-                    </span>
+                    <TastingRow
+                      item={tasting.record}
+                      offline={state === "offline"}
+                      onSelectTasting={(item) =>
+                        onSelectProduct(item.context.product_id, {
+                          skuId: item.sku_id,
+                          bottleId: item.bottle_id ?? undefined,
+                          tastingId: item.id,
+                        })
+                      }
+                      onCorrect={(item) =>
+                        onSelectProduct(item.context.product_id, {
+                          skuId: item.sku_id,
+                          bottleId: item.bottle_id ?? undefined,
+                          tastingId: item.id,
+                          editTasting: true,
+                        })
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -350,7 +292,7 @@ function MiniRanking({
               <span className="ranking-rank">{index + 1}</span>
               <button
                 type="button"
-                className="sort-button ranking-name"
+                className="entity-link ranking-name"
                 onClick={() => onSelectProduct(entry.product_id)}
               >
                 {entry.product_name}

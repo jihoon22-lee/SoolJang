@@ -176,8 +176,8 @@ def test_영문명이_있으면_두번째_질의로_쓴다() -> None:
     assert "GlenAllachie 10" in queries
 
 
-def test_영문명이_없으면_질의를_늘리지_않는다() -> None:
-    assert build_queries(_identity("글렌알라키")) == ["글렌알라키"]
+def test_영문명이_없어도_확인된_브랜드_별칭을_질의에_쓴다() -> None:
+    assert build_queries(_identity("글렌알라키")) == ["글렌알라키", "GlenAllachie"]
 
 
 def test_배치_표기를_뺀_축약형을_질의에_넣는다() -> None:
@@ -286,3 +286,18 @@ def test_registered_vintage_overrides_stale_year_in_product_name() -> None:
     assert score(identity, "Lumiere 2021").value >= 0.85
     assert "vintage" in score(identity, "Lumiere 2019").conflicts
     assert "vintage" in score(identity, "Lumiere").missing
+
+
+def test_confirmed_aliases_expand_queries_without_losing_edition_constraints() -> None:
+    identity = ProductIdentity(
+        "합성 몰트 12년 배치 5", search_aliases=("Synthetic Malt 12y Batch 5",)
+    )
+    assert "Synthetic Malt 12y Batch 5" in build_queries(identity)
+    assert score(identity, "Synthetic Malt 12y Batch 6").rejected
+    assert score(identity, "Synthetic Malt 12y Batch 5").value >= 0.85
+
+
+def test_brand_dictionary_expands_korean_name_with_original_edition_tokens() -> None:
+    queries = build_queries(_identity("글렌알라키 12년 700ml"))
+    assert any("glenallachie" in query.lower() and "12년 700ml" in query for query in queries)
+    assert len(queries) <= 3

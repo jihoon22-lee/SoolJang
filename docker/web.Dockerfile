@@ -14,6 +14,7 @@ COPY web/ ./
 # 상대 경로(../../../tests/fixtures)로 참조한다 — 3-way parity 를 위해 한 파일만
 # 두는 설계라 이미지에도 같은 상대 위치로 복사해야 한다.
 COPY tests/fixtures/ /tests/fixtures/
+COPY src/sooljang/domain/search_aliases.json /src/sooljang/domain/search_aliases.json
 RUN npm run build
 
 

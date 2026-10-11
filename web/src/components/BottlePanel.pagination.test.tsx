@@ -2,7 +2,7 @@ import { type InfiniteData, QueryClient, QueryClientProvider } from "@tanstack/r
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { Bottle, Tasting, TastingPage, TastingSummary } from "@/api/types";
+import type { Bottle, ContextualTasting, Tasting, TastingPage, TastingSummary } from "@/api/types";
 import { BottlePanel } from "@/components/BottlePanel";
 import { activateDatabase, db } from "@/sync/db";
 
@@ -20,7 +20,7 @@ const target: Bottle = {
 };
 const pageKey = ["bottles", target.id, "tastings", "pages"];
 const summaryKey = ["tastings", "summary", target.id];
-function tasting(id: string): Tasting {
+function tasting(id: string): ContextualTasting {
   return {
     id,
     bottle_id: "b1",
@@ -34,6 +34,18 @@ function tasting(id: string): Tasting {
     note: null,
     place: null,
     companions: null,
+    updated_at: NOW,
+    context: {
+      product_id: "p1",
+      product_name: "합성 술",
+      sku_id: "sku1",
+      volume_ml: 700,
+      vintage: null,
+      age_years: null,
+      abv: null,
+    },
+    bottle: null,
+    purchase: null,
   };
 }
 function token(item: Tasting) {
@@ -93,7 +105,11 @@ function server(count: number) {
       if (init?.method === "DELETE") {
         if (state.deleteFailure) return response({ detail: "합성 삭제 실패" }, 500);
         state.items = state.items.filter((item) => item.id !== url.pathname.split("/").at(-1));
-        return response(null, 204);
+        return response({
+          id: url.pathname.split("/").at(-1),
+          updated_at: "2026-01-02T00:00:00Z",
+          deleted_at: "2026-01-02T00:00:00Z",
+        });
       }
       return response([], 200);
     }),
@@ -192,7 +208,6 @@ it("삭제 뒤 전체 페이지와 요약을 다시 받고 오래된 마지막 �
   const state = server(51);
   const { client } = view();
   await loadAll(51);
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   let release = () => {};
   state.pageGate = new Promise<void>((resolve) => {
     release = resolve;
@@ -201,9 +216,9 @@ it("삭제 뒤 전체 페이지와 요약을 다시 받고 오래된 마지막 �
   const item = screen.getByText(`향: ${removed.nose}`).closest("li");
   if (!item) throw new Error("시음 행이 없습니다");
   await userEvent.click(within(item).getByRole("button", { name: "삭제" }));
+  await userEvent.click(within(item).getByRole("button", { name: "시음 기록 삭제" }));
   await waitFor(() => expect(state.pages).toHaveLength(3));
-  expect(screen.getByText(`향: ${removed.nose}`)).toBeInTheDocument();
-  expect(within(item).getByRole("button", { name: "삭제 중…" })).toBeDisabled();
+  expect(screen.queryByText(`향: ${removed.nose}`)).not.toBeInTheDocument();
   await act(async () => release());
   await waitFor(() => expect(screen.queryByText(`향: ${removed.nose}`)).not.toBeInTheDocument());
   expect(shownNotes()).toHaveLength(50);
@@ -218,9 +233,9 @@ it("서버가 삭제를 거부하면 현재 이력·페이지·요약을 유지�
   state.deleteFailure = true;
   const { client } = view();
   await loadAll(51);
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   await userEvent.click(screen.getAllByRole("button", { name: "삭제" })[0] as HTMLElement);
-  expect(await screen.findByRole("alert")).toHaveTextContent("시음 기록을 삭제하지 못했습니다");
+  await userEvent.click(screen.getByRole("button", { name: "시음 기록 삭제" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 500");
   expect(shownNotes()).toHaveLength(51);
   expect(cached(client)?.pages).toHaveLength(2);
   expect(client.getQueryData<TastingSummary>(summaryKey)?.session_count).toBe(51);

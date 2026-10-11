@@ -4,6 +4,8 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from tests.api.tasting_helpers import remove_tasting_record
+
 
 def _create_product_with_bottle(
     api_client: TestClient, prefix: str, *, volume_ml: int = 750, quantity: int = 1
@@ -302,7 +304,7 @@ class TestTastingApi:
         )
         tasting_id = created.json()["id"]
 
-        assert api_client.delete(f"{prefix}/tastings/{tasting_id}").status_code == 204
+        assert remove_tasting_record(api_client, prefix, tasting_id).status_code == 200
         assert api_client.get(f"{prefix}/tastings").json() == []
 
     def test_인증_없이는_거부된다(self, anon_client: TestClient, prefix: str) -> None:

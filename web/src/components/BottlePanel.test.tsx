@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Bottle, Tasting, TastingSummary } from "@/api/types";
+import type { Bottle, ContextualTasting, Tasting, TastingSummary } from "@/api/types";
 import { BottlePanel, formatRatingChange, formatRemaining } from "@/components/BottlePanel";
 import { todayLocal } from "@/format";
 import { activateDatabase, db } from "@/sync/db";
@@ -50,6 +50,24 @@ async function seedContext(
   await db.bottle.put(row({ ...bottleRow }));
 }
 
+function contextual(item: Tasting): ContextualTasting {
+  return {
+    ...item,
+    updated_at: NOW,
+    context: {
+      product_id: "p1",
+      product_name: "합성 술",
+      vintage: null,
+      age_years: null,
+      abv: null,
+      sku_id: item.sku_id,
+      volume_ml: 700,
+    },
+    purchase: null,
+    bottle: null,
+  };
+}
+
 function stubTastings(
   bottleId: string,
   opts: { tastings?: Tasting[]; summary?: Partial<TastingSummary>; tastingsStatus?: number } = {},
@@ -57,7 +75,7 @@ function stubTastings(
   return stubRoutes([
     {
       match: `/bottles/${bottleId}/tastings/page`,
-      body: { items: opts.tastings ?? [], next_cursor: null },
+      body: { items: (opts.tastings ?? []).map(contextual), next_cursor: null },
       ...(opts.tastingsStatus ? { status: opts.tastingsStatus } : {}),
     },
     {
@@ -75,7 +93,11 @@ function stubTastings(
         ...opts.summary,
       },
     },
-    { match: "/tastings/", method: "DELETE", status: 204, body: null },
+    {
+      match: "/tastings/",
+      method: "DELETE",
+      body: { id: "t1", updated_at: "2026-01-02T00:00:00Z", deleted_at: "2026-01-02T00:00:00Z" },
+    },
   ]);
 }
 
@@ -492,15 +514,15 @@ describe("BottlePanel", () => {
       renderWithQuery(<BottlePanel bottle={target} />);
 
       expect(await screen.findByText("2026-01-10")).toBeInTheDocument();
-      expect(screen.getByText("4.5점")).toBeInTheDocument();
-      expect(screen.getByText("30ml", { selector: ".tasting-poured" })).toBeInTheDocument();
+      expect(screen.getByText(/4.5점/)).toBeInTheDocument();
+      expect(screen.getByText(/4.5점.*30ml/)).toBeInTheDocument();
       expect(screen.getByText("향: 바닐라")).toBeInTheDocument();
       expect(screen.getByText("맛: 꿀")).toBeInTheDocument();
       expect(screen.getByText("피니시: 긴 여운")).toBeInTheDocument();
       expect(screen.getByText("집 · 혼자")).toBeInTheDocument();
 
       expect(screen.getByText("2026-01-05")).toBeInTheDocument();
-      expect(screen.getByText("평점 없음", { selector: "span" })).toBeInTheDocument();
+      expect(screen.getByText(/평점 없음/, { selector: "p" })).toBeInTheDocument();
     });
   });
 
@@ -520,44 +542,42 @@ describe("BottlePanel", () => {
       companions: null,
     };
 
-    it("오프라인이면 삭제 버튼을 숨기고 안내한다", async () => {
+    it("오프라인이면 삭제 버튼을 비활성화하고 안내한다", async () => {
       const target = bottle();
       stubTastings(target.id, { tastings: [item] });
       const view = renderWithQuery(<BottlePanel bottle={target} />);
       await screen.findByText("2026-01-10");
       view.rerender(<BottlePanel bottle={target} offline={true} />);
-      expect(screen.queryByRole("button", { name: "삭제" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "삭제" })).toBeDisabled();
       expect(
         screen.getByText("시음 기록 삭제는 온라인일 때만 할 수 있습니다."),
       ).toBeInTheDocument();
     });
 
     it("확인을 취소하면 삭제 요청을 보내지 않는다", async () => {
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
       const target = bottle();
       const { calls } = stubTastings(target.id, { tastings: [item] });
       renderWithQuery(<BottlePanel bottle={target} />);
 
       await userEvent.click(await screen.findByRole("button", { name: "삭제" }));
 
+      await userEvent.click(screen.getByRole("button", { name: "취소" }));
       expect(calls.some((call) => call.method === "DELETE")).toBe(false);
-      confirmSpy.mockRestore();
     });
 
     it("확인하면 시음 기록을 삭제한다", async () => {
-      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
       const target = bottle();
       const { calls } = stubTastings(target.id, { tastings: [item] });
       renderWithQuery(<BottlePanel bottle={target} />);
 
       await userEvent.click(await screen.findByRole("button", { name: "삭제" }));
 
+      await userEvent.click(screen.getByRole("button", { name: "시음 기록 삭제" }));
       await waitFor(() => {
         expect(
           calls.some((call) => call.method === "DELETE" && call.url.includes("/tastings/t1")),
         ).toBe(true);
       });
-      confirmSpy.mockRestore();
     });
   });
 
@@ -810,4 +830,25 @@ it("선택 시음이 현재 페이지 밖에 있으면 삭제로 단정하지 �
     ),
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "이전 기록 더 보기" })).toBeInTheDocument();
+});
+
+it("상세에서 저장한 기록을 같은 ID로 바로 수정할 수 있다", async () => {
+  const target = bottle({ status: "open", remaining_ml: 700 });
+  await seedContext(target);
+  await db.product.put(row({ id: "p1", name: "합성 제품" }));
+  stubTastings(target.id);
+  const onCorrect = vi.fn();
+  renderWithQuery(<BottlePanel bottle={target} onCorrect={onCorrect} />);
+  await userEvent.type(screen.getByLabelText("시음 메모"), "바로 고칠 메모");
+  await userEvent.click(screen.getByRole("button", { name: "50ml" }));
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await userEvent.click(await screen.findByRole("button", { name: "방금 기록 수정" }));
+  expect(onCorrect).toHaveBeenCalledWith(
+    expect.objectContaining({
+      id: (await db.tasting_session.toArray())[0]?.id,
+      note: "바로 고칠 메모",
+    }),
+  );
+  expect(await db.tasting_session.count()).toBe(1);
+  expect((await db.bottle.get("b1"))?.remaining_ml).toBe(650);
 });

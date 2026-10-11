@@ -25,6 +25,15 @@ export function RatingStars({
         <span className="muted">({current === null ? "없음" : `${current} / ${MAX_RATING}`})</span>
       </legend>
       <div className="rating-stars-row">
+        <button
+          type="button"
+          className="btn-quiet"
+          aria-label="0점"
+          aria-pressed={current === 0}
+          onClick={() => onChange("0.0")}
+        >
+          0점
+        </button>
         {Array.from({ length: MAX_RATING }, (_, index) => {
           const star = index + 1;
           const fill =

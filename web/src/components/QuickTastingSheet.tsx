@@ -6,7 +6,7 @@ import { collectionApi } from "@/api/collection";
 import { productEdition, purchaseReference } from "@/components/productDisplay";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { useToast } from "@/components/Toast";
-import { formatDate, formatVolume, todayLocal } from "@/format";
+import { formatDate, formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
@@ -20,7 +20,8 @@ import {
 } from "@/sync/drafts";
 import { type DrinkableBottle, getDrinkableBottles } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
-import { lastTastingContext, recordTasting, rememberTastingContext } from "@/sync/tastingActions";
+import { recordTasting, rememberTastingContext } from "@/sync/tastingActions";
+import { emptyTastingValues, tastingDraftKey, useTastingDraft } from "@/sync/tastingDraft";
 import { markFormDirty } from "@/sync/update";
 import { captureWriteSession } from "@/sync/writeSession";
 import { useModalDialog } from "@/useModalDialog";
@@ -28,20 +29,6 @@ import { useModalDialog } from "@/useModalDialog";
 const SELECTION_FORM = "quick-tasting:selection";
 const EMPTY_SELECTION = { bottleId: "", skuId: "", productName: "", labelNo: 0, volumeLabel: "" };
 type BottleSelection = typeof EMPTY_SELECTION;
-
-function emptyValues(): TastingFieldValues {
-  const context = lastTastingContext();
-  return {
-    tastedOn: todayLocal(),
-    pouredMl: "",
-    rating: "",
-    nose: "",
-    palate: "",
-    finish: "",
-    place: context.place,
-    companions: context.companions,
-  };
-}
 
 function purchaseLabel(bottle: DrinkableBottle, purchaseIds: readonly string[]): string {
   return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"} · ${purchaseReference(bottle.purchaseId, purchaseIds)}`;
@@ -75,6 +62,7 @@ export function QuickTastingSheet({
   const [recovery, setRecovery] = useState(() => recoverableDraft(SELECTION_FORM));
   const [restoreSource, setRestoreSource] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [recorded, setRecorded] = useState<{ id: string; bottle: DrinkableBottle } | null>(null);
   const savingRef = useRef(false);
   const { state } = useSyncStatus();
   const offline = state === "offline" || !navigator.onLine;
@@ -129,7 +117,13 @@ export function QuickTastingSheet({
     const rows: (DrinkableBottle & { unopenedCount?: number })[] = [];
     for (const item of bottles ?? []) {
       if (scope === "sku" && item.skuId !== selection.skuId) continue;
-      if (query.trim() && !matchesQuery(bottleProductLabel(item), query)) continue;
+      if (
+        query.trim() &&
+        ![bottleProductLabel(item), ...(item.searchNames ?? [])].some((name) =>
+          matchesQuery(name, query),
+        )
+      )
+        continue;
       if (scope !== "sku" && item.status === "unopened") {
         const seen = counts.get(item.skuId) ?? 0;
         counts.set(item.skuId, seen + 1);
@@ -206,7 +200,79 @@ export function QuickTastingSheet({
             이 병 상세
           </button>
         ) : null}
-        {choosing ? (
+        {recorded ? (
+          <section aria-label="저장한 시음">
+            <output>
+              시음을 기기에 저장했습니다. 서버 반영 상태는 동기화 표시에서 확인하세요.
+            </output>
+            <p>
+              {bottleProductLabel(recorded.bottle)} · {formatVolume(recorded.bottle.volumeMl)} · #
+              {recorded.bottle.labelNo}
+            </p>
+            <div className="button-row">
+              {onSelectProduct ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onSelectProduct(recorded.bottle.productId, {
+                        skuId: recorded.bottle.skuId,
+                        bottleId: recorded.bottle.bottleId,
+                        tastingId: recorded.id,
+                      });
+                    }}
+                  >
+                    방금 기록 보기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onSelectProduct(recorded.bottle.productId, {
+                        skuId: recorded.bottle.skuId,
+                        bottleId: recorded.bottle.bottleId,
+                        tastingId: recorded.id,
+                        editTasting: true,
+                      });
+                    }}
+                  >
+                    방금 기록 수정
+                  </button>
+                </>
+              ) : null}
+              <button
+                type="button"
+                disabled={!selectedBottle}
+                onClick={() => {
+                  setRecorded(null);
+                  setCarry(null);
+                  setSelection({ ...selection });
+                }}
+              >
+                같은 병에 새 기록
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecorded(null);
+                  setCarry(null);
+                  setSelection(EMPTY_SELECTION);
+                  setScope("all");
+                }}
+              >
+                다른 술에 새 기록
+              </button>
+            </div>
+            <p className="muted">
+              새 기록은 별도의 시음으로 저장하고 따른 양을 다시 차감합니다. 잘못 입력했다면 방금
+              기록을 수정하세요.
+            </p>
+            {!selectedBottle ? (
+              <p>다 마신 병은 새 소비 기록 대신 방금 기록에서 내용을 수정할 수 있습니다.</p>
+            ) : null}
+          </section>
+        ) : choosing ? (
           <>
             {recovery ? (
               <button
@@ -294,6 +360,9 @@ export function QuickTastingSheet({
               setSaving(false);
             }}
             onClose={onClose}
+            onRecorded={(id) => {
+              if (selectedBottle) setRecorded({ id, bottle: selectedBottle });
+            }}
             onChooseAnother={(values, all) => {
               if (savingRef.current) return;
               setCarry(values);
@@ -321,6 +390,7 @@ function QuickTastingForm({
   finishSaving,
   onClose,
   onChooseAnother,
+  onRecorded,
 }: {
   selection: BottleSelection;
   purchaseIds: readonly string[];
@@ -335,16 +405,14 @@ function QuickTastingForm({
   finishSaving: () => void;
   onClose: () => void;
   onChooseAnother: (values: TastingFieldValues, all: boolean) => void;
+  onRecorded: (id: string) => void;
 }) {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [session] = useState(captureWriteSession);
-  const formId = `quick-tasting:bottle:${selection.bottleId}`;
-  const [empty] = useState(emptyValues);
-  const [values, setValues] = useDraftState<TastingFieldValues>(
-    formId,
-    () => initialValues ?? empty,
-  );
+  const formId = tastingDraftKey(selection.bottleId);
+  const [empty] = useState(emptyTastingValues);
+  const [values, setValues] = useTastingDraft(selection.bottleId, initialValues ?? empty);
   const [hadTargetDraft] = useState(
     () => initialValues !== null && JSON.stringify(values) !== JSON.stringify(initialValues),
   );
@@ -377,6 +445,7 @@ function QuickTastingForm({
     if (!bottle || !beginSaving()) return;
     setError(null);
     const submittedDraft = captureFormDraft(formId);
+    const legacyDraft = captureFormDraft(`tasting:${selection.bottleId}`);
     const submittedSelection = captureFormDraft(SELECTION_FORM);
     try {
       session.assertCurrent();
@@ -391,11 +460,12 @@ function QuickTastingForm({
           throw new Error(
             "이 병에는 더 이상 시음을 기록할 수 없습니다. 입력은 보관했습니다. 다른 병을 고르세요.",
           );
-        await recordTasting({
+        const id = await recordTasting({
           bottleId: selection.bottleId,
           tastedOn: values.tastedOn,
           pouredMl: values.pouredMl ? Number(values.pouredMl) : null,
           rating: values.rating || null,
+          note: values.note,
           nose: values.nose,
           palate: values.palate,
           finish: values.finish,
@@ -405,18 +475,21 @@ function QuickTastingForm({
         });
         session.assertCurrent();
         const updated = await session.store.bottle.get(selection.bottleId);
-        return updated?.status === "finished"
-          ? " (다 마셔 소진 처리)"
-          : current.status === "unopened"
-            ? " (개봉 처리)"
-            : "";
+        const label =
+          updated?.status === "finished"
+            ? " (다 마셔 소진 처리)"
+            : current.status === "unopened"
+              ? " (개봉 처리)"
+              : "";
+        return { id, label };
       });
       session.assertCurrent();
       rememberTastingContext({ place: values.place.trim(), companions: values.companions.trim() });
       const cleared = clearSubmittedDraft(submittedDraft);
+      if (cleared) clearSubmittedDraft(legacyDraft);
       const selectionCleared = clearSubmittedDraft(submittedSelection);
-      toast.show({ message: `${bottle.productName} 시음을 기록했습니다${effect}` });
-      if (cleared && selectionCleared) onClose();
+      toast.show({ message: `${bottle.productName} 시음을 기록했습니다${effect.label}` });
+      if (cleared && selectionCleared) onRecorded(effect.id);
     } catch (cause) {
       if (session.isCurrent())
         setError(cause instanceof Error ? cause.message : "기록하지 못했습니다");

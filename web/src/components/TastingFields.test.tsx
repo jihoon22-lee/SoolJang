@@ -7,6 +7,7 @@ import { TastingFields, type TastingFieldValues } from "@/components/TastingFiel
 const EMPTY: TastingFieldValues = {
   tastedOn: "2026-10-05",
   rating: "",
+  note: "",
   pouredMl: "",
   nose: "",
   palate: "",
@@ -30,6 +31,15 @@ function Harness({ remainingMl }: { remainingMl?: number | null }) {
 }
 
 describe("TastingFields", () => {
+  it("일반 메모와 0점을 상세 입력을 펼치지 않고 기록한다", async () => {
+    render(<Harness />);
+    await userEvent.type(screen.getByLabelText("시음 메모"), "함께 마시기 좋았다");
+    expect(screen.getByLabelText("시음 메모")).toHaveValue("함께 마시기 좋았다");
+    await userEvent.click(screen.getByRole("button", { name: "0점" }));
+    expect(screen.getByRole("button", { name: "0점" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "평점 없음" }));
+    expect(screen.getByRole("button", { name: "0점" })).toHaveAttribute("aria-pressed", "false");
+  });
   it("남은 양을 알면 한 번에 다 마신 양을 고를 수 있고 소진된다고 알린다", async () => {
     render(<Harness remainingMl={500} />);
 

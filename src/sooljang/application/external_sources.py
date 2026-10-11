@@ -866,6 +866,7 @@ async def _build_identity(session: AsyncSession, product: Product) -> ProductIde
     return ProductIdentity(
         name=product.name,
         name_en=product.name_en,
+        search_aliases=tuple(product.search_aliases or []),
         producer=producer,
         abv=product.abv,
         vintage=product.vintage,

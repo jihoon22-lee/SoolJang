@@ -1,0 +1,130 @@
+.interest-heading,
+.interest-row-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space);
+}
+.interest-heading h1,
+.interest-row-heading h2 {
+  margin: 0;
+}
+.interest-heading p,
+.interest-row-heading p {
+  margin: var(--space-xs) 0;
+}
+.interest-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 1fr 1fr;
+  gap: var(--space-sm);
+}
+.interest-editor {
+  scroll-margin-top: 5rem;
+}
+.interest-editor > h2,
+.interest-editor > p,
+.interest-editor > output,
+.interest-wide {
+  grid-column: 1 / -1;
+}
+.interest-editor fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+.interest-state {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.interest-list h2 {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+.interest-list li {
+  padding: var(--space) 0;
+}
+.interest-facts {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: var(--space-xs) 0;
+}
+.interest-note-preview {
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.interest-page button,
+.discovery-panel button {
+  min-height: 44px;
+}
+.interest-compare {
+  flex-direction: row;
+  align-items: center;
+}
+.interest-delete {
+  border-color: var(--text-muted);
+}
+.discovery-target {
+  padding: var(--space);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.discovery-target h3 {
+  margin-top: 0;
+}
+.discovery-target .field-grid,
+.discovery-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-sm);
+}
+.discovery-facts dt {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.discovery-facts dd {
+  margin: 0;
+}
+.discovery-panel .discovery-results {
+  grid-template-columns: 1fr;
+}
+.discovery-result .result-heading {
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: space-between;
+  align-items: baseline;
+}
+.discovery-result .result-heading h3 {
+  flex: 1;
+}
+.discovery-result .result-excerpt {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.discovery-provenance {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+@media (max-width: 600px) {
+  .interest-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .interest-toolbar > label:first-child {
+    grid-column: 1 / -1;
+  }
+  .interest-editor fieldset {
+    grid-template-columns: 1fr;
+  }
+  .interest-heading {
+    flex-wrap: wrap;
+  }
+  .interest-row-heading {
+    gap: var(--space-sm);
+  }
+}

@@ -41,3 +41,17 @@ it("시음·병·규격 누락도 명확히 거부하고 전체 보기는 유지
     expect(await resolveProductContext("p", context)).toBeNull();
   expect(await resolveProductContext("p", {})).toEqual({});
 });
+
+it("구매 근거만으로 규격을 복원하고 다른 병·계정·규격의 구매를 대신 보여주지 않는다", async () => {
+  expect(await resolveProductContext("p", { purchaseId: "purchase" })).toMatchObject({
+    skuId: "s",
+    purchaseId: "purchase",
+  });
+  await db.purchase.put(row("other", { sku_id: "s" }));
+  expect(await resolveProductContext("p", { purchaseId: "other", bottleId: "b" })).toBeNull();
+  expect(
+    await resolveProductContext("p", { purchaseId: "purchase", skuId: "different" }),
+  ).toBeNull();
+  await db.purchase.update("purchase", { user_id: "other-account" });
+  expect(await resolveProductContext("p", { purchaseId: "purchase" })).toBeNull();
+});

@@ -1,0 +1,966 @@
+{
+  "version": 1,
+  "scope": "synthetic name retrieval; not live provider recall or automatic identity matching",
+  "cases": [
+    {
+      "id": "01-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Ballantine’s 12 years old 700ml",
+      "query": "발렌타인 12년",
+      "match": true
+    },
+    {
+      "id": "01-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "발렌타인 12년 700ml",
+      "query": "Ballantine’s 12",
+      "match": true
+    },
+    {
+      "id": "01-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Ballantine’s 12",
+      "query": "발렌타인 12",
+      "match": true
+    },
+    {
+      "id": "01-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "BALLANTINE’S １２ 700ml",
+      "query": "발렌타인 12 700ml",
+      "match": true
+    },
+    {
+      "id": "01-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Ballantine’s 15 700ml",
+      "query": "발렌타인 12",
+      "match": false
+    },
+    {
+      "id": "01-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Ballantine’s 12 700ml",
+      "query": "발렌타인 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "01-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Ballantine’s 12 700ml",
+      "query": "발렌타인 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "01-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Ballantine’s 12",
+      "query": "발렌타인xyz 12",
+      "match": false
+    },
+    {
+      "id": "02-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Royal Salute 12 years old 700ml",
+      "query": "로얄살루트 12년",
+      "match": true
+    },
+    {
+      "id": "02-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "로얄살루트 12년 700ml",
+      "query": "Royal Salute 12",
+      "match": true
+    },
+    {
+      "id": "02-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Royal Salute 12",
+      "query": "로얄살루트 12",
+      "match": true
+    },
+    {
+      "id": "02-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "ROYAL SALUTE １２ 700ml",
+      "query": "로얄살루트 12 700ml",
+      "match": true
+    },
+    {
+      "id": "02-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Royal Salute 15 700ml",
+      "query": "로얄살루트 12",
+      "match": false
+    },
+    {
+      "id": "02-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Royal Salute 12 700ml",
+      "query": "로얄살루트 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "02-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Royal Salute 12 700ml",
+      "query": "로얄살루트 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "02-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Royal Salute 12",
+      "query": "로얄살루트xyz 12",
+      "match": false
+    },
+    {
+      "id": "03-ko-to-en",
+      "split": "holdout",
+      "kind": "ko-to-en",
+      "name": "Chivas Regal 12 years old 700ml",
+      "query": "시바스 리갈 12년",
+      "match": true
+    },
+    {
+      "id": "03-en-to-ko",
+      "split": "holdout",
+      "kind": "en-to-ko",
+      "name": "시바스 리갈 12년 700ml",
+      "query": "Chivas Regal 12",
+      "match": true
+    },
+    {
+      "id": "03-spacing",
+      "split": "holdout",
+      "kind": "spacing",
+      "name": "Chivas Regal 12",
+      "query": "시바스리갈 12",
+      "match": true
+    },
+    {
+      "id": "03-unicode",
+      "split": "holdout",
+      "kind": "unicode",
+      "name": "CHIVAS REGAL １２ 700ml",
+      "query": "시바스 리갈 12 700ml",
+      "match": true
+    },
+    {
+      "id": "03-edition-negative",
+      "split": "holdout",
+      "kind": "edition-negative",
+      "name": "Chivas Regal 15 700ml",
+      "query": "시바스 리갈 12",
+      "match": false
+    },
+    {
+      "id": "03-volume-negative",
+      "split": "holdout",
+      "kind": "volume-negative",
+      "name": "Chivas Regal 12 700ml",
+      "query": "시바스 리갈 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "03-set-negative",
+      "split": "holdout",
+      "kind": "set-negative",
+      "name": "Chivas Regal 12 700ml",
+      "query": "시바스 리갈 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "03-unknown-typo",
+      "split": "holdout",
+      "kind": "unknown-typo",
+      "name": "Chivas Regal 12",
+      "query": "시바스 리갈xyz 12",
+      "match": false
+    },
+    {
+      "id": "04-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "The Glenlivet 12 years old 700ml",
+      "query": "글렌리벳 12년",
+      "match": true
+    },
+    {
+      "id": "04-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "글렌리벳 12년 700ml",
+      "query": "The Glenlivet 12",
+      "match": true
+    },
+    {
+      "id": "04-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "The Glenlivet 12",
+      "query": "글렌리벳 12",
+      "match": true
+    },
+    {
+      "id": "04-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "THE GLENLIVET １２ 700ml",
+      "query": "글렌리벳 12 700ml",
+      "match": true
+    },
+    {
+      "id": "04-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "The Glenlivet 15 700ml",
+      "query": "글렌리벳 12",
+      "match": false
+    },
+    {
+      "id": "04-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "The Glenlivet 12 700ml",
+      "query": "글렌리벳 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "04-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "The Glenlivet 12 700ml",
+      "query": "글렌리벳 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "04-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "The Glenlivet 12",
+      "query": "글렌리벳xyz 12",
+      "match": false
+    },
+    {
+      "id": "05-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Aberlour 12 years old 700ml",
+      "query": "아벨라워 12년",
+      "match": true
+    },
+    {
+      "id": "05-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "아벨라워 12년 700ml",
+      "query": "Aberlour 12",
+      "match": true
+    },
+    {
+      "id": "05-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Aberlour 12",
+      "query": "아벨라워 12",
+      "match": true
+    },
+    {
+      "id": "05-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "ABERLOUR １２ 700ml",
+      "query": "아벨라워 12 700ml",
+      "match": true
+    },
+    {
+      "id": "05-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Aberlour 15 700ml",
+      "query": "아벨라워 12",
+      "match": false
+    },
+    {
+      "id": "05-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Aberlour 12 700ml",
+      "query": "아벨라워 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "05-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Aberlour 12 700ml",
+      "query": "아벨라워 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "05-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Aberlour 12",
+      "query": "아벨라워xyz 12",
+      "match": false
+    },
+    {
+      "id": "06-ko-to-en",
+      "split": "holdout",
+      "kind": "ko-to-en",
+      "name": "Jameson 12 years old 700ml",
+      "query": "제임슨 12년",
+      "match": true
+    },
+    {
+      "id": "06-en-to-ko",
+      "split": "holdout",
+      "kind": "en-to-ko",
+      "name": "제임슨 12년 700ml",
+      "query": "Jameson 12",
+      "match": true
+    },
+    {
+      "id": "06-spacing",
+      "split": "holdout",
+      "kind": "spacing",
+      "name": "Jameson 12",
+      "query": "제임슨 12",
+      "match": true
+    },
+    {
+      "id": "06-unicode",
+      "split": "holdout",
+      "kind": "unicode",
+      "name": "JAMESON １２ 700ml",
+      "query": "제임슨 12 700ml",
+      "match": true
+    },
+    {
+      "id": "06-edition-negative",
+      "split": "holdout",
+      "kind": "edition-negative",
+      "name": "Jameson 15 700ml",
+      "query": "제임슨 12",
+      "match": false
+    },
+    {
+      "id": "06-volume-negative",
+      "split": "holdout",
+      "kind": "volume-negative",
+      "name": "Jameson 12 700ml",
+      "query": "제임슨 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "06-set-negative",
+      "split": "holdout",
+      "kind": "set-negative",
+      "name": "Jameson 12 700ml",
+      "query": "제임슨 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "06-unknown-typo",
+      "split": "holdout",
+      "kind": "unknown-typo",
+      "name": "Jameson 12",
+      "query": "제임슨xyz 12",
+      "match": false
+    },
+    {
+      "id": "07-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Redbreast 12 years old 700ml",
+      "query": "레드브레스트 12년",
+      "match": true
+    },
+    {
+      "id": "07-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "레드브레스트 12년 700ml",
+      "query": "Redbreast 12",
+      "match": true
+    },
+    {
+      "id": "07-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Redbreast 12",
+      "query": "레드브레스트 12",
+      "match": true
+    },
+    {
+      "id": "07-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "REDBREAST １２ 700ml",
+      "query": "레드브레스트 12 700ml",
+      "match": true
+    },
+    {
+      "id": "07-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Redbreast 15 700ml",
+      "query": "레드브레스트 12",
+      "match": false
+    },
+    {
+      "id": "07-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Redbreast 12 700ml",
+      "query": "레드브레스트 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "07-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Redbreast 12 700ml",
+      "query": "레드브레스트 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "07-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Redbreast 12",
+      "query": "레드브레스트xyz 12",
+      "match": false
+    },
+    {
+      "id": "08-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Beefeater 12 years old 700ml",
+      "query": "비피터 12년",
+      "match": true
+    },
+    {
+      "id": "08-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "비피터 12년 700ml",
+      "query": "Beefeater 12",
+      "match": true
+    },
+    {
+      "id": "08-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Beefeater 12",
+      "query": "비피터 12",
+      "match": true
+    },
+    {
+      "id": "08-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "BEEFEATER １２ 700ml",
+      "query": "비피터 12 700ml",
+      "match": true
+    },
+    {
+      "id": "08-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Beefeater 15 700ml",
+      "query": "비피터 12",
+      "match": false
+    },
+    {
+      "id": "08-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Beefeater 12 700ml",
+      "query": "비피터 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "08-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Beefeater 12 700ml",
+      "query": "비피터 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "08-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Beefeater 12",
+      "query": "비피터xyz 12",
+      "match": false
+    },
+    {
+      "id": "09-ko-to-en",
+      "split": "holdout",
+      "kind": "ko-to-en",
+      "name": "Monkey 47 12 years old 700ml",
+      "query": "몽키47 12년",
+      "match": true
+    },
+    {
+      "id": "09-en-to-ko",
+      "split": "holdout",
+      "kind": "en-to-ko",
+      "name": "몽키47 12년 700ml",
+      "query": "Monkey 47 12",
+      "match": true
+    },
+    {
+      "id": "09-spacing",
+      "split": "holdout",
+      "kind": "spacing",
+      "name": "Monkey 47 12",
+      "query": "몽키47 12",
+      "match": true
+    },
+    {
+      "id": "09-unicode",
+      "split": "holdout",
+      "kind": "unicode",
+      "name": "MONKEY 47 １２ 700ml",
+      "query": "몽키47 12 700ml",
+      "match": true
+    },
+    {
+      "id": "09-edition-negative",
+      "split": "holdout",
+      "kind": "edition-negative",
+      "name": "Monkey 47 15 700ml",
+      "query": "몽키47 12",
+      "match": false
+    },
+    {
+      "id": "09-volume-negative",
+      "split": "holdout",
+      "kind": "volume-negative",
+      "name": "Monkey 47 12 700ml",
+      "query": "몽키47 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "09-set-negative",
+      "split": "holdout",
+      "kind": "set-negative",
+      "name": "Monkey 47 12 700ml",
+      "query": "몽키47 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "09-unknown-typo",
+      "split": "holdout",
+      "kind": "unknown-typo",
+      "name": "Monkey 47 12",
+      "query": "몽키47xyz 12",
+      "match": false
+    },
+    {
+      "id": "10-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Malibu 12 years old 700ml",
+      "query": "말리부 12년",
+      "match": true
+    },
+    {
+      "id": "10-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "말리부 12년 700ml",
+      "query": "Malibu 12",
+      "match": true
+    },
+    {
+      "id": "10-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Malibu 12",
+      "query": "말리부 12",
+      "match": true
+    },
+    {
+      "id": "10-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "MALIBU １２ 700ml",
+      "query": "말리부 12 700ml",
+      "match": true
+    },
+    {
+      "id": "10-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Malibu 15 700ml",
+      "query": "말리부 12",
+      "match": false
+    },
+    {
+      "id": "10-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Malibu 12 700ml",
+      "query": "말리부 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "10-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Malibu 12 700ml",
+      "query": "말리부 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "10-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Malibu 12",
+      "query": "말리부xyz 12",
+      "match": false
+    },
+    {
+      "id": "11-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Havana Club 12 years old 700ml",
+      "query": "하바나 클럽 12년",
+      "match": true
+    },
+    {
+      "id": "11-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "하바나 클럽 12년 700ml",
+      "query": "Havana Club 12",
+      "match": true
+    },
+    {
+      "id": "11-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Havana Club 12",
+      "query": "하바나클럽 12",
+      "match": true
+    },
+    {
+      "id": "11-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "HAVANA CLUB １２ 700ml",
+      "query": "하바나 클럽 12 700ml",
+      "match": true
+    },
+    {
+      "id": "11-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Havana Club 15 700ml",
+      "query": "하바나 클럽 12",
+      "match": false
+    },
+    {
+      "id": "11-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Havana Club 12 700ml",
+      "query": "하바나 클럽 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "11-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Havana Club 12 700ml",
+      "query": "하바나 클럽 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "11-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Havana Club 12",
+      "query": "하바나 클럽xyz 12",
+      "match": false
+    },
+    {
+      "id": "12-ko-to-en",
+      "split": "holdout",
+      "kind": "ko-to-en",
+      "name": "Kahlúa 12 years old 700ml",
+      "query": "깔루아 12년",
+      "match": true
+    },
+    {
+      "id": "12-en-to-ko",
+      "split": "holdout",
+      "kind": "en-to-ko",
+      "name": "깔루아 12년 700ml",
+      "query": "Kahlúa 12",
+      "match": true
+    },
+    {
+      "id": "12-spacing",
+      "split": "holdout",
+      "kind": "spacing",
+      "name": "Kahlúa 12",
+      "query": "깔루아 12",
+      "match": true
+    },
+    {
+      "id": "12-unicode",
+      "split": "holdout",
+      "kind": "unicode",
+      "name": "KAHLÚA １２ 700ml",
+      "query": "깔루아 12 700ml",
+      "match": true
+    },
+    {
+      "id": "12-edition-negative",
+      "split": "holdout",
+      "kind": "edition-negative",
+      "name": "Kahlúa 15 700ml",
+      "query": "깔루아 12",
+      "match": false
+    },
+    {
+      "id": "12-volume-negative",
+      "split": "holdout",
+      "kind": "volume-negative",
+      "name": "Kahlúa 12 700ml",
+      "query": "깔루아 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "12-set-negative",
+      "split": "holdout",
+      "kind": "set-negative",
+      "name": "Kahlúa 12 700ml",
+      "query": "깔루아 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "12-unknown-typo",
+      "split": "holdout",
+      "kind": "unknown-typo",
+      "name": "Kahlúa 12",
+      "query": "깔루아xyz 12",
+      "match": false
+    },
+    {
+      "id": "13-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Martell 12 years old 700ml",
+      "query": "마르텔 12년",
+      "match": true
+    },
+    {
+      "id": "13-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "마르텔 12년 700ml",
+      "query": "Martell 12",
+      "match": true
+    },
+    {
+      "id": "13-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Martell 12",
+      "query": "마르텔 12",
+      "match": true
+    },
+    {
+      "id": "13-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "MARTELL １２ 700ml",
+      "query": "마르텔 12 700ml",
+      "match": true
+    },
+    {
+      "id": "13-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Martell 15 700ml",
+      "query": "마르텔 12",
+      "match": false
+    },
+    {
+      "id": "13-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Martell 12 700ml",
+      "query": "마르텔 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "13-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Martell 12 700ml",
+      "query": "마르텔 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "13-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Martell 12",
+      "query": "마르텔xyz 12",
+      "match": false
+    },
+    {
+      "id": "14-ko-to-en",
+      "split": "development",
+      "kind": "ko-to-en",
+      "name": "Perrier-Jouët 12 years old 700ml",
+      "query": "페리에 주에 12년",
+      "match": true
+    },
+    {
+      "id": "14-en-to-ko",
+      "split": "development",
+      "kind": "en-to-ko",
+      "name": "페리에 주에 12년 700ml",
+      "query": "Perrier-Jouët 12",
+      "match": true
+    },
+    {
+      "id": "14-spacing",
+      "split": "development",
+      "kind": "spacing",
+      "name": "Perrier-Jouët 12",
+      "query": "페리에주에 12",
+      "match": true
+    },
+    {
+      "id": "14-unicode",
+      "split": "development",
+      "kind": "unicode",
+      "name": "PERRIER-JOUËT １２ 700ml",
+      "query": "페리에 주에 12 700ml",
+      "match": true
+    },
+    {
+      "id": "14-edition-negative",
+      "split": "development",
+      "kind": "edition-negative",
+      "name": "Perrier-Jouët 15 700ml",
+      "query": "페리에 주에 12",
+      "match": false
+    },
+    {
+      "id": "14-volume-negative",
+      "split": "development",
+      "kind": "volume-negative",
+      "name": "Perrier-Jouët 12 700ml",
+      "query": "페리에 주에 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "14-set-negative",
+      "split": "development",
+      "kind": "set-negative",
+      "name": "Perrier-Jouët 12 700ml",
+      "query": "페리에 주에 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "14-unknown-typo",
+      "split": "development",
+      "kind": "unknown-typo",
+      "name": "Perrier-Jouët 12",
+      "query": "페리에 주에xyz 12",
+      "match": false
+    },
+    {
+      "id": "15-ko-to-en",
+      "split": "holdout",
+      "kind": "ko-to-en",
+      "name": "GlenAllachie 12 years old 700ml",
+      "query": "글렌알라키 12년",
+      "match": true
+    },
+    {
+      "id": "15-en-to-ko",
+      "split": "holdout",
+      "kind": "en-to-ko",
+      "name": "글렌알라키 12년 700ml",
+      "query": "GlenAllachie 12",
+      "match": true
+    },
+    {
+      "id": "15-spacing",
+      "split": "holdout",
+      "kind": "spacing",
+      "name": "GlenAllachie 12",
+      "query": "글렌알라키 12",
+      "match": true
+    },
+    {
+      "id": "15-unicode",
+      "split": "holdout",
+      "kind": "unicode",
+      "name": "GLENALLACHIE １２ 700ml",
+      "query": "글렌알라키 12 700ml",
+      "match": true
+    },
+    {
+      "id": "15-edition-negative",
+      "split": "holdout",
+      "kind": "edition-negative",
+      "name": "GlenAllachie 15 700ml",
+      "query": "글렌알라키 12",
+      "match": false
+    },
+    {
+      "id": "15-volume-negative",
+      "split": "holdout",
+      "kind": "volume-negative",
+      "name": "GlenAllachie 12 700ml",
+      "query": "글렌알라키 12 1000ml",
+      "match": false
+    },
+    {
+      "id": "15-set-negative",
+      "split": "holdout",
+      "kind": "set-negative",
+      "name": "GlenAllachie 12 700ml",
+      "query": "글렌알라키 12 선물세트",
+      "match": false
+    },
+    {
+      "id": "15-unknown-typo",
+      "split": "holdout",
+      "kind": "unknown-typo",
+      "name": "GlenAllachie 12",
+      "query": "글렌알라키xyz 12",
+      "match": false
+    }
+  ]
+}

@@ -54,8 +54,11 @@ export interface SplitPart {
 interface ProductDetailProps {
   matchingPurchaseIds?: readonly string[] | undefined;
   selectedSkuId?: string | undefined;
+  selectedPurchaseId?: string | undefined;
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
+  editTasting?: boolean | undefined;
+  onTastingDeleted?: ((item: ContextualTasting) => void) | undefined;
   onSelectContext?: ((context: ProductContext) => void) | undefined;
   onTastingCorrected?: ((tasting: ContextualTasting) => void) | undefined;
   onCorrectionSavingChange?: ((saving: boolean) => void) | undefined;
@@ -115,8 +118,11 @@ export function ProductDetail({
   bottles,
   matchingPurchaseIds,
   selectedSkuId,
+  selectedPurchaseId,
   selectedBottleId,
   selectedTastingId,
+  editTasting,
+  onTastingDeleted,
   onSelectContext,
   onTastingCorrected,
   onCorrectionSavingChange,
@@ -149,11 +155,13 @@ export function ProductDetail({
     : bottles;
   const [localContext, setLocalContext] = useState<ProductContext>({});
   const contextSkuId = selectedSkuId ?? localContext.skuId;
+  const contextPurchaseId = selectedPurchaseId ?? localContext.purchaseId;
   const contextBottleId = selectedBottleId ?? localContext.bottleId;
   const contextTastingId = selectedTastingId ?? localContext.tastingId;
   const selectedBottle = bottles.find((bottle) => bottle.id === contextBottleId);
   const activeSkuId =
     contextSkuId ??
+    purchases.find((purchase) => purchase.id === contextPurchaseId)?.sku_id ??
     purchases.find((purchase) => purchase.id === selectedBottle?.purchase_id)?.sku_id;
   const selectedSku = product.skus.find((sku) => sku.id === activeSkuId);
   const selectedSummary = productSkuSummaries(product)?.find(
@@ -199,6 +207,9 @@ export function ProductDetail({
   const purchaseCorrectionRef = useRef<HTMLDivElement>(null);
   const tastingCorrectionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (editTasting && contextTastingId) setCorrectionTastingId(contextTastingId);
+  }, [editTasting, contextTastingId]);
+  useEffect(() => {
     if (contextTastingId) setHistoryOpen(true);
   }, [contextTastingId]);
   useEffect(() => {
@@ -207,6 +218,23 @@ export function ProductDetail({
   useEffect(() => {
     if (correctionTastingId) tastingCorrectionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [correctionTastingId]);
+
+  const correctTasting = (tasting: ContextualTasting) => {
+    if (!savingCorrection) setCorrectionTastingId(tasting.id);
+  };
+  const tastingDeleted = (tasting: ContextualTasting) => {
+    if (correctionTastingId === tasting.id) setCorrectionTastingId(null);
+    if (onTastingDeleted) onTastingDeleted(tasting);
+    else if (contextTastingId === tasting.id) {
+      const next = {
+        skuId: contextSkuId ?? tasting.sku_id,
+        purchaseId: contextPurchaseId,
+        bottleId: contextBottleId ?? tasting.bottle_id ?? undefined,
+      };
+      if (onSelectContext) onSelectContext(next);
+      else setLocalContext(next);
+    }
+  };
 
   return (
     <article aria-labelledby="detail-heading">
@@ -400,6 +428,7 @@ export function ProductDetail({
         key={`purchase:${product.id}`}
         onSavingChange={setSavingPurchase}
         selectedSkuId={activeSkuId}
+        selectedPurchaseId={contextPurchaseId}
         product={product}
         purchases={purchases}
         offline={offline}
@@ -454,6 +483,9 @@ export function ProductDetail({
           offline={offline}
           selectedSkuId={activeSkuId}
           selectedBottleId={contextBottleId}
+          selectedTastingId={contextTastingId}
+          onCorrectTasting={correctTasting}
+          onTastingDeleted={tastingDeleted}
           onSelectContext={selectContext}
           onSavingChange={setSavingBottle}
         />
@@ -473,9 +505,8 @@ export function ProductDetail({
             selectedTastingId={contextTastingId}
             offline={offline}
             correctionPending={savingCorrection}
-            onCorrect={(tasting) => {
-              if (!savingCorrection) setCorrectionTastingId(tasting.id);
-            }}
+            onCorrect={correctTasting}
+            onDeleted={tastingDeleted}
             onSelectTasting={(tasting) =>
               selectContext({
                 skuId: tasting.sku_id,
@@ -578,6 +609,7 @@ function PurchaseSection({
   product,
   matchingPurchaseIds,
   selectedSkuId,
+  selectedPurchaseId,
   purchases,
   offline,
   onAddPurchase,
@@ -602,6 +634,7 @@ function PurchaseSection({
   product: Product;
   matchingPurchaseIds?: readonly string[] | undefined;
   selectedSkuId?: string | undefined;
+  selectedPurchaseId?: string | undefined;
   purchases: Purchase[];
   offline: boolean;
   onAddPurchase:
@@ -625,6 +658,15 @@ function PurchaseSection({
       (!matchingPurchaseIds || matchingPurchaseIds.includes(purchase.id)),
   );
   const purchaseIds = purchases.map((purchase) => purchase.id);
+  const hasSelectedPurchase = visiblePurchases.some(
+    (purchase) => purchase.id === selectedPurchaseId,
+  );
+  const selectedPurchaseRef = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    if (!selectedPurchaseId || !hasSelectedPurchase) return;
+    selectedPurchaseRef.current?.focus({ preventScroll: true });
+    selectedPurchaseRef.current?.scrollIntoView?.({ block: "center" });
+  }, [selectedPurchaseId, hasSelectedPurchase]);
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [splittingId, setSplittingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -763,8 +805,14 @@ function PurchaseSection({
             <tbody>
               {visiblePurchases.map((purchase) => (
                 <Fragment key={purchase.id}>
-                  <tr>
+                  <tr
+                    ref={purchase.id === selectedPurchaseId ? selectedPurchaseRef : undefined}
+                    tabIndex={purchase.id === selectedPurchaseId ? -1 : undefined}
+                    aria-current={purchase.id === selectedPurchaseId ? "true" : undefined}
+                    className={purchase.id === selectedPurchaseId ? "sku-selected" : undefined}
+                  >
                     <td className="purchase-identity" data-label="규격 · 판본 · 구매 건">
+                      {purchase.id === selectedPurchaseId ? <strong>선택한 구매</strong> : null}
                       <span>
                         {formatVolume(
                           purchase.volume_ml ??

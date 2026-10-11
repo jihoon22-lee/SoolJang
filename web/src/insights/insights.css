@@ -1,0 +1,60 @@
+.insights-dashboard {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.insights-dashboard .card {
+  min-width: 0;
+}
+.insight-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+.insight-filters label {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.insight-filters input,
+.insight-filters select {
+  width: 100%;
+  min-height: 44px;
+}
+.insight-scope {
+  margin-block: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.insights-dashboard select {
+  max-width: 100%;
+}
+.insight-evidence {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.insight-evidence li {
+  display: grid;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.insight-evidence button {
+  text-align: left;
+  min-height: 44px;
+}
+.insight-evidence .muted {
+  font-size: 0.85rem;
+}
+.insight-rating-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 1.25rem;
+}
+.insights-dashboard details > summary {
+  cursor: pointer;
+  padding-block: 0.6rem;
+}
