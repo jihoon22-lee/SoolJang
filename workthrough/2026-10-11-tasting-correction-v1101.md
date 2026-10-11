@@ -5,7 +5,7 @@
 - 사용자 승인: 결함 수정·문서 정리·v1.10.1 버전·태그/릴리스·운영 배포.
 - 시작 main `9d45ca0fe72f68600278a2d4180b5177083c60de`, clean·원격 동일·열린 PR 없음.
 - 브랜치 `feature/tasting-correction-v1101`; 연계 수용은 plan의 Q02/QS02·03·05·17·19·20.
-- 현재는 구현·검증 단계다. 운영은 v1.10.0 / `0021_quality_aliases`이며 배포 완료를 뜻하지 않는다.
+- v1.10.1 / `0021_quality_aliases` 릴리스·운영 배포 완료. 태그·이미지·운영 기준은 `451a86811d9cd7685610be4213ef4145453ef59f`다.
 
 ## 결함과 재현
 
@@ -17,7 +17,7 @@
 
 ## 구현·검증 기록
 
-실제 완료한 검사, 브라우저의 관찰 결과, CI/태그/이미지/운영 기준은 아래에 순차 기록한다.
+실제 완료한 검사, 브라우저의 관찰 결과, CI/태그/이미지/운영 기준을 아래에 기록했다.
 운영 DB는 테스트나 합성 입력에 사용하지 않는다. 스키마·외부 소스·키 변경은 이번 범위가 아니다.
 
 ### 동작 변경
@@ -62,13 +62,13 @@
 Ruff check·format(334 files)·ty·버전 일치·diff 공백 검사 통과. 백엔드 동작은 변경하지 않았다.
 첫 전체 웹 검사에서 기존 BottlePanel.pagination의 200건 목록 테스트가 5초 시간 제한에 걸렸다.
 동일 코드의 해당 10건 검사와 전체 재검사에서는 통과했다. 시간 제한·커버리지 기준은 변경하지 않았다.
-후속 경계 수정마다 관련 검사 후 최종 전체 웹 검사를 다시 수행한다. 원격 전체 Python·migration·
-컨테이너 검증은 필수 Quality/Release CI 결과로 구분해 기록한다.
+후속 경계 수정마다 관련 검사 후 최종 전체 웹 검사를 다시 수행했다. 원격 전체 Python·migration·
+컨테이너 검증은 아래 Quality/Release CI 결과로 구분했다.
 
 ### 릴리스·배포 준비
 
 별도 Windows DPAPI 복구 매체의 현재 마스터 키 일치를 평문 파일 없이 메모리에서 확인했다.
-최종 merge SHA의 태그 전 새 백업·빈 격리 복원과 전환 직전 새 백업·복원을 각각 수행한다.
+최종 merge SHA의 태그 전 새 백업·빈 격리 복원과 전환 직전 새 백업·복원을 각각 수행했다.
 배포 도구는 운영 v1.10.0/schema0021, 버전 외 backend/의존성 무변경, 정확한 Release SHA와
 이미지를 확인하고 `.env`의 버전만 바꾼다. migration은 실행하지 않는다. 같은 schema의
 이전 이미지 복귀는 최신 DB/uploads를 보존하며 오래된 백업으로 운영 데이터를 덮지 않는다.
@@ -78,4 +78,38 @@ branches83.04% / functions85.80% / lines90.59%, typecheck·빌드·PWA 생성 �
 기존 Biome 권고 18개와 500kB 초과 chunk 안내는 남아 있으며 이번 회귀 실패가 아니다.
 최종 독립 재검토에서 두 지적 해소와 추가 blocker 없음(읽기 검토)을 확인했다.
 운영 PWA 전환 비교용 비로그인 Chromium에서 기존 1.10.0의 SW 제어·캐시와
-`index-ClKtvmvf.js`를 확인해 두었다. 배포 후 새 자산 전환은 별도로 기록한다.
+`index-ClKtvmvf.js`를 확인해 두었다. 배포 후 새 자산 전환도 아래에 기록했다.
+
+## 최종 릴리스·운영 결과
+
+- [PR #170](https://github.com/jihoon22-lee/SoolJang/pull/170): head `98ebeaf5c16e9298d6b9a9ebeb3afb8b6a72a68c`, [Quality 38148322426](https://github.com/jihoon22-lee/SoolJang/actions/runs/38148322426) 필수 job 성공과 리뷰 재확인 후 merge commit `451a86811d9cd7685610be4213ef4145453ef59f`로 병합했다.
+- PR·태그의 Python 검사는 각각 1,708 passed / 31 opt-in skipped, coverage92.26%였다. 웹은 각각 1,278 passed이며 검사 기준을 바꾸지 않았다.
+- 같은 merge에 `v1.10.1` 태그를 게시했다. [Release CI 38149372156](https://github.com/jihoon22-lee/SoolJang/actions/runs/38149372156) 성공 후 [정식 Release](https://github.com/jihoon22-lee/SoolJang/releases/tag/v1.10.1)와 API/웹 이미지를 확인했다.
+- 태그 전 백업 `sooljang-20261011T145811320772Z-5111799c`와 전환 직전 백업 `sooljang-20261011T151955059490Z-74729486`를 각각 생성·검증하고 빈 격리 DB/uploads에 복원했다. 쿠키 로그인·인증 조회 뒤 임시 변경을 rollback했고 원본 전체 열 해시가 일치했다.
+- 새 API 이미지의 READ ONLY 조회 후 운영 DB 전체 해시가 그대로임을 확인한 다음 쓰기를 재개했다. schema0021 유지, migration0회, 기존 DB 컨테이너·DB/uploads 볼륨 유지. `.env`의 버전만 1.10.0→1.10.1로 변경했다.
+
+| 항목 | 실제 확인 |
+|---|---|
+| 태그/OCI revision | v1.10.1 / `451a86811d9cd7685610be4213ef4145453ef59f` |
+| API image digest | `ghcr.io/jihoon22-lee/sooljang-api@sha256:232e71c158c7cd72cb3dd804dd83e60bcdd968178ffff35c2ca6d07baabc8c6d` |
+| 웹 image digest | `ghcr.io/jihoon22-lee/sooljang-web@sha256:34496068b876bec6e06bc6b4b6ca2286bfd5eb350e7e687c098a48bbe4629743` |
+| API 컨테이너 | `bb8a029c75ca`, 2026-10-12 00:20:20 KST, healthy·restart0 |
+| 웹 컨테이너 | `3fc4aaf1cc2c`, 2026-10-12 00:20:26 KST, healthy·restart0 |
+| DB | `3a44186161ed`, identity/start/restart·volume 보존 |
+| 시작 후 로그 | API·웹의 ERROR/Traceback 표시0 |
+| HTTP/자산 | localhost/HTTPS live·ready,1.10.1/schema0021/worker ready; 익명 products401; HTML/JS/SW/manifest 이미지 파일 일치 |
+| PWA | 기존 `index-ClKtvmvf.js` → 새 `index-B_WPZb_g.js`; SW 설치 완료 뒤 origin 닫기/재진입, controller·로그인 화면·미처리 JS 오류0 확인. 캐시 삭제 없음 |
+
+운영 쓰기·사용자 비밀번호를 이용한 편집은 하지 않았다. 실제 쿠키 인증은 격리 복원본에서,
+운영 조회는 READ ONLY 트랜잭션에서 검증했다. 보존 해시 비교는 writers 재개 전을 경계로 한다.
+이후 정상 사용/worker 변경을 데이터 손실로 해석하지 않는다. 이 문서 정리 커밋은 운영 이미지에
+다시 배포하지 않는다. 실제 사용자 피해 조사와 물리 휴대전화 검증은 미실행이다.
+
+배포용 로컬 production 번들도 Vite preview4175에서 합성 API8212와 연결해 직접 사용했다.
+PWA precache/SW 준비 후 날짜·150ml 고급 초안을 남기고 평점·메모만 저장했을 때, 실제 서버의
+원래 날짜·100ml·병·650ml 잔량을 보존했다. 이는 개발 서버 검사와 별도이며 운영 사용자 기록은 쓰지 않았다.
+
+PWA 첫 즉시 재진입은 worker 설치/활성화 전에 이루어져 이전 자산이었다. 설치 완료 후 앱
+origin을 닫았다가 다시 진입해 새 자산과 공개 이미지 일치를 확인했다. 즉시 새로고침만으로
+항상 업데이트된다고 주장하지 않는다. 두 복원본 모두 인증 조회19개·첨부0개였으며 schema를
+포함한44테이블(업무43)의 모든 열을 비교했다. 별도 DPAPI 키도 이번 실행에서 대조했다.
