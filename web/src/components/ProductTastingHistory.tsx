@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { tastingsApi } from "@/api/client";
 import type { ContextualTasting, TastingFilters } from "@/api/types";
 import { productEdition, purchaseReference } from "@/components/productDisplay";
+import { TastingRow } from "@/components/TastingRow";
 import { formatVolume } from "@/format";
 import { databaseIdentity } from "@/sync/db";
 import { useDraftState } from "@/sync/drafts";
@@ -18,6 +19,7 @@ export interface ProductTastingHistoryProps {
   offline: boolean;
   correctionPending?: boolean | undefined;
   onCorrect: (tasting: ContextualTasting) => void;
+  onDeleted?: ((tasting: ContextualTasting) => void) | undefined;
   onSelectTasting?: ((tasting: ContextualTasting) => void) | undefined;
 }
 
@@ -44,6 +46,7 @@ export function ProductTastingHistory({
   offline,
   correctionPending = false,
   onCorrect,
+  onDeleted,
   onSelectTasting,
 }: ProductTastingHistoryProps) {
   const [session] = useState(captureWriteSession);
@@ -326,32 +329,15 @@ export function ProductTastingHistory({
             tabIndex={item.id === selectedTastingId ? -1 : undefined}
             aria-current={item.id === selectedTastingId ? "true" : undefined}
           >
-            <p>{contextLabel(item, purchaseIds)}</p>
-            <p>
-              {item.tasted_on} · {item.rating === null ? "평점 없음" : `${item.rating}점`}
-              {item.poured_ml === null ? "" : ` · ${item.poured_ml}ml`}
-            </p>
-            {item.nose ? <p>향: {item.nose}</p> : null}
-            {item.palate ? <p>맛: {item.palate}</p> : null}
-            {item.finish ? <p>피니시: {item.finish}</p> : null}
-            {item.note ? <p>메모: {item.note}</p> : null}
-            {item.place || item.companions ? (
-              <p>{[item.place, item.companions].filter(Boolean).join(" · ")}</p>
-            ) : null}
-            <div className="button-row">
-              {onSelectTasting ? (
-                <button
-                  type="button"
-                  disabled={correctionPending}
-                  onClick={() => onSelectTasting(item)}
-                >
-                  이 시음의 병으로 이동
-                </button>
-              ) : null}
-              <button type="button" disabled={correctionPending} onClick={() => onCorrect(item)}>
-                시음 정정
-              </button>
-            </div>
+            <TastingRow
+              item={item}
+              offline={offline}
+              disabled={correctionPending}
+              contextLabel={contextLabel(item, purchaseIds)}
+              onCorrect={onCorrect}
+              onSelectTasting={onSelectTasting}
+              onDeleted={onDeleted}
+            />
           </li>
         ))}
       </ul>

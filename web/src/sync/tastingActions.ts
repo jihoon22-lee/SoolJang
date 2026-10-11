@@ -19,6 +19,7 @@ export interface TastingRecordInput {
   pouredMl: number | null;
   /** "4.5" 같은 0.5 단위 문자열. 없으면 null. */
   rating: string | null;
+  note?: string | undefined;
   nose?: string | undefined;
   palate?: string | undefined;
   finish?: string | undefined;
@@ -84,6 +85,7 @@ export async function recordTasting(input: TastingRecordInput): Promise<string> 
     const now = new Date().toISOString();
     const tastingId = newId();
     const text = {
+      note: clean(input.note),
       nose: clean(input.nose),
       palate: clean(input.palate),
       finish: clean(input.finish),
@@ -117,7 +119,6 @@ export async function recordTasting(input: TastingRecordInput): Promise<string> 
         tasted_on: input.tastedOn,
         poured_ml: input.pouredMl,
         rating: input.rating,
-        note: null,
         ...text,
       },
     });

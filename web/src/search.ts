@@ -1,3 +1,5 @@
+import aliasDictionary from "../../src/sooljang/domain/search_aliases.json";
+
 /**
  * 검색·자동완성 랭킹.
  *
@@ -84,14 +86,86 @@ export function matchesQuery(name: string, query: string): boolean {
   return rankOf(name, query) !== null;
 }
 
+export function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+    .normalize("NFC")
+    .replace(/(\d+)\s*(?:years?\s*old|years?|yo|yr|y|년)(?![a-z])/g, "$1")
+    .replace(/(\d+(?:\.\d+)?)\s*l\b/g, (_, n: string) => `${Number(n) * 1000}ml`)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const ALIAS_RULES = aliasDictionary.flatMap((entry) =>
+  [...entry.aliases]
+    .sort((a, b) => b.length - a.length)
+    .map((alias) => ({
+      pattern: new RegExp(
+        `(?<![a-z가-힣])${normalizeSearchText(alias).split(" ").join("\\s*")}(?![a-z가-힣])`,
+        "g",
+      ),
+      canonical: normalizeSearchText(entry.canonical),
+    })),
+);
+function canonicalSearch(value: string): string {
+  let result = normalizeSearchText(value);
+  for (const rule of ALIAS_RULES) result = result.replace(rule.pattern, rule.canonical);
+  return result;
+}
+export function expandSearchQueries(query: string): string[] {
+  const original = query.trim();
+  if (!original) return [];
+  for (const entry of aliasDictionary) {
+    for (const alias of [...entry.aliases].sort((a, b) => b.length - a.length)) {
+      const target = /[가-힣]/.test(alias)
+        ? entry.canonical
+        : (entry.aliases[0] ?? entry.canonical);
+      const needle = alias
+        .split(/\s+/)
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("\\s*")
+        .replaceAll("’", "['’]");
+      const expanded = original.replace(
+        new RegExp(`(?<![a-z가-힣])${needle}(?![a-z가-힣])`, "gi"),
+        target,
+      );
+      if (expanded !== original) return [original, expanded];
+    }
+  }
+  return [original];
+}
+
 function rankOf(name: string, query: string): number | null {
   const needle = query.trim().toLowerCase();
   if (!needle) return 0;
-
   if (isChosungOnly(needle)) {
-    return matchRank(extractChosung(name), needle);
+    const direct = matchRank(extractChosung(name), needle);
+    if (direct !== null) return direct;
+    const canonical = canonicalSearch(name);
+    for (const entry of aliasDictionary) {
+      const key = normalizeSearchText(entry.canonical);
+      if (!canonical.includes(key)) continue;
+      for (const alias of entry.aliases) {
+        const rank = matchRank(extractChosung(canonical.replace(key, alias)), needle);
+        if (rank !== null) return rank + 3;
+      }
+    }
+    return null;
   }
-  return matchRank(name.toLowerCase(), needle);
+  const haystack = canonicalSearch(name);
+  const canonicalNeedle = canonicalSearch(needle);
+  const numbers = new Set(haystack.match(/\d+/g) ?? []);
+  if ((canonicalNeedle.match(/\d+/g) ?? []).some((n) => !numbers.has(n))) return null;
+  const direct = matchRank(name.toLowerCase(), needle);
+  if (direct !== null) return direct;
+  const canonicalRank = matchRank(
+    haystack.replaceAll(" ", ""),
+    canonicalNeedle.replaceAll(" ", ""),
+  );
+  return canonicalRank === null ? null : canonicalRank + 3;
 }
 
 /**

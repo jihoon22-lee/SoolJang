@@ -163,7 +163,7 @@ it("동일 원문만 병합하고 판본·규격·조건 URL을 보존한다", (
     [document(base, "two"), document("https://example.com/item?sku=200")],
   );
   expect(merged).toHaveLength(2);
-  expect(merged[0]?.discovered_by).toEqual(["one", "two"]);
+  expect(merged.find((doc) => doc.url === base)?.discovered_by).toEqual(["one", "two"]);
 });
 it("HTML 실행 및 자격증명 URL을 링크로 렌더링하지 않는다", () => {
   for (const url of [
@@ -174,4 +174,83 @@ it("HTML 실행 및 자격증명 URL을 링크로 렌더링하지 않는다", ()
   ])
     expect(publicLink(url)).toBeUndefined();
   expect(publicLink("https://example.com/a?sku=700")).toBe("https://example.com/a?sku=700");
+});
+
+it("응답 순서와 무관하게 원래 순위로 정렬하고 동일 문서의 충실한 근거를 보존한다", () => {
+  const first = {
+    ...document("https://example.com/a", "one"),
+    origins: [{ provider: "one", channel: "web", query: "술", language: "ko", rank: 8 }],
+  };
+  const rich = {
+    ...first,
+    excerpt: "더 충실한 제품 설명",
+    evidence: "provider_text" as const,
+    kind: "info" as const,
+    discovered_by: ["two"],
+    origins: [{ provider: "two", channel: "web", query: "술", language: "ko", rank: 2 }],
+  };
+  const winner = {
+    ...document("https://example.com/b", "one"),
+    origins: [{ provider: "one", channel: "web", query: "술", language: "ko", rank: 1 }],
+  };
+  const forward = mergeDocuments([first, winner], [rich]);
+  const backward = mergeDocuments([rich], [winner, first]);
+  expect(forward).toEqual(backward);
+  expect(forward.find((doc) => doc.url === first.url)).toMatchObject({
+    excerpt: rich.excerpt,
+    kind: "info",
+    discovered_by: ["one", "two"],
+  });
+});
+
+it("확장 질의는 명시 실행하며 Naver의 두 요청을 포함해 8회 상한을 지킨다", async () => {
+  const search = vi
+    .spyOn(discoveryApi, "search")
+    .mockResolvedValue(response("https://example.com/answer"));
+  const { result } = renderHook(useDiscovery);
+  expect(search).not.toHaveBeenCalled();
+  const jobs = Array.from({ length: 4 }, (_, i) => ({
+    id: `${i}`,
+    name: `${i}`,
+    kind: "search" as const,
+    providerKind: "naver_hub",
+  }));
+  await act(async () => {
+    await result.current.run({ name: "글렌알라키 12년 700ml" }, jobs, {});
+  });
+  expect(search).toHaveBeenCalledTimes(4);
+  search.mockClear();
+  await act(async () => {
+    await result.current.run(
+      { name: "글렌알라키 12년 700ml" },
+      [jobs[0] as (typeof jobs)[number]],
+      {},
+    );
+  });
+  expect(search.mock.calls.map((call) => call[1])).toEqual([
+    "글렌알라키 12년 700ml",
+    "GlenAllachie 12년 700ml",
+  ]);
+  expect(result.current.state.queries).toEqual([
+    "글렌알라키 12년 700ml",
+    "GlenAllachie 12년 700ml",
+  ]);
+  expect(result.current.state.requests).toBe(2);
+  expect(search.mock.calls.map((call) => call[3])).toEqual(["ko", "en"]);
+});
+
+it("동일 URL의 여러 부분 근거를 합쳐도 병합 순서가 내용과 순위를 바꾸지 않는다", () => {
+  const base = document("https://example.com/shared");
+  const a = { ...base, id: "a", title: "A", excerpt: "a".repeat(110), kind: "unknown" as const };
+  const b = { ...base, id: "b", title: "B", excerpt: "b".repeat(5), kind: "review" as const };
+  const c = { ...base, id: "c", title: "C", excerpt: "c".repeat(20), kind: "review" as const };
+  const runs = [
+    [a, b, c],
+    [b, c, a],
+    [c, a, b],
+    [c, b, a],
+  ].map((rows) =>
+    rows.reduce((docs, doc) => mergeDocuments(docs, [doc]), [] as DiscoveryDocument[]),
+  );
+  expect(runs.every((docs) => JSON.stringify(docs) === JSON.stringify(runs[0]))).toBe(true);
 });

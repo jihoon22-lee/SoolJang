@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from tests.api.tasting_helpers import remove_tasting_record
 from tests.api.test_tastings import _create_product_with_bottle
 
 
@@ -191,7 +192,7 @@ class TestHistoryCorrections:
         assert result.status_code == 200, result.text
         revised = result.json()["bottle"]
         assert revised["remaining_ml"] == 650
-        assert api_client.delete(f"{prefix}/tastings/{row['id']}").status_code == 204
+        assert remove_tasting_record(api_client, prefix, row["id"]).status_code == 200
         bottle = api_client.get(f"{prefix}/bottles/{row['bottle_id']}").json()
         assert bottle["revision"] != revised["revision"] and bottle["remaining_ml"] == 650
 
@@ -201,7 +202,7 @@ class TestHistoryCorrections:
         data = _create_product_with_bottle(api_client, prefix, quantity=2)
         first = _tasting(api_client, prefix, data["bottles"][0]["id"])
         deleted = _tasting(api_client, prefix, data["bottles"][1]["id"])
-        api_client.delete(f"{prefix}/tastings/{deleted['id']}")
+        remove_tasting_record(api_client, prefix, deleted["id"])
         product_id = first["context"]["product_id"]
         sku = api_client.post(
             f"{prefix}/products/{product_id}/skus", json={"volume_ml": 1000}

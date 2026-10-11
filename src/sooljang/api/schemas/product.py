@@ -3,10 +3,16 @@
 import datetime
 import uuid
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from sooljang.infrastructure.database.models import BarcodeType, BottleStatus, VendorKind
+
+SearchAliases = Annotated[
+    list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]],
+    Field(max_length=20),
+]
 
 # --- 규격 -------------------------------------------------------------------
 
@@ -44,6 +50,7 @@ class SkuOut(BaseModel):
 class ProductBase(BaseModel):
     name: str = Field(min_length=1, max_length=300)
     name_en: str | None = Field(default=None, max_length=300)
+    search_aliases: SearchAliases = Field(default_factory=list)
     category_id: uuid.UUID | None = None
     producer_id: uuid.UUID | None = None
     country: str | None = Field(default=None, max_length=80)
@@ -73,6 +80,7 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=300)
     name_en: str | None = Field(default=None, max_length=300)
+    search_aliases: SearchAliases = Field(default_factory=list)
     category_id: uuid.UUID | None = None
     producer_id: uuid.UUID | None = None
     country: str | None = Field(default=None, max_length=80)
@@ -146,6 +154,7 @@ class ProductOut(BaseModel):
     id: uuid.UUID
     name: str
     name_en: str | None
+    search_aliases: list[str] = Field(default_factory=list)
     category_id: uuid.UUID | None
     category_path: list[str] = Field(default_factory=list)
     producer_id: uuid.UUID | None

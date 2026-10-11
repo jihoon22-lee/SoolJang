@@ -6,7 +6,7 @@ export async function resolveProductContext(
   productId: string,
   context: ProductContext,
 ): Promise<ProductContext | null> {
-  if (!context.skuId && !context.bottleId && !context.tastingId) return {};
+  if (!context.skuId && !context.purchaseId && !context.bottleId && !context.tastingId) return {};
   const identity = databaseIdentity();
   const store = db;
   const liveOwned = (row: SyncRow | undefined): row is SyncRow =>
@@ -19,18 +19,30 @@ export async function resolveProductContext(
     if (!liveOwned(tasting)) return null;
     if (skuId && skuId !== tasting.sku_id) return null;
     if (bottleId && bottleId !== tasting.bottle_id) return null;
+    if (context.purchaseId && !tasting.bottle_id) return null;
     skuId = String(tasting.sku_id);
     bottleId = tasting.bottle_id ? String(tasting.bottle_id) : undefined;
   }
   if (bottleId) {
     const bottle = await store.bottle.get(bottleId);
     if (!liveOwned(bottle)) return null;
+    if (context.purchaseId && context.purchaseId !== bottle.purchase_id) return null;
     const purchase = await store.purchase.get(String(bottle.purchase_id));
+    if (!liveOwned(purchase) || (skuId && skuId !== purchase.sku_id)) return null;
+    skuId = String(purchase.sku_id);
+  }
+  if (context.purchaseId) {
+    const purchase = await store.purchase.get(context.purchaseId);
     if (!liveOwned(purchase) || (skuId && skuId !== purchase.sku_id)) return null;
     skuId = String(purchase.sku_id);
   }
   const sku = skuId ? await store.sku.get(skuId) : undefined;
   if (!liveOwned(sku) || sku.product_id !== productId) return null;
   if (databaseIdentity().generation !== identity.generation || db !== store) return null;
-  return { skuId, bottleId, tastingId: context.tastingId };
+  return {
+    skuId,
+    bottleId,
+    tastingId: context.tastingId,
+    ...(context.purchaseId ? { purchaseId: context.purchaseId } : {}),
+  };
 }

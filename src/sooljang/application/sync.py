@@ -674,6 +674,7 @@ async def _dispatch_product(
             user_id=user_id,
             name=name,
             name_en=fields.get("name_en"),
+            search_aliases=_search_aliases(fields.get("search_aliases", [])),
             normalized_name=normalized_name_of(name),
             category_id=category_id,
             producer_id=producer_id,
@@ -712,6 +713,8 @@ async def _dispatch_product(
     if fields.get("name") is not None:
         product.name = _bounded_str(fields["name"], field_name="name", max_length=300)
         product.normalized_name = normalized_name_of(product.name)
+    if "search_aliases" in fields:
+        product.search_aliases = _search_aliases(fields["search_aliases"])
     for key in ("name_en", "country", "region", "note"):
         if key in fields:
             setattr(product, key, fields[key])
@@ -1144,4 +1147,12 @@ async def _dispatch_tasting_action(
         status=result.status,
         snapshot=result.snapshot,
         effects={"bottle": serialize_row(bottle)},
+    )
+
+
+def _search_aliases(value: Any) -> list[str]:
+    if not isinstance(value, list) or len(value) > 20:
+        raise ValidationFailedError("검색 별칭은 최대 20개의 이름으로 입력하세요")
+    return list(
+        dict.fromkeys(_bounded_str(v, field_name="search_aliases", max_length=300) for v in value)
     )

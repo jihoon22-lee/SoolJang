@@ -19,7 +19,6 @@ from sooljang.infrastructure.database.models import (
     ExternalOffer,
     ExternalPriceObservation,
     ExternalSource,
-    Interest,
 )
 
 pytestmark = pytest.mark.requires_db
@@ -57,7 +56,13 @@ def test_additive_upgrade_failure_and_repeated_migration_preserve_interest_and_o
             )
             session.add(source)
             session.flush()
-            interest = Interest(
+            interest_id = uuid.uuid4()
+            # Insert using the source revision, not today's ORM columns.
+            old_interest = sa.Table("interest", sa.MetaData(), autoload_with=engine)
+            interest_values = dict(
+                id=interest_id,
+                created_at=now,
+                updated_at=now,
                 user_id=user,
                 name="보존 관심",
                 identity={"name": "보존 관심"},
@@ -71,13 +76,13 @@ def test_additive_upgrade_failure_and_repeated_migration_preserve_interest_and_o
                 },
                 note="사용자 노트 보존",
             )
-            session.add(interest)
+            session.execute(old_interest.insert().values(**interest_values))
             session.flush()
             offer = ExternalOffer(
                 user_id=user,
                 source_id=source.id,
                 product_id=None,
-                interest_id=interest.id,
+                interest_id=interest_id,
                 external_product_key="p",
                 external_offer_key="o",
                 condition_key="a" * 64,

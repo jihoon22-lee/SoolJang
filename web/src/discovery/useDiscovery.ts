@@ -6,6 +6,7 @@ import {
   type SourceMatch,
 } from "@/api/discovery";
 import type { InterestIdentity } from "@/api/interests";
+import { buildSearchQueries, compareDocuments } from "@/discovery/quality";
 import { sourceOutcomeLabel } from "@/sourceOutcome";
 import { databaseIdentity } from "@/sync/db";
 
@@ -13,9 +14,15 @@ export interface DiscoveryJob {
   id: string;
   name: string;
   kind: "search" | "source";
+  providerKind?: string;
 }
 export interface RunState {
   query: string;
+  queries: string[];
+  requests: number;
+  requestLimit: number;
+  elapsedMs: number;
+  identity: InterestIdentity;
   searchConnections: number;
   documents: DiscoveryDocument[];
   sources: DiscoverySource[];
@@ -27,6 +34,11 @@ export interface RunState {
 }
 const empty = (): RunState => ({
   query: "",
+  queries: [],
+  requests: 0,
+  requestLimit: 0,
+  elapsedMs: 0,
+  identity: { name: "" },
   searchConnections: 0,
   documents: [],
   sources: [],
@@ -44,14 +56,60 @@ export function mergeDocuments(
   const documents = new Map(previous.map((doc) => [doc.url, doc]));
   for (const doc of incoming) {
     const prior = documents.get(doc.url);
-    documents.set(
-      doc.url,
-      prior
-        ? { ...prior, discovered_by: [...new Set([...prior.discovered_by, ...doc.discovered_by])] }
-        : doc,
-    );
+    documents.set(doc.url, prior ? mergeDocument(prior, doc) : doc);
   }
-  return [...documents.values()];
+  return [...documents.values()].sort(compareDocuments);
+}
+
+function mergeDocument(a: DiscoveryDocument, b: DiscoveryDocument): DiscoveryDocument {
+  const contentKey = (doc: DiscoveryDocument) =>
+    JSON.stringify([
+      doc.title,
+      doc.excerpt,
+      doc.evidence,
+      doc.applicable_fields,
+      doc.evidence_token,
+      doc.fetched_at,
+      doc.rating,
+      doc.rating_scale,
+      doc.rating_count,
+      doc.id,
+    ]);
+  const contentWeight = (doc: DiscoveryDocument) =>
+    (doc.evidence === "provider_text" && doc.excerpt ? 10000 : 0) + doc.excerpt.length;
+  const best = [a, b].sort(
+    (left, right) =>
+      contentWeight(right) - contentWeight(left) ||
+      contentKey(left).localeCompare(contentKey(right)),
+  )[0] as DiscoveryDocument;
+  const purposes = [
+    "service_review",
+    "seller_note",
+    "customer_tasting",
+    "review",
+    "offer",
+    "info",
+    "unknown",
+  ];
+  const origins = new Map(
+    [...(a.origins ?? []), ...(b.origins ?? [])].map((origin) => [
+      `${origin.provider}|${origin.channel}|${origin.query}|${origin.language}|${origin.rank}`,
+      origin,
+    ]),
+  );
+  return {
+    ...best,
+    discovered_by: [...new Set([...a.discovered_by, ...b.discovered_by])].sort(),
+    origins: [...origins.entries()]
+      .sort(([x], [y]) => x.localeCompare(y))
+      .map(([, value]) => value),
+    kind: purposes.indexOf(a.kind) < purposes.indexOf(b.kind) ? a.kind : b.kind,
+    published_at:
+      [a.published_at, b.published_at]
+        .filter((value): value is string => !!value)
+        .sort()
+        .at(-1) ?? null,
+  };
 }
 export function publicLink(value: string): string | undefined {
   try {
@@ -86,7 +144,20 @@ export function useDiscovery() {
     productId?: string,
     interestId?: string,
   ) => {
-    const jobs = requestedJobs.slice(0, 4);
+    const selected = requestedJobs.slice(0, 4);
+    const variants = buildSearchQueries(identity);
+    const jobs: (DiscoveryJob & { query: string; cost: number })[] = selected.map((job) => ({
+      ...job,
+      query: variants[0] ?? identity.name,
+      cost: job.kind === "source" ? 0 : job.providerKind?.startsWith("naver") ? 2 : 1,
+    }));
+    let budget = jobs.reduce((sum, job) => sum + job.cost, 0);
+    for (const job of [...jobs]) {
+      if (job.kind !== "search" || !variants[1] || budget + job.cost > 8) continue;
+      jobs.push({ ...job, query: variants[1] });
+      budget += job.cost;
+    }
+    const started = Date.now();
     controller.current?.abort();
     const ownGeneration = ++generation.current;
     const abort = new AbortController();
@@ -106,7 +177,10 @@ export function useDiscovery() {
       running: true,
       total: jobs.length,
       query: identity.name,
-      searchConnections: jobs.filter((job) => job.kind === "search").length,
+      identity,
+      queries: [...new Set(jobs.filter((job) => job.kind === "search").map((job) => job.query))],
+      requestLimit: budget,
+      searchConnections: selected.filter((job) => job.kind === "search").length,
     });
     let next = 0;
     const worker = async () => {
@@ -115,14 +189,22 @@ export function useDiscovery() {
         if (!job) return;
         try {
           if (job.kind === "search") {
-            const response = await discoveryApi.search(job.id, identity.name, abort.signal);
+            const response = await discoveryApi.search(
+              job.id,
+              job.query,
+              abort.signal,
+              (job.query.match(/[가-힣]/g)?.length ?? 0) > (job.query.match(/[a-z]/gi)?.length ?? 0)
+                ? "ko"
+                : "en",
+            );
             if (!current()) return;
             setState((old) => ({
               ...old,
               documents: mergeDocuments(old.documents, response.documents),
+              requests: old.requests + response.requests,
               notices: [
                 ...old.notices,
-                `${job.name}: ${sourceOutcomeLabel(response.outcome)}${response.warning ? ` · ${response.warning}` : ""}`,
+                `${job.name} · ${job.query}: ${sourceOutcomeLabel(response.outcome)}${response.warning ? ` · ${response.warning}` : ""}`,
               ],
             }));
           } else {
@@ -132,7 +214,12 @@ export function useDiscovery() {
                 ? await discoveryApi.productLookup(productId, job.id, abort.signal)
                 : await discoveryApi.lookup(identity, job.id, matches, abort.signal);
             if (!current()) return;
-            setState((old) => ({ ...old, sources: [...old.sources, ...results] }));
+            setState((old) => ({
+              ...old,
+              sources: [...old.sources, ...results].sort((a, b) =>
+                a.source_id.localeCompare(b.source_id),
+              ),
+            }));
           }
         } catch (error) {
           if (!current()) return;
@@ -144,7 +231,12 @@ export function useDiscovery() {
             ],
           }));
         }
-        if (current()) setState((old) => ({ ...old, finished: old.finished + 1 }));
+        if (current())
+          setState((old) => ({
+            ...old,
+            finished: old.finished + 1,
+            elapsedMs: Date.now() - started,
+          }));
       }
     };
     await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, worker));

@@ -26,7 +26,6 @@
 | `POSTGRES_USER` / `POSTGRES_DB` | Docker Compose `db` 서비스 초기화 값(운영 DB) | `sooljang` | 아니오 (기본값 있음) |
 | `POSTGRES_PASSWORD` | 운영 DB 비밀번호 | — | **필수** — 비우면 `docker compose up` 이 기동을 거부한다 |
 | `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.9.0` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
-| `SOOLJANG_SEARCH_API_KEY` | Task 18 원 사양의 "검색 API로 아무 주종이나 조회" 기능용. **이 기능 자체가 현재 범위 밖**(`adapter` 방식으로 대체됨, `docs/plan.md` 참조)이라 지금은 안 쓰인다 | — | 아니오 (미사용) |
 
 **로그인 후 "설정" 화면에서 관리하는 값**(`.env` 에 넣지 않는다):
 - LLM API 키(라벨 OCR용) — Task 17. 저장 즉시 `SOOLJANG_SECRET_KEY` 로 암호화돼 DB에
@@ -207,9 +206,9 @@ gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
 /usr/bin/sg docker -c "docker compose up -d --no-deps web"
 ```
 
-`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.8.0에서 `0019_record_event`를
-적용했으며 v1.8.2도 같은 head를 사용한다. v1.9.0은 `0020_bottle_revision`을 적용해
-기존 병마다 변경 버전을 채운다. 0020 적용 후 1.8.2 이미지만 다시 시작하는 방식은
+`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.10.0은 `0020_bottle_revision`에서
+`0021_quality_aliases`로 이전하며 기존 제품의 검색 별칭과 관심의 참고 URL을 빈 배열로
+추가한다. 기존 기록·첨부·고정·암호문은 보존한다. 0021 적용 후 1.9.0 이미지만 다시 시작하면
 준비 상태 검사를 통과하지 못한다. migration 실패 시 다음 명령으로
 넘어가지 않는다. PostgreSQL 트랜잭션 밖에서 실행되는 변경이 있으면 해당 migration의
 별도 복구 절차가 필요하다. 이전 앱은 **그 앱에 포함된 schema head와 DB가 정확히 같은

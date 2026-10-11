@@ -15,7 +15,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, literal, or_, select
+from sqlalchemy import Select, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,6 +23,7 @@ from sooljang.api.errors import NotFoundError, ValidationFailedError
 from sooljang.application.categories import descendant_ids_query, load_tree
 from sooljang.application.skus import load_live_sku_for_write
 from sooljang.domain.metrics import quantize_money, quantize_ratio, value_for_money
+from sooljang.domain.search import matches_query
 from sooljang.infrastructure.database.metrics_sql import product_metrics_query, sku_metrics_query
 from sooljang.infrastructure.database.models import (
     Bottle,
@@ -157,11 +158,23 @@ async def build_product_query(
             statement = statement.where(price_metrics.c.product_id.is_not(None))
 
     if filters.q:
-        # pg_trgm GIN 인덱스가 ILIKE '%...%' 를 가속한다. 한글에서 동작함을 실측했다.
-        pattern = f"%{filters.q.strip()}%"
-        statement = statement.where(
-            or_(Product.name.ilike(pattern), Product.name_en.ilike(pattern))
+        # 이름 후보만 읽어 서버와 오프라인의 Unicode·별칭·초성 의미를 맞춘다.
+        # 제품 식별/재고는 변경하지 않고 이후 SQL 필터·페이지네이션을 유지한다.
+        names = await session.execute(
+            select(Product.id, Product.name, Product.name_en, Product.search_aliases).where(
+                Product.user_id == user_id, Product.deleted_at.is_(None)
+            )
         )
+        matching_ids = [
+            row.id
+            for row in names
+            if any(
+                matches_query(name, filters.q)
+                for name in [row.name, row.name_en, *(row.search_aliases or [])]
+                if name
+            )
+        ]
+        statement = statement.where(Product.id.in_(matching_ids))
 
     if filters.category_id is not None:
         scope = await _category_scope(session, filters.category_id, filters.include_descendants)

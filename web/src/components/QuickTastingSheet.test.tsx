@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { Bottle } from "@/api/types";
+import { BottlePanel } from "@/components/BottlePanel";
 import { QuickTastingSheet } from "@/components/QuickTastingSheet";
 import { ToastProvider } from "@/components/Toast";
 import { activateDatabase, databaseIdentity, db } from "@/sync/db";
@@ -105,6 +107,22 @@ async function chooseLarge() {
   await userEvent.click(await screen.findByRole("button", { name: /700ml.*미개봉 2병/ }));
   await screen.findByRole("button", { name: "기록 저장" });
 }
+
+it("저장 후 같은 병에 새 시음을 이어 쓰며 이전 기록을 중복 제출하지 않는다", async () => {
+  renderWithQuery(<Harness />);
+  await chooseLarge();
+  await userEvent.type(screen.getByLabelText("시음 메모"), "첫 잔");
+  await userEvent.click(screen.getByRole("button", { name: "30ml" }));
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await userEvent.click(await screen.findByRole("button", { name: "같은 병에 새 기록" }));
+  expect(screen.getByLabelText("시음 메모")).toHaveValue("");
+  expect(await db.tasting_session.count()).toBe(1);
+  await userEvent.click(screen.getByRole("button", { name: "50ml" }));
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(async () => expect(await db.tasting_session.count()).toBe(2));
+  expect((await db.bottle.get("older"))?.remaining_ml).toBe(620);
+  expect((await db.tasting_session.toArray()).map((entry) => entry.note)).toContain("첫 잔");
+});
 async function writeNote(note = "바닐라 향") {
   await userEvent.click(
     screen.getByText("자세히 기록 (향·맛·피니시·장소·동석자)", { selector: "summary" }),
@@ -263,7 +281,8 @@ it("저장 실패 때는 초안을 유지하고 성공한 병의 초안만 지�
   await userEvent.clear(amount);
   await userEvent.type(amount, "30");
   await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
-  await screen.findByRole("button", { name: "다시 열기" });
+  await screen.findByRole("button", { name: "같은 병에 새 기록" });
+  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
   expect(Object.keys(localStorage).some((key) => key.includes("quick-tasting:"))).toBe(false);
 });
 
@@ -340,6 +359,8 @@ it("저장 transaction 대기 중 닫기·Escape로 새 시트를 열어 이전 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "다시 열기" })).not.toBeInTheDocument();
   await act(async () => held.release());
+  await screen.findByRole("button", { name: "같은 병에 새 기록" });
+  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
   await userEvent.click(await screen.findByRole("button", { name: "다시 열기" }));
   await userEvent.click(await screen.findByRole("button", { name: /700ml.*#9.*개봉/ }));
   await writeNote("새 시트의 다음 기록");
@@ -364,7 +385,8 @@ it("저장 transaction 대기 중 입력·별점·프리셋 편집을 막아 최
   fireEvent.change(note, { target: { value: "지연 이벤트 입력" } });
   expect(note).toHaveValue("제출한 노트");
   await act(async () => held.release());
-  await screen.findByRole("button", { name: "다시 열기" });
+  await screen.findByRole("button", { name: "같은 병에 새 기록" });
+  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
   expect((await db.tasting_session.toArray())[0]?.nose).toBe("제출한 노트");
   expect(Object.keys(localStorage).some((key) => key.includes("quick-tasting:"))).toBe(false);
 });
@@ -411,4 +433,32 @@ it("동일 이름·용량의 다른 빈티지를 구분하고 선택한 실제 �
     bottleId: "edition-bottle",
   });
   expect(onClose).toHaveBeenCalled();
+});
+
+it("빠른 입력의 상세 이동에서 같은 병의 메모·양·평점 초안을 이어 쓴다", async () => {
+  const navigate = vi.fn();
+  const quick = renderWithQuery(
+    <SyncStatusProvider>
+      <QuickTastingSheet onClose={vi.fn()} onSelectProduct={navigate} />
+    </SyncStatusProvider>,
+  );
+  await chooseLarge();
+  await userEvent.type(screen.getByLabelText("시음 메모"), "상세에서도 이어 쓸 메모");
+  await userEvent.click(screen.getByRole("button", { name: "50ml" }));
+  await userEvent.click(screen.getByRole("button", { name: "0점" }));
+  await userEvent.click(screen.getByRole("button", { name: "이 병 상세" }));
+  expect(navigate).toHaveBeenCalledWith("product", { skuId: "large", bottleId: "older" });
+  quick.unmount();
+  const target = await db.bottle.get("older");
+  renderWithQuery(<BottlePanel bottle={target as unknown as Bottle} offline />);
+  expect(await screen.findByLabelText("시음 메모")).toHaveValue("상세에서도 이어 쓸 메모");
+  expect(screen.getByLabelText(/직접 입력/)).toHaveValue(50);
+  expect(screen.getByRole("button", { name: "0점" })).toHaveAttribute("aria-pressed", "true");
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(async () => expect(await db.tasting_session.count()).toBe(1));
+  expect((await db.outbox.toArray())[0]?.fields).toMatchObject({
+    note: "상세에서도 이어 쓸 메모",
+    poured_ml: 50,
+    rating: "0.0",
+  });
 });

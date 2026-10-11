@@ -110,7 +110,8 @@ PR 묶음당 `workthrough/YYYY-MM-DD-scope.md` 하나에 실제 변경·검증·
 요약/링크를 남긴다. mock 통과·DB skip·기존 성공 로그를 새 환경의 실검증으로 보고하지 않는다.
 형식/링크 검사와 실제 스킬 호출 결과도 구분한다.
 
-실사용 흐름 수용은 `docs/plan.md`의 usage/S01~S20과 G01~G09 정답을 사용한다.
+현재 실사용 품질 수용은 `docs/plan.md`의 QS01~QS20을 사용한다. 이전 v1.9.0의
+usage/S01~S20·G01~G09는 `docs/history.md`에 보존된 회귀 기준이다.
 제품·규격·구매는 빈 합성 계정에서 UI로 생성하고, API GET/IndexedDB 읽기로 대상 ID와 실제
 상태를 확인한다. 서비스워커 제어 후 offline reload, 서버 commit 후 응답 유실, 별도 로그인
 context의 동시 수정과 계정 전환을 구분한다. 외부 가격·카메라 경계 mock은 실제 소스·기기

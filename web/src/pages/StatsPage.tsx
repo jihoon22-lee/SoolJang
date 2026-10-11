@@ -2,13 +2,9 @@ import type { ProductContext } from "@/router";
 /**
  * 통계 대시보드 화면.
  *
- * 엑셀 통계표(주종별 통계·랭킹 3종·합계)를 재현한다(`docs/plan.md` Task 14). 필터·수정이
- * 없는 읽기 전용 화면이라 `CategoriesPage` 처럼 단일 쿼리 조합 + 조기 반환 패턴을 쓴다.
- *
- * 오프라인에서도 봐야 하므로 Dexie 로컬 미러 기반 `sync/queries.ts` 로 계산한다(Task 15).
- *
- * 랭킹의 술 이름과 주종별 집계 행은 "내 술" 탭으로 건너뛰는 크로스 링크다(사용자 요청) —
- * `App.tsx` 가 `onSelectProduct`/`onSelectCategory` 를 `navigate` 에 연결해 준다.
+ * 기본 인사이트는 기간·현재 상태를 구분한 로컬 스냅샷 분석이다.
+ * 기존 전체 이력 합계·랭킹·피벗은 보조 보기로 유지하며 각 계산 범위를 표시한다.
+ * 근거 기록의 제품·규격·병·시음 맥락은 App의 탐색 콜백으로 이어진다.
  */
 
 import { useLiveQuery } from "dexie-react-hooks";
@@ -29,6 +25,7 @@ import {
   formatValueForMoney,
   formatVolume,
 } from "@/format";
+import { InsightsDashboard } from "@/insights/InsightsDashboard";
 import { getStatsDashboard } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
@@ -132,10 +129,11 @@ interface StatsPageProps {
   onOpenQuality?: () => void;
 }
 
-type StatsSection = "summary" | "categories" | "rankings" | "explore";
+type StatsSection = "insights" | "summary" | "categories" | "rankings" | "explore";
 
 const STATS_SECTIONS: { id: StatsSection; label: string }[] = [
-  { id: "summary", label: "요약" },
+  { id: "insights", label: "인사이트" },
+  { id: "summary", label: "상세 합계" },
   { id: "categories", label: "주종별" },
   { id: "rankings", label: "랭킹" },
   { id: "explore", label: "피벗·추이" },
@@ -155,7 +153,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
   const [categorySort, setCategorySort] = useState<CategorySortKey>(DEFAULT_CATEGORY_SORT);
   const [categoryOrder, setCategoryOrder] = useState<SortOrder>(DEFAULT_CATEGORY_ORDER);
   const [categoryMeasure, setCategoryMeasure] = useState<CategoryMeasureKey>("bottle_count");
-  const [section, setSection] = useState<StatsSection>("summary");
+  const [section, setSection] = useState<StatsSection>("insights");
 
   if (rankings === undefined || categoriesRaw === undefined || totals === undefined) {
     return <LoadingState label="통계를 불러오고 있습니다…" />;
@@ -188,38 +186,40 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
   return (
     <div className="stats-page">
       <h2 className="page-title">통계</h2>
-      <details className="card">
-        <summary>통계에 포함된 기록과 계산 기준</summary>
-        <p>
-          구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다. 재고는 미개봉·개봉 병만
-          포함합니다.
-        </p>
-        <p>
-          전체·제품별 평단가는 0원 구매를 포함한 구매 병수로 나눕니다. 평균 100ml가는 정가 합계와 총
-          용량 기준입니다.
-        </p>
-        <p>할인율은 정가가 기록된 구매만으로 계산하고, 가격 순위에는 0원 제품을 넣지 않습니다.</p>
-        <p>
-          구매 {dashboard?.coverage.purchaseCount}건 · 0원(공란·선물·포인트){" "}
-          {dashboard?.coverage.zeroPaidPurchaseCount}건 포함 · 할인율 기준(정가 기록){" "}
-          {dashboard?.coverage.listPricedPurchaseCount}건 · 규격 미등록 제품{" "}
-          {dashboard?.coverage.missingVolumeProducts.length}개
-        </p>
-        <ul>
-          {dashboard?.coverage.missingVolumeProducts.map((product) => (
-            <li key={product.id}>
-              <button type="button" onClick={() => onSelectProduct(product.id)}>
-                {product.name} · 규격 등록 확인
-              </button>
-            </li>
-          ))}
-        </ul>
-        {onOpenQuality && (
-          <button type="button" onClick={onOpenQuality}>
-            데이터 품질에서 정리
-          </button>
-        )}
-      </details>
+      {section !== "insights" ? (
+        <details className="card">
+          <summary>통계에 포함된 기록과 계산 기준</summary>
+          <p>
+            구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다. 재고는 미개봉·개봉 병만
+            포함합니다.
+          </p>
+          <p>
+            전체·제품별 평단가는 0원 구매를 포함한 구매 병수로 나눕니다. 평균 100ml가는 정가 합계와
+            총 용량 기준입니다.
+          </p>
+          <p>할인율은 정가가 기록된 구매만으로 계산하고, 가격 순위에는 0원 제품을 넣지 않습니다.</p>
+          <p>
+            구매 {dashboard?.coverage.purchaseCount}건 · 0원(공란·선물·포인트){" "}
+            {dashboard?.coverage.zeroPaidPurchaseCount}건 포함 · 할인율 기준(정가 기록){" "}
+            {dashboard?.coverage.listPricedPurchaseCount}건 · 규격 미등록 제품{" "}
+            {dashboard?.coverage.missingVolumeProducts.length}개
+          </p>
+          <ul>
+            {dashboard?.coverage.missingVolumeProducts.map((product) => (
+              <li key={product.id}>
+                <button type="button" onClick={() => onSelectProduct(product.id)}>
+                  {product.name} · 규격 등록 확인
+                </button>
+              </li>
+            ))}
+          </ul>
+          {onOpenQuality && (
+            <button type="button" onClick={onOpenQuality}>
+              데이터 품질에서 정리
+            </button>
+          )}
+        </details>
+      ) : null}
 
       {/* 한 화면에 지표 16개·랭킹 5종·피벗이 세로로 이어지던 것을 탭으로 나눈다. */}
       <div className="tab-list" role="tablist" aria-label="통계 구간">
@@ -238,6 +238,16 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
         ))}
       </div>
 
+      {section === "insights" ? (
+        <section role="tabpanel" id="stats-panel-insights" aria-labelledby="stats-tab-insights">
+          <InsightsDashboard onSelectProduct={onSelectProduct} onOpenQuality={onOpenQuality} />
+        </section>
+      ) : (
+        <p className="muted">
+          기존 상세 집계·랭킹·피벗 보기입니다. 인사이트의 기간·상태 필터와 별도로 전체 기록을
+          표시하며 피벗은 자체 조건을 사용합니다.
+        </p>
+      )}
       {section === "summary" && (
         <section aria-labelledby="stats-summary-heading" id="stats-panel-summary" role="tabpanel">
           <h3 id="stats-summary-heading" className="sr-only">

@@ -295,3 +295,22 @@ it("동일 이름의 빈티지·도수 후보를 구분하고 입력 용량과 �
   expect(onSelectExisting).toHaveBeenCalledWith("edition21", { skuId: "sku21" });
   expect(screen.getByLabelText("빈티지")).toHaveValue(2022);
 });
+
+it("확인한 검색 별칭을 입력하고 20개를 초과한 입력은 저장 전에 알린다", async () => {
+  const { onSubmit } = setup();
+  await userEvent.type(screen.getByLabelText("이름 *"), "GlenAllachie 12");
+  await userEvent.type(screen.getByLabelText("원어명"), "The GlenAllachie");
+  await userEvent.type(
+    screen.getByLabelText(/^검색 별칭/),
+    Array.from({ length: 21 }, (_, i) => `별칭${i}`).join(","),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "등록" }));
+  expect(onSubmit).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toHaveTextContent("최대 20개");
+  await userEvent.clear(screen.getByLabelText(/^검색 별칭/));
+  await userEvent.type(screen.getByLabelText(/^검색 별칭/), "글렌알라키,내 셰리");
+  await userEvent.click(screen.getByRole("button", { name: "등록" }));
+  expect(onSubmit).toHaveBeenCalledWith(
+    expect.objectContaining({ nameEn: "The GlenAllachie", searchAliases: "글렌알라키,내 셰리" }),
+  );
+});

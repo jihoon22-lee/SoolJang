@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
+from sooljang.domain.search import expand_search_queries
+
 #: 상품명 앞뒤에 붙는 판매 문구. 술 이름의 일부가 아니라 노이즈다.
 #: 괄호 속 식별 정보를 보존하고 판촉 단어만 토큰 단위로 뺀다.
 _PROMO_TOKENS = frozenset(
@@ -122,6 +124,7 @@ class ProductIdentity:
     vintage: int | None = None
     age_years: Decimal | None = None
     volumes_ml: tuple[int, ...] = ()
+    search_aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -330,6 +333,7 @@ def score(
     originals = [parse_name(identity.name)]
     if identity.name_en:
         originals.append(parse_name(identity.name_en))
+    originals.extend(parse_name(alias) for alias in identity.search_aliases if alias.strip())
     candidate_facts = parse_name(candidate_name)
     conflicts = tuple(
         dict.fromkeys(
@@ -415,6 +419,8 @@ def build_queries(identity: ProductIdentity) -> list[str]:
         if english and english.lower() != identity.name.strip().lower():
             queries.append(english)
 
+    queries.extend(identity.search_aliases)
+    queries.extend(expand_search_queries(identity.name))
     short = _BATCH_MARKS.sub(" ", identity.name)
     short = re.sub(r"\s+", " ", short).strip()
     if short and short != identity.name.strip():

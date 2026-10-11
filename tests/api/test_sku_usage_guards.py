@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from sooljang.infrastructure.database.models import Product, Purchase, Sku, TastingSession
 from sooljang.infrastructure.database.session import get_session_factory
+from tests.api.tasting_helpers import remove_tasting_record
 from tests.api.test_purchases import _post, _product_with_sku
 from tests.api.test_sync import _batch, _op, _pull
 
@@ -25,7 +26,7 @@ def _attach_reference(client: TestClient, prefix: str, sku_id: str, reference: s
             {"sku_id": sku_id, "tasted_on": "2026-10-01", "rating": "4"},
         )
         if reference == "deleted_tasting":
-            assert client.delete(f"{prefix}/tastings/{row['id']}").status_code == 204
+            assert remove_tasting_record(client, prefix, row["id"]).status_code == 200
     return row["id"]
 
 

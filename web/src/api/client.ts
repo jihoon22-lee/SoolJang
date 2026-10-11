@@ -1,3 +1,4 @@
+import type { TastingLifecycleInput, TastingLifecycleResult } from "@/api/tastingLifecycle";
 /**
  * 백엔드 API 클라이언트.
  *
@@ -65,7 +66,6 @@ import type {
   TastingCorrectionInput,
   TastingFilters,
   TastingInput,
-  TastingPage,
   TastingSummary,
   TimeSeriesPoint,
   User,
@@ -469,7 +469,10 @@ export const bottlesApi = {
     params: { limit?: number; cursor?: string | null },
     signal?: AbortSignal,
   ) =>
-    request<TastingPage>(`/bottles/${id}/tastings/page`, { params, ...(signal ? { signal } : {}) }),
+    request<ContextualTastingPage>(`/bottles/${id}/tastings/page`, {
+      params,
+      ...(signal ? { signal } : {}),
+    }),
 };
 
 export const tastingsApi = {
@@ -511,7 +514,10 @@ export const tastingsApi = {
       ...(signal ? { signal } : {}),
     }),
 
-  remove: (id: string) => request<void>(`/tastings/${id}`, { method: "DELETE" }),
+  remove: (id: string, input: TastingLifecycleInput) =>
+    request<TastingLifecycleResult>(`/tastings/${id}`, { method: "DELETE", body: input }),
+  restore: (id: string, input: TastingLifecycleInput) =>
+    request<TastingLifecycleResult>(`/tastings/${id}:restore`, { method: "POST", body: input }),
 };
 
 export const statsApi = {

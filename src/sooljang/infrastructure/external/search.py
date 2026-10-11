@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
@@ -94,6 +94,7 @@ class SearchDocument:
     rating: str | None = None
     rating_scale: str | None = None
     rating_count: int | None = None
+    origins: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -154,8 +155,30 @@ def build_search_requests(
     ]
 
 
+def normalized_publication_date(value: Any) -> str | None:
+    """제공자가 명시한 절대 날짜만 정규화한다. 조회일/상대 날짜로 추정하지 않는다."""
+    if not isinstance(value, str):
+        return None
+    try:
+        value = value.strip()
+        if re.fullmatch(r"\d{8}", value):
+            return datetime.strptime(value, "%Y%m%d").date().isoformat()
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone(UTC).isoformat() if parsed.tzinfo else parsed.date().isoformat()
+    except ValueError:
+        return None
+
+
 def parse_search_response(
-    kind: str, payload: Any, *, fetched_at: datetime, secrets: tuple[str, ...] = ()
+    kind: str,
+    payload: Any,
+    *,
+    fetched_at: datetime,
+    secrets: tuple[str, ...] = (),
+    query: str = "",
+    language: str = "ko",
+    page: int = 1,
+    channel: str = "web",
 ) -> list[SearchDocument]:
     if not isinstance(payload, dict):
         raise ValueError("검색 응답 형식을 확인할 수 없습니다")
@@ -171,7 +194,7 @@ def parse_search_response(
     if not isinstance(rows, list):
         raise ValueError("검색 결과 목록이 없습니다")
     results: list[SearchDocument] = []
-    for row in rows[:10]:
+    for rank, row in enumerate(rows[:10], start=(page - 1) * 10 + 1):
         if not isinstance(row, dict):
             continue
         url = canonical_document_url(
@@ -183,7 +206,7 @@ def parse_search_response(
         if not url or not title or _reflects_credentials(url + title + excerpt, secrets):
             continue
         published = row.get("publishedDate") or row.get("postdate") or row.get("page_age")
-        published = plain_excerpt(published, 60) or None
+        published = normalized_publication_date(published)
         if published and _reflects_credentials(published, secrets):
             published = None
         # 제목·발췌에 명시된 종류만 구분한다. 맛/평점/긍부정은 추론하지 않는다.
@@ -194,6 +217,7 @@ def parse_search_response(
             ("seller_note", ("판매자 테이스팅", "seller tasting", "판매자 노트")),
             ("customer_tasting", ("시음 후기", "음용 후기", "tasting review")),
             ("review", ("review", "리뷰", "평론")),
+            ("offer", ("판매 가격", "구매 안내", "판매가", "장바구니", "buy now", "add to cart")),
             ("info", ("제품 정보", "product information", "양조장", "distillery")),
         ):
             if any(term in corpus for term in terms):
@@ -211,6 +235,15 @@ def parse_search_response(
                 evidence="provider_text" if kind == "exa" and excerpt else "search_excerpt",
                 kind=category,
                 discovered_by=[kind],
+                origins=[
+                    {
+                        "provider": kind,
+                        "channel": channel,
+                        "rank": rank,
+                        "query": query,
+                        "language": language,
+                    }
+                ],
             )
         )
     return deduplicate_documents(results)
@@ -223,9 +256,36 @@ def deduplicate_documents(documents: list[SearchDocument]) -> list[SearchDocumen
             merged[doc.url] = doc
         else:
             prior = merged[doc.url]
-            prior.discovered_by = sorted(set(prior.discovered_by + doc.discovered_by))
-            if len(doc.excerpt) > len(prior.excerpt):
-                prior.excerpt, prior.evidence = doc.excerpt, doc.evidence
+            best = max(
+                (prior, doc),
+                key=lambda row: (
+                    bool(row.excerpt) and row.evidence == "provider_text",
+                    len(row.excerpt),
+                    row.title,
+                    row.excerpt,
+                    row.fetched_at,
+                ),
+            )
+            origins = {
+                tuple(sorted(origin.items())): origin for origin in prior.origins + doc.origins
+            }
+            purposes = (
+                "service_review",
+                "seller_note",
+                "customer_tasting",
+                "review",
+                "offer",
+                "info",
+                "unknown",
+            )
+            dates = [value for value in (prior.published_at, doc.published_at) if value]
+            merged[doc.url] = replace(
+                best,
+                discovered_by=sorted(set(prior.discovered_by + doc.discovered_by)),
+                origins=[origins[key] for key in sorted(origins)],
+                kind=min((prior.kind, doc.kind), key=purposes.index),
+                published_at=max(dates) if dates else None,
+            )
     return list(merged.values())
 
 
@@ -274,6 +334,10 @@ async def search_provider(
                         response.json(),
                         fetched_at=datetime.now(UTC),
                         secrets=tuple(credentials.values()),
+                        query=query,
+                        language=language,
+                        page=page,
+                        channel="blog" if "blog" in request.url else "web",
                     )
                 )
             else:

@@ -16,6 +16,7 @@ import type {
   CategoryNode,
   CategoryStat,
   CategoryTree,
+  ContextualTasting,
   OfflineRankings,
   OfflineStatsSummary,
   Product,
@@ -173,7 +174,7 @@ export async function getCategoryTree(): Promise<CategoryTree> {
 /** 카테고리 id → 자기 자신과 모든 후손 id 집합. "위스키" 필터가 하위를 포함해야 한다.
  * 이미 불러온 `CategoryTree` 를 받아 순수 계산만 한다(DB 를 다시 읽지 않는다) —
  * `filterAndSortProducts()` 가 화면이 이미 구독 중인 트리를 그대로 넘겨 쓴다. */
-function descendantIdsOfTree(categoryId: string, tree: CategoryTree): Set<string> {
+export function descendantIdsOfTree(categoryId: string, tree: CategoryTree): Set<string> {
   const childrenOf = new Map<string, string[]>();
   for (const item of tree.items) {
     if (item.parent_id === null) continue;
@@ -363,6 +364,7 @@ function toProduct(
     id: row.id,
     name: row.name as string,
     name_en: (row.name_en as string | null) ?? null,
+    search_aliases: (row.search_aliases as string[] | undefined) ?? [],
     category_id: categoryId,
     category_path: categoryId ? (categoryPaths.get(categoryId) ?? []) : [],
     producer_id: producerId,
@@ -479,7 +481,8 @@ function matchesText(product: Product, query: string): boolean {
   if (!query.trim()) return true;
   return (
     matchesQuery(product.name, query) ||
-    (product.name_en !== null && matchesQuery(product.name_en, query))
+    (product.name_en !== null && matchesQuery(product.name_en, query)) ||
+    (product.search_aliases ?? []).some((alias) => matchesQuery(alias, query))
   );
 }
 
@@ -793,6 +796,8 @@ export async function getBottlesForProduct(productId: string): Promise<Bottle[]>
 
 /** "오늘 마셨어요" 에서 고를 수 있는 병(재고). 개봉 병을 먼저, 최근 개봉 순. */
 export interface DrinkableBottle {
+  searchNames?: string[];
+  categoryId?: string | null;
   vintage: number | null;
   abv: string | null;
   ageYears: string | null;
@@ -836,10 +841,16 @@ export async function getDrinkableBottles(): Promise<DrinkableBottle[]> {
     if (!purchase || !sku || !product) continue;
     result.push({
       bottleId: bottle.id,
+      categoryId: (product.category_id as string | null) ?? null,
       skuId: sku.id,
       purchaseId: purchase.id,
       productId: product.id,
       productName: String(product.name),
+      searchNames: [
+        product.name,
+        product.name_en,
+        ...((product.search_aliases as string[]) ?? []),
+      ].filter((value): value is string => typeof value === "string" && value.length > 0),
       vintage: (product.vintage as number | null) ?? null,
       abv: (product.abv as string | null) ?? null,
       ageYears: (product.age_years as string | null) ?? null,
@@ -1111,6 +1122,7 @@ function valueForMoneyOf(row: StatsRow): Decimal | null {
 export async function getCategoryRollup(
   data?: StatsData,
   tree?: CategoryTree,
+  includeChildren = false,
 ): Promise<CategoryStat[]> {
   const { rows } = data ?? (await statsRows());
   const resolvedTree = tree ?? (await getCategoryTree());
@@ -1127,6 +1139,16 @@ export async function getCategoryRollup(
     names.set(key, top?.name ?? UNCATEGORIZED_LABEL);
   }
 
+  if (includeChildren) {
+    for (const node of resolvedTree.items.filter((item) => item.parent_id !== null)) {
+      const ids = descendantIdsOfTree(node.id, resolvedTree);
+      const matching = rows.filter((row) => row.categoryId !== null && ids.has(row.categoryId));
+      if (matching.length) {
+        groups.set(node.id, matching);
+        names.set(node.id, node.name);
+      }
+    }
+  }
   const stats: CategoryStat[] = Array.from(groups.entries()).map(([categoryId, groupRows]) => {
     const bottleCount = groupRows.reduce((sum, row) => sum + row.prices.purchasedCount, 0);
     const listTotal = sumDecimal(groupRows.map((row) => row.prices.listTotal));
@@ -1137,6 +1159,17 @@ export async function getCategoryRollup(
     return {
       category_id: categoryId,
       name: names.get(categoryId) ?? UNCATEGORIZED_LABEL,
+      product_count: groupRows.length,
+      in_stock_count: groupRows.reduce((sum, row) => sum + row.tally.unopened + row.tally.open, 0),
+      unopened_count: groupRows.reduce((sum, row) => sum + row.tally.unopened, 0),
+      opened_count: groupRows.reduce((sum, row) => sum + row.tally.open, 0),
+      consumed_count: groupRows.reduce((sum, row) => sum + row.tally.finished, 0),
+      gifted_count: groupRows.reduce((sum, row) => sum + row.tally.gifted, 0),
+      sold_count: groupRows.reduce((sum, row) => sum + row.tally.sold, 0),
+      parent_category_id:
+        resolvedTree.items.find((node) => node.id === categoryId)?.parent_id ?? null,
+      inventory_value_at_cost:
+        sumDecimal(groupRows.map((row) => row.inventoryValueAtCost))?.toFixed(2) ?? null,
       bottle_count: bottleCount,
       total_spend: listTotal !== null ? quantizeMoney(listTotal).toFixed(2) : null,
       avg_abv:
@@ -1156,8 +1189,8 @@ export async function getCategoryRollup(
   });
 
   stats.sort((a, b) =>
-    b.bottle_count !== a.bottle_count
-      ? b.bottle_count - a.bottle_count
+    b.in_stock_count !== a.in_stock_count
+      ? b.in_stock_count - a.in_stock_count
       : a.name.localeCompare(b.name),
   );
   return stats;
@@ -1215,6 +1248,7 @@ export interface StatsDashboard {
   coverage: StatsCoverage;
   rankings: OfflineRankings;
   categories: CategoryStat[];
+  categoryDetails: CategoryStat[];
   totals: OfflineStatsSummary;
   tree: CategoryTree;
 }
@@ -1228,6 +1262,7 @@ export async function getStatsDashboard(): Promise<StatsDashboard> {
     coverage: data.coverage,
     rankings: await getStatsRankings(DEFAULT_RANKING_LIMIT, data),
     categories: await getCategoryRollup(data, tree),
+    categoryDetails: await getCategoryRollup(data, tree, true),
     totals: await getStatsSummary(data),
     tree,
   };
@@ -1242,6 +1277,7 @@ export interface RecentProduct {
 }
 
 export interface RecentTasting {
+  record: ContextualTasting;
   labelNo: number | null;
   purchaseId: string | null;
   skuId: string;
@@ -1273,6 +1309,7 @@ export async function getRecentTastings(limit = 5): Promise<RecentTasting[]> {
   const { items } = await getLocalTastingHistory({});
   // Use the same live ownership chain and date/ID order as the full tasting history.
   return items.slice(0, limit).map((t) => ({
+    record: t,
     id: t.id,
     labelNo: t.bottle?.label_no ?? null,
     purchaseId: t.purchase?.id ?? null,

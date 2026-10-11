@@ -1,10 +1,7 @@
 name: Release
 
-# 이 워크플로는 미리 작성해 두고 개발 기간 동안 실행하지 않는다.
-# 첫 정식 릴리스는 모든 기능 Task 가 끝난 뒤 Task 23 에서 한 번만 수행한다.
-#
-# 검증은 workflow_dispatch 의 dry_run 모드로만 한다. dry_run 은 이미지 빌드까지
-# 수행하고 레지스트리 push 와 릴리스 생성은 건너뛴다.
+# 승인된 버전 태그는 전체 검증 후 이미지와 GitHub Release를 게시한다.
+# workflow_dispatch의 dry_run은 이미지 빌드까지 검증하며 게시와 릴리스 생성을 건너뛴다.
 #
 # 배포 방식: GitHub Actions 는 홈 PC 로 인바운드 접속을 할 수 없다. 따라서 이
 # 워크플로는 GHCR 에 이미지를 게시하는 것까지만 하고, 홈 PC 가 `make deploy` 로
@@ -91,8 +88,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry_run version=$version"
 
-      # quality.yml 과 같은 게이팅을 적용해 Task 5 이전에도 dry-run 을 검증할 수
-      # 있게 한다. 단 실제 릴리스에서는 구성 요소 누락을 실패로 처리한다.
+      # dry-run은 부분 구성을 허용하지만 실제 릴리스는 구성 요소 누락을 거부한다.
       - name: Detect project layout
         id: layout
         shell: bash

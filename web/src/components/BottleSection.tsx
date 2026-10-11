@@ -9,7 +9,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { collectionApi } from "@/api/collection";
-import type { Bottle, BottleStatus, Product, Purchase } from "@/api/types";
+import type { Bottle, BottleStatus, ContextualTasting, Product, Purchase } from "@/api/types";
 import { BottlePanel, formatRemaining, STATUS_LABELS } from "@/components/BottlePanel";
 import { type HandOverAction, HandOverSheet } from "@/components/HandOverSheet";
 import { productEdition, purchaseReference } from "@/components/productDisplay";
@@ -42,6 +42,8 @@ export function BottleSection({
   selectedSkuId,
   selectedBottleId,
   selectedTastingId,
+  onCorrectTasting,
+  onTastingDeleted,
   onSelectContext,
   onSavingChange,
   bottles,
@@ -52,6 +54,8 @@ export function BottleSection({
   selectedSkuId?: string | undefined;
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
+  onCorrectTasting?: ((item: ContextualTasting) => void) | undefined;
+  onTastingDeleted?: ((item: ContextualTasting) => void) | undefined;
   onSelectContext?: ((context: ProductContext) => void) | undefined;
   onSavingChange?: ((saving: boolean) => void) | undefined;
   bottles: Bottle[];
@@ -303,6 +307,8 @@ export function BottleSection({
             offline={offline}
             contextLabel={context}
             selectedTastingId={selectedTastingId}
+            onCorrect={onCorrectTasting}
+            onDeleted={onTastingDeleted}
             onSavingChange={(saving) => {
               setSavingBottleId(saving ? bottle.id : null);
               onSavingChange?.(saving);

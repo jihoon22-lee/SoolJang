@@ -28,6 +28,15 @@ class RankingsOut(BaseModel):
 class CategoryStatOut(BaseModel):
     category_id: uuid.UUID | None
     name: str
+    product_count: int
+    in_stock_count: int
+    unopened_count: int
+    opened_count: int
+    consumed_count: int
+    gifted_count: int
+    sold_count: int
+    parent_category_id: uuid.UUID | None
+    inventory_value_at_cost: Decimal | None
     bottle_count: int
     total_spend: Decimal | None
     avg_abv: Decimal | None

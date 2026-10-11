@@ -12,6 +12,9 @@ class InterestIdentity(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=300)
     name_en: str | None = Field(default=None, max_length=300)
+    search_aliases: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(
+        default_factory=list, max_length=30
+    )
     producer: str | None = Field(default=None, max_length=200)
     abv: Decimal | None = Field(default=None, ge=0, le=100)
     vintage: int | None = Field(default=None, ge=1800, le=2200)
@@ -44,6 +47,9 @@ class InterestCreate(BaseModel):
         default_factory=dict, max_length=100
     )
     note: str | None = Field(default=None, max_length=5000)
+    reference_urls: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
+        default_factory=list, max_length=20
+    )
 
 
 class InterestUpdate(BaseModel):
@@ -54,13 +60,20 @@ class InterestUpdate(BaseModel):
     )
     note: str | None = Field(default=None, max_length=5000)
     archived: bool | None = None
+    reference_urls: list[Annotated[str, Field(min_length=1, max_length=2000)]] | None = Field(
+        default=None, max_length=20
+    )
 
     @model_validator(mode="after")
     def reject_null_identity(self) -> InterestUpdate:
-        for field in ("identity", "source_matches"):
+        for field in ("identity", "source_matches", "reference_urls"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field}는 null일 수 없습니다")
         return self
+
+
+class InterestRevision(BaseModel):
+    expected_updated_at: AwareDatetime
 
 
 class NewInterestProduct(BaseModel):

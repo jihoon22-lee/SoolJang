@@ -135,6 +135,7 @@ async function search() {
   await userEvent.type(screen.getByLabelText("검색할 술"), "관심 몰트");
   await userEvent.click(await screen.findByLabelText("Exa · 검색"));
   await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(screen.getByRole("button", { name: "평점·리뷰" }));
   await screen.findByRole("heading", { name: document.title });
 }
 it("선택한 검색만 실행하고 근거·원척도·도메인·필터·선택 비교를 보여준다", async () => {
@@ -144,7 +145,7 @@ it("선택한 검색만 실행하고 근거·원척도·도메인·필터·선�
   expect(screen.queryByText("비활성 · 검색")).not.toBeInTheDocument();
   expect(screen.queryByText("OCR · 검색")).not.toBeInTheDocument();
   expect(screen.getByText(/원문 도메인 2개/)).toHaveTextContent("검색 연결 1개");
-  expect(screen.getAllByText("<script>외부 발췌</script>")).toHaveLength(2);
+  expect(screen.getAllByText("<script>외부 발췌</script>")).toHaveLength(1);
   expect(window.document.querySelector("script")).toBeNull();
   expect(screen.getByText("평점 0 / 100 · 0")).toBeInTheDocument();
   const compare = screen.getAllByLabelText("비교 선택")[0] as HTMLElement;
@@ -164,8 +165,9 @@ it("선택한 검색만 실행하고 근거·원척도·도메인·필터·선�
   expect(screen.queryByRole("heading", { name: "생산자 정보" })).not.toBeInTheDocument();
 });
 it("후보를 직접 확인해 규격 식별값과 함께 관심에 저장하며 재시도 request_id를 유지한다", async () => {
+  vi.spyOn(db, "databaseIdentity").mockReturnValue({ userId: "retry-user", generation: 1 });
   vi.mocked(discoveryApi.saveInterest).mockRejectedValueOnce(new Error("응답 유실"));
-  renderWithQuery(<DiscoveryPanel />);
+  const view = renderWithQuery(<DiscoveryPanel />);
   await userEvent.type(screen.getByLabelText("검색할 술"), "관심 몰트");
   await userEvent.click(screen.getByText("제품 식별 정보 (선택)"));
   for (const [label, value] of [
@@ -179,20 +181,14 @@ it("후보를 직접 확인해 규격 식별값과 함께 관심에 저장하며
   await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
   await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
   await userEvent.click(await screen.findByLabelText("합성 몰트 700ml"));
+  await userEvent.click(screen.getByLabelText("제품명·판본·규격과 선택 출처를 확인했습니다"));
   await userEvent.click(screen.getByRole("button", { name: "평점·리뷰" }));
   expect(screen.getByText(/평점 88 \/ 100/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "관심에 저장" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("응답 유실");
   const first = vi.mocked(discoveryApi.saveInterest).mock.calls[0];
-  expect(first?.[0]).toEqual({
-    name: "관심 몰트",
-    name_en: "Malt",
-    producer: null,
-    abv: "46",
-    vintage: 2021,
-    age_years: "12",
-    volumes_ml: [700],
-  });
+  expect(first?.[0]).toEqual({ name: "합성 몰트 700ml", volumes_ml: [700] });
+  expect(first?.[3]).toEqual([source.candidates[0]?.url]);
   expect(first?.[1]).toEqual({
     source: {
       external_url: source.candidates[0]?.url,
@@ -201,9 +197,12 @@ it("후보를 직접 확인해 규격 식별값과 함께 관심에 저장하며
       product_key: "malt",
     },
   });
+  view.unmount();
+  renderWithQuery(<DiscoveryPanel />);
+  expect(screen.getByLabelText("저장할 제품명")).toHaveValue("합성 몰트 700ml");
   await userEvent.click(screen.getByRole("button", { name: "관심에 저장" }));
   await screen.findByText(/관심에 저장했습니다/);
-  expect(vi.mocked(discoveryApi.saveInterest).mock.calls[1]?.[2]).toBe(first?.[2]);
+  expect(vi.mocked(discoveryApi.saveInterest).mock.calls[1]).toEqual(first);
   expect(screen.getByRole("button", { name: "관심에 저장" })).toBeDisabled();
 });
 it("제품의 현재값과 근거를 비교하고 선택한 필드만 원래 revision으로 적용한다", async () => {
@@ -330,7 +329,12 @@ it("등록 제품의 현재 식별 정보와 기존 고정·선호 판매처를 
   renderWithQuery(<DiscoveryPanel productId="product" initialName="등록 몰트" />);
   await waitFor(() => expect(screen.getByRole("button", { name: "관심에 저장" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "관심에 저장" }));
-  expect(discoveryApi.saveInterest).toHaveBeenCalledWith(identity, pins, expect.any(String));
+  expect(discoveryApi.saveInterest).toHaveBeenCalledWith(
+    identity,
+    pins,
+    expect.any(String),
+    undefined,
+  );
   await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
   await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
   await waitFor(() =>
@@ -360,6 +364,7 @@ it("저장된 관심 ID로 재조회하고 후보 고정을 revision 검사로 �
   await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
   await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
   await userEvent.click(await screen.findByLabelText("합성 몰트 700ml"));
+  await userEvent.click(screen.getByLabelText("제품명·판본·규격과 선택 출처를 확인했습니다"));
   await userEvent.click(screen.getByRole("button", { name: "후보 고정 저장" }));
   expect(discoveryApi.interestLookup).toHaveBeenCalledWith(
     "interest",
@@ -368,6 +373,7 @@ it("저장된 관심 ID로 재조회하고 후보 고정을 revision 검사로 �
   );
   expect(interestsApi.update).toHaveBeenCalledWith("interest", {
     expected_updated_at: interest.updated_at,
+    reference_urls: [source.candidates[0]?.url],
     source_matches: {
       source: {
         external_url: source.candidates[0]?.url,

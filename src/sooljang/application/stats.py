@@ -84,6 +84,15 @@ class Rankings:
 class CategoryStat:
     category_id: uuid.UUID | None
     name: str
+    product_count: int
+    in_stock_count: int
+    unopened_count: int
+    opened_count: int
+    consumed_count: int
+    gifted_count: int
+    sold_count: int
+    parent_category_id: uuid.UUID | None
+    inventory_value_at_cost: Decimal | None
     bottle_count: int
     total_spend: Decimal | None
     avg_abv: Decimal | None
@@ -191,7 +200,9 @@ def _top_ancestor_map(nodes: list[CategoryNode]) -> dict[uuid.UUID, CategoryNode
     return mapping
 
 
-def _aggregate_category(category_id: uuid.UUID | None, name: str, rows: list[Any]) -> CategoryStat:
+def _aggregate_category(
+    category_id: uuid.UUID | None, name: str, rows: list[Any], parent_id: uuid.UUID | None = None
+) -> CategoryStat:
     bottle_count = sum(int(row.purchased_count or 0) for row in rows)
     list_total = _sum_decimal(row.list_total for row in rows)
     list_volume = _sum_decimal(row.list_volume for row in rows)
@@ -212,6 +223,15 @@ def _aggregate_category(category_id: uuid.UUID | None, name: str, rows: list[Any
     return CategoryStat(
         category_id=category_id,
         name=name,
+        product_count=len(rows),
+        in_stock_count=sum(int(row.unopened or 0) + int(row.open or 0) for row in rows),
+        unopened_count=sum(int(row.unopened or 0) for row in rows),
+        opened_count=sum(int(row.open or 0) for row in rows),
+        consumed_count=sum(int(row.finished or 0) for row in rows),
+        gifted_count=sum(int(row.gifted or 0) for row in rows),
+        sold_count=sum(int(row.sold or 0) for row in rows),
+        parent_category_id=parent_id,
+        inventory_value_at_cost=_money(_sum_decimal(row.inventory_value_at_cost for row in rows)),
         bottle_count=bottle_count,
         total_spend=_money(list_total),
         avg_abv=_mean(row.abv for row in rows),
@@ -221,7 +241,9 @@ def _aggregate_category(category_id: uuid.UUID | None, name: str, rows: list[Any
     )
 
 
-async def get_category_rollup(session: AsyncSession, *, user_id: uuid.UUID) -> list[CategoryStat]:
+async def get_category_rollup(
+    session: AsyncSession, *, user_id: uuid.UUID, include_children: bool = False
+) -> list[CategoryStat]:
     """주종별 집계. 하위 카테고리는 최상위 주종으로 롤업한다.
 
     레거시 실측 롤업(와인 170·사케 12·전통주 120·맥주 642·양주 134)과 병수가
@@ -243,7 +265,20 @@ async def get_category_rollup(session: AsyncSession, *, user_id: uuid.UUID) -> l
         _aggregate_category(category_id, names[category_id], group_rows)
         for category_id, group_rows in groups.items()
     ]
-    stats.sort(key=lambda stat: (-stat.bottle_count, stat.name))
+    if include_children:
+        for node in nodes:
+            if node.parent_id is None:
+                continue
+            scope = {node.id}
+            while True:
+                extended = scope | {item.id for item in nodes if item.parent_id in scope}
+                if extended == scope:
+                    break
+                scope = extended
+            matching = [row for row in rows if row.category_id in scope]
+            if matching:
+                stats.append(_aggregate_category(node.id, node.name, matching, node.parent_id))
+    stats.sort(key=lambda stat: (-stat.in_stock_count, stat.name))
     return stats
 
 

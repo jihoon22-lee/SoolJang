@@ -747,6 +747,8 @@ export function ProductsPage({
 function valuesFromProduct(product: Product): Partial<ProductFormValues> {
   return {
     name: product.name,
+    nameEn: product.name_en ?? "",
+    searchAliases: (product.search_aliases ?? []).join(", "),
     categoryId: product.category_id ?? "",
     producerName: product.producer_name ?? "",
     abv: product.abv ?? "",
@@ -785,7 +787,7 @@ function ProductDetailView({
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const targetRecord = useLiveQuery(
     () => resolveProductContext(productId, context),
-    [productId, context.skuId, context.bottleId, context.tastingId],
+    [productId, context.skuId, context.purchaseId, context.bottleId, context.tastingId],
   );
   const productRecord = useLiveQuery(() => getProduct(productId), [productId]);
   const retained = useRef<{ product: Product; target: ProductContext } | null>(null);
@@ -818,6 +820,11 @@ function ProductDetailView({
       const producerName = values.producerName?.trim() || null;
       const fields = {
         name: values.name.trim(),
+        name_en: values.nameEn?.trim() || null,
+        search_aliases: (values.searchAliases ?? "")
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean),
         category_id: values.categoryId || null,
         abv: values.abv || null,
         vintage: values.vintage ? Number(values.vintage) : null,
@@ -996,7 +1003,7 @@ function ProductDetailView({
     return (
       <>
         <p role="alert" className="alert">
-          선택한 규격·병·시음이 삭제되었거나 이 술에 속하지 않습니다.
+          선택한 규격·구매·병·시음이 삭제되었거나 이 술에 속하지 않습니다.
         </p>
         <button type="button" onClick={() => onSelectContext({ purchaseScope: undefined })}>
           제품 전체 보기
@@ -1028,8 +1035,14 @@ function ProductDetailView({
       product={product}
       matchingPurchaseIds={matchingPurchaseIds}
       selectedSkuId={target.skuId}
+      selectedPurchaseId={target.purchaseId}
       selectedBottleId={target.bottleId}
       selectedTastingId={target.tastingId}
+      editTasting={context.editTasting}
+      onTastingDeleted={(record) => {
+        if (context.tastingId === record.id)
+          onSelectContext({ skuId: target.skuId, bottleId: target.bottleId });
+      }}
       onSelectContext={onSelectContext}
       onTastingCorrected={onTastingCorrected}
       onCorrectionSavingChange={(saving) => {

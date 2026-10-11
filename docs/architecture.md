@@ -214,7 +214,8 @@ erDiagram
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
 | `name` | `text` | 표시명. 레거시 이름 첫 줄 |
-| `name_en` | `text` NULL | 영문명 |
+| `name_en` | `text` NULL | 원어명 |
+| `search_aliases` | `jsonb` NOT NULL | 사용자가 확인한 검색 별칭, 최대 20개·각 300자. schema 0021 |
 | `category_id` | `UUID` FK | |
 | `producer_id` | `UUID` FK NULL | |
 | `country`, `region` | `text` NULL | |
@@ -223,7 +224,6 @@ erDiagram
 | `age_years` | `numeric(4,1)` NULL | 숙성 연수 |
 | `note` | `text` NULL | 제품 메모. 레거시 `느낀 점`·이름 2번째 줄 이관 |
 | `personal_rating` | `numeric(3,1)` NULL | `CHECK (0 < r <= 6)` — 레거시가 6점 만점 |
-| `search_text` | `text` | 생성 컬럼. `pg_trgm` GIN 인덱스 대상 |
 
 `personal_rating`은 제품 수준 총평이다. 시음 세션별 평점과 별개로 두어 레거시 데이터를 손실 없이
 받고, 세션이 쌓이면 세션 평균을 함께 보여준다.
@@ -316,38 +316,17 @@ erDiagram
 | `note` | `text` NULL | |
 | `companions`, `place` | `text` NULL | |
 
-#### `external_source` — 외부 소스 레지스트리
+#### 외부 소스·평점·관심·판매 관측
 
-| 컬럼 | 타입 | 비고 |
-|---|---|---|
-| `name` | `text` | 표시명 |
-| `code` | `text` | 레거시 태그 매핑용. `RB`/`U`/`BA`/`VIVINO` 등 |
-| `base_url` | `text` | |
-| `kinds` | `text[]` | `rating`/`price`/`review` 복수 가능 |
-| `category_scope` | `UUID[]` NULL | 적용 주종. NULL이면 전체 |
-| `strategy` | `enum` | `search`(검색+LLM 요약) / `adapter`(YAML 셀렉터) |
-| `adapter_spec` | `jsonb` NULL | `strategy='adapter'`일 때 셀렉터 정의 |
-| `rating_scale` | `numeric(4,1)` NULL | 5·100 등 |
-| `ttl_hours` | `int` | 캐시 유효 기간 |
-| `rate_limit_per_min` | `int` | |
-| `enabled` | `bool` | |
-| `priority` | `int` | 표시·조회 순서 |
+현재 계약은 [external-data.md](external-data.md) §2~3에 모은다. `external_source`는
+`adapter_spec`, 적용 `category_id`, `connection_id`, `is_active`, 호출 제한·검증 revision을
+저장한다. 검색은 별도의 `provider_connection`과 `discovery` API를 사용하며 `strategy=search`
+컬럼이나 검색 결과를 LLM으로 요약하는 경로는 없다.
 
-사용자가 UI에서 자유롭게 등록·수정·비활성·삭제·재정렬한다. 레거시 태그(`RB`/`U`/`BA`)는
-초기 시드로 넣어 임포트가 소스별 평점을 정확히 연결할 수 있게 한다.
-
-#### `external_rating` / `external_review` / `price_observation`
-
-세 테이블 공통으로 `source_id`, `fetched_at`, `source_url`(**NOT NULL**), `raw_excerpt`,
-`summary`를 갖는다. 출처 URL 없는 데이터는 저장을 거부한다. 사후에 사람이 원본을 확인할 수
-없는 수치는 신뢰할 수 없기 때문이다.
-
-- `external_rating`: `product_id`, `value`, `scale`, `review_count`
-  단, 레거시 임포트는 URL을 모르므로 `source_url`에 `legacy://excel` 센티넬을 넣고
-  `is_legacy=true`로 표시한다. 실측 조회로 대체되면 갱신한다
-- `external_review`: `product_id`, `author`, `rating`, `excerpt`, `published_at`
-- `price_observation`: `sku_id`, `observed_at`, `price`, `currency`, `in_stock`
-  시계열이므로 `(sku_id, source_id, observed_at)` 인덱스를 둔다
+제품별 사용자 고정은 `external_product_match`, 일회성 결과 캐시는 `external_lookup_cache`,
+허용된 판매 조건·관측은 `external_offer`와 `external_price_observation`에 저장한다.
+레거시 원문 보존·이관 규칙은 [legacy-schema.md](legacy-schema.md)를 따른다. 옛 설계의 `external_rating`/`external_review`/
+`price_observation` 3테이블과 모든 원문·요약의 영구 저장은 현재 구현이 아니다.
 
 #### 그 외
 
@@ -358,11 +337,12 @@ erDiagram
   참조 무결성을 검사할 수 없다). `kind`(`label`/`tasting`/`bottle`/`other`), `content_type`,
   `byte_size`, `sha256`, `storage_path`. 업로드는 `POST /attachments`(Task 17) 가 이미지만
   받는다
-- `wishlist_item`: 구매 후보. `target_price` 도달 알림(Task 19)의 대상
+- `interest`: 비보유 관심 대상. 구매·재고와 분리된 UUID, identity·사용자 별칭·메모·선택 출처
+  URL(`reference_urls`, schema 0021)을 보존한다. 삭제/복구와 감시 경계는 external-data §3.5.
 - `saved_view`: 커스텀 피벗 정의(Task 20). `name`, `definition jsonb`(검증하지 않는다 —
   불러와 `POST /stats/pivot` 에 다시 보낼 때 그 스키마가 검증한다). `EntityMixin` 을
-  쓰지만 **동기화 대상이 아니다** — 통계 v2 전체가 온라인 전용이라(피벗 재계산 자체가
-  서버 DB 조회를 전제한다) 저장된 정의만 오프라인에 미러링해 봐야 의미가 없다
+  쓰지만 **동기화 대상이 아니다**. 서버 피벗과 저장된 뷰는 온라인 전용이다. 기본 통계
+  인사이트·홈의 보유 집계는 로컬 미러에서 계산하므로 오프라인에서도 사용할 수 있다
 - `sync_cursor`, `outbox_receipt`, `conflict_log`: 동기화 상태(§5). `conflict_log` 는
   LWW 충돌에서 진 로컬 변경을 보관한다(§5.4) — 다른 9개 동기화 대상 테이블과 같은
   공통 컬럼(`EntityMixin`)을 써서 풀 대상에 포함시킨다. 한 기기의 충돌이 다른 기기의
@@ -375,7 +355,7 @@ erDiagram
 - `external_source`: 사용자가 등록한 조회 대상 사이트 하나(Task 18, §7). `name`,
   `base_url`, `adapter_spec jsonb`(§7.2 스키마), `category_id`(FK, `NULL` 이면 전역 소스),
   `priority`, `is_active`, `rate_limit_per_min`, `ttl_hours`. `llm_setting` 과 같은 이유로
-  동기화 대상이 아니다 — 지금은 `adapter` 전략만 저장한다(`search` 전략은 별도 PR)
+  동기화 대상이 아니다. 검색 제공자 연결과 허용된 소스 adapter를 별도로 관리한다
 - `external_lookup_cache`: 소스·제품별 최근 조회 결과(§7.1 `FetchedSnapshot`). `source_id`,
   `product_id`, `snapshot jsonb`(`source_url`/`fields`/`raw_excerpt`), `degraded`,
   `warning`, `fetched_at`. `ttl_hours` 내 재조회 요청은 이 값을 그대로 돌려준다(§7.3).
@@ -405,7 +385,7 @@ UTC `timestamptz`다.
 
 | 대상 | 인덱스 |
 |---|---|
-| 한글 부분 문자열 검색 | `GIN (search_text gin_trgm_ops)` on `product` |
+| 이름 부분 문자열 인덱스 | `GIN (name gin_trgm_ops)` on `product`; 한영·초성 q 필터는 아래 공통 검색 규칙 사용 |
 | 목록 기본 정렬·필터 | `(user_id, deleted_at, category_id)` on `product` |
 | 동기화 델타 | `(user_id, updated_at)` on 모든 동기화 대상 테이블 |
 | 바코드 조회 | `UNIQUE (user_id, barcode) WHERE barcode IS NOT NULL` on `sku` |
@@ -496,7 +476,7 @@ UTC `timestamptz`다.
 
 ### 4.2 엔드포인트
 
-아래 표는 v1.9.0 구현 API다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
+아래 표는 v1.10.0 구현 API다(`/api/v1` 접두사 생략). health·auth를 뺀 모든 경로는
 라우터 단위로 인증을 요구하고(§6), 사용자 데이터는 소유권을 검사한다. 외부 연결·탐색·가격
 감시 경로의 동작은 [external-data.md](external-data.md)를 본다.
 
@@ -586,6 +566,8 @@ UTC `timestamptz`다.
 | interests | `GET /interests` | List Interests |
 | interests | `POST /interests` | Post Interest |
 | interests | `PATCH /interests/{interest_id}` | Patch Interest |
+| interests | `DELETE /interests/{interest_id}` | 조회 버전 검사 후 소프트 삭제, 갱신된 관심 반환 |
+| interests | `POST /interests/{interest_id}/restore` | 삭제 버전 검사 후 같은 ID 복구, 감시는 중지 유지 |
 | interests | `POST /interests/{interest_id}/purchase` | Purchase Interest |
 | llm-settings | `DELETE /llm-settings` | Remove Llm Setting |
 | llm-settings | `GET /llm-settings` | Read Llm Setting |
@@ -643,7 +625,8 @@ UTC `timestamptz`다.
 | tastings | `GET /tastings/{tasting_id}/attachments` | 시음 첨부 |
 | tastings | `GET /tastings/{tasting_id}/history` | 시음 정정 이력 |
 | tastings | `POST /tastings/{tasting_id}:correct` | 기록만 정정 또는 양쪽 병 최종 상태 명시 |
-| tastings | `DELETE /tastings/{tasting_id}` | 시음 기록 삭제 |
+| tastings | `DELETE /tastings/{tasting_id}` | `request_id`·`expected_updated_at`을 검증한 기록 삭제. 200에 최신 버전 반환 |
+| tastings | `POST /tastings/{tasting_id}:restore` | 같은 ID·첨부·내용 복구, 현재 잔량은 그대로 |
 | vendors | `GET /vendors` | 구매처 목록 |
 | vendors | `POST /vendors` | 구매처 등록 |
 | vendors | `DELETE /vendors/{vendor_id}` | 구매처 삭제 |
@@ -666,9 +649,14 @@ UTC `timestamptz`다.
 
 `GET /products` 필터: `category_id`(하위 포함), `country`, `abv_min`/`abv_max`,
 `price_per_100ml_min`/`_max`, `in_stock`(bool), `rating_min`, `vendor_id`, `variety`,
-`q`(한글 부분 문자열), `vintage_min`/`_max`, `volume_ml`,
+`q`(한영 별칭·초성·Unicode 정규화 부분 검색), `vintage_min`/`_max`, `volume_ml`,
 `purchased_on_min`/`purchased_on_max`. 모두 AND로 결합한다. 구매처·날짜·용량은 같은 구매 건에서
 만족해야 하며, 선택 조건의 가격·재고와 제품 전체 지표를 별도 필드로 제공한다.
+
+검색은 `domain/search.py`와 `web/src/search.ts`가 같은 사전·120개 합성 정답을 사용한다.
+브랜드 사전은 `domain/search_aliases.json`에서 출처·확인일·범위를 관리한다. 표시명·원어명·
+사용자 별칭은 검색에만 연결하며 중복 키·빈티지·숙성·SKU는 바꾸지 않는다. 모르는 한영 이름을
+자동 음역하지 않는다. 외부 검색어는 브랜드 구간만 치환해 원래 판본·용량 단위를 보존한다.
 
 ### 4.4 기록 탐색과 정정
 
@@ -689,6 +677,25 @@ REST 시음 응답의 맥락 필드는 추가형이며 sync 원본 DTO는 유지
 확인하고, 다른 입력의 ID 재사용·stale version은 409다. UI는 초안을 보존하며 최신 상태를
 명시적으로 재확인한다. 과거 receipt를 IndexedDB에 덮지 않고 최신 pull을 기다린다.
 정정 후 사용자가 다른 화면으로 이동했다면 늦은 성공으로 새 탐색 맥락을 바꾸지 않는다.
+
+### 4.5 홈 보유 집계와 통계 인사이트
+
+홈은 현재 보유·미개봉·개봉·재고 원가를 먼저 표시한다. 주종별 `in_stock_count`는
+`unopened_count + opened_count`이고 기존 `bottle_count`는 누적 구매다. 소진·증여·판매와
+제품 종류 수를 따로 보여 주며 `include_children=true`로 하위 행을 요청할 수 있다.
+상위 행은 후손을 포함하므로 하위와 다시 합산하지 않는다. 숫자에서 실제 병 목록·SKU로 이동한다.
+
+기본 통계는 유효한 부모·계정 소유의 로컬 스냅샷으로 계산한다. 기간 필터는 날짜가 있는
+구매·시음·소진 등 이벤트에 적용하며 현재 보유량을 과거 스냅샷으로 해석하지 않는다.
+현재 재고, 개봉 경과·최근 기록, 구매·지출 변화, 제품 총평과 세션 평가의 별도 표본,
+동일 SKU·통화·기록 조건별 유상 가격과 0원, 미시음 보유·첫 시음 지연·결측 기록을 제공한다.
+수치의 범위·표본·제외 사유·근거 기록을 함께 표시한다. 기존 상세 집계·서버 피벗은 보조 보기다.
+개봉일 경과는 관측 사실이며 일괄 음용 안전기한·소비 권장 기간을 부여하지 않는다.
+
+시음 행의 삭제·복구는 온라인에서 조회 버전·멱등 ID·계정을 검사한다. 첨부와 ID를 보존하고
+현재 병 잔량을 자동 되돌리지 않는다. 응답 유실은 같은 요청으로 확인하며 새 수정/복구를
+오래된 receipt로 덮지 않는다. 간단 메모·평점 편집과 날짜·양·대상·현재 잔량 정정을 분리한다.
+빠른 입력과 상세는 계정/탭/병별 초안을 공유하며 저장 후 같은 병에 새 기록을 이어 쓸 수 있다.
 
 ## 5. 오프라인 동기화 프로토콜
 
@@ -833,7 +840,7 @@ Tailscale로 접근이 제한되어 있어도 앱 레벨 인증을 생략하지 
 flowchart LR
     DEV[개발 PC<br/>feature 브랜치] -->|PR| GH[GitHub Actions<br/>품질 게이트]
     GH -->|머지| MAIN[main]
-    MAIN -->|vX.Y.Z 태그<br/>Task 23에서 최초 1회| REL[release 워크플로]
+    MAIN -->|승인된 vX.Y.Z 태그| REL[release 워크플로]
     REL --> GHCR[(GHCR private<br/>이미지)]
     REL --> NOTES[릴리스 노트]
     HOME[홈 PC] -->|make deploy<br/>pull| GHCR
@@ -864,6 +871,8 @@ Tailscale이 `<머신>.<tailnet>.ts.net`에 대해 Let's Encrypt 인증서를 �
 
 ### 8.4 환경 제약과 해결 (2026-07-31 실측)
 
+다음 표는 당시 환경의 기록이다. 현재 개발 DB 준비는 §8.5와 [development.md](development.md) §1을 따른다.
+
 | 항목 | 상태 | 대응 |
 |---|---|---|
 | Docker | **설치됨** (29.7.0, Compose v5.3.1) | 로컬·운영 모두 Docker Compose 를 기본 경로로 쓴다 |
@@ -880,17 +889,16 @@ Tailscale이 `<머신>.<tailnet>.ts.net`에 대해 Let's Encrypt 인증서를 �
 
 | 환경 | 실행 방식 | PostgreSQL |
 |---|---|---|
-| 로컬 개발·테스트 (기본) | `docker compose up -d db` | `postgres:17-alpine` |
-| 로컬 개발·테스트 (폴백) | `scripts/dev-db.sh` — micromamba 로 홈 디렉토리에 설치, root·Docker 불필요, 포트 54329 | 17.10 |
+| 로컬 개발·테스트 | `make db-local-setup` / `make db-local-start` — `scripts/dev-db.sh`로 홈 디렉터리에 설치, root·Docker 불필요. 루프백 54329, `sooljang_dev` / `sooljang_test` 분리 | 17.10 |
 | CI | GitHub Actions `services: postgres` | `postgres:17-alpine` |
 | 운영(홈 PC) | `docker-compose.yml` | `postgres:17-alpine` |
 
-모든 환경이 PostgreSQL 17 이므로 쿼리 동작이 갈라지지 않는다. 폴백 인스턴스는 루프백에만
+모든 환경이 PostgreSQL 17을 사용한다. 격리 개발 인스턴스는 루프백에만
 바인딩하고 `trust` 인증을 쓴다. 운영은 비밀번호 인증을 요구하며 `POSTGRES_PASSWORD` 가 비어
 있으면 기동을 거부한다.
 
-폴백 경로를 남겨 두는 이유는 두 가지다. Docker 데몬 접근이 막힌 상황(그룹 반영 전, 데몬 미기동)
-에서도 개발을 계속할 수 있고, 클라우드 이전이나 다른 기기에서 작업할 때 진입 장벽을 낮춘다.
+`docker-compose.yml`의 DB는 운영 데이터다. 개발 준비에 `docker compose up/down`이나
+`make db-up/db-down`을 사용하지 않는다. 현재 환경 준비 절차는 [development.md](development.md) §1을 따른다.
 
 `pgserver` PyPI 패키지도 검토했으나 Python 3.14 휠이 없어(cp39~cp312 만 제공) 쓸 수 없다.
 
@@ -904,8 +912,10 @@ EXPLAIN 결과: Bitmap Heap Scan → Bitmap Index Scan on t_name_trgm
 ```
 
 5,000행 표본에서 인덱스를 사용했고, 유사도 검색(`similarity()`)도 한글에서 동작한다
-(`'카발란 솔리스트 쉐리'` → 0.414 로 정확한 레코드 검출). 형태소 분석기 없이 §4.3 의
-`q` 필터를 구현할 수 있다.
+(`'카발란 솔리스트 쉐리'` → 0.414 로 정확한 레코드 검출). 이는 당시 SQL 부분검색 실측이다.
+v1.10.0의 `q`는 계정 소유의 유효한 이름·원어명·별칭 후보에 공통 순수 검색 규칙을 적용한 뒤
+기존 SQL 필터·페이지네이션을 이어 수행한다. 별칭·Unicode·초성의 서버/오프라인 의미를 맞추기
+위한 선택이며, 위 GIN 측정치를 새 검색의 성능으로 보고하지 않는다.
 
 ## 9. 기술 결정 기록 (ADR)
 
@@ -934,15 +944,15 @@ EXPLAIN 결과: Bitmap Heap Scan → Bitmap Index Scan on t_name_trgm
   100ml당 가격이 정확해진다
 - **비용**: 입력 단계가 늘어난다 → UI에서 제품·규격·구매를 한 폼에서 만들 수 있게 해 완화한다
 
-### 9.4 온디맨드 검색 요약 (대량 스크래핑 아님)
+### 9.4 명시적 다중 출처 탐색
 
-- **선택**: `search` 전략 기본 + 사용자가 지정한 사이트만 `adapter`
-- **이유**: 조사 결과 주요 소스에 사용 가능한 공식 API가 없다. Whiskybase는 공개 API가 없고,
-  Vivino는 개발자 포털을 폐지했으며, Untappd는 상업 계약을 요구하고, Wine-Searcher는 유료
-  파트너 전용이다. 국내 가격 사이트도 API가 없다. 개인이 필요할 때 조회하고 출처를 남기는 방식이
-  약관 리스크가 가장 낮고, 사이트 구조 변경에도 덜 취약하다
-- **비용**: 검색·LLM 호출 비용, 요약 정확도 한계 → 원문 발췌와 출처 URL을 항상 함께 저장해
-  사용자가 검증할 수 있게 한다
+- **선택**: 사용자가 활성화한 검색 연결(Naver·Brave·Exa)과 허용된 소스 adapter를 구분한다.
+- **이유**: 검색 자료·제품 후보·실제 판매 조건·사용자 고정의 증거 수준을 섞지 않고,
+  원문 링크와 관측 시각을 통해 확인할 수 있어야 한다.
+- **경계**: 페이지 진입·키 입력으로 호출하지 않는다. 기존 요청 상한, no-store, 취소·부분 실패,
+  robots와 소스별 저장 권한을 지킨다. 생성형 번역·요약·SERP 스크래핑은 하지 않는다.
+- **한영 검색**: 출처를 확인한 작은 브랜드 사전과 사용자가 확인한 별칭만 사용하며,
+  제품 동일성 자동 판정과 분리한다. 상세 정책·사전 출처는 external-data §3.4를 따른다.
 
 ### 9.5 파생값 비저장
 
