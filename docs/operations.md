@@ -206,15 +206,20 @@ gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
 /usr/bin/sg docker -c "docker compose up -d --no-deps web"
 ```
 
-`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.10.0은 `0020_bottle_revision`에서
+`uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.10.0에서 `0020_bottle_revision`을
 `0021_quality_aliases`로 이전하며 기존 제품의 검색 별칭과 관심의 참고 URL을 빈 배열로
-추가한다. 기존 기록·첨부·고정·암호문은 보존한다. 0021 적용 후 1.9.0 이미지만 다시 시작하면
+추가했다. v1.10.1도 동일한 schema 0021을 사용하므로 v1.10.0에서 올릴 때 데이터 이전은 없다.
+기존 기록·첨부·고정·암호문은 보존한다. 0021 적용 후 1.9.0 이미지만 다시 시작하면
 준비 상태 검사를 통과하지 못한다. migration 실패 시 다음 명령으로
 넘어가지 않는다. PostgreSQL 트랜잭션 밖에서 실행되는 변경이 있으면 해당 migration의
 별도 복구 절차가 필요하다. 이전 앱은 **그 앱에 포함된 schema head와 DB가 정확히 같은
 경우에만** 재개한다. 현재는 구·미래·복수 불일치 리비전의 호환성을 가정하지 않는다.
 새 데이터가 생기기 전 검증 실패도 DB+uploads를 격리 복원해 확인한 뒤 명시적으로 전환한다.
 `docker compose down -v`, 운영 DB 테스트 초기화, 자동 downgrade는 복구 절차가 아니다.
+
+스키마와 백엔드 동작이 같은 v1.10.0→v1.10.1 전환 실패는 이전 api/web 이미지로 복귀할 수
+있다. 단, v1.10.0에는 숨은 시음 정정 초안 제출 결함이 있으므로 복귀는 서비스 복구이며
+결함 해결이 아니다. 현재 DB·uploads를 유지하고 자동 downgrade나 덤프 덮어쓰기를 하지 않는다.
 
 ### 4.6 생존·준비 상태와 실제 기능 검증
 
