@@ -25,7 +25,7 @@
 | `SOOLJANG_SECRET_KEY` | LLM API 키 등 **DB 에 저장되는 비밀값을 암호화하는 Fernet 마스터 키**. 이 값 자체를 잃어버리면 이미 저장된 비밀값을 전부 다시 입력해야 한다 | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` 로 생성 | **필수** — 없으면 앱이 기동을 거부한다 |
 | `POSTGRES_USER` / `POSTGRES_DB` | Docker Compose `db` 서비스 초기화 값(운영 DB) | `sooljang` | 아니오 (기본값 있음) |
 | `POSTGRES_PASSWORD` | 운영 DB 비밀번호 | — | **필수** — 비우면 `docker compose up` 이 기동을 거부한다 |
-| `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.9.0` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
+| `SOOLJANG_VERSION` | `docker compose pull`/`up` 이 받아올 GHCR 이미지 태그. 릴리스마다 갱신한다(§4) | `1.10.0` | 아니오 (기본 `local`, 로컬 빌드 이미지를 쓴다는 뜻) |
 
 **로그인 후 "설정" 화면에서 관리하는 값**(`.env` 에 넣지 않는다):
 - LLM API 키(라벨 OCR용) — Task 17. 저장 즉시 `SOOLJANG_SECRET_KEY` 로 암호화돼 DB에
@@ -255,6 +255,16 @@ systemctl status devbox-wsl-service-recovery.service
 tail -40 /var/log/devbox-wsl-service-recovery.log
 docker compose ps
 ```
+
+### 4.8 현재 배포 기준
+
+2026-10-11 21:42 KST에 v1.10.0 / `0021_quality_aliases`를 배포했다. API와 웹 이미지는
+모두 태그 커밋 `04653524d779288f3e89457ad003ab627ab1742f`이며, 이후 문서 커밋과 구분한다.
+DB 컨테이너·DB 및 uploads 볼륨을 유지했다. 직전 백업의 격리 복원과 인증 조회,
+마이그레이션 전후 기존 43테이블 보존, 실제 이미지의 읽기 전용 조회/원본 합계 대조,
+HTTPS와 기존 PWA 캐시의 새 웹 파일 전환을 확인했다.
+정확한 image digest·시작 시각·검증 제한은
+[릴리스·운영 실행 기록](../workthrough/2026-10-11-quality-v110.md)에 있다.
 
 ## 5. 접속(Tailscale HTTPS)
 
