@@ -69,8 +69,8 @@ Ruff check·format(334 files)·ty·버전 일치·diff 공백 검사 통과. 백
 
 별도 Windows DPAPI 복구 매체의 현재 마스터 키 일치를 평문 파일 없이 메모리에서 확인했다.
 최종 merge SHA의 태그 전 새 백업·빈 격리 복원과 전환 직전 새 백업·복원을 각각 수행했다.
-배포 도구는 운영 v1.10.0/schema0021, 버전 외 backend/의존성 무변경, 정확한 Release SHA와
-이미지를 확인하고 `.env`의 버전만 바꾼다. migration은 실행하지 않는다. 같은 schema의
+이번 배포에서는 전환 전 운영 v1.10.0/schema0021, 버전 외 backend/의존성 무변경, 정확한
+Release SHA와 이미지를 확인하고 `.env`의 버전만 바꿨다. migration은 실행하지 않았다. 같은 schema의
 이전 이미지 복귀는 최신 DB/uploads를 보존하며 오래된 백업으로 운영 데이터를 덮지 않는다.
 
 최종 코드의 `npm --prefix web run check`는 100파일·1,278테스트 통과, statements88.82% /
