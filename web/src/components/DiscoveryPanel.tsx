@@ -69,7 +69,10 @@ export function DiscoveryPanel({
 }) {
   const cache = useQueryClient();
   const formId = `discover-${interest?.id ?? productId ?? "new"}`;
-  const [interestRevision, setInterestRevision] = useState(interest?.updated_at);
+  // Keep the whole acknowledged snapshot as the editing baseline. Advancing only its
+  // revision would let a delayed/failed list refetch silently drop previously saved URLs.
+  // Other writers retain a different revision and must conflict until this panel reopens.
+  const [interestSnapshot, setInterestSnapshot] = useState(interest);
   const [form, setForm] = useDraftState(formId, {
     name: interest?.name ?? initialName,
     name_en: interest?.identity.name_en ?? "",
@@ -85,9 +88,7 @@ export function DiscoveryPanel({
   const [kind, setKind] = useState("");
   const [sort, setSort] = useState("relevance");
   const [compare, setCompare] = useState<string[]>([]);
-  const [matches, setMatches] = useState<Record<string, SourceMatch>>(
-    interest?.source_matches ?? {},
-  );
+  const [matches, setMatches] = useState<Record<string, SourceMatch>>({});
   const [savedTarget, setSavedTarget] = useDraftState<DiscoverySelection | null>(
     `${formId}:selection`,
     null,
@@ -128,6 +129,7 @@ export function DiscoveryPanel({
   const productIdentity = context.data?.identity;
   const currentMatches = {
     ...(context.data?.source_matches ?? {}),
+    ...(interestSnapshot?.source_matches ?? {}),
     ...matches,
     ...(target?.matches ?? {}),
   };
@@ -174,12 +176,12 @@ export function DiscoveryPanel({
       setForm((old) => ({ ...old, requestId }));
       const result = interest
         ? await interestsApi.update(interest.id, {
-            expected_updated_at: interestRevision as string,
+            expected_updated_at: interestSnapshot?.updated_at as string,
             source_matches: currentMatches,
             ...(target
               ? {
                   reference_urls: [
-                    ...new Set([...(interest.reference_urls ?? []), ...target.references]),
+                    ...new Set([...(interestSnapshot?.reference_urls ?? []), ...target.references]),
                   ],
                 }
               : {}),
@@ -193,7 +195,10 @@ export function DiscoveryPanel({
       const now = databaseIdentity();
       if (now.userId !== owner.userId || now.generation !== owner.generation) return;
       setSaved(result.name);
-      if (interest) setInterestRevision(result.updated_at);
+      if (interest) {
+        setInterestSnapshot(result);
+        setMatches({});
+      }
       void cache.invalidateQueries({ queryKey: ["interests"] });
     },
   });
@@ -292,7 +297,7 @@ export function DiscoveryPanel({
               const name = event.target.value;
               reset();
               setTarget(null);
-              setMatches(interest?.source_matches ?? {});
+              setMatches({});
               setSaved(null);
               setForm((old) => ({ ...old, name, requestId: "" }));
             }}
@@ -331,7 +336,7 @@ export function DiscoveryPanel({
                     const value = event.target.value;
                     reset();
                     setTarget(null);
-                    setMatches(interest?.source_matches ?? {});
+                    setMatches({});
                     setSaved(null);
                     setForm((old) => ({ ...old, [field]: value, requestId: "" }));
                   }}
@@ -415,7 +420,7 @@ export function DiscoveryPanel({
           }}
           onClear={() => {
             setTarget(null);
-            setMatches(interest?.source_matches ?? {});
+            setMatches({});
             setForm((old) => ({ ...old, requestId: "" }));
           }}
         />

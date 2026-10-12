@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { connectionsApi, externalSourcesApi, productsApi } from "@/api/client";
 import { type DiscoveryDocument, type DiscoverySource, discoveryApi } from "@/api/discovery";
+import type { Interest } from "@/api/interests";
 import type { Product } from "@/api/types";
 import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import * as db from "@/sync/db";
@@ -384,4 +385,142 @@ it("저장된 관심 ID로 재조회하고 후보 고정을 revision 검사로 �
     },
   });
   expect(discoveryApi.saveInterest).not.toHaveBeenCalled();
+});
+
+const linkA = "https://example.com/a";
+const linkB = "https://example.com/b";
+const linkC = "https://example.com/c";
+const savedInterest: Interest = {
+  id: "interest",
+  name: "관심 몰트",
+  identity: { name: "관심 몰트" },
+  source_matches: {},
+  reference_urls: [linkA],
+  updated_at: "2026-10-12T00:00:00Z",
+  archived: false,
+  note: null,
+  product_id: null,
+};
+
+async function selectAndSaveReference(url: string) {
+  vi.mocked(discoveryApi.search).mockResolvedValue({
+    connection_id: "exa",
+    outcome: "success",
+    documents: [{ ...document, id: url, url, kind: "info" }],
+    requests: 1,
+    warning: null,
+  });
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(await screen.findByRole("button", { name: "이 자료를 관심에 연결" }));
+  await userEvent.click(screen.getByLabelText("제품명·판본·규격과 선택 출처를 확인했습니다"));
+  await userEvent.click(screen.getByRole("button", { name: "후보 고정 저장" }));
+}
+
+it.each([
+  "delayed",
+  "failed",
+] as const)("%s refetch에도 연속 저장의 서버 URL 목록·고정·revision을 함께 보존한다", async (refetch) => {
+  const { interestsApi } = await import("@/api/interests");
+  let resolveList!: (value: (typeof savedInterest)[]) => void;
+  const list = vi.spyOn(interestsApi, "list").mockImplementation(() =>
+    refetch === "failed"
+      ? Promise.reject(new Error("목록 조회 실패"))
+      : new Promise((resolve) => {
+          resolveList = resolve;
+        }),
+  );
+  let server = { ...savedInterest };
+  const responseMatch = {
+    external_url: linkA,
+    external_name: "서버에 보관된 고정",
+    external_key: null,
+    product_key: null,
+  };
+  const update = vi.spyOn(interestsApi, "update").mockImplementation(async (_id, input) => {
+    if (input.expected_updated_at !== server.updated_at) throw new Error("revision 충돌");
+    server = {
+      ...server,
+      ...input,
+      source_matches: { ...input.source_matches, server: responseMatch },
+      reference_urls: input.reference_urls ?? server.reference_urls ?? [],
+      updated_at: `2026-10-12T00:00:0${update.mock.calls.length}Z`,
+    };
+    return server;
+  });
+  const { useQuery } = await import("@tanstack/react-query");
+  function InterestList() {
+    const query = useQuery({
+      queryKey: ["interests"],
+      queryFn: interestsApi.list,
+      initialData: [savedInterest],
+      staleTime: Infinity,
+    });
+    return <DiscoveryPanel interest={query.data[0] as Interest} />;
+  }
+  renderWithQuery(<InterestList />);
+  await userEvent.click(await screen.findByLabelText("Exa · 검색"));
+  await selectAndSaveReference(linkB);
+  await screen.findByText(/관심에 저장했습니다/);
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+  expect(server.reference_urls).toEqual([linkA, linkB]);
+  await selectAndSaveReference(linkC);
+  await screen.findByText(/관심에 저장했습니다/);
+  expect(update.mock.calls[1]?.[1]).toMatchObject({
+    expected_updated_at: "2026-10-12T00:00:01Z",
+    reference_urls: [linkA, linkB, linkC],
+    source_matches: { server: responseMatch },
+  });
+  expect(server.reference_urls).toEqual([linkA, linkB, linkC]);
+  if (refetch === "delayed") {
+    // A stale list response arriving after both writes must not roll the baseline back.
+    await act(async () => resolveList([savedInterest]));
+    await selectAndSaveReference(linkB);
+    await screen.findByText(/관심에 저장했습니다/);
+    expect(update.mock.calls[2]?.[1]).toMatchObject({
+      expected_updated_at: "2026-10-12T00:00:02Z",
+      reference_urls: [linkA, linkB, linkC],
+    });
+  }
+});
+
+it("다른 화면의 수정은 작성 기준 revision과 충돌하며 서버 URL을 덮어쓰지 않는다", async () => {
+  const { interestsApi } = await import("@/api/interests");
+  let server = { ...savedInterest };
+  const update = vi.spyOn(interestsApi, "update").mockImplementation(async (_id, input) => {
+    if (input.expected_updated_at !== server.updated_at)
+      throw new Error("다른 화면에서 변경했습니다");
+    server = {
+      ...server,
+      reference_urls: input.reference_urls ?? server.reference_urls ?? [],
+      updated_at: "2026-10-12T00:00:01Z",
+    };
+    return server;
+  });
+  const view = renderWithQuery(<DiscoveryPanel interest={savedInterest} />);
+  await userEvent.click(await screen.findByLabelText("Exa · 검색"));
+  await selectAndSaveReference(linkB);
+  await screen.findByText(/관심에 저장했습니다/);
+  server = {
+    ...server,
+    reference_urls: [linkA, linkB, "https://example.com/other"],
+    updated_at: "2026-10-12T00:00:02Z",
+  };
+  view.rerender(<DiscoveryPanel interest={server} />);
+  await selectAndSaveReference(linkC);
+  expect(await screen.findByRole("alert")).toHaveTextContent("다른 화면에서 변경했습니다");
+  expect(update.mock.calls[1]?.[1].expected_updated_at).toBe("2026-10-12T00:00:01Z");
+  expect(server.reference_urls).toEqual([linkA, linkB, "https://example.com/other"]);
+  expect(screen.queryByText(/관심에 저장했습니다/)).not.toBeInTheDocument();
+  // Reopening adopts the refreshed complete snapshot and permits an explicit retry.
+  view.unmount();
+  renderWithQuery(<DiscoveryPanel interest={server} />);
+  const connection = await screen.findByLabelText("Exa · 검색");
+  if (!(connection as HTMLInputElement).checked) await userEvent.click(connection);
+  await selectAndSaveReference(linkC);
+  await screen.findByText(/관심에 저장했습니다/);
+  expect(update.mock.calls[2]?.[1]).toMatchObject({
+    expected_updated_at: "2026-10-12T00:00:02Z",
+    reference_urls: [linkA, linkB, "https://example.com/other", linkC],
+  });
+  expect(server.reference_urls).toEqual([linkA, linkB, "https://example.com/other", linkC]);
 });

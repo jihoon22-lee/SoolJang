@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, ContextualTasting, Tasting, TastingSummary } from "@/api/types";
 import { BottlePanel, formatRatingChange, formatRemaining } from "@/components/BottlePanel";
+import * as format from "@/format";
 import { todayLocal } from "@/format";
 import { activateDatabase, db } from "@/sync/db";
 import * as tastingActions from "@/sync/tastingActions";
@@ -108,6 +109,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   await Promise.all([
     db.sku.clear(),
     db.purchase.clear(),
@@ -851,4 +853,54 @@ it("상세에서 저장한 기록을 같은 ID로 바로 수정할 수 있다", 
   );
   expect(await db.tasting_session.count()).toBe(1);
   expect((await db.bottle.get("b1"))?.remaining_ml).toBe(650);
+});
+
+it("완료한 시음의 빈 폼은 초안으로 남기지 않고 다음 날 현재 날짜로 열린다", async () => {
+  const clock = vi.spyOn(format, "todayLocal").mockReturnValue("2026-10-12");
+  const target = bottle({ status: "open", remaining_ml: 700 });
+  await seedContext(target);
+  stubTastings(target.id);
+  const first = renderWithQuery(<BottlePanel bottle={target} />);
+  fireEvent.change(screen.getByLabelText("마신 날"), { target: { value: "2026-10-10" } });
+  fireEvent.change(screen.getByLabelText("시음 메모"), { target: { value: "완료할 기록" } });
+  fireEvent.change(screen.getByLabelText("장소"), { target: { value: "합성 장소" } });
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(() => expect(screen.getByLabelText("시음 메모")).toHaveValue(""));
+  expect((await db.tasting_session.toArray())[0]?.tasted_on).toBe("2026-10-10");
+  expect(screen.getByLabelText("마신 날")).toHaveValue("2026-10-12");
+  expect(
+    Object.keys(localStorage).filter((key) => key.includes("quick-tasting:bottle:b1")),
+  ).toEqual([]);
+  first.unmount();
+  clock.mockReturnValue("2026-10-13");
+  renderWithQuery(<BottlePanel bottle={target} />);
+  expect(screen.getByLabelText("마신 날")).toHaveValue("2026-10-13");
+  expect(screen.getByLabelText("장소")).toHaveValue("합성 장소");
+  expect(screen.getByLabelText("시음 메모")).toHaveValue("");
+  clock.mockRestore();
+});
+
+it("작성 중이거나 실패한 시음은 날짜가 바뀌어도 선택한 날짜와 입력을 복원한다", async () => {
+  const clock = vi.spyOn(format, "todayLocal").mockReturnValue("2026-10-12");
+  const target = bottle({ status: "open", remaining_ml: 10 });
+  await seedContext(target);
+  stubTastings(target.id);
+  const first = renderWithQuery(<BottlePanel bottle={target} />);
+  fireEvent.change(screen.getByLabelText("마신 날"), { target: { value: "2026-10-09" } });
+  fireEvent.change(screen.getByLabelText("시음 메모"), { target: { value: "작성 중" } });
+  first.unmount();
+  clock.mockReturnValue("2026-10-13");
+  const second = renderWithQuery(<BottlePanel bottle={target} />);
+  expect(screen.getByLabelText("마신 날")).toHaveValue("2026-10-09");
+  expect(screen.getByLabelText("시음 메모")).toHaveValue("작성 중");
+  fireEvent.change(screen.getByLabelText(/직접 입력\(ml\)/), { target: { value: "50" } });
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await screen.findByText(/잔량이 부족합니다/);
+  second.unmount();
+  clock.mockReturnValue("2026-10-14");
+  renderWithQuery(<BottlePanel bottle={target} />);
+  expect(screen.getByLabelText("마신 날")).toHaveValue("2026-10-09");
+  expect(screen.getByLabelText("시음 메모")).toHaveValue("작성 중");
+  expect(screen.getByLabelText(/직접 입력\(ml\)/)).toHaveValue(50);
+  clock.mockRestore();
 });
