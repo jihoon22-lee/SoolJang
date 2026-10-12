@@ -445,7 +445,7 @@ function TastingForm({
       mounted.current = false;
     };
   }, []);
-  const [values, setValues] = useTastingDraft(bottleId);
+  const [values, setValues, resetValues] = useTastingDraft(bottleId);
   const [error, setError] = useState<string | null>(null);
   const formKey = tastingDraftKey(bottleId);
 
@@ -482,9 +482,8 @@ function TastingForm({
       if (!mounted.current) return;
       setError(null);
       if (cleared) {
-        setValues({
+        resetValues({
           ...emptyTastingValues(),
-          tastedOn: submitted.tastedOn,
           place: submitted.place,
           companions: submitted.companions,
         });

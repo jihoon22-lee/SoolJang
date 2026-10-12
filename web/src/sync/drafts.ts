@@ -131,7 +131,7 @@ export function restoreFormDraft(form: string, sourceTab: string): void {
 export function useDraftState<T>(
   form: string,
   initial: T | (() => T),
-): [T, Dispatch<SetStateAction<T>>] {
+): [T, Dispatch<SetStateAction<T>>, Dispatch<SetStateAction<T>>] {
   const [identity] = useState(databaseIdentity);
   const [key] = useState(() => (identity.userId ? storageKey(form, identity.userId) : null));
   const [value, setValue] = useState<T>(() => {
@@ -201,5 +201,7 @@ export function useDraftState<T>(
       return updated;
     });
   };
-  return [value, setDraft];
+  // 성공한 제출의 초안을 clearSubmittedDraft로 지운 뒤 새 폼만 초기화할 때 사용한다.
+  // 아직 입력하지 않은 기본값을 작성 중 초안으로 저장하지 않는다.
+  return [value, setDraft, setValue];
 }
