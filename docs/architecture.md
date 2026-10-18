@@ -842,11 +842,16 @@ Tailscale로 접근이 제한되어 있어도 앱 레벨 인증을 생략하지 
 | 세션 토큰 | 32바이트 무작위. DB에는 **SHA-256 해시만** 저장 |
 | 세션 수명 | 30일. `revoked_at`으로 즉시 무효화 |
 | 쿠키 | `sooljang_session` (`httpOnly`), `sooljang_csrf` (JS 읽기 가능) |
-| `Secure` | HTTPS 접속일 때만. `X-Forwarded-Proto`도 본다 |
+| `Secure` | 운영(`SOOLJANG_ENVIRONMENT=production`)은 항상. 그 밖에는 HTTPS 접속이거나 `X-Forwarded-Proto: https`일 때. 웹 nginx는 앞단(Tailscale)이 보낸 `X-Forwarded-Proto`를 보존한다 |
 | CSRF | 쓰기 메서드(`POST`/`PUT`/`PATCH`/`DELETE`)만 검사. 상수 시간 비교 |
-| 레이트 리밋 | 계정·IP 각각 5분 8회. 인메모리 |
+| 레이트 리밋 | 계정·IP 각각 5분 8회. 인메모리. 검사와 시도 기록을 await 없이 한 번에 해 동시 요청 우회를 막고, 성공 시 지운다. 키 1만 개 상한(만료 키 → 시도가 적고 오래된 키 순으로 축출, 잠긴 키는 유지, 버릴 키가 없으면 새 키 거부). IPv6는 /64 단위. IP는 nginx가 X-Forwarded-For의 마지막 홉으로 덮어쓴 `X-Real-IP`만 신뢰한다(맨 앞 값은 위조 가능). Argon2 확인은 스레드에서 돈다 |
 | 최초 계정 | `POST /auth/setup`. **사용자가 0명일 때만** 허용 |
 | 비밀번호 변경 | 다른 모든 세션 폐기, 현재 세션만 유지 |
+
+웹 nginx(`docker/nginx.conf`)는 `docker/security-headers.conf`를 server와 `add_header`를 쓰는
+모든 location에 다시 포함한다(location에 `add_header`가 있으면 server 수준을 상속하지 않는다).
+`nosniff`·`X-Frame-Options: DENY`·`Referrer-Policy`·`Permissions-Policy`(카메라는 자기 출처)와
+CSP(`script-src 'self'`, 글꼴만 Google Fonts, `connect-src 'self'`, `frame-ancestors 'none'`)를 보낸다.
 
 인증은 **라우터 단위**로 적용한다(`api/app.py`). 엔드포인트마다 개별로 붙이면 새 라우터를
 추가할 때 빠뜨려 조용히 공개 엔드포인트가 된다. `/health`와 `/auth`만 예외다.

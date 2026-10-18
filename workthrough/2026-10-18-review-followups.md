@@ -235,3 +235,44 @@ Codex 리뷰(428a0b6 기준) 3건을 재현해 반영했다.
   실패). 기록 무결성 API 10건, DeletedTastings 6건 통과.
   main(`236bf15`) 위에서 `npm --prefix web run check` 통과(Vitest 1,313건, branch 83.11%), `ruff`·`ty` 통과.
 
+## R4 경계 보안 (`feature/review-edge-security`)
+
+R3 위에 쌓았다. 스키마 변경 없음. 웹 이미지(`docker/web.Dockerfile`)에 헤더 snippet이 추가된다.
+
+### 재현과 변경
+
+1. **nginx 헤더 상속(B3)·CSP(F6).** 운영 `curl -sI https://…:8080/`(읽기 전용)에서 `X-Frame-Options`·
+   `nosniff`·`Referrer-Policy`가 없었다(`Cache-Control: no-cache`만). location의 `add_header`가 server
+   수준 헤더를 끊기 때문이다. `docker/security-headers.conf`를 server와 각 location에 포함하고 CSP·
+   Permissions-Policy를 더했다. 빌드한 `index.html`에는 인라인 스크립트가 없다(`<script src>` 1개).
+2. **Secure 쿠키(B4).** nginx가 `X-Forwarded-Proto $scheme`(항상 http)으로 덮어써 앞단 HTTPS가 API에
+   전달되지 않았다. nginx는 들어온 값을 보존하고(없으면 `$scheme`), API는 운영 환경이면 항상 Secure를
+   붙인다. 실제 운영 `Set-Cookie`는 로그인 자격이 필요해 배포 전에는 확인하지 않았다.
+3. **로그인 제한(B5).** 검사 → await(사용자 조회·Argon2) → 실패 기록 순서라 동시 요청이 모두 검사를
+   통과했다. 검사와 기록을 한 번에(`acquire`) 하고 성공 시 지운다. IP 키는 X-Forwarded-For 맨 앞
+   값(위조 가능)이 아니라 nginx가 덮어쓴 `X-Real-IP`만 쓴다. 주소 형식이 아니면 버린다(64자 넘는 값은
+   세션 기록 길이 제한으로 로그인이 500이었다). 키 상한(만료 정리 후 오래된 키 축출), Argon2 스레드 실행.
+   자동 보안 리뷰가 두 번 지적해 반영했다. ① 상한이 실제로 지켜지지 않음 → 넘치면 축출. ② 축출이
+   잠긴 키까지 지워 제한을 풀 수 있음 → 잠긴 키는 버리지 않고(시도가 적고 오래된 키부터), 버릴 키가
+   없으면 새 키를 거부한다(fail closed). IPv6는 /64 단위로 묶는다.
+4. **외부 수치·명세(B16).** `round(inf)`(JSON 1e400·400자리 숫자)와 `"search": "x"` 명세가 어댑터 경계
+   밖 예외로 새어 조회 전체가 500이 될 수 있었다. 누락 값·설정 오류(INVALID_CONFIGURATION)로 바꿨다.
+5. **업로드 크기(B26).** 레거시 분석이 상한 검사 전에 `file.read()`로 전체를 읽었다. 상한 읽기 결과의
+   파싱 리포트를 재사용한다(행위 동일, 메모리 상한만 바뀜 — 별도 테스트 없이 기존 크기 초과 테스트 유지).
+
+### 실행 검증
+
+- RED→GREEN(별도 격리 DB `sooljang_test_r4`): `test_auth_edge.py`(위조 XFF·형식 아닌 주소·운영 Secure·
+  동시 10건 중 3건만 시도·만료 키 정리·상한·잠긴 키 보존과 fail closed·IPv6 /64), `test_fields.py` 2건, `test_provider_spec_guard.py` 3건.
+  수정 전 코드에서 10건 모두 실패했다.
+- nginx: 임시 네트워크의 `nginx:1.29-alpine` + 헤더 반사 upstream(운영 스택과 무관, 확인 후 삭제)에서
+  `nginx -t` 통과. `/`, `/index.html`, `/sw.js`, `/price-push.js`, `/assets/*`, SPA 경로 모두 다섯 보안
+  헤더를 보냈다. `X-Forwarded-Proto: https`는 그대로 전달되고(없으면 http), 위조
+  `X-Forwarded-For: 6.6.6.6, 100.64.0.7` + `X-Real-IP: 9.9.9.9`는 `X-Real-IP: 100.64.0.7`로 바뀌었다.
+- 전체: `sooljang_test` 단독 실행 pytest 1,737 passed / 30 skipped, branch coverage 92.40%.
+  `ruff check`·`ruff format --check`·`ty check`·`scan-secrets.sh` 통과(웹 변경 없음).
+- CSP 대조: 이미지는 같은 출처 첨부(`/api/v1/attachments/*`)·`blob:`만, 폰트는 Google Fonts, 바코드는
+  순수 JS(`@zxing`)라 `wasm-unsafe-eval`이 필요 없다.
+- 미실행: 실브라우저에서 CSP 위반 콘솔 확인(배포 전 컨테이너 이미지 확인 단계에서 수행 예정),
+  운영 `Set-Cookie` Secure 확인(배포 후), CI.
+
