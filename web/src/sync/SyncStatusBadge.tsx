@@ -63,10 +63,60 @@ const FIELD_LABELS: Record<string, string> = {
   poured_ml: "시음량(ml)",
   abv: "도수",
   personal_rating: "개인 평점",
+  remaining_ml: "남은 양(ml)",
+  on: "날짜",
+  opened_on: "개봉일",
+  finished_on: "소진일",
+  vintage: "빈티지",
+  age_years: "숙성 연수",
+  name_en: "영문 이름",
+  country: "국가",
+  region: "지역",
+  barcode: "바코드",
+  package_note: "포장 메모",
+  kind: "종류",
+  discount_note: "할인 조건",
+  currency: "통화",
+  fx_rate: "환율",
+  foreign_unit_price: "외화 단가",
+  place: "장소",
+  companions: "함께한 사람",
+  nose: "향",
+  palate: "맛",
+  finish: "여운",
 };
+
+/** 내부 식별자·버전 값. 사람이 고칠 값이 아니라 그대로 보존한다. */
+function isInternalField(field: string): boolean {
+  return (
+    field === "id" ||
+    field === "revision" ||
+    field.endsWith("_id") ||
+    field.endsWith("_revision") ||
+    field.startsWith("expected_") ||
+    field.startsWith("origin_") ||
+    field.startsWith("base_")
+  );
+}
+
+/** 수정 폼에 보일 값. 라벨 목록에 없는 값도 내부 식별자가 아니면 고칠 수 있어야 한다. */
+export function editableFields(fields: Record<string, unknown>): [string, string][] {
+  return Object.entries(fields)
+    .filter(
+      ([field, value]) =>
+        !isInternalField(field) &&
+        (value === null || typeof value === "string" || typeof value === "number"),
+    )
+    .map(([field, value]) => [field, String(value ?? "")]);
+}
 
 /** 비우면 0이 아니라 "값 없음"(null)이어야 하는 숫자 필드. 공란 가격은 0원과 다르게 보존한다. */
 const NUMERIC_FIELDS = new Set([
+  "remaining_ml",
+  "vintage",
+  "age_years",
+  "fx_rate",
+  "foreign_unit_price",
   "quantity",
   "volume_ml",
   "unit_list_price",
@@ -264,6 +314,9 @@ function SyncIssuesPanel({
   const [discardingKey, setDiscardingKey] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<OutboxEntry | null>(null);
   const [editFields, setEditFields] = useState<Record<string, unknown>>({});
+  // 입력 중에는 원문을 그대로 둔다. 매 글자 숫자로 바꾸면 "12." 가 "12" 로 되돌아가 소수점을
+  // 칠 수 없다. 보낼 때 고친 값만 바꾼다.
+  const [editText, setEditText] = useState<Record<string, string>>({});
 
   async function downloadQuarantine(key: string) {
     setResolveError(null);
@@ -318,7 +371,14 @@ function SyncIssuesPanel({
   async function saveCorrection() {
     if (!editingEntry) return;
     try {
-      await replaceFailedEntry(editingEntry.idempotency_key, editFields);
+      const edited = Object.fromEntries(
+        editableFields(editFields)
+          .filter(
+            ([field, original]) => editText[field] !== undefined && editText[field] !== original,
+          )
+          .map(([field]) => [field, correctionValue(field, editText[field] ?? "")]),
+      );
+      await replaceFailedEntry(editingEntry.idempotency_key, { ...editFields, ...edited });
       setEditingEntry(null);
       setResolveError(null);
     } catch (error) {
@@ -402,27 +462,18 @@ function SyncIssuesPanel({
           <h4>실패한 입력 수정</h4>
           <p>수정한 값으로 다시 보내며 뒤에 연결된 입력은 그대로 둡니다.</p>
           {/* 내부 식별자(병·규격 id, revision 등)는 사람이 고칠 값이 아니라 그대로 보존한다. */}
-          {Object.entries(editFields)
-            .filter(
-              ([field, value]) =>
-                field in FIELD_LABELS &&
-                (value === null || typeof value === "string" || typeof value === "number"),
-            )
-            .map(([field, value]) => (
-              <label key={field} className="field">
-                {FIELD_LABELS[field]}
-                <input
-                  value={String(value ?? "")}
-                  inputMode={NUMERIC_FIELDS.has(field) ? "decimal" : undefined}
-                  onChange={(event) =>
-                    setEditFields((previous) => ({
-                      ...previous,
-                      [field]: correctionValue(field, event.target.value),
-                    }))
-                  }
-                />
-              </label>
-            ))}
+          {editableFields(editFields).map(([field, original]) => (
+            <label key={field} className="field">
+              {FIELD_LABELS[field] ?? field}
+              <input
+                value={editText[field] ?? original}
+                inputMode={NUMERIC_FIELDS.has(field) ? "decimal" : undefined}
+                onChange={(event) =>
+                  setEditText((previous) => ({ ...previous, [field]: event.target.value }))
+                }
+              />
+            </label>
+          ))}
           <div className="button-row">
             <button type="submit">수정 후 다시 시도</button>
             <button type="button" onClick={() => setEditingEntry(null)}>
@@ -496,6 +547,7 @@ function SyncIssuesPanel({
                   onClick={() => {
                     setEditingEntry(entry);
                     setEditFields({ ...entry.fields });
+                    setEditText({});
                   }}
                 >
                   입력 수정

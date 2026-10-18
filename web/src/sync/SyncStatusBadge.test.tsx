@@ -286,7 +286,7 @@ describe("SyncStatusBadge", () => {
     vi.restoreAllMocks();
   });
 
-  it("실패 입력 수정은 라벨 있는 값만 보이고 비운 가격은 0원이 아닌 공란으로 다시 보낸다", async () => {
+  it("실패 입력 수정은 내부 식별자를 숨기고 비운 가격은 0원이 아닌 공란으로 다시 보낸다", async () => {
     await db.outbox.put({
       idempotency_key: "op-purchase",
       user_id: "u1",
@@ -330,6 +330,55 @@ describe("SyncStatusBadge", () => {
         sku_id: "00000000-0000-4000-8000-000000000001",
         quantity: 3,
         unit_paid_price: null,
+      });
+    });
+  });
+
+  it("실패 입력 수정은 소수점 입력을 그대로 두고 라벨 목록 밖의 값도 고칠 수 있다", async () => {
+    await db.outbox.put({
+      idempotency_key: "op-remaining",
+      user_id: "u1",
+      entity: "bottle",
+      op: "action",
+      action: "set_remaining",
+      entity_id: "b1",
+      fields: {
+        remaining_ml: 900,
+        on: "2026-01-01",
+        expected_operation_id: "op-before",
+        revision: 3,
+      },
+      created_at: NOW,
+      status: "failed",
+      error: "잔량이 용량보다 많습니다",
+    });
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "동기화 실패 1건" }));
+    await userEvent.click(await screen.findByRole("button", { name: "입력 수정" }));
+
+    expect(screen.queryByDisplayValue("op-before")).toBeNull();
+    const remaining = screen.getByLabelText("남은 양(ml)");
+    await userEvent.clear(remaining);
+    await userEvent.type(remaining, "12.5");
+    expect(remaining).toHaveValue("12.5");
+    expect(screen.getByLabelText("날짜")).toHaveValue("2026-01-01");
+    await userEvent.click(screen.getByRole("button", { name: "수정 후 다시 시도" }));
+
+    await waitFor(async () => {
+      const entries = await db.outbox.where("status").equals("pending").toArray();
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.fields).toEqual({
+        remaining_ml: 12.5,
+        on: "2026-01-01",
+        expected_operation_id: "op-before",
+        revision: 3,
       });
     });
   });
