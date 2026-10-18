@@ -12,6 +12,22 @@ export function initializeDraftTab(): void {
     | undefined;
   if (navigation?.type === "navigate" || !sessionStorage.getItem(TAB_KEY))
     sessionStorage.setItem(TAB_KEY, crypto.randomUUID());
+  pruneStaleDrafts();
+}
+/** 30일 넘게 손대지 않은 다른 탭의 초안. PWA 를 다시 열 때마다 새 탭 키가 생겨 계속 쌓였다. */
+export const STALE_DRAFT_MS = 30 * 24 * 60 * 60 * 1000;
+export function pruneStaleDrafts(now = Date.now()): void {
+  const current = sessionStorage.getItem(TAB_KEY);
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(PREFIX)) continue;
+    if (current && key.includes(`:${current}:`)) continue;
+    try {
+      const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
+      if (Number.isFinite(at) && now - at > STALE_DRAFT_MS) localStorage.removeItem(key);
+    } catch {
+      /* 손상된 기록은 사용자가 확인할 수 있게 그대로 둔다. */
+    }
+  }
 }
 function decodeDraft<T>(value: unknown, fallback: T): T {
   if (value === null || typeof value !== typeof fallback || containsSecret(value)) return fallback;
@@ -228,6 +244,9 @@ export function useDraftState<T>(
           key,
           JSON.stringify({ value: restored, updatedAt: Date.now(), revision: crypto.randomUUID() }),
         );
+        // 옮긴 원본은 지운다. 남겨 두면 이 탭에서 저장한 뒤에도 같은 초안의 복원 버튼이 다시 떠
+        // 이미 저장한 기록을 한 번 더 등록할 수 있었다.
+        if (detail.sourceTab !== tabId()) localStorage.removeItem(source);
         setValue((previous) => decodeDraft(restored, previous));
       } catch {
         draftEvents.dispatchEvent(new Event("storage-error"));

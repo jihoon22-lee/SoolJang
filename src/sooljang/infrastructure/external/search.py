@@ -165,7 +165,9 @@ def normalized_publication_date(value: Any) -> str | None:
             return datetime.strptime(value, "%Y%m%d").date().isoformat()
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.astimezone(UTC).isoformat() if parsed.tzinfo else parsed.date().isoformat()
-    except ValueError:
+    # 9999-12-31T23:59:59-14:00 은 UTC 로 바꾸면 10000년이 되어 OverflowError 다. 그대로 두면
+    # 채널 조회 전체가 실패하고 앞서 받은 문서도 버려진다.
+    except ValueError, OverflowError:
         return None
 
 

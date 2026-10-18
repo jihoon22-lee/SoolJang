@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from sooljang.api.schemas.product import SearchAliases
+
 
 class InterestIdentity(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -85,6 +87,8 @@ class NewInterestProduct(BaseModel):
     vintage: int | None = Field(default=None, ge=1800, le=2200)
     age_years: Decimal | None = Field(default=None, ge=0, le=100)
     category_id: uuid.UUID | None = None
+    #: 비우면 관심에 확인해 둔 별칭을 그대로 옮긴다(구버전 클라이언트 포함).
+    search_aliases: SearchAliases | None = None
 
     @field_validator("name")
     @classmethod

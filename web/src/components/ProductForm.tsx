@@ -92,6 +92,9 @@ interface ProductFormProps {
   onSelectExisting?: (productId: string, context?: ProductContext) => void;
   /** 구매처 자동완성 후보. */
   vendorNames?: string[];
+  /** 수정 초안 키. 제품 id로 고정한다 — URL 해시는 상세 안에서 시음·병을 고르면 바뀌어 저장 후
+   * 다른 키를 지우고 이전 초안이 남았다. */
+  draftKey?: string | undefined;
 }
 
 /**
@@ -115,16 +118,15 @@ export function ProductForm({
   existingProducts = [],
   onSelectExisting,
   vendorNames = [],
+  draftKey,
 }: ProductFormProps) {
-  const [values, setValues] = useDraftState<ProductFormValues>(
-    mode === "create" ? "product:create" : `product:edit:${window.location.hash}`,
-    {
-      ...EMPTY_PRODUCT_FORM,
-      purchasedOn: todayLocal(),
-      vendorName: getLastVendorName(),
-      ...initialValues,
-    },
-  );
+  const formKey = mode === "create" ? "product:create" : (draftKey ?? "product:edit");
+  const [values, setValues] = useDraftState<ProductFormValues>(formKey, {
+    ...EMPTY_PRODUCT_FORM,
+    purchasedOn: todayLocal(),
+    vendorName: getLastVendorName(),
+    ...initialValues,
+  });
   const [localError, setLocalError] = useState<string | null>(null);
   /** 로컬 검증에 걸린 칸. 그 칸에 `aria-invalid` 와 칸 아래 오류 문구를 붙이고 초점을 옮긴다. */
   const [invalidField, setInvalidField] = useState<string | null>(null);
@@ -224,9 +226,7 @@ export function ProductForm({
       // 톤에 안 맞는 UI 가 튀어나온다. 검증은 전부 `handleSubmit` 의 `.alert` 로 통일한다.
       noValidate
     >
-      <DraftRecoveryButton
-        form={mode === "create" ? "product:create" : `product:edit:${window.location.hash}`}
-      />
+      <DraftRecoveryButton form={formKey} />
       <h2 id="product-form-heading">{mode === "edit" ? "정보 수정" : "새 술 등록"}</h2>
 
       {(localError || apiError || genericError) && (

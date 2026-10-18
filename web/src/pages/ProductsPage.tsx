@@ -749,6 +749,10 @@ export function ProductsPage({
 }
 
 /** 제품 값을 `ProductForm` 의 edit 모드 프리필 형식으로 바꾼다. */
+function productEditDraftKey(productId: string): string {
+  return `product:edit:${productId}`;
+}
+
 function valuesFromProduct(product: Product): Partial<ProductFormValues> {
   return {
     name: product.name,
@@ -878,7 +882,7 @@ function ProductDetailView({
       });
     },
     onSuccess: () => {
-      clearFormDraft(`product:edit:${window.location.hash}`);
+      clearFormDraft(productEditDraftKey(productId));
       setEditing(false);
     },
   });
@@ -1041,6 +1045,7 @@ function ProductDetailView({
         onSubmit={(values) => updateProduct.mutate(values)}
         onCancel={() => setEditing(false)}
         initialValues={valuesFromProduct(product)}
+        draftKey={productEditDraftKey(productId)}
       />
     );
   }

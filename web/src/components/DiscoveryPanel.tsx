@@ -220,6 +220,8 @@ export function DiscoveryPanel({
     name: string,
     url: string,
     fields?: DiscoveryDocument["applicable_fields"],
+    /** 다른 출처의 후보를 고정할 때는 앞서 고른 출처 고정·식별값을 지우지 않는다. */
+    addPin = false,
   ) => {
     const rawVolume = name.match(/(\d+(?:\.\d+)?)\s*(ml|cl|l)\b/i);
     const volume = rawVolume
@@ -237,16 +239,24 @@ export function DiscoveryPanel({
         ...(fields?.vintage != null ? { vintage: Number(fields.vintage) } : {}),
         ...(fields?.age_years != null ? { age_years: String(fields.age_years) } : {}),
       };
-    setTarget({
-      identity: selected,
-      references: [url],
-      confirmed: false,
-      ...(!interest && !productId ? { matches: {} } : {}),
-    });
+    setTarget((old) =>
+      addPin && old
+        ? {
+            ...old,
+            references: old.references.includes(url) ? old.references : [...old.references, url],
+            confirmed: false,
+          }
+        : {
+            identity: selected,
+            references: [url],
+            confirmed: false,
+            ...(!interest && !productId ? { matches: {} } : {}),
+          },
+    );
     setSaved(null);
     save.reset();
     setForm((old) => ({ ...old, requestId: "" }));
-    if (!interest && !productId) setMatches({});
+    if (!interest && !productId && !addPin) setMatches({});
   };
   const submit = () => {
     setSaved(null);
@@ -717,6 +727,8 @@ export function DiscoveryPanel({
                           result.source_url === candidate.url
                             ? result.applicable_fields
                             : undefined,
+                          // 새 관심에서만 출처별 고정을 모은다. 기존 관심·제품은 고정 상태를 따로 둔다.
+                          !interest && !productId,
                         );
                         setMatches((old) => ({
                           ...old,
@@ -732,7 +744,14 @@ export function DiscoveryPanel({
                             old
                               ? {
                                   ...old,
+                                  // 같은 출처에서 후보를 바꾸면 이전 후보 링크는 근거에서 뺀다.
+                                  references: old.references.filter(
+                                    (url) =>
+                                      url === candidate.url ||
+                                      url !== old.matches?.[result.source_id]?.external_url,
+                                  ),
                                   matches: {
+                                    ...old.matches,
                                     [result.source_id]: {
                                       external_url: candidate.url,
                                       external_name: candidate.name,

@@ -6,6 +6,7 @@ import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import { InterestEditor } from "@/components/InterestEditor";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { publicLink } from "@/discovery/useDiscovery";
+import { todayLocal } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { databaseIdentity } from "@/sync/db";
@@ -426,7 +427,8 @@ function InterestConversionForm({
     vintage: String(interest.identity.vintage ?? ""),
     quantity: "1",
     vendorId: "",
-    date: "",
+    // 일반 구매 등록과 같이 오늘로 시작한다. 공란이면 기간 통계·첫 시음 간격에서 빠진다.
+    date: todayLocal(),
     paid: "",
     list: "",
   });
@@ -476,6 +478,8 @@ function InterestConversionForm({
           name_en: interest.identity.name_en ?? null,
           producer: interest.identity.producer ?? null,
           age_years: interest.identity.age_years ?? null,
+          // 관심에서 확인한 별칭을 옮겨야 전환 직후에도 같은 별칭으로 찾는다.
+          search_aliases: interest.identity.search_aliases ?? [],
         };
       const result = await interestsApi.purchase(interest.id, input);
       return { result, snapshot };

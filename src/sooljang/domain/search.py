@@ -35,9 +35,18 @@ def normalize_search_text(value: str) -> str:
     value = "".join(decomposed)
     value = unicodedata.normalize("NFC", value)
     value = re.sub(r"(\d+)\s*(?:years?\s*old|years?|yo|yr|y|년)(?![a-z])", r"\1", value)
-    value = re.sub(r"(\d+(?:\.\d+)?)\s*l\b", lambda m: f"{float(m[1]) * 1000:g}ml", value)
+    value = re.sub(r"(\d+(?:\.\d+)?)\s*l(?![a-z])", lambda m: f"{_liters_to_ml(m[1])}ml", value)
     value = re.sub(r"[^\w\s]", " ", value).replace("_", " ")
     return " ".join(value.split())
+
+
+def _liters_to_ml(liters: str) -> str:
+    """ "1.1" → "1100". 웹 `search.ts::litersToMl`과 같은 문자열 이동 규칙이다(부동소수 없음)."""
+    whole, _, fraction = liters.partition(".")
+    padded = fraction.ljust(3, "0")
+    integer = (whole + padded[:3]).lstrip("0") or "0"
+    rest = padded[3:].rstrip("0")
+    return f"{integer}.{rest}" if rest else integer
 
 
 def _alias_pattern(alias: str) -> re.Pattern[str]:
@@ -79,7 +88,9 @@ def matches_query(name: str, query: str) -> bool:
                 values.extend(canonical.replace(key, str(alias)) for alias in entry["aliases"])
         return any(query.strip() in _chosung(value) for value in values)
     haystack, needle = _canonical(name), _canonical(query)
-    if not set(re.findall(r"\d+", needle)).issubset(re.findall(r"\d+", haystack)):
+    # 이름 원문의 숫자도 인정한다("… 0.7L"을 "0.7"로 찾기). 정규화하면 700ml가 된다.
+    numbers = set(re.findall(r"\d+", haystack)) | set(re.findall(r"\d+", name.lower()))
+    if not set(re.findall(r"\d+", needle)).issubset(numbers):
         return False
     return query.strip().lower() in name.lower() or needle.replace(" ", "") in haystack.replace(
         " ", ""

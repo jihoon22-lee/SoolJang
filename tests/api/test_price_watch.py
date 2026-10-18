@@ -391,3 +391,37 @@ def test_disabled_worker_rejects_manual_queue_without_losing_target(
         == 409
     )
     assert api_client.get(f"{prefix}/price-watch").json()[0]["latest_run"] is None
+
+
+def test_watch_creation_waits_for_concurrent_archive_and_then_refuses(
+    api_client: TestClient, prefix: str
+) -> None:
+    """보관 트랜잭션이 관심 행을 잡고 있는 동안 만든 감시가 보관 뒤에 활성으로 남지 않는다."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    import psycopg
+
+    data = seed(api_client, prefix)
+    url = str(get_settings().database_url).replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(url) as archive, ThreadPoolExecutor(1) as pool:
+        archive.execute("SELECT id FROM interest WHERE id = %s FOR UPDATE", (data["interest_id"],))
+        pending = pool.submit(
+            api_client.post,
+            f"{prefix}/price-watch",
+            json={
+                "interest_id": str(data["interest_id"]),
+                "offer_id": str(data["offer_id"]),
+                "target_amount": "50000",
+            },
+        )
+        time.sleep(1)
+        assert not pending.done(), "감시 생성이 관심 행 잠금을 기다리지 않았다"
+        archive.execute(
+            "UPDATE interest SET archived_at = now() WHERE id = %s", (data["interest_id"],)
+        )
+        archive.commit()
+        response = pending.result(timeout=30)
+
+    assert response.status_code == 409, response.text
+    assert api_client.get(f"{prefix}/price-watch").json() == []

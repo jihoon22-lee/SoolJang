@@ -365,3 +365,10 @@ def test_duplicate_merge_keeps_rich_text_and_purpose_independent_of_response_ord
     assert results[0][0].excerpt == "내용" * 50
     assert results[0][0].kind == "seller_note"
     assert results[0][0].published_at == "2026-10-01"
+
+
+def test_publication_date_beyond_utc_range_is_unknown_instead_of_raising() -> None:
+    from sooljang.infrastructure.external.search import normalized_publication_date
+
+    assert normalized_publication_date("9999-12-31T23:59:59-14:00") is None
+    assert normalized_publication_date("2026-10-01T09:00:00+09:00") == "2026-10-01T00:00:00+00:00"

@@ -86,6 +86,18 @@ export function matchesQuery(name: string, query: string): boolean {
   return rankOf(name, query) !== null;
 }
 
+/**
+ * "1.1" → "1100". 부동소수 곱셈(1.1 * 1000 = 1100.0000000000002)을 피하려고 소수점을 문자열로
+ * 세 자리 옮긴다. 서버 `domain/search.py::_liters_to_ml`과 같은 결과여야 한다(D244).
+ */
+export function litersToMl(liters: string): string {
+  const [whole = "", fraction = ""] = liters.split(".");
+  const padded = fraction.padEnd(3, "0");
+  const integer = `${whole}${padded.slice(0, 3)}`.replace(/^0+(?=\d)/, "");
+  const rest = padded.slice(3).replace(/0+$/, "");
+  return rest ? `${integer}.${rest}` : integer;
+}
+
 export function normalizeSearchText(value: string): string {
   return value
     .normalize("NFKC")
@@ -94,7 +106,7 @@ export function normalizeSearchText(value: string): string {
     .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
     .normalize("NFC")
     .replace(/(\d+)\s*(?:years?\s*old|years?|yo|yr|y|년)(?![a-z])/g, "$1")
-    .replace(/(\d+(?:\.\d+)?)\s*l\b/g, (_, n: string) => `${Number(n) * 1000}ml`)
+    .replace(/(\d+(?:\.\d+)?)\s*l(?![a-z])/g, (_, n: string) => `${litersToMl(n)}ml`)
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -157,7 +169,11 @@ function rankOf(name: string, query: string): number | null {
   }
   const haystack = canonicalSearch(name);
   const canonicalNeedle = canonicalSearch(needle);
-  const numbers = new Set(haystack.match(/\d+/g) ?? []);
+  // 이름 원문의 숫자도 인정한다. "0.7L"는 정규화하면 700ml라 질의 "0.7"이 숫자 검사에서 떨어졌다.
+  const numbers = new Set([
+    ...(haystack.match(/\d+/g) ?? []),
+    ...(name.toLowerCase().match(/\d+/g) ?? []),
+  ]);
   if ((canonicalNeedle.match(/\d+/g) ?? []).some((n) => !numbers.has(n))) return null;
   const direct = matchRank(name.toLowerCase(), needle);
   if (direct !== null) return direct;

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, interestsApi } from "@/api/interests";
+import { todayLocal } from "@/format";
 import { InterestsPage } from "@/pages/InterestsPage";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
@@ -12,7 +13,13 @@ import { renderWithQuery } from "@/testing";
 const item: Interest = {
   id: "interest-1",
   name: "합성 몰트",
-  identity: { name: "합성 몰트", volumes_ml: [700], abv: "43", vintage: 2020 },
+  identity: {
+    name: "합성 몰트",
+    volumes_ml: [700],
+    abv: "43",
+    vintage: 2020,
+    search_aliases: ["합성몰트"],
+  },
   source_matches: {},
   note: "첫 노트",
   archived: false,
@@ -121,6 +128,7 @@ it("새 제품 구매는 확인 전에는 생성하지 않고 선물·포인트 
   await userEvent.clear(screen.getByLabelText("구매 병수"));
   await userEvent.type(screen.getByLabelText("구매 병수"), "2");
   await userEvent.selectOptions(screen.getByLabelText("구매처"), "vendor-1");
+  await userEvent.clear(screen.getByLabelText("구매일"));
   await userEvent.type(screen.getByLabelText("구매일"), "2026-09-07");
   await userEvent.type(screen.getByLabelText("병당 정가 (원)"), "1000");
   await userEvent.type(screen.getByLabelText("병당 실구매가 (원)"), "0");
@@ -139,6 +147,7 @@ it("새 제품 구매는 확인 전에는 생성하지 않고 선물·포인트 
         volume_ml: 750,
         abv: "45",
         vintage: 2021,
+        search_aliases: ["합성몰트"],
       }),
     }),
   );
@@ -158,7 +167,12 @@ it("기존 제품·규격을 확정하고 보관 목록에서 연결 제품으�
   await waitFor(() =>
     expect(interestsApi.purchase).toHaveBeenCalledWith(
       item.id,
-      expect.objectContaining({ sku_id: "sku-1", unit_paid_price: null }),
+      // 구매일은 일반 등록처럼 오늘로 시작한다(공란이면 기간 통계에서 빠진다).
+      expect.objectContaining({
+        sku_id: "sku-1",
+        unit_paid_price: null,
+        purchased_on: todayLocal(),
+      }),
     ),
   );
   await userEvent.selectOptions(screen.getByLabelText("관심 상태"), "purchased");
