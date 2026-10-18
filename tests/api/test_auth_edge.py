@@ -110,3 +110,13 @@ def test_rate_limiter_drops_expired_keys_when_many_accumulate(
     limiter.acquire("ip:new")
 
     assert list(limiter._attempts) == ["ip:new"]  # noqa: SLF001
+
+
+def test_rate_limiter_cap_holds_even_when_all_keys_are_recent() -> None:
+    limiter = LoginRateLimiter(max_keys=5)
+    for index in range(20):
+        limiter.acquire(f"ip:{index}")
+    limiter.acquire("ip:0")
+
+    assert len(limiter._attempts) == 5  # noqa: SLF001
+    assert "ip:0" in limiter._attempts  # noqa: SLF001

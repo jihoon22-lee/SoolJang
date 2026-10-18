@@ -124,10 +124,18 @@ class LoginRateLimiter:
         return recent
 
     def _prune(self, now: float) -> None:
+        """상한을 넘었을 때만 정리한다. 만료 키를 지워도 넘치면 가장 오래 쓰지 않은 키부터 버린다.
+
+        키는 기록할 때마다 맨 뒤로 옮기므로 dict 의 앞쪽이 가장 오래된 키다. 한 주소는
+        8회 뒤 IP 키에서 막혀 이메일 키를 더 만들 수 없으므로, 상한을 채우려면 많은 주소가
+        필요하다.
+        """
         if len(self._attempts) <= self.max_keys:
             return
         for key in list(self._attempts):
             self._recent(key, now)
+        while len(self._attempts) > self.max_keys:
+            del self._attempts[next(iter(self._attempts))]
 
     def check(self, *keys: str | None) -> None:
         """제한을 넘었으면 예외를 던진다."""
@@ -156,7 +164,8 @@ class LoginRateLimiter:
         for key in keys:
             if key is None:
                 continue
-            self._attempts.setdefault(key, []).append(now)
+            # 맨 뒤로 옮겨 최근에 쓴 키가 상한 정리에서 마지막에 버려지게 한다.
+            self._attempts[key] = [*self._attempts.pop(key, []), now]
 
     def reset(self, *keys: str | None) -> None:
         """로그인 성공 시 카운터를 비운다."""
