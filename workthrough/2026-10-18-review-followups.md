@@ -58,6 +58,11 @@ Codex 리뷰(5b6954e 기준) 4건을 재현해 반영했다.
 3. **구매 재전송 비교(P2).** SKU·병수만 비교했다. 구매처·날짜·가격·통화·할인·병 생성 여부까지 비교한다.
 4. **요청 전 계정 확인(P2).** 요청 id 계산이 동기화되어 await 틈이 사라졌고, 제품 생성 직전에 세션을
    다시 확인한다.
+- 두 번째 리뷰(66723cb 기준) 2건: 재전송을 행의 **현재** 값과 비교해, 만든 뒤 병수·용량을 고치면 원래
+  요청의 재전송은 409, 고친 값의 새 요청은 201이 됐다. 처음 요청의 정규화 지문을 `outbox_receipt`에
+  남겨 비교한다(스키마 변경 없음). 고친 뒤 재전송 테스트 2건은 이전 구현에서 실패했다.
+- 반영 후 `sooljang_test` 단독 전체 pytest 1,719 passed / 30 skipped, branch 92.26%. `ruff`·`ty`·secret scan
+  통과. `npm --prefix web run check` 통과(Vitest 1,290건, branch 83.03%, 검사 오류 0).
 - 같이 고친 결함: 토스트 닫기 타이머를 unmount 때 지우지 않아 전체 웹 검사에서 테스트 환경 종료 뒤
   `window is not defined` 미처리 오류가 났다(검사 exit 1). 타이머를 추적해 지운다.
 - RED→GREEN: `test_create_idempotency.py` 신규 3건(수정 전 2건 실패), `drafts.test.tsx` 3건,
