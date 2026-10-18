@@ -262,9 +262,10 @@ class PurchaseCreate(BaseModel):
         # 어느 쪽이 맞는지 알 수 없어 저장하지 않는다.
         if self.foreign_unit_price is not None and self.fx_rate is not None:
             converted = self.foreign_unit_price * self.fx_rate
-            if self.unit_paid_price is not None and abs(self.unit_paid_price - converted) > max(
-                Decimal(1), converted / 100
-            ):
+            if self.unit_paid_price is None:
+                # 원화 칸을 비우면 환산값을 저장한다. 비워 두면 외화 구매가 실구매가 미상이 된다.
+                self.unit_paid_price = converted.quantize(Decimal("0.01"))
+            elif abs(self.unit_paid_price - converted) > max(Decimal(1), converted / 100):
                 raise ValueError("병당 실구매가가 외화 단가 × 환율과 1% 넘게 다릅니다")
         return self
 

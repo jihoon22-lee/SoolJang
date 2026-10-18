@@ -255,6 +255,27 @@ def test_foreign_purchase_with_rate_is_accepted(api_client: TestClient, prefix: 
     assert purchase["fx_rate"] == "1431.900000"
 
 
+def test_foreign_purchase_without_won_price_stores_converted_price(
+    api_client: TestClient, prefix: str
+) -> None:
+    """원화 실구매가를 비우면 외화 단가 × 환율을 저장한다(미상으로 남기지 않는다)."""
+    _, sku_id = _product_with_sku(api_client, prefix)
+
+    purchase = _post(
+        api_client,
+        f"{prefix}/purchases",
+        {
+            "sku_id": sku_id,
+            "quantity": 1,
+            "currency": "JPY",
+            "foreign_unit_price": "5980",
+            "fx_rate": "9.12",
+        },
+    )
+
+    assert purchase["unit_paid_price"] == "54537.60"
+
+
 def test_unknown_sku_returns_not_found(api_client: TestClient, prefix: str) -> None:
     response = api_client.post(
         f"{prefix}/purchases",
