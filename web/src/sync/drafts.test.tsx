@@ -5,7 +5,8 @@ import {
   captureFormDraft,
   clearFormDraft,
   clearSubmittedDraft,
-  draftRequestId,
+  finishSubmission,
+  submissionRequestId,
   useDraftState,
 } from "@/sync/drafts";
 
@@ -89,18 +90,32 @@ it("새 필드 입력과 같은 계정의 재로그인도 이전 제출의 초�
   expect(Object.values(localStorage).join()).toContain('"2"');
   expect(Object.values(localStorage).join()).not.toContain('"99"');
 });
-it("같은 초안 버전의 재전송은 같은 요청 식별자를, 수정·저장 후에는 새 식별자를 쓴다", async () => {
-  const form = renderHook(() => useDraftState("purchase:p1", { quantity: "1" }));
-  act(() => form.result.current[1]({ quantity: "2" }));
-  const first = await draftRequestId("purchase:p1");
-  expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-  expect(await draftRequestId("purchase:p1")).toBe(first);
-  act(() => form.result.current[1]({ quantity: "3" }));
-  const edited = await draftRequestId("purchase:p1");
+it("기본값만으로 제출해 초안이 없어도 같은 내용의 재전송은 같은 요청 식별자를 쓴다", () => {
+  const payload = { sku_id: "s1", quantity: 1, purchased_on: "2026-10-18" };
+  const first = submissionRequestId("purchase:p1", payload);
+
+  expect(submissionRequestId("purchase:p1", { ...payload })).toBe(first);
+  const edited = submissionRequestId("purchase:p1", { ...payload, quantity: 2 });
   expect(edited).not.toBe(first);
-  clearFormDraft("purchase:p1");
-  const afterSave = await draftRequestId("purchase:p1");
-  expect(afterSave).not.toBe(edited);
-  expect(await draftRequestId("purchase:p1")).not.toBe(afterSave);
-  form.unmount();
+  expect(submissionRequestId("purchase:p2", payload)).not.toBe(edited);
+});
+
+it("저장 성공 뒤 같은 내용을 다시 등록하면 새 요청이 된다", () => {
+  const payload = { sku_id: "s1", quantity: 1 };
+  const saved = submissionRequestId("purchase:p1", payload);
+  finishSubmission("purchase:p1", "older-request");
+  expect(submissionRequestId("purchase:p1", payload)).toBe(saved);
+
+  finishSubmission("purchase:p1", saved);
+
+  expect(submissionRequestId("purchase:p1", payload)).not.toBe(saved);
+});
+
+it("다른 계정의 요청 식별자는 이어받지 않는다", async () => {
+  const payload = { name: "같은 술" };
+  const mine = submissionRequestId("product:create", payload);
+  lockDatabase();
+  await activateDatabase("other-owner");
+
+  expect(submissionRequestId("product:create", payload)).not.toBe(mine);
 });

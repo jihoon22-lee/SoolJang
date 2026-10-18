@@ -12,6 +12,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
@@ -286,6 +287,27 @@ async def list_purchases(
     ]
 
 
+async def _replays_create(session: AsyncSession, replay: Purchase, payload: PurchaseCreate) -> bool:
+    """같은 요청 식별자의 재전송인지 판단한다. 내용이 다르면 처음 결과로 덮지 않고 거부한다."""
+    created_bottles = await session.scalar(
+        select(func.count()).select_from(Bottle).where(Bottle.purchase_id == replay.id)
+    )
+    return (
+        (replay.sku_id, replay.vendor_id, replay.purchased_on, replay.quantity)
+        == (payload.sku_id, payload.vendor_id, payload.purchased_on, payload.quantity)
+        and (replay.unit_list_price, replay.unit_paid_price)
+        == (payload.unit_list_price, payload.unit_paid_price)
+        and (replay.currency, replay.fx_rate, replay.foreign_unit_price, replay.discount_note)
+        == (
+            payload.currency.upper(),
+            payload.fx_rate,
+            payload.foreign_unit_price,
+            payload.discount_note,
+        )
+        and bool(created_bottles) == payload.create_bottles
+    )
+
+
 @purchases_router.post(
     "", response_model=PurchaseOut, status_code=status.HTTP_201_CREATED, summary="구매 건 등록"
 )
@@ -308,11 +330,7 @@ async def create_purchase(
             select(Purchase).where(Purchase.id == purchase_id, Purchase.user_id == user_id)
         )
         if replay is not None:
-            if (
-                replay.deleted_at is not None
-                or replay.sku_id != payload.sku_id
-                or replay.quantity != payload.quantity
-            ):
+            if replay.deleted_at is not None or not await _replays_create(session, replay, payload):
                 raise ConflictError("같은 요청 식별자로 다른 구매를 기록할 수 없습니다")
             return await _to_purchase_out(session, replay)
     await load_live_sku_for_write(session, user_id=user_id, sku_id=payload.sku_id)

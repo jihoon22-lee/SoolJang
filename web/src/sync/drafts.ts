@@ -78,26 +78,51 @@ export function captureFormDraft(form: string) {
   return { identity, prefix, entries };
 }
 
+const REQUEST_PREFIX = "sooljang-request-v1:";
+function requestKey(form: string, userId: string): string {
+  return `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${form}`;
+}
+
 /**
- * 초안 버전에서 멱등 요청 식별자를 만든다. 같은 초안을 다시 보내면 같은 값이고, 입력을
- * 고치거나 저장 성공으로 초안이 지워진 뒤에는 새 값이 된다. 초안이 없거나 해시를 쓸 수
- * 없으면(비보안 컨텍스트) 매번 새 식별자를 쓴다.
+ * 온라인 생성 요청의 멱등 식별자. 응답을 잃은 뒤 같은 내용을 다시 보내면 같은 값을 돌려주고,
+ * 내용이 바뀌었거나 저장에 성공(`finishSubmission`)한 뒤에는 새 값을 만든다. 기본값만으로
+ * 제출해 초안이 저장되지 않은 폼도 같은 값을 쓴다. 이 탭·계정 안에서만 유효하다.
  */
-export async function draftRequestId(form: string): Promise<string> {
-  const { identity, entries } = captureFormDraft(form);
-  const subtle = globalThis.crypto?.subtle;
-  if (!entries.length || !subtle) return crypto.randomUUID();
-  const digest = new Uint8Array(
-    await subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(JSON.stringify([identity.userId, form, entries])),
-    ),
-  );
-  const bytes = digest.slice(0, 16);
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+export function submissionRequestId(form: string, payload: unknown): string {
+  const userId = databaseIdentity().userId;
+  if (!userId) return crypto.randomUUID();
+  const key = requestKey(form, userId);
+  const fingerprint = JSON.stringify(payload);
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
+      requestId?: unknown;
+      fingerprint?: unknown;
+    } | null;
+    if (stored?.fingerprint === fingerprint && typeof stored.requestId === "string")
+      return stored.requestId;
+  } catch {
+    // 손상된 값은 새 요청으로 덮는다.
+  }
+  const requestId = crypto.randomUUID();
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ requestId, fingerprint }));
+  } catch {
+    // 저장할 수 없으면 이번 요청만 멱등하다(재시도는 새 요청).
+  }
+  return requestId;
+}
+
+/** 저장에 성공한 요청을 잊는다. 같은 내용을 일부러 한 번 더 등록하면 새 기록이 된다. */
+export function finishSubmission(form: string, requestId: string): void {
+  const userId = databaseIdentity().userId;
+  if (!userId) return;
+  const key = requestKey(form, userId);
+  try {
+    if (JSON.parse(sessionStorage.getItem(key) ?? "null")?.requestId === requestId)
+      sessionStorage.removeItem(key);
+  } catch {
+    sessionStorage.removeItem(key);
+  }
 }
 
 /** 이전 저장의 성공으로 이후 입력이나 재로그인한 세션의 초안을 지우지 않는다. */

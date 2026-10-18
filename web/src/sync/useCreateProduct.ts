@@ -4,7 +4,7 @@ import type { ProductFormValues } from "@/components/ProductForm";
 import { setLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching } from "@/search";
 import { db, type SoolJangDB } from "@/sync/db";
-import { clearFormDraft, draftRequestId } from "@/sync/drafts";
+import { clearFormDraft, finishSubmission, submissionRequestId } from "@/sync/drafts";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
@@ -73,8 +73,9 @@ export function useCreateProduct() {
       const owner = session.userId;
       const checkSession = session.assertCurrent;
       if (!offline) {
-        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게 같은 초안 버전은 같은 키를 쓴다.
-        const requestId = await draftRequestId("product:create");
+        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게 같은 내용은 같은 키를 쓴다.
+        const requestId = submissionRequestId("product:create", values);
+        checkSession();
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
         //
@@ -153,6 +154,7 @@ export function useCreateProduct() {
             purchaseCreated,
           );
         }
+        finishSubmission("product:create", requestId);
         return product.id;
       }
 

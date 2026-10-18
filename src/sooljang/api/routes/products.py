@@ -56,6 +56,7 @@ from sooljang.application.skus import (
 from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.metrics_sql import single_product_metrics_query
 from sooljang.infrastructure.database.models import Product, ProductVariety, Sku
+from sooljang.infrastructure.legacy.varieties import normalize_varieties
 
 router = APIRouter(prefix="/products", tags=["products"])
 skus_router = APIRouter(prefix="/skus", tags=["products"])
@@ -228,9 +229,12 @@ async def create_product(
             select(Product).where(Product.id == product_id, Product.user_id == user_id)
         )
         if replay is not None:
-            if replay.deleted_at is not None or replay.name != payload.name.strip():
+            detail = (
+                await _detail(session, user_id, replay.id) if replay.deleted_at is None else None
+            )
+            if detail is None or not _replays_create(user_id, detail, payload):
                 raise ConflictError("같은 요청 식별자로 다른 제품을 등록할 수 없습니다")
-            return await _detail(session, user_id, replay.id)
+            return detail
     await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
     producer_id = payload.producer_id
@@ -342,6 +346,42 @@ async def add_sku(
     except InvalidBarcodeError as error:
         raise ValidationFailedError(str(error)) from error
     return SkuOut.model_validate(sku)
+
+
+def _replays_create(user_id: uuid.UUID, detail: ProductOut, payload: ProductCreate) -> bool:
+    """같은 요청 식별자의 재전송인지 판단한다. 내용이 다르면 처음 결과로 덮지 않고 거부한다."""
+    producer = (payload.producer_name or "").strip()
+    try:
+        requested_skus = sorted(
+            (sku.volume_ml, sku.barcode or "", sku.package_note or "")
+            for sku in (_new_sku(user_id, detail.id, item) for item in payload.skus)
+        )
+    except InvalidBarcodeError:
+        return False
+    return (
+        (detail.name, detail.name_en, detail.search_aliases, detail.category_id)
+        == (
+            payload.name.strip(),
+            payload.name_en,
+            list(payload.search_aliases),
+            payload.category_id,
+        )
+        and (detail.country, detail.region, detail.vintage, detail.note)
+        == (payload.country, payload.region, payload.vintage, payload.note)
+        and (detail.abv, detail.age_years, detail.personal_rating)
+        == (payload.abv, payload.age_years, payload.personal_rating)
+        and (
+            (detail.producer_name or "").lower() == producer.lower()
+            if producer
+            else detail.producer_id == payload.producer_id
+        )
+        and sorted(detail.varieties)
+        == sorted(item.name for item in normalize_varieties(payload.variety_names))
+        and sorted(
+            (sku.volume_ml, sku.barcode or "", sku.package_note or "") for sku in detail.skus
+        )
+        == requested_skus
+    )
 
 
 def _new_sku(user_id: uuid.UUID, product_id: uuid.UUID, payload: SkuCreate) -> Sku:
