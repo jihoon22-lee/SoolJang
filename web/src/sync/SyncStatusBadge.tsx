@@ -7,8 +7,8 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useRef, useState } from "react";
-
 import { syncApi } from "@/api/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { databaseIdentity, db, type OutboxEntry } from "@/sync/db";
 import {
   dependentEntries,
@@ -301,6 +301,7 @@ function SyncIssuesPanel({
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const dialogRef = useModalDialog(returnFocusRef);
+  const confirm = useConfirm();
   const identity = databaseIdentity();
   const conflicts = useLiveQuery(
     () =>
@@ -381,7 +382,10 @@ function SyncIssuesPanel({
     const message = dependents.length
       ? `"${describeEntry(entry)}"와 연결된 대기 입력 ${dependents.length}건도 함께 건너뛸까요? 서버에 반영되지 않은 입력이 사라집니다.`
       : `"${describeEntry(entry)}" 항목을 포기하고 건너뛸까요?`;
-    if (!window.confirm(message)) return;
+    if (
+      !(await confirm({ title: "입력 건너뛰기", message, confirmLabel: "건너뛰기", danger: true }))
+    )
+      return;
     setDiscardingKey(entry.idempotency_key);
     setResolveError(null);
     try {
@@ -432,12 +436,13 @@ function SyncIssuesPanel({
   }
 
   async function discardAll() {
-    if (
-      !window.confirm(
-        `실패한 ${failedEntries?.length ?? 0}건과 그 뒤에 연결된 대기 기록을 모두 버릴까요? 서버에 반영되지 않은 입력이 사라집니다.`,
-      )
-    )
-      return;
+    const confirmed = await confirm({
+      title: "실패한 입력 모두 버리기",
+      message: `실패한 ${failedEntries?.length ?? 0}건과 그 뒤에 연결된 대기 기록을 모두 버릴까요? 서버에 반영되지 않은 입력이 사라집니다.`,
+      confirmLabel: "모두 버리기",
+      danger: true,
+    });
+    if (!confirmed) return;
     setBulkBusy(true);
     setResolveError(null);
     try {

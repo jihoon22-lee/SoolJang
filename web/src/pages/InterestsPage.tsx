@@ -576,6 +576,7 @@ function InterestConversionForm({
                 <input
                   required
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   max={100000}
                   value={form.volume}
@@ -586,6 +587,7 @@ function InterestConversionForm({
                 확정 도수 %
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   max={100}
                   step="0.01"
@@ -597,6 +599,7 @@ function InterestConversionForm({
                 확정 빈티지
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={1800}
                   max={2200}
                   value={form.vintage}
@@ -610,6 +613,7 @@ function InterestConversionForm({
             <input
               required
               type="number"
+              inputMode="numeric"
               min={1}
               max={1000}
               value={form.quantity}
@@ -642,6 +646,7 @@ function InterestConversionForm({
             병당 정가 (원)
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.01"
               value={form.list}
@@ -652,6 +657,7 @@ function InterestConversionForm({
             병당 실구매가 (원)
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.01"
               value={form.paid}

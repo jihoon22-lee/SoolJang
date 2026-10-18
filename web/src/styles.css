@@ -2730,6 +2730,14 @@ legend {
   }
 }
 
+.confirm-sheet {
+  width: min(420px, 100%);
+}
+
+.confirm-sheet .button-row {
+  justify-content: flex-end;
+}
+
 .pick-list {
   display: grid;
   gap: var(--space-xs);

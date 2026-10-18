@@ -47,6 +47,9 @@ export function AutocompleteInput({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    // 한글 조합 중 Enter·방향키는 조합을 끝내는 키다. 후보 선택으로 받으면 마지막 글자가
+    // 빠진 채 강조된 후보가 들어간다(Safari 는 조합 종료 Enter 를 keyCode 229 로 보낸다).
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (!visible) {
       if (event.key === "ArrowDown" && suggestions.length > 0) {
         event.preventDefault();

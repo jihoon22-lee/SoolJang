@@ -176,6 +176,7 @@ function NewWatch({
         <input
           id={`watch-amount-${offer.offer_id}`}
           type="number"
+          inputMode="decimal"
           min="0"
           step="0.0001"
           required
@@ -188,6 +189,7 @@ function NewWatch({
         <input
           id={`watch-age-${offer.offer_id}`}
           type="number"
+          inputMode="numeric"
           min="1"
           max="1440"
           required

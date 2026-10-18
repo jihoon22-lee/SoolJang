@@ -153,6 +153,7 @@ export function InterestEditor({
             {label}
             <input
               type="number"
+              inputMode={key === "vintage" ? "numeric" : "decimal"}
               min={min}
               max={max}
               step={key === "vintage" ? 1 : "any"}

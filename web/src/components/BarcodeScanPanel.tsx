@@ -368,6 +368,7 @@ function UnmatchedBarcodeResult({
           <input
             id="scan-new-volume"
             type="number"
+            inputMode="numeric"
             min={1}
             value={volumeMl}
             onChange={(event) => setVolumeMl(event.target.value)}

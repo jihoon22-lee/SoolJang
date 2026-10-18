@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -107,5 +107,22 @@ describe("AutocompleteInput", () => {
     expect(input).toHaveAttribute("aria-expanded", "false");
     await userEvent.type(input, "글렌");
     expect(input).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("한글 조합을 끝내는 Enter·방향키는 후보 선택으로 받지 않는다", async () => {
+    const onSelect = vi.fn();
+    render(<Harness suggestions={["글렌고인", "글렌알라키"]} onSelect={onSelect} />);
+    const input = screen.getByRole("combobox");
+    await userEvent.type(input, "글렌");
+    await userEvent.keyboard("{ArrowDown}");
+
+    fireEvent.keyDown(input, { key: "ArrowDown", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+
+    expect(input).toHaveAttribute("aria-activedescendant", "test-input-option-0");
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith("글렌고인");
   });
 });

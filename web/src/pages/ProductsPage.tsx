@@ -9,6 +9,7 @@ import type {
   SortKey,
 } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { LabelOcrPanel } from "@/components/LabelOcrPanel";
 import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/components/ProductDetail";
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
@@ -105,6 +106,7 @@ export function ProductsPage({
   onOpenStoreMode,
 }: ProductsPageProps) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { state, triggerSync, lastError } = useSyncStatus();
   const offline = state === "offline";
   const owner = databaseIdentity().userId ?? "";
@@ -466,16 +468,17 @@ export function ProductsPage({
     },
   });
 
-  function confirmBulkDelete(): void {
+  async function confirmBulkDelete(): Promise<void> {
     const ids = [...liveSelected];
     const chosen = (allProducts ?? []).filter((product) => liveSelected.has(product.id));
     const bottleCount = chosen.reduce((sum, product) => sum + product.metrics.purchased_count, 0);
-    if (
-      window.confirm(
-        `선택한 술 ${ids.length}건과 그 구매·병 ${bottleCount}병 기록을 삭제할까요? 시음 기록은 남습니다.`,
-      )
-    )
-      bulkDelete.mutate(ids);
+    const confirmed = await confirm({
+      title: "선택한 술 삭제",
+      message: `선택한 술 ${ids.length}건과 그 구매·병 ${bottleCount}병 기록을 삭제할까요? 시음 기록은 남습니다.`,
+      confirmLabel: "삭제",
+      danger: true,
+    });
+    if (confirmed) bulkDelete.mutate(ids);
   }
 
   if (selectedProductId !== null) {

@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { Bottle, ContextualTasting, Product, Purchase, Sku } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottleSection } from "@/components/BottleSection";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { ProductAttachments } from "@/components/ProductAttachments";
@@ -145,6 +146,7 @@ export function ProductDetail({
   addingSku,
   actionError,
 }: ProductDetailProps) {
+  const confirm = useConfirm();
   const { metrics } = product;
   const matchingScope = matchingPurchaseIds ? [...matchingPurchaseIds].sort().join(":") : null;
   const [allHistoryScope, setAllHistoryScope] = useState<string | null>(null);
@@ -282,7 +284,14 @@ export function ProductDetail({
                         ? `"${product.name}"과 구매 ${purchases.length}건·병 ${bottleCount}개를 함께 삭제할까요?`
                         : `"${product.name}"을 삭제할까요?`;
                     setMoreOpen(false);
-                    if (window.confirm(message)) onDelete();
+                    void confirm({
+                      title: "제품 삭제",
+                      message,
+                      confirmLabel: "삭제",
+                      danger: true,
+                    }).then((confirmed) => {
+                      if (confirmed) onDelete();
+                    });
                   }}
                   disabled={
                     deleting ||
@@ -652,6 +661,7 @@ function PurchaseSection({
   onAddSku: (volumeMl: number) => Promise<Sku>;
   addingSku: boolean;
 }) {
+  const confirm = useConfirm();
   const visiblePurchases = purchases.filter(
     (purchase) =>
       (!selectedSkuId || purchase.sku_id === selectedSkuId) &&
@@ -881,15 +891,17 @@ function PurchaseSection({
                             className="danger"
                             aria-label="구매 기록 삭제"
                             disabled={busy || deletingPurchaseId === purchase.id}
-                            onClick={() => {
-                              if (
-                                window.confirm(
+                            onClick={() =>
+                              void confirm({
+                                title: "구매 기록 삭제",
+                                message:
                                   "이 구매 건과 병을 함께 삭제할까요? 시음 기록이 있는 병이 있으면 삭제되지 않으니 시음 기록을 먼저 정리하세요.",
-                                )
-                              ) {
-                                onDeletePurchase(purchase.id);
-                              }
-                            }}
+                                confirmLabel: "삭제",
+                                danger: true,
+                              }).then((confirmed) => {
+                                if (confirmed) onDeletePurchase(purchase.id);
+                              })
+                            }
                           >
                             {deletingPurchaseId === purchase.id ? "삭제 중…" : "삭제"}
                           </button>
@@ -1178,6 +1190,7 @@ function AddPurchaseForm({
             <input
               id="new-sku-volume"
               type="number"
+              inputMode="numeric"
               min={1}
               max={100000}
               step={1}
@@ -1336,6 +1349,7 @@ function SplitPurchaseForm({
             <input
               id={`split-quantity-${index}`}
               type="number"
+              inputMode="numeric"
               min={1}
               value={part.quantity}
               onChange={(event) => updatePart(index, { quantity: event.target.value })}

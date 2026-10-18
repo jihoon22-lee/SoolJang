@@ -76,6 +76,7 @@ export function DiscoveryTarget({
               {label}
               <input
                 type="number"
+                inputMode={field === "vintage" ? "numeric" : "decimal"}
                 min={min}
                 max={max}
                 step={field === "vintage" ? 1 : "any"}
@@ -98,6 +99,7 @@ export function DiscoveryTarget({
             저장할 용량 ml
             <input
               type="number"
+              inputMode="numeric"
               min={1}
               max={100000}
               step={1}
