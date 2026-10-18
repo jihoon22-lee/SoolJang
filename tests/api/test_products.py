@@ -222,6 +222,23 @@ def test_korean_partial_search(api_client: TestClient, prefix: str) -> None:
     assert len(result["items"]) == 2
 
 
+def test_korean_alias_prefix_search_finds_latin_product(
+    api_client: TestClient, prefix: str
+) -> None:
+    _seed_product(api_client, prefix, name="The Glenlivet 12")
+    _seed_product(api_client, prefix, name="Glenfarclas 15")
+
+    result = _list(api_client, prefix, q="글렌리")
+
+    assert [item["name"] for item in result["items"]] == ["The Glenlivet 12"]
+
+
+def test_overlong_search_query_is_rejected(api_client: TestClient, prefix: str) -> None:
+    response = api_client.get(f"{prefix}/products", params={"q": "가" * 301})
+
+    assert response.status_code == 422
+
+
 def test_filter_by_abv_range(api_client: TestClient, prefix: str) -> None:
     _seed_product(api_client, prefix, name="저도수", abv="5.0")
     _seed_product(api_client, prefix, name="고도수", abv="58.7")

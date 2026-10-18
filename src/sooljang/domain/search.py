@@ -3,6 +3,7 @@
 import json
 import re
 import unicodedata
+from functools import lru_cache
 from importlib.resources import files
 from typing import TypedDict
 
@@ -89,14 +90,23 @@ _KOREAN_ALIASES = tuple(
 )
 
 
-def _alias_prefix_completions(query: str) -> list[str]:
-    """질의 끝의 한글 두 글자 이상이 별칭의 앞부분이면 그 별칭으로 채운 질의들(웹과 같은 규칙)."""
+@lru_cache(maxsize=256)
+def _alias_prefix_completions(query: str) -> tuple[str, ...]:
+    """질의 끝의 한글 두 글자 이상이 별칭의 앞부분이면 그 별칭으로 채운 질의들(웹과 같은 규칙).
+
+    제품마다 다시 계산하지 않게 질의별로 기억한다. 끝 글자는 뒤에서 한 번만 훑는다(정규식
+    역추적으로 긴 입력에서 제곱 시간이 들지 않게).
+    """
     compact = normalize_search_text(query).replace(" ", "")
-    tail = re.search(r"[가-힣]{2,}$", compact)
-    if tail is None:
-        return []
-    head, typed = compact[: tail.start()], tail.group()
-    return [head + alias for alias in _KOREAN_ALIASES if alias != typed and alias.startswith(typed)]
+    start = len(compact)
+    while start > 0 and "가" <= compact[start - 1] <= "힣":
+        start -= 1
+    if len(compact) - start < 2:
+        return ()
+    head, typed = compact[:start], compact[start:]
+    return tuple(
+        head + alias for alias in _KOREAN_ALIASES if alias != typed and alias.startswith(typed)
+    )
 
 
 def matches_query(name: str, query: str) -> bool:

@@ -162,16 +162,33 @@ const KOREAN_ALIASES = [
   ),
 ].sort();
 
-/** 질의 끝의 한글 두 글자 이상이 별칭의 앞부분이면 그 별칭으로 채운 질의들(서버와 같은 규칙). */
+const completionCache = new Map<string, string[]>();
+
+/**
+ * 질의 끝의 한글 두 글자 이상이 별칭의 앞부분이면 그 별칭으로 채운 질의들(서버와 같은 규칙).
+ * 후보마다 다시 계산하지 않게 질의별로 기억하고, 끝 글자는 뒤에서 한 번만 훑는다(정규식
+ * 역추적으로 긴 입력에서 제곱 시간이 들지 않게).
+ */
 function aliasPrefixCompletions(query: string): string[] {
+  const cached = completionCache.get(query);
+  if (cached) return cached;
   const compact = normalizeSearchText(query).replaceAll(" ", "");
-  const tail = compact.match(/[가-힣]{2,}$/);
-  if (!tail || tail.index === undefined) return [];
-  const head = compact.slice(0, tail.index);
-  const typed = tail[0];
-  return KOREAN_ALIASES.filter((alias) => alias !== typed && alias.startsWith(typed)).map(
-    (alias) => head + alias,
-  );
+  let start = compact.length;
+  while (start > 0 && isHangulSyllable(compact.charAt(start - 1))) start -= 1;
+  const typed = compact.slice(start);
+  const result =
+    typed.length < 2
+      ? []
+      : KOREAN_ALIASES.filter((alias) => alias !== typed && alias.startsWith(typed)).map(
+          (alias) => compact.slice(0, start) + alias,
+        );
+  if (completionCache.size >= 256) completionCache.clear();
+  completionCache.set(query, result);
+  return result;
+}
+
+function isHangulSyllable(character: string): boolean {
+  return character >= "가" && character <= "힣";
 }
 
 function rankOf(name: string, query: string): number | null {
