@@ -136,6 +136,8 @@ def test_purchase_request_id_reused_with_other_content_conflicts(
     ):
         response = api_client.post(f"{prefix}/purchases", json=body | changed)
         assert response.status_code == 409, changed
+        # 응답을 잃고 고쳐 보낸 사용자에게 앞선 구매가 이미 저장됐음을 알린다.
+        assert "앞서 보낸 구매 등록이 이미 저장됐습니다" in response.json()["detail"]
 
 
 def test_product_replay_is_judged_by_original_request_not_later_edits(

@@ -57,7 +57,13 @@ async def ensure_same_request(
     if receipt.response_snapshot.get("receipt_expired"):
         raise ConflictError("요청 재시도 보관 기간이 지났습니다. 최신 기록을 확인하세요")
     if receipt.response_snapshot.get("_request_hash") != fingerprint:
-        raise ConflictError("같은 요청 식별자로 다른 내용을 등록할 수 없습니다")
+        # 응답을 잃은 뒤 고쳐 보낸 재전송이다. 웹은 이 답을 받으면 키를 버리므로
+        # 다음 제출은 새 기록이다.
+        noun = {"product": "제품", "purchase": "구매"}.get(kind, "기록")
+        raise ConflictError(
+            f"앞서 보낸 {noun} 등록이 이미 저장됐습니다. 고친 내용은 저장하지 않았으니 "
+            "기록을 확인한 뒤 다시 등록하세요"
+        )
 
 
 def save_request(

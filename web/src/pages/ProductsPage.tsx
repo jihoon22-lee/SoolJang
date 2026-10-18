@@ -25,7 +25,12 @@ import { hasPurchaseScope, purchaseScopeLabel, selectPurchaseScope } from "@/pur
 import type { ProductContext } from "@/router";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { databaseIdentity, db } from "@/sync/db";
-import { clearFormDraft, finishSubmission, submissionRequestId } from "@/sync/drafts";
+import {
+  clearFormDraft,
+  finishSubmission,
+  settleFailedSubmission,
+  submissionRequestId,
+} from "@/sync/drafts";
 import { enqueue } from "@/sync/outbox";
 import { resolveProductContext } from "@/sync/productContext";
 import { enqueueProductDelete } from "@/sync/productDelete";
@@ -896,8 +901,15 @@ function ProductDetailView({
         unit_paid_price: input.unitPaidPrice || null,
       };
       const form = `purchase:${productId}`;
-      const requestId = submissionRequestId(form, payload);
-      await purchasesApi.create({ ...payload, request_id: requestId });
+      const requestId = submissionRequestId(form);
+      await purchasesApi.create({ ...payload, request_id: requestId }).catch((error: unknown) => {
+        settleFailedSubmission(
+          form,
+          requestId,
+          error instanceof ApiError ? error.status : undefined,
+        );
+        throw error;
+      });
       finishSubmission(form, requestId);
       return { skuId: input.skuId, contextSignature: submittedContext };
     },
