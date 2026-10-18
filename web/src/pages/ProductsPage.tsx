@@ -925,6 +925,13 @@ function ProductDetailView({
         purchased_on: input.purchasedOn || null,
         unit_list_price: input.unitListPrice || null,
         unit_paid_price: input.unitPaidPrice || null,
+        ...(input.foreign
+          ? {
+              currency: input.foreign.currency,
+              fx_rate: input.foreign.fxRate,
+              foreign_unit_price: input.foreign.foreignUnitPrice,
+            }
+          : {}),
       };
       const form = `purchase:${productId}`;
       const requestId = submissionRequestId(form);

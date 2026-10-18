@@ -2731,6 +2731,10 @@ legend {
 }
 
 /* 상세 구역 바로가기. 고정 헤더에 제목이 가리지 않게 여백을 둔다. */
+.foreign-price-note {
+  display: block;
+}
+
 .detail-jump {
   margin-block: var(--space-sm);
 }

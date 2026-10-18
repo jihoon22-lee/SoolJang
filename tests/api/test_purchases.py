@@ -488,3 +488,26 @@ def test_purchase_history_names_vendors_by_their_current_name(
 
     assert history[0]["detail"] == {"vendor_id": [None, vendor["id"]]}
     assert history[0]["labels"] == {vendor["id"]: "동네 마트 본점"}
+
+
+def test_foreign_purchase_paid_price_must_match_foreign_times_rate(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "해외 구매 위스키", "skus": [{"volume_ml": 700}]}
+    ).json()
+    base = {
+        "sku_id": product["skus"][0]["id"],
+        "currency": "usd",
+        "fx_rate": "1380.5",
+        "foreign_unit_price": "49.99",
+    }
+
+    created = api_client.post(f"{prefix}/purchases", json=base | {"unit_paid_price": "69012"})
+    mismatched = api_client.post(f"{prefix}/purchases", json=base | {"unit_paid_price": "49.99"})
+    krw_foreign = api_client.post(f"{prefix}/purchases", json=base | {"currency": "KRW"})
+
+    assert created.status_code == 201, created.text
+    assert created.json()["currency"] == "USD"
+    assert mismatched.status_code == 422
+    assert krw_foreign.status_code == 422

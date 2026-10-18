@@ -255,6 +255,17 @@ class PurchaseCreate(BaseModel):
     def _foreign_price_needs_rate(self) -> PurchaseCreate:
         if self.foreign_unit_price is not None and self.fx_rate is None:
             raise ValueError("외화 가격을 넣으려면 fx_rate 가 필요합니다")
+        if self.foreign_unit_price is not None and self.currency.upper() == "KRW":
+            raise ValueError("외화 단가에는 원화가 아닌 통화 코드가 필요합니다")
+        # 실구매가는 원화 환산값이다(통계·평단가가 모두 원화로 합산한다). 기록한 환율은 소수점을
+        # 줄여 적는 일이 많아 1% 안의 차이는 받되, 외화 금액을 원화 칸에 넣는 실수처럼 크게 다르면
+        # 어느 쪽이 맞는지 알 수 없어 저장하지 않는다.
+        if self.foreign_unit_price is not None and self.fx_rate is not None:
+            converted = self.foreign_unit_price * self.fx_rate
+            if self.unit_paid_price is not None and abs(self.unit_paid_price - converted) > max(
+                Decimal(1), converted / 100
+            ):
+                raise ValueError("병당 실구매가가 외화 단가 × 환율과 1% 넘게 다릅니다")
         return self
 
 

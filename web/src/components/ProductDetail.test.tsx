@@ -390,6 +390,27 @@ describe("ProductDetail", () => {
       );
     });
 
+    it("해외 구매는 외화 단가 × 환율을 원화 실구매가로 넘기고 통화·환율을 함께 보낸다", async () => {
+      const { onAddPurchase } = setup();
+
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(screen.getByLabelText("해외 구매(외화로 결제)"));
+      await userEvent.selectOptions(screen.getByLabelText("통화"), "JPY");
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("외화 단가와 환율을 함께 입력하세요");
+      await userEvent.type(screen.getByLabelText("병당 외화 단가 (JPY)"), "5980");
+      await userEvent.type(screen.getByLabelText("환율 (1 JPY당 원)"), "9.12");
+
+      expect(screen.getByLabelText("병당 실구매가 (원)")).toHaveValue(54538);
+      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      expect(onAddPurchase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          unitPaidPrice: "54538",
+          foreign: { currency: "JPY", fxRate: "9.12", foreignUnitPrice: "5980" },
+        }),
+      );
+    });
+
     it("구매처 자동완성 후보를 보여준다", async () => {
       setup({ vendorNames: ["이마트", "이마트 트레이더스", "코스트코"] });
 

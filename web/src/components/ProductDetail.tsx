@@ -45,6 +45,19 @@ export interface AddPurchaseInput {
   purchasedOn: string;
   unitListPrice: string;
   unitPaidPrice: string;
+  /** 해외 구매. 실구매가(`unitPaidPrice`)는 외화 단가 × 환율의 원화 값이다. */
+  foreign?: { currency: string; fxRate: string; foreignUnitPrice: string };
+}
+
+/** 해외 구매에 자주 쓰는 통화. */
+const FOREIGN_CURRENCIES = ["USD", "JPY", "EUR", "GBP", "CNY", "HKD", "TWD", "SGD", "AUD"];
+
+/** 외화 단가 × 환율을 원 단위로 반올림한 원화 실구매가. 둘 중 하나라도 없으면 null. */
+export function convertedPaidPrice(foreignUnitPrice: string, fxRate: string): string | null {
+  const foreign = Number(foreignUnitPrice);
+  const rate = Number(fxRate);
+  if (!foreignUnitPrice.trim() || !fxRate.trim() || !(foreign >= 0) || !(rate > 0)) return null;
+  return String(Math.round(foreign * rate));
 }
 
 export interface SplitPart {
@@ -875,6 +888,12 @@ function PurchaseSection({
                     </td>
                     <td data-label="병당 실구매가" className="numeric">
                       {formatMoney(purchase.unit_paid_price, { short: true })}
+                      {purchase.currency !== "KRW" && purchase.foreign_unit_price ? (
+                        <span className="muted text-sm foreign-price-note">
+                          {purchase.foreign_unit_price} {purchase.currency}
+                          {purchase.fx_rate ? ` × ${Number(purchase.fx_rate)}` : ""}
+                        </span>
+                      ) : null}
                     </td>
                     <td data-label="총 지출" className="numeric">
                       {formatMoney(purchase.paid_total, { short: true })}
@@ -1035,6 +1054,17 @@ function AddPurchaseForm({
     "",
   );
   const [newVolumeMl, setNewVolumeMl] = useDraftState(`purchase:${product.id}:newVolumeMl`, "");
+  // 빈 통화는 원화 구매다.
+  const [foreignCurrency, setForeignCurrency] = useDraftState(
+    `purchase:${product.id}:foreignCurrency`,
+    "",
+  );
+  const [fxRate, setFxRate] = useDraftState(`purchase:${product.id}:fxRate`, "");
+  const [foreignUnitPrice, setForeignUnitPrice] = useDraftState(
+    `purchase:${product.id}:foreignUnitPrice`,
+    "",
+  );
+  const foreignPaid = foreignCurrency ? convertedPaidPrice(foreignUnitPrice, fxRate) : null;
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [confirmedSkus, setConfirmedSkus] = useState<Sku[]>([]);
@@ -1148,6 +1178,10 @@ function AddPurchaseForm({
           setLocalError("병수를 입력하세요");
           return;
         }
+        if (foreignCurrency && foreignPaid === null) {
+          setLocalError("해외 구매는 외화 단가와 환율을 함께 입력하세요");
+          return;
+        }
         setLocalError(null);
         onSubmit({
           skuId,
@@ -1155,7 +1189,10 @@ function AddPurchaseForm({
           vendorName: vendorName.trim(),
           purchasedOn,
           unitListPrice,
-          unitPaidPrice,
+          unitPaidPrice: foreignCurrency ? (foreignPaid ?? "") : unitPaidPrice,
+          ...(foreignCurrency
+            ? { foreign: { currency: foreignCurrency, fxRate, foreignUnitPrice } }
+            : {}),
         });
       }}
     >
@@ -1283,11 +1320,73 @@ function AddPurchaseForm({
               inputMode="decimal"
               step="any"
               min={0}
-              value={unitPaidPrice}
+              value={foreignCurrency ? (foreignPaid ?? "") : unitPaidPrice}
+              readOnly={Boolean(foreignCurrency)}
+              aria-describedby={foreignCurrency ? "purchase-foreign-note" : undefined}
               onChange={(event) => setUnitPaidPrice(event.target.value)}
             />
           </div>
         </div>
+
+        <div className="checkbox-field">
+          <label>
+            <input
+              type="checkbox"
+              checked={Boolean(foreignCurrency)}
+              onChange={(event) => setForeignCurrency(event.target.checked ? "USD" : "")}
+            />
+            해외 구매(외화로 결제)
+          </label>
+        </div>
+        {foreignCurrency ? (
+          <fieldset className="fieldset-bordered">
+            <legend>외화 결제</legend>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="purchase-currency">통화</label>
+                <select
+                  id="purchase-currency"
+                  value={foreignCurrency}
+                  onChange={(event) => setForeignCurrency(event.target.value)}
+                >
+                  {FOREIGN_CURRENCIES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="purchase-foreign-price">병당 외화 단가 ({foreignCurrency})</label>
+                <input
+                  id="purchase-foreign-price"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={foreignUnitPrice}
+                  onChange={(event) => setForeignUnitPrice(event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="purchase-fx-rate">환율 (1 {foreignCurrency}당 원)</label>
+                <input
+                  id="purchase-fx-rate"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={fxRate}
+                  onChange={(event) => setFxRate(event.target.value)}
+                />
+              </div>
+            </div>
+            <p id="purchase-foreign-note" className="muted text-sm mb-0">
+              실구매가는 외화 단가 × 환율을 원 단위로 반올림해 저장합니다. 카드 청구액 기준으로
+              맞추려면 청구 원화 ÷ 외화 단가를 환율로 넣으세요.
+            </p>
+          </fieldset>
+        ) : null}
 
         <div className="field">
           <label htmlFor="purchase-vendor">구매처</label>
