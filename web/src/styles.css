@@ -2730,6 +2730,10 @@ legend {
   }
 }
 
+.interest-row-panel {
+  margin-top: var(--space-sm);
+}
+
 .confirm-sheet {
   width: min(420px, 100%);
 }

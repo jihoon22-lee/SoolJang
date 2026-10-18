@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
 import { DiscoveryPanel } from "@/components/DiscoveryPanel";
@@ -88,7 +88,6 @@ export function InterestsPage({
           ) || a.id.localeCompare(b.id),
     );
   const comparisons = all.filter((row) => !row.deleted && selected.includes(row.id));
-  const edited = all.find((row) => row.id === editing && !row.deleted);
   return (
     <section className="collection-page interest-page">
       <div className="interest-heading">
@@ -162,15 +161,6 @@ export function InterestsPage({
         <button type="button" disabled={!online} onClick={() => void interests.refetch()}>
           목록 다시 불러오기
         </button>
-      )}
-      {edited && (
-        <InterestEditor
-          key={edited.id}
-          interest={edited}
-          disabled={!online}
-          onChanged={refresh}
-          onClose={() => setEditing(null)}
-        />
       )}
       {!interests.isPending && !rows.length && (
         <p className="notice">
@@ -275,6 +265,77 @@ export function InterestsPage({
                 </button>
               )}
             </div>
+            {editing === row.id && !row.deleted && (
+              <RowPanel>
+                <InterestEditor
+                  key={row.id}
+                  interest={row}
+                  disabled={!online}
+                  onChanged={refresh}
+                  onClose={() => setEditing(null)}
+                />
+              </RowPanel>
+            )}
+            {removeTarget?.id === row.id && (
+              <RowPanel>
+                <section className="card interest-delete" aria-label="관심 삭제 확인">
+                  <h2>‘{removeTarget.name}’ 관심을 삭제할까요?</h2>
+                  <p>
+                    구매·병·가격 관측은 유지합니다. 가격 감시와 대기 알림은 중지하며, 삭제 목록에서
+                    복구해도 감시를 자동 재개하지 않습니다.
+                  </p>
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      disabled={!online || action.isPending}
+                      onClick={() =>
+                        action.mutate(() =>
+                          interestsApi.remove(removeTarget.id, removeTarget.updated_at),
+                        )
+                      }
+                    >
+                      관심 삭제 확인
+                    </button>
+                    <button
+                      type="button"
+                      disabled={action.isPending}
+                      onClick={() => setRemoveTarget(null)}
+                    >
+                      취소
+                    </button>
+                    {all.some(
+                      (item) =>
+                        item.id === removeTarget.id && item.updated_at !== removeTarget.updated_at,
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRemoveTarget(all.find((item) => item.id === removeTarget.id) ?? null)
+                        }
+                      >
+                        최신 기록으로 다시 확인
+                      </button>
+                    )}
+                  </div>
+                </section>
+              </RowPanel>
+            )}
+            {convert?.id === row.id && (
+              <RowPanel>
+                <InterestConversionForm
+                  key={convert.id}
+                  interest={convert}
+                  disabled={!online}
+                  onClose={() => setConvert(null)}
+                  onConverted={(id, context) => {
+                    setConvert(null);
+                    refresh();
+                    if (context) onSelectProduct(id, context);
+                    else onSelectProduct(id);
+                  }}
+                />
+              </RowPanel>
+            )}
             {!row.deleted && (
               <details>
                 <summary>출처·가격·자료 확인</summary>
@@ -306,41 +367,6 @@ export function InterestsPage({
         <button type="button" onClick={() => setLimit(limit + 20)}>
           관심 더 보기 ({Math.min(limit, rows.length)} / {rows.length})
         </button>
-      )}
-      {removeTarget && (
-        <section className="card interest-delete" aria-label="관심 삭제 확인">
-          <h2>‘{removeTarget.name}’ 관심을 삭제할까요?</h2>
-          <p>
-            구매·병·가격 관측은 유지합니다. 가격 감시와 대기 알림은 중지하며, 삭제 목록에서 복구해도
-            감시를 자동 재개하지 않습니다.
-          </p>
-          <div className="button-row">
-            <button
-              type="button"
-              disabled={!online || action.isPending}
-              onClick={() =>
-                action.mutate(() => interestsApi.remove(removeTarget.id, removeTarget.updated_at))
-              }
-            >
-              관심 삭제 확인
-            </button>
-            <button type="button" disabled={action.isPending} onClick={() => setRemoveTarget(null)}>
-              취소
-            </button>
-            {all.some(
-              (row) => row.id === removeTarget.id && row.updated_at !== removeTarget.updated_at,
-            ) && (
-              <button
-                type="button"
-                onClick={() =>
-                  setRemoveTarget(all.find((row) => row.id === removeTarget.id) ?? null)
-                }
-              >
-                최신 기록으로 다시 확인
-              </button>
-            )}
-          </div>
-        </section>
       )}
       {comparisons.length > 0 && (
         <section className="card">
@@ -379,23 +405,22 @@ export function InterestsPage({
           </div>
         </section>
       )}
-      {convert && (
-        <InterestConversionForm
-          key={convert.id}
-          interest={convert}
-          disabled={!online}
-          onClose={() => setConvert(null)}
-          onConverted={(id, context) => {
-            setConvert(null);
-            refresh();
-            if (context) onSelectProduct(id, context);
-            else onSelectProduct(id);
-          }}
-        />
-      )}
     </section>
   );
 }
+/** 행 아래에 펼치는 수정·삭제 확인·구매 전환. 연 행으로 화면을 옮겨 목록 끝까지 찾지 않게 한다. */
+function RowPanel({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
+  return (
+    <div ref={ref} className="interest-row-panel">
+      {children}
+    </div>
+  );
+}
+
 function InterestDiscovery({ interest, offline }: { interest: Interest; offline: boolean }) {
   const [open, setOpen] = useState(false);
   return (

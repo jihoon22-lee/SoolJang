@@ -246,3 +246,24 @@ it("다른 화면의 갱신 후에도 작성 시작 시점의 revision으로 노
   await userEvent.click(screen.getByRole("button", { name: "최신 관심 정보 불러오기" }));
   expect(screen.getByLabelText("관심 노트")).toHaveValue("서버에서 변경한 노트");
 });
+
+it("수정·삭제 확인·구매 전환은 누른 관심 행 아래에 펼치고 그 행으로 화면을 옮긴다", async () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  renderPage();
+  const row = (await screen.findByRole("heading", { name: "다른 몰트" })).closest(
+    "li",
+  ) as HTMLElement;
+
+  await userEvent.click(within(row).getByRole("button", { name: "수정" }));
+  expect(within(row).getByRole("button", { name: "변경 저장" })).toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "삭제" }));
+  expect(within(row).getByRole("region", { name: "관심 삭제 확인" })).toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "구매 전환" }));
+  expect(within(row).getByRole("button", { name: "구매와 병 생성" })).toBeInTheDocument();
+
+  const first = screen.getByRole("heading", { name: "합성 몰트" }).closest("li") as HTMLElement;
+  expect(within(first).queryByRole("region", { name: "관심 삭제 확인" })).toBeNull();
+  expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});
