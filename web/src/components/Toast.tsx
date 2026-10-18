@@ -5,7 +5,15 @@
  * 몇 초 동안 되돌릴 기회를 준다(되돌리기는 역방향 명령을 보낸다 — 기록을 지우지 않는다).
  */
 
-import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export interface ToastInput {
   message: string;
@@ -34,6 +42,15 @@ export function useToast(): ToastApi {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
+  const timers = useRef(new Set<number>());
+  // 화면(또는 테스트 환경)이 사라진 뒤 남은 타이머가 상태를 바꾸지 않게 한다.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending) window.clearTimeout(timer);
+      pending.clear();
+    };
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setItems((current) => current.filter((item) => item.id !== id));
@@ -45,7 +62,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       // 같은 자리에 쌓이면 읽기 어렵다. 최근 3개만 남긴다.
       setItems((current) => [...current.slice(-2), { ...toast, id }]);
       const duration = toast.durationMs ?? (toast.onAction ? 10_000 : 6_000);
-      window.setTimeout(() => dismiss(id), duration);
+      const timer = window.setTimeout(() => {
+        timers.current.delete(timer);
+        dismiss(id);
+      }, duration);
+      timers.current.add(timer);
     },
     [dismiss],
   );

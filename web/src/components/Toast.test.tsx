@@ -68,6 +68,21 @@ describe("ToastProvider", () => {
     expect(screen.queryByText("3병 소진 처리")).not.toBeInTheDocument();
   });
 
+  it("화면이 사라지면 남은 닫기 타이머를 지운다", () => {
+    vi.useFakeTimers();
+    const view = renderWithQuery(
+      <ToastProvider>
+        <Trigger />
+      </ToastProvider>,
+    );
+    act(() => screen.getByRole("button", { name: "알림" }).click());
+    expect(vi.getTimerCount()).toBe(1);
+
+    view.unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("공급자가 없으면 아무것도 하지 않는다", async () => {
     renderWithQuery(<Trigger />);
     await userEvent.click(screen.getByRole("button", { name: "알림" }));
