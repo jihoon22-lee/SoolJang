@@ -199,6 +199,12 @@ def test_blank_volume_row_with_purchases_is_flagged_in_preview() -> None:
     from sooljang.infrastructure.legacy.blocks import MAIN_HEADER
     from sooljang.infrastructure.legacy.records import parse_rows
 
-    plan = build_plan(parse_rows([list(MAIN_HEADER), _row("용량 공란", volume="")]))
+    plan = build_plan(
+        parse_rows([list(MAIN_HEADER), _row("용량 공란", volume=""), _row("정상 행")])
+    )
 
-    assert any("용량이 비어 있어" in warning for warning in plan.products[0].warnings)
+    # 적재 때 반드시 실패할 행은 "적재될 내용" 합계·표본에 넣지 않고 따로 알린다.
+    assert [product.name for product in plan.products] == ["정상 행"]
+    assert plan.purchase_count == 1
+    assert [line for line, _ in plan.failing_rows] == [2]
+    assert "용량이 비어 있어" in plan.failing_rows[0][1]

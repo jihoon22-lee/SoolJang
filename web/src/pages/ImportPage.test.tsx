@@ -31,6 +31,7 @@ const analysis: ImportAnalysis = {
     split_vendor_rows: [42],
     unsplit_vendor_rows: [7, 12, 19],
     warning_summary: [["주종 사전에 없는 값입니다", 3]],
+    failing_rows: [31, 58],
   },
   sample: [
     {
@@ -131,6 +132,9 @@ describe("ImportPage", () => {
     expect(await screen.findByText(/합쳐질 행 묶음/)).toBeInTheDocument();
     expect(screen.getByText(/병수를 나눌 수 없어 하나로 넣을 행/)).toBeInTheDocument();
     expect(screen.getByText(/주종 사전에 없는 값입니다/)).toBeInTheDocument();
+    expect(screen.getByText(/용량이 비어 있어 구매·병을 넣을 수 없는 행/)).toHaveTextContent(
+      "2행(31, 58번 줄)",
+    );
   });
 
   it("정규화 표본을 보여준다", async () => {

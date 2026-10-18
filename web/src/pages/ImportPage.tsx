@@ -144,6 +144,14 @@ function AnalysisView({ analysis }: { analysis: ImportAnalysis }) {
             건을 쪼갤 수 있습니다
           </li>
         )}
+        {(review.failing_rows?.length ?? 0) > 0 && (
+          <li>
+            용량이 비어 있어 구매·병을 넣을 수 없는 행{" "}
+            <strong>{review.failing_rows?.length}행</strong>({review.failing_rows?.join(", ")}번
+            줄). 위 합계에 들어 있지 않으며 가져오면 실패한 행으로 남습니다. 원본에 용량을 채워 다시
+            분석하세요
+          </li>
+        )}
         {review.warning_summary.map(([kind, count]) => (
           <li key={kind}>
             {kind} <strong>{count}건</strong>
@@ -151,6 +159,7 @@ function AnalysisView({ analysis }: { analysis: ImportAnalysis }) {
         ))}
         {review.merge_group_count === 0 &&
           review.unsplit_vendor_rows.length === 0 &&
+          (review.failing_rows?.length ?? 0) === 0 &&
           review.warning_summary.length === 0 && <li>확인이 필요한 항목이 없습니다</li>}
       </ul>
 

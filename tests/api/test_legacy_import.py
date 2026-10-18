@@ -320,6 +320,15 @@ def test_blank_volume_row_fails_instead_of_dropping_purchases(
     cells[10:15] = ["2", "0", "2", "2", "0"]
     sheet = "\n".join(",".join(row) for row in (MAIN_HEADER, cells)).encode("cp949")
 
+    analysis = api_client.post(
+        f"{prefix}/imports/legacy:analyze",
+        files={"file": ("blank_volume.csv", sheet, "text/csv")},
+    )
+    assert analysis.status_code == 200, analysis.text
+    assert analysis.json()["totals"]["bottles"] == 0
+    assert analysis.json()["sample"] == []
+    assert analysis.json()["review"]["failing_rows"] == [2]
+
     response = api_client.post(
         f"{prefix}/imports/legacy:commit",
         files={"file": ("blank_volume.csv", sheet, "text/csv")},

@@ -331,6 +331,8 @@ export interface ImportReview {
   split_vendor_rows: number[];
   unsplit_vendor_rows: number[];
   warning_summary: [string, number][];
+  /** 적재하면 실패로 남을 행(용량 공란에 구매가 있는 행). 합계·표본에 들어 있지 않다. */
+  failing_rows?: number[];
 }
 
 export interface ImportSampleRow {

@@ -87,6 +87,9 @@ class ImportPlan:
     merge_groups: dict[tuple[str, int | None, Decimal | None], list[int]] = field(
         default_factory=dict
     )
+    #: 적재하면 반드시 실패할 행(줄 번호, 사유). 미리보기 합계·표본에 넣지 않고 따로 알리며
+    #: 적재 결과에는 실패 행으로 남긴다.
+    failing_rows: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def product_count(self) -> int:
@@ -215,12 +218,20 @@ def parse_vendor_shares(raw_vendors: tuple[str, ...], total_quantity: int) -> li
     return []
 
 
+#: 용량이 없으면 규격을 만들 수 없어 구매·병을 붙일 수 없다. 조용히 제품만 남기면 산 병이
+#: 사라진 채 "성공"으로 보인다.
+BLANK_VOLUME_FAILURE = "용량이 비어 있어 구매·병을 만들 수 없습니다. 용량을 채워 다시 가져오세요"
+
+
 def build_plan(report: ParseReport) -> ImportPlan:
     """파싱 리포트를 임포트 계획으로 바꾼다."""
     plan = ImportPlan(warnings=list(report.warnings))
 
     for record in report.records:
         planned = _plan_product(record)
+        if planned.volume_ml is None and planned.purchases:
+            plan.failing_rows.append((planned.line_number, BLANK_VOLUME_FAILURE))
+            continue
         plan.products.append(planned)
 
     grouped: dict[tuple[str, int | None, Decimal | None], list[int]] = {}
@@ -245,8 +256,6 @@ def _plan_product(record: LegacyRecord) -> PlannedProduct:
         )
 
     purchases = _plan_purchases(record, shares)
-    if record.volume_ml is None and record.purchased_count > 0:
-        warnings.append("용량이 비어 있어 이 행의 구매·병은 적재하지 않고 실패로 남깁니다")
 
     return PlannedProduct(
         line_number=record.line_number,

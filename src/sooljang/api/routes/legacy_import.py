@@ -59,7 +59,7 @@ def _to_analysis(
 ) -> ImportAnalysis:
     return ImportAnalysis(
         block=ImportBlockInfo(
-            record_count=plan.source_row_count,
+            record_count=plan.source_row_count + len(plan.failing_rows),
             skipped_blank_lines=skipped,
             total_row_lines=totals_lines,
             excluded_line_count=excluded,
@@ -83,6 +83,7 @@ def _to_analysis(
             split_vendor_rows=plan.split_vendor_rows,
             unsplit_vendor_rows=plan.unsplit_vendor_rows,
             warning_summary=summarize_warnings(plan),
+            failing_rows=[line for line, _ in plan.failing_rows],
         ),
         sample=[
             ImportSampleRow(

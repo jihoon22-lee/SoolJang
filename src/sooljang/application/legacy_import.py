@@ -18,7 +18,12 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.application.categories import create_category, load_tree
-from sooljang.application.import_plan import ImportPlan, PlannedProduct, PlannedPurchase
+from sooljang.application.import_plan import (
+    BLANK_VOLUME_FAILURE,
+    ImportPlan,
+    PlannedProduct,
+    PlannedPurchase,
+)
 from sooljang.application.skus import create_sku, load_live_sku_for_write, lock_live_product
 from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import (
@@ -141,7 +146,7 @@ async def apply_plan(
     한 행의 문제로 전체를 되돌리면 429행 중 428행이 정상인데도 아무것도 얻지 못한다.
     """
     await lock_user_writes(session, user_id)
-    result = ImportResult()
+    result = ImportResult(failed_rows=list(plan.failing_rows))
     # 같은 사용자의 적재를 직렬화한다. 더블탭·재시도로 두 요청이 동시에 "이미 적재됨"
     # 검사를 통과하면 같은 시트가 두 번 들어간다.
     lock_key = int.from_bytes(
@@ -167,6 +172,7 @@ async def apply_plan(
             result.failed_rows = failed_rows
             result.failed_rows.append((planned.line_number, _failure_reason(error)))
 
+    result.failed_rows.sort()
     await session.flush()
 
     # 한 요청에서 수백 행을 한꺼번에 넣는 유일한 경로다(레거시 시트 실측 429행,
@@ -240,11 +246,8 @@ async def _apply_product(
 
     if sku_id is None:
         if planned.purchases:
-            # 용량이 없으면 규격을 만들 수 없어 구매·병을 붙일 수 없다. 조용히 제품만 남기면
-            # 산 병이 사라진 채 "성공"으로 보인다. 행을 실패로 돌려 용량을 채워 다시 넣게 한다.
-            raise ValueError(
-                "용량이 비어 있어 구매·병을 만들 수 없습니다. 용량을 채워 다시 가져오세요"
-            )
+            # 계획 단계에서 걸러지지만, 다른 경로로 만든 계획도 구매를 조용히 버리지 않는다.
+            raise ValueError(BLANK_VOLUME_FAILURE)
         return
 
     for index, purchase in enumerate(planned.purchases, start=1):
