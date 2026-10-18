@@ -220,8 +220,8 @@ export function DiscoveryPanel({
     name: string,
     url: string,
     fields?: DiscoveryDocument["applicable_fields"],
-    /** 다른 출처의 후보를 고정할 때는 앞서 고른 출처 고정·식별값을 지우지 않는다. */
-    addPin = false,
+    /** 새 관심에서 후보를 고정한 출처. 다른 출처의 고정을 더할 때는 앞서 고른 고정·식별값을 지우지 않는다. */
+    pinSource?: string,
   ) => {
     const rawVolume = name.match(/(\d+(?:\.\d+)?)\s*(ml|cl|l)\b/i);
     const volume = rawVolume
@@ -239,24 +239,26 @@ export function DiscoveryPanel({
         ...(fields?.vintage != null ? { vintage: Number(fields.vintage) } : {}),
         ...(fields?.age_years != null ? { age_years: String(fields.age_years) } : {}),
       };
-    setTarget((old) =>
-      addPin && old
-        ? {
-            ...old,
-            references: old.references.includes(url) ? old.references : [...old.references, url],
-            confirmed: false,
-          }
-        : {
-            identity: selected,
-            references: [url],
-            confirmed: false,
-            ...(!interest && !productId ? { matches: {} } : {}),
-          },
-    );
+    setTarget((old) => {
+      if (!pinSource || !old)
+        return {
+          identity: selected,
+          references: [url],
+          confirmed: false,
+          ...(!interest && !productId ? { matches: {} } : {}),
+          ...(pinSource ? { identitySource: pinSource } : {}),
+        };
+      const references = old.references.includes(url) ? old.references : [...old.references, url];
+      // 다른 출처를 더하면 처음 정한 식별값을 지킨다. 식별값을 정한 출처에서 후보를 바꾸면 이전
+      // 후보의 이름·용량이 새 후보의 고정과 함께 저장되지 않게 식별값도 바꾼다.
+      return old.identitySource !== undefined && old.identitySource !== pinSource
+        ? { ...old, references, confirmed: false }
+        : { ...old, identity: selected, identitySource: pinSource, references, confirmed: false };
+    });
     setSaved(null);
     save.reset();
     setForm((old) => ({ ...old, requestId: "" }));
-    if (!interest && !productId && !addPin) setMatches({});
+    if (!interest && !productId && !pinSource) setMatches({});
   };
   const submit = () => {
     setSaved(null);
@@ -728,7 +730,7 @@ export function DiscoveryPanel({
                             ? result.applicable_fields
                             : undefined,
                           // 새 관심에서만 출처별 고정을 모은다. 기존 관심·제품은 고정 상태를 따로 둔다.
-                          !interest && !productId,
+                          !interest && !productId ? result.source_id : undefined,
                         );
                         setMatches((old) => ({
                           ...old,

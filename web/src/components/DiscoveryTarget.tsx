@@ -6,6 +6,8 @@ export interface DiscoverySelection {
   references: string[];
   confirmed: boolean;
   matches?: Record<string, InterestSourceMatch>;
+  /** 제품명·규격을 정한 출처. 같은 출처에서 후보를 바꾸면 식별값도 새 후보로 바꾼다. */
+  identitySource?: string;
 }
 export function DiscoveryTarget({
   target,

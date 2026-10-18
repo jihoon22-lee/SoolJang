@@ -239,6 +239,31 @@ it("새 관심에서 두 번째 출처 후보를 골라도 첫 출처 고정을 
   expect(Object.keys(call?.[1] ?? {}).sort()).toEqual(["source", "source2"]);
   expect(call?.[3]).toEqual([source.candidates[0]?.url, second.candidates[0]?.url]);
 });
+it("새 관심에서 같은 출처의 다른 후보로 바꾸면 식별값·고정·근거를 모두 새 후보로 바꾼다", async () => {
+  vi.spyOn(db, "databaseIdentity").mockReturnValue({ userId: "pin-user", generation: 1 });
+  const first = source.candidates[0] as DiscoverySource["candidates"][number];
+  const other = {
+    ...first,
+    name: "합성 몰트 500ml",
+    url: "https://example.com/a?sku=500",
+    key: "a500",
+  };
+  vi.mocked(discoveryApi.lookup).mockResolvedValue([{ ...source, candidates: [first, other] }]);
+  renderWithQuery(<DiscoveryPanel />);
+  await userEvent.type(screen.getByLabelText("검색할 술"), "관심 몰트");
+  await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(await screen.findByLabelText("합성 몰트 700ml"));
+  await userEvent.click(screen.getByLabelText("합성 몰트 500ml"));
+  await userEvent.click(screen.getByLabelText("제품명·판본·규격과 선택 출처를 확인했습니다"));
+  await userEvent.click(screen.getByRole("button", { name: "관심에 저장" }));
+  await screen.findByText(/관심에 저장했습니다/);
+
+  const call = vi.mocked(discoveryApi.saveInterest).mock.calls[0];
+  expect(call?.[0]).toEqual({ name: "합성 몰트 500ml", volumes_ml: [500] });
+  expect(call?.[1]?.source?.external_url).toBe(other.url);
+  expect(call?.[3]).toEqual([other.url]);
+});
 it("제품의 현재값과 근거를 비교하고 선택한 필드만 원래 revision으로 적용한다", async () => {
   vi.spyOn(discoveryApi, "apply").mockRejectedValueOnce(
     new Error("다른 화면에서 제품을 수정했습니다"),
