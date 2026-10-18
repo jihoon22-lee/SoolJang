@@ -65,6 +65,33 @@ const FIELD_LABELS: Record<string, string> = {
   personal_rating: "개인 평점",
 };
 
+/** 비우면 0이 아니라 "값 없음"(null)이어야 하는 숫자 필드. 공란 가격은 0원과 다르게 보존한다. */
+const NUMERIC_FIELDS = new Set([
+  "quantity",
+  "volume_ml",
+  "unit_list_price",
+  "unit_paid_price",
+  "rating",
+  "poured_ml",
+  "abv",
+  "personal_rating",
+]);
+
+/** 수정 폼 입력값을 저장할 값으로 바꾼다. 숫자 필드의 공란은 null, 숫자가 아니면 원문을 둬 서버가 거부하게 한다. */
+export function correctionValue(field: string, raw: string): string | number | null {
+  if (!NUMERIC_FIELDS.has(field)) return raw;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed.replaceAll(",", ""));
+  return Number.isFinite(parsed) ? parsed : raw;
+}
+
+function formatTimestamp(value: unknown): string {
+  if (typeof value !== "string") return "시각 미상";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("ko-KR");
+}
+
 export function SyncStatusBadge() {
   const {
     state,
@@ -169,7 +196,7 @@ function describeStatus(status: {
 }): string {
   if (status.failedCount > 0) return `동기화 실패 ${status.failedCount}건`;
   if (status.conflictCount > 0) return `충돌 ${status.conflictCount}건`;
-  if (status.quarantineCount > 0) return `격리 기록 ${status.quarantineCount}건`;
+  if (status.quarantineCount > 0) return `보관한 기록 ${status.quarantineCount}건`;
   if (status.state === "syncing") return "동기화 중…";
   if (status.state === "offline") {
     return status.pendingCount > 0 ? `오프라인 (대기 ${status.pendingCount}건)` : "오프라인";
@@ -252,7 +279,7 @@ function SyncIssuesPanel({
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setResolveError(error instanceof Error ? error.message : "격리 기록을 내보내지 못했습니다");
+      setResolveError(error instanceof Error ? error.message : "보관한 기록을 내보내지 못했습니다");
     }
   }
 
@@ -275,7 +302,7 @@ function SyncIssuesPanel({
   async function discard(entry: OutboxEntry) {
     const dependents = dependentEntries(entry, await db.outbox.toArray());
     const message = dependents.length
-      ? `"${describeEntry(entry)}"와 연결된 대기 명령 ${dependents.length}건을 함께 폐기할까요?`
+      ? `"${describeEntry(entry)}"와 연결된 대기 입력 ${dependents.length}건도 함께 건너뛸까요? 서버에 반영되지 않은 입력이 사라집니다.`
       : `"${describeEntry(entry)}" 항목을 포기하고 건너뛸까요?`;
     if (!window.confirm(message)) return;
     setDiscardingKey(entry.idempotency_key);
@@ -283,7 +310,7 @@ function SyncIssuesPanel({
     try {
       await discardFailedEntry(entry.idempotency_key, true);
     } catch (error) {
-      setResolveError(error instanceof Error ? error.message : "명령을 폐기하지 못했습니다");
+      setResolveError(error instanceof Error ? error.message : "건너뛰지 못했습니다");
     } finally {
       setDiscardingKey(null);
     }
@@ -296,7 +323,7 @@ function SyncIssuesPanel({
       setEditingEntry(null);
       setResolveError(null);
     } catch (error) {
-      setResolveError(error instanceof Error ? error.message : "명령을 수정하지 못했습니다");
+      setResolveError(error instanceof Error ? error.message : "입력을 수정하지 못했습니다");
     }
   }
 
@@ -372,31 +399,35 @@ function SyncIssuesPanel({
           }}
         >
           <h4>실패한 입력 수정</h4>
-          <p>수정한 값은 새 명령으로 다시 전송하며 뒤의 연결된 입력은 보존합니다.</p>
+          <p>수정한 값으로 다시 보내며 뒤에 연결된 입력은 그대로 둡니다.</p>
+          {/* 내부 식별자(병·규격 id, revision 등)는 사람이 고칠 값이 아니라 그대로 보존한다. */}
           {Object.entries(editFields)
             .filter(
-              ([, value]) =>
-                value === null || typeof value === "string" || typeof value === "number",
+              ([field, value]) =>
+                field in FIELD_LABELS &&
+                (value === null || typeof value === "string" || typeof value === "number"),
             )
             .map(([field, value]) => (
-              <label key={field}>
-                {FIELD_LABELS[field] ?? field}
+              <label key={field} className="field">
+                {FIELD_LABELS[field]}
                 <input
                   value={String(value ?? "")}
+                  inputMode={NUMERIC_FIELDS.has(field) ? "decimal" : undefined}
                   onChange={(event) =>
                     setEditFields((previous) => ({
                       ...previous,
-                      [field]:
-                        typeof value === "number" ? Number(event.target.value) : event.target.value,
+                      [field]: correctionValue(field, event.target.value),
                     }))
                   }
                 />
               </label>
             ))}
-          <button type="submit">수정 후 다시 시도</button>
-          <button type="button" onClick={() => setEditingEntry(null)}>
-            취소
-          </button>
+          <div className="button-row">
+            <button type="submit">수정 후 다시 시도</button>
+            <button type="button" onClick={() => setEditingEntry(null)}>
+              취소
+            </button>
+          </div>
         </form>
       )}
       {nothingToShow && <p className="muted">확인할 문제가 없습니다.</p>}
@@ -413,8 +444,8 @@ function SyncIssuesPanel({
               <li key={record.key}>
                 <span>
                   {record.unreadable
-                    ? "격리 기록을 읽지 못했습니다. 원본은 보존됩니다."
-                    : `격리된 명령 ${record.count}건`}
+                    ? "보관한 기록을 읽지 못했습니다. 원본은 보존됩니다."
+                    : `따로 보관한 입력 ${record.count}건`}
                 </span>
                 {record.exportableCount > 0 ? (
                   <button type="button" onClick={() => void downloadQuarantine(record.key)}>
@@ -523,8 +554,8 @@ function SyncIssuesPanel({
                     {name ? ` · ${name}` : ""}
                   </span>
                   <span className="muted">
-                    내 변경이 서버의 더 최신 값에 밀렸습니다({conflict.server_updated_at as string}
-                    ).
+                    다른 곳에서 {formatTimestamp(conflict.server_updated_at)}에 먼저 바뀌어 내
+                    변경은 반영되지 않았습니다.
                   </span>
                   <button
                     type="button"

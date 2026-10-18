@@ -52,4 +52,37 @@ describe("DonutChart", () => {
     // 배경 원 1개 + 값이 있는 조각(미개봉) 1개 = 2개. "소진" 은 0이라 원을 그리지 않는다.
     expect(container.querySelectorAll("circle")).toHaveLength(2);
   });
+
+  it("값이 0인 항목이 앞에 있어도 범례 색이 같은 항목의 조각 색과 일치한다", () => {
+    render(
+      <DonutChart
+        title="병 상태"
+        data={[
+          { label: "미개봉", value: 3 },
+          { label: "개봉", value: 0 },
+          { label: "소진", value: 2 },
+        ]}
+      />,
+    );
+
+    const legend = [...document.querySelectorAll(".donut-chart-legend li")];
+    const swatch = (label: string) =>
+      (
+        legend
+          .find((item) => item.textContent?.includes(label))
+          ?.querySelector(".donut-chart-swatch") as HTMLElement
+      ).style.backgroundColor;
+    const strokes = [...document.querySelectorAll("svg circle")]
+      .slice(1)
+      .map((circle) => circle.getAttribute("stroke"));
+    const normalized = (color: string) => {
+      const probe = document.createElement("span");
+      probe.style.backgroundColor = color;
+      return probe.style.backgroundColor;
+    };
+    expect(strokes.map((stroke) => normalized(stroke ?? ""))).toEqual([
+      swatch("미개봉"),
+      swatch("소진"),
+    ]);
+  });
 });

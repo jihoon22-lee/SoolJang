@@ -21,7 +21,7 @@ import { StatsPage } from "@/pages/StatsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
 import { VendorsPage } from "@/pages/VendorsPage";
 import { clearBrowserPush } from "@/push/browserPush";
-import { parseHash, type Route, routeToHash, type View } from "@/router";
+import { parseHash, type Route, routeToHash, shouldResetScroll, type View } from "@/router";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { syncEngine } from "@/sync/engine";
 import {
@@ -140,6 +140,7 @@ export function App() {
   // 화면이 바뀌면 탭 제목을 바꾸고 본문으로 초점을 옮긴다 — 스크린리더·키보드 사용자가
   // 이동했다는 사실을 알 수 있게. 첫 로드는 건드리지 않는다.
   const firstRoute = useRef(true);
+  const previousRoute = useRef(route);
   useEffect(() => {
     const label =
       [...VIEWS, ...SETTINGS_VIEWS].find((item) => item.id === route.view)?.label ??
@@ -150,6 +151,9 @@ export function App() {
       return;
     }
     document.getElementById("main")?.focus({ preventScroll: true });
+    // 긴 목록 중간에서 상세를 열면 이전 스크롤 위치가 남아 상세 중간부터 보였다.
+    if (shouldResetScroll(previousRoute.current, route)) window.scrollTo(0, 0);
+    previousRoute.current = route;
   }, [route]);
 
   const navigate = useCallback((next: Route) => {

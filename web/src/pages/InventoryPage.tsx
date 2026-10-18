@@ -287,7 +287,7 @@ function BottleLocations({
       {visible.length === 0 ? (
         <output className="notice">조건에 맞는 재고 병이 없습니다.</output>
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll table-scroll--always">
           <table className="product-table inventory-table">
             <caption className="sr-only">재고 병과 보관 위치</caption>
             <thead>

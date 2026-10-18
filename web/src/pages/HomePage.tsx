@@ -25,6 +25,8 @@ interface HomePageProps {
 }
 
 const SHORTCUTS: { view: View; label: string; hint: string }[] = [
+  // 제품 툴바의 매장 모드 버튼은 좁은 화면에서 가로 스크롤 끝에 있어 찾기 어렵다.
+  { view: "scan", label: "매장 모드", hint: "바코드로 보유·가격 확인" },
   { view: "inventory", label: "보관·실사", hint: "병 위치와 재고 확인" },
   { view: "price-watch", label: "가격 감시", hint: "목표가 알림" },
   { view: "quality", label: "데이터 품질", hint: "누락·중복 정리" },

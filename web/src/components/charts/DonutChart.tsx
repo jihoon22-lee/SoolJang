@@ -38,14 +38,16 @@ export function DonutChart({
     return <p className="muted">{emptyMessage}</p>;
   }
 
+  // 색은 0값을 거르기 전 순서로 한 번만 정한다. 조각과 범례가 같은 색을 가리켜야 한다.
+  const colored = data.map((datum, index) => ({ ...datum, color: datum.color ?? colorFor(index) }));
   let drawnSoFar = 0;
-  const segments = data
+  const segments = colored
     .filter((datum) => datum.value > 0)
-    .map((datum, index) => {
+    .map((datum) => {
       const dashLength = (datum.value / total) * CIRCUMFERENCE;
       const segment = {
         label: datum.label,
-        color: datum.color ?? colorFor(index),
+        color: datum.color,
         dashArray: `${dashLength} ${CIRCUMFERENCE - dashLength}`,
         dashOffset: -drawnSoFar,
       };
@@ -74,12 +76,12 @@ export function DonutChart({
       </svg>
 
       <ul className="donut-chart-legend">
-        {data.map((datum, index) => (
+        {colored.map((datum) => (
           <li key={datum.label}>
             <span
               className="donut-chart-swatch"
               aria-hidden="true"
-              style={{ backgroundColor: datum.color ?? colorFor(index) }}
+              style={{ backgroundColor: datum.color }}
             />
             <span className="donut-chart-legend-label">{datum.label}</span>
             <span className="numeric">

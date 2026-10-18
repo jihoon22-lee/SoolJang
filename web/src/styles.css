@@ -24,6 +24,9 @@
   --surface-raised: #24382f;
   --border: #33473c;
   --border-strong: #45604f;
+  /* 입력 테두리·빈 별처럼 "여기를 누른다"를 알려야 하는 비텍스트 요소. --border(약 1.5:1)와
+     --border-strong(약 2.3:1)은 WCAG 1.4.11의 3:1에 못 미쳐 어두운 화면에서 입력칸이 잘 보이지 않았다. */
+  --control-border: #6a8b77;
   --text: #ece4d3;
   --text-muted: #a9b3a6;
   --accent: #c99a4a;
@@ -437,11 +440,12 @@ main[tabindex="-1"]:focus {
   min-width: 0;
   padding: 10px;
   min-height: var(--control-h-md);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--bg-raised);
   color: var(--text);
   font: inherit;
+  font-size: max(1rem, 16px);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
@@ -450,7 +454,7 @@ main[tabindex="-1"]:focus {
 .field input:hover,
 .field select:hover,
 .field textarea:hover {
-  border-color: var(--border-strong);
+  border-color: var(--text-muted);
 }
 
 .field input:focus-visible,
@@ -540,14 +544,17 @@ main[tabindex="-1"]:focus {
   box-shadow: var(--shadow-float);
 }
 
-.autocomplete-list li {
+.autocomplete-list [role="option"] {
+  min-height: var(--control-h-md);
+  display: flex;
+  align-items: center;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
-.autocomplete-list li.active,
-.autocomplete-list li:hover {
+.autocomplete-list [role="option"].active,
+.autocomplete-list [role="option"]:hover {
   background: var(--bg);
   color: var(--accent-strong);
 }
@@ -1401,17 +1408,19 @@ textarea {
   min-width: 0;
   min-height: var(--control-h-md);
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--bg-raised);
   color: var(--text);
   font: inherit;
+  /* 16px 미만이면 iOS Safari 가 포커스 때 화면을 확대한다. 작은 라벨 안의 입력도 16px 로 둔다. */
+  font-size: max(1rem, 16px);
 }
 
 input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):hover,
 select:hover,
 textarea:hover {
-  border-color: var(--border-strong);
+  border-color: var(--text-muted);
 }
 
 input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):focus-visible,
@@ -1489,14 +1498,34 @@ legend {
   background: var(--surface-raised);
   box-shadow: var(--shadow-float);
   text-align: left;
+  /* 실패·대기 목록이 길면 패널이 화면 밖으로 나가 "지금 동기화"·"건너뛰기"에 닿지 못했다. */
+  max-height: calc(100dvh - 6rem - var(--bottom-nav-h));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sync-conflict-panel-header {
+  position: sticky;
+  top: -0.9rem;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin: -0.9rem -0.9rem 0.5rem;
+  padding: 0.9rem 0.9rem 0.5rem;
+  background: var(--surface-raised);
+}
+
+/* 폰에서는 헤더 오른쪽 끝 팝오버가 좁고 하단 탭바에 가린다. 화면 아래 시트로 띄운다. */
+@media (max-width: 599px) {
+  .sync-conflict-panel {
+    position: fixed;
+    inset: auto 0 var(--bottom-nav-h) 0;
+    width: auto;
+    max-height: min(80dvh, calc(100dvh - var(--bottom-nav-h) - 3rem));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
 }
 
 .sync-conflict-panel-header h3 {
@@ -2442,6 +2471,23 @@ legend {
     min-height: var(--control-h-md);
     padding-inline: var(--space-xs);
   }
+
+  /* 마우스 밀집 UI용 32px(--control-h-sm)는 손가락에 작다. 터치 기기에서만 44px 로 키운다. */
+  .toast-action,
+  .settings-menu-panel a,
+  .settings-menu-panel button,
+  .inventory-table select,
+  .product-card h3 .link-like,
+  .tasting-details summary,
+  .metrics-more summary,
+  .history-details summary {
+    min-height: var(--control-h-md);
+  }
+
+  .toast-close {
+    min-width: var(--control-h-md);
+    min-height: var(--control-h-md);
+  }
 }
 
 /* 동작 줄이기 설정을 켠 사용자에게는 전환 효과를 끈다. 개별 규칙의 transition 보다 항상
@@ -2596,7 +2642,7 @@ legend {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--border-strong);
+  color: var(--control-border);
   font-size: 1.6rem;
   line-height: 1;
 }
@@ -2607,7 +2653,7 @@ legend {
 
 /* 반 별: 왼쪽 절반만 채운다. */
 .rating-star-half span {
-  background: linear-gradient(90deg, var(--accent-strong) 50%, var(--border-strong) 50%);
+  background: linear-gradient(90deg, var(--accent-strong) 50%, var(--control-border) 50%);
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;

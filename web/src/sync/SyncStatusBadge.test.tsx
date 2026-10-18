@@ -286,6 +286,65 @@ describe("SyncStatusBadge", () => {
     vi.restoreAllMocks();
   });
 
+  it("실패 입력 수정은 라벨 있는 값만 보이고 비운 가격은 0원이 아닌 공란으로 다시 보낸다", async () => {
+    await db.outbox.put({
+      idempotency_key: "op-purchase",
+      user_id: "u1",
+      entity: "purchase",
+      op: "create",
+      entity_id: "pu1",
+      fields: {
+        sku_id: "00000000-0000-4000-8000-000000000001",
+        quantity: 2,
+        unit_paid_price: 45000,
+        purchased_on: "2026-01-01",
+      },
+      created_at: NOW,
+      status: "failed",
+      error: "가격을 확인해 주세요",
+    });
+    stubRoutes([
+      ...authenticatedRoutes(),
+      { match: "/sync/batch", method: "POST", body: { stopped: false, results: [] } },
+      { match: "/sync", method: "GET", body: { changes: {}, next_cursor: null, has_more: false } },
+    ]);
+    vi.stubGlobal("navigator", { ...navigator, onLine: false });
+
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "동기화 실패 1건" }));
+    await userEvent.click(await screen.findByRole("button", { name: "입력 수정" }));
+
+    expect(screen.queryByDisplayValue("00000000-0000-4000-8000-000000000001")).toBeNull();
+    expect(screen.queryByText("sku_id")).toBeNull();
+    const price = screen.getByLabelText("병당 실구매가");
+    expect(price).toHaveAttribute("inputmode", "decimal");
+    await userEvent.clear(price);
+    await userEvent.clear(screen.getByLabelText("병수"));
+    await userEvent.type(screen.getByLabelText("병수"), "3");
+    await userEvent.click(screen.getByRole("button", { name: "수정 후 다시 시도" }));
+
+    await waitFor(async () => {
+      const entries = await db.outbox.where("status").equals("pending").toArray();
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.fields).toMatchObject({
+        sku_id: "00000000-0000-4000-8000-000000000001",
+        quantity: 3,
+        unit_paid_price: null,
+      });
+    });
+  });
+
+  it("충돌 시각은 원문 ISO 대신 읽을 수 있는 현지 시각으로 보여준다", async () => {
+    await seedConflict();
+    renderBadge();
+    await userEvent.click(await screen.findByRole("button", { name: "충돌 1건" }));
+
+    expect(
+      await screen.findByText(new RegExp(new Date(NOW).toLocaleString("ko-KR"))),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(NOW))).toBeNull();
+  });
+
   it("패널이 열리면 포커스가 패널로 이동한다", async () => {
     await seedConflict();
     renderBadge();
@@ -433,7 +492,7 @@ describe("SyncStatusBadge 대기열", () => {
   });
 });
 
-it("격리 원본은 별도로 알리고 다른 계정 내용을 빼고 내보내며 재시도·폐기는 제공하지 않는다", async () => {
+it("따로 보관한 원본은 별도로 알리고 다른 계정 내용을 빼고 내보내며 재시도·폐기는 제공하지 않는다", async () => {
   vi.stubGlobal("navigator", { ...navigator, onLine: false });
   for (const [key, owner, name] of [
     ["unknown-original", "", "내보낼 합성 입력"],
@@ -467,7 +526,7 @@ it("격리 원본은 별도로 알리고 다른 계정 내용을 빼고 내보�
   );
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   renderBadge();
-  await userEvent.click(await screen.findByRole("button", { name: "격리 기록 2건" }));
+  await userEvent.click(await screen.findByRole("button", { name: "보관한 기록 2건" }));
   expect(await screen.findByRole("heading", { name: "별도로 보관한 기록" })).toBeInTheDocument();
   expect(screen.queryByText("확인할 문제가 없습니다.")).not.toBeInTheDocument();
   expect(screen.queryByText(/다른 계정 비공개 입력/)).not.toBeInTheDocument();
@@ -529,7 +588,7 @@ it("원본 읽기 직후 로그아웃하면 내보내기 파일을 만들지 않
     },
   );
   renderBadge();
-  await userEvent.click(await screen.findByRole("button", { name: "격리 기록 1건" }));
+  await userEvent.click(await screen.findByRole("button", { name: "보관한 기록 1건" }));
   await userEvent.click(
     await screen.findByRole("button", { name: "내보낼 수 있는 원본 1건 저장" }),
   );

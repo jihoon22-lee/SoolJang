@@ -544,7 +544,7 @@ export function DiscoveryPanel({
             </label>
           </div>
           {compare.length > 0 && (
-            <div className="table-scroll">
+            <div className="table-scroll table-scroll--always">
               <table>
                 <caption>선택 자료 비교</caption>
                 <thead>
