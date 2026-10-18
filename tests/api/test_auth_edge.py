@@ -140,3 +140,54 @@ def test_ipv6_addresses_in_one_prefix_share_a_limit() -> None:
     assert _address_group("2001:db8:1:2::1") == _address_group("2001:db8:1:2:ffff::9")
     assert _address_group("2001:db8:1:3::1") != _address_group("2001:db8:1:2::1")
     assert _address_group("198.51.100.7") == "198.51.100.7"
+
+
+class _ActiveUser:
+    is_active = True
+    password_hash = "argon2-hash-placeholder"
+
+
+class _UserLookupSession:
+    async def scalar(self, *_: Any) -> _ActiveUser:
+        await asyncio.sleep(0)
+        return _ActiveUser()
+
+
+async def test_concurrent_logins_bound_parallel_argon2_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """허용된 로그인 묶음이 와도 메모리를 크게 쓰는 Argon2 확인은 소수만 동시에 돈다."""
+    import threading
+    import time
+
+    monkeypatch.setattr("sooljang.application.auth._rate_limiter", LoginRateLimiter())
+    lock = threading.Lock()
+    running = [0]
+    peak = [0]
+
+    def slow_verify(_password: str, _hash: str) -> bool:
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(0.05)
+        with lock:
+            running[0] -= 1
+        return False
+
+    monkeypatch.setattr("sooljang.application.auth.verify_password", slow_verify)
+
+    results = await asyncio.gather(
+        *(
+            authenticate(
+                cast(AsyncSession, _UserLookupSession()),
+                email=f"user{index}@example.com",
+                password=f"{TEST_PASSWORD}-wrong",
+                client_ip=f"198.51.100.{index}",
+            )
+            for index in range(8)
+        ),
+        return_exceptions=True,
+    )
+
+    assert all(type(result) is AuthError for result in results), results
+    assert 1 <= peak[0] <= 2, peak[0]

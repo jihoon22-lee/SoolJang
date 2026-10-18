@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import ipaddress
 import secrets
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -32,6 +33,9 @@ TOKEN_BYTES = 32
 MIN_PASSWORD_LENGTH = 10
 
 _hasher = PasswordHasher()
+#: 동시에 돌리는 Argon2 확인 수. 확인 하나가 기본 64MiB를 쓰므로 허용된 로그인 시도가 한꺼번에
+#: 몰려도 메모리를 묶음으로 잡지 않게 한다. 기다리는 동안 이벤트 루프는 막지 않는다.
+_VERIFY_SLOTS = threading.BoundedSemaphore(2)
 
 
 class AuthError(Exception):
@@ -240,6 +244,11 @@ async def find_user_by_email(session: AsyncSession, email: str) -> User | None:
     )
 
 
+def _verify_bounded(password: str, password_hash: str) -> bool:
+    with _VERIFY_SLOTS:
+        return verify_password(password, password_hash)
+
+
 async def authenticate(
     session: AsyncSession,
     *,
@@ -262,7 +271,7 @@ async def authenticate(
     if (
         user is None
         or not user.is_active
-        or not await asyncio.to_thread(verify_password, password, user.password_hash)
+        or not await asyncio.to_thread(_verify_bounded, password, user.password_hash)
     ):
         raise AuthError("이메일 또는 비밀번호가 올바르지 않습니다")
 
