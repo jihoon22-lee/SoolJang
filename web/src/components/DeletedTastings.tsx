@@ -29,6 +29,10 @@ export function DeletedTastings({ online }: { online: boolean }) {
     enabled: online,
   });
 
+  function forgetRequest(id: string) {
+    setRequests(({ [id]: _, ...rest }) => rest);
+  }
+
   async function restore(item: DeletedTasting) {
     const requestId = requests[item.id] ?? crypto.randomUUID();
     setRequests((current) => ({ ...current, [item.id]: requestId }));
@@ -42,6 +46,8 @@ export function DeletedTastings({ online }: { online: boolean }) {
         session,
       );
       session.assertCurrent();
+      // 결과가 확정됐다. 같은 기록을 다시 지웠다 복구하면 새 버전이므로 새 요청으로 보낸다.
+      forgetRequest(item.id);
       toast.show({
         message: result.superseded
           ? "복구 요청 이후 기록이 다시 변경되었습니다. 최신 기록을 확인하세요."
@@ -49,9 +55,10 @@ export function DeletedTastings({ online }: { online: boolean }) {
       });
     } catch (cause) {
       if (!session.isCurrent()) return;
-      if (cause instanceof ApiError && cause.status === 409) {
-        // 그 사이 다른 곳에서 바뀐 기록이다. 새 버전으로 다시 고를 수 있게 요청 id를 버린다.
-        setRequests(({ [item.id]: _, ...rest }) => rest);
+      if (cause instanceof ApiError && cause.status < 500) {
+        // 서버가 거부를 확정했다(409는 그 사이 다른 곳에서 바뀐 기록). 다음 시도는 새 요청이다.
+        // 연결 오류·5xx 는 반영 여부를 모르므로 같은 id로 다시 보낸다.
+        forgetRequest(item.id);
       }
       setError(cause instanceof Error ? cause.message : "기록을 복구하지 못했습니다.");
     } finally {

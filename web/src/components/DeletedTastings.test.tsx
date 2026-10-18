@@ -118,6 +118,30 @@ it("버전 충돌이면 오류를 알리고 다음 복구는 새 요청으로 �
   expect(second?.[1].request_id).not.toBe(first?.[1].request_id);
 });
 
+it("복구에 성공한 기록을 다시 지웠다 복구하면 새 요청 id로 보낸다", async () => {
+  const again = {
+    ...deleted,
+    updated_at: "2026-10-04T00:00:00Z",
+    deleted_at: "2026-10-04T00:00:00Z",
+  };
+  // 복구 뒤 목록을 다시 부르면 그 사이 다시 지운 같은 기록(새 버전)이 보인다.
+  vi.spyOn(tastingsApi, "deleted").mockResolvedValueOnce([deleted]).mockResolvedValue([again]);
+  const restore = vi
+    .spyOn(tastingsApi, "restore")
+    .mockResolvedValue({ id: "t-deleted", updated_at: "2026-10-03T00:00:00Z", deleted_at: null });
+  view();
+
+  await userEvent.click(await screen.findByRole("button", { name: "복구" }));
+  await waitFor(() => expect(restore).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/10\. 4\..* 삭제/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "복구" }));
+
+  await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+  const [first, second] = restore.mock.calls;
+  expect(second?.[1]).toMatchObject({ expected_updated_at: "2026-10-04T00:00:00Z" });
+  expect(second?.[1].request_id).not.toBe(first?.[1].request_id);
+});
+
 it("오프라인이면 목록을 부르지 않고 온라인에서 확인하라고 안내한다", () => {
   const list = vi.spyOn(tastingsApi, "deleted");
   view(false);
