@@ -435,7 +435,12 @@ export function InsightsDashboard({
                   label="전체 구매 표본"
                   value={`${price.count}건 (0원·공란 ${price.zeroCount}건)`}
                 />
-                <Metric label="최저 병당 실구매가" value={formatMoney(price.minimum)} />
+                <Metric
+                  label="유상 최저 병당 실구매가"
+                  value={
+                    price.paidMinimum === null ? "유상 표본 없음" : formatMoney(price.paidMinimum)
+                  }
+                />
                 <Metric label="구매건별 중앙값" value={formatMoney(price.median)} />
                 <Metric
                   label={`유상 구매 중앙값 (${price.paidCount}건)`}

@@ -5,7 +5,7 @@
  * 일반 HTML 텍스트로 렌더링하고(줄바꿈·말줄임을 CSS 가 맡는다), 막대 자체만 SVG `<rect>`
  * 로 그린다 — SVG `<text>` 는 폰트 지표를 몰라 줄바꿈·말줄임을 예측할 수 없다.
  *
- * 시각 장애 사용자를 위해 컨테이너에 `role="img"` + `aria-label` 을 붙이고, 막대 자체가
+ * 시각 장애 사용자를 위해 컨테이너 `figure` 에 `aria-label` 을 붙이고, 막대 자체가
  * 전달하는 값은 화면에 보이지 않는 `<table>` 로 그대로 남긴다(스크린리더가 표를 순회하며
  * 각 항목·값을 읽을 수 있다).
  */
@@ -21,7 +21,7 @@ export interface BarChartDatum {
 }
 
 interface BarChartProps {
-  /** `role="img"` 의 접근성 이름이자 표 대체 텍스트의 캡션. */
+  /** `figure` 의 접근성 이름이자 표 대체 텍스트의 캡션. */
   title: string;
   data: BarChartDatum[];
   formatValue?: ((value: number) => string) | undefined;

@@ -55,7 +55,9 @@ export function LineChart({
   const showEveryLabel = data.length <= MAX_DENSE_LABELS;
 
   return (
-    <div className="line-chart" role="img" aria-label={title}>
+    // `role="img"` 는 자식을 모두 장식으로 만들어 아래 대체 표까지 가린다. 막대·도넛 차트처럼
+    // figure 로 묶고 그림과 축 글자만 숨긴다.
+    <figure className="line-chart" aria-label={title}>
       <svg
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
         className="line-chart-svg"
@@ -73,7 +75,7 @@ export function LineChart({
           />
         ))}
       </svg>
-      <div className="line-chart-labels">
+      <div className="line-chart-labels" aria-hidden="true">
         {data.map((point, index) => (
           <span key={point.label} className={showEveryLabel || index % 2 === 0 ? "" : "sr-only"}>
             {point.label}
@@ -98,6 +100,6 @@ export function LineChart({
           ))}
         </tbody>
       </table>
-    </div>
+    </figure>
   );
 }

@@ -166,6 +166,7 @@ it("같은 SKU라도 통화·구매조건·구매처종류를 합치지 않고 0
     paidCount: 1,
     paidMedian: "10000.10",
     minimum: "0.00",
+    paidMinimum: "10000.10",
   });
 });
 it("삭제 행·알 수 없는 연결은 집계에서 제외하고 미래 개봉일을 경과일로 꾸미지 않는다", () => {
@@ -180,7 +181,9 @@ it("삭제 행·알 수 없는 연결은 집계에서 제외하고 미래 개봉
   const value = calculateInsights(data, filters, "2026-03-01");
   expect(value.inventory.bottles).toBe(3);
   expect(value.openBottles[0]?.openedDays).toBeNull();
-  expect(value.coverage.find((x) => x.key === "orphan")?.items).toHaveLength(1);
+  expect(value.coverage.find((x) => x.key === "orphan")?.items).toEqual([
+    { id: "bad", productId: null, label: "연결 확인 필요", detail: "병 (번호 미기록)" },
+  ]);
 });
 it("같은 날의 반복 평점은 순서를 추정하지 않고 날짜별 평균으로만 비교한다", () => {
   const data = fixture();

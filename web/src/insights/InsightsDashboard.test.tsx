@@ -95,7 +95,7 @@ it("같은 SKU의 여러 구매 중 클릭한 가격 근거의 구매 ID로 이�
   render(<InsightsDashboard onSelectProduct={navigate} today="2026-03-01" />);
   const prices = await screen.findByRole("region", { name: "같은 규격의 구매 가격" });
   const source = within(prices)
-    .getByText(/2026-02-02.*병당 12000/)
+    .getByText(/2026-02-02.*병당 12,000원/)
     .closest("li");
   expect(source).not.toBeNull();
   if (!source) throw new Error("가격 근거 누락");

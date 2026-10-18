@@ -1966,6 +1966,10 @@ legend {
   white-space: nowrap;
 }
 
+.line-chart {
+  margin: 0;
+}
+
 .line-chart-svg {
   display: block;
   width: 100%;
