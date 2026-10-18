@@ -174,7 +174,7 @@ erDiagram
 | 상황 | 동작 |
 |---|---|
 | 하위 카테고리가 있음 | 기본은 거부. `?strategy=promote_children` 으로 자식을 삭제 대상의 부모로 승격 후 삭제 |
-| 소속 제품이 있음 | 기본은 거부. `?strategy=reassign&target_id=<id>` 로 제품을 다른 카테고리로 옮긴 뒤 삭제 |
+| 소속 제품이 있음 | 기본은 거부. `?strategy=reassign&target_id=<id>` 로 제품을 다른 카테고리로 옮긴 뒤 삭제(삭제 대상 자신은 422) |
 | 둘 다 없음 | soft delete |
 
 병합(`POST /categories/{id}:merge`)은 소속 제품과 하위 카테고리를 대상 카테고리로 옮기고
@@ -297,7 +297,10 @@ erDiagram
 `remaining_ml <= sku.volume_ml` (애플리케이션 계층 검증. 크로스 테이블이라 DB CHECK로 표현 불가).
 
 구매 건 저장 시 `quantity`만큼 `bottle` 행을 자동 생성한다. 레거시 임포트는 `소비` 병수만큼
-`finished`, `미개봉`만큼 `unopened`, `개봉`만큼 `open`으로 초기화한다.
+`finished`, `미개봉`만큼 `unopened`, `개봉`만큼 `open`으로 초기화하되 상태 합계가 구매 병수와
+다르면 분할 경로와 같은 순서(소진→개봉→미개봉)로 구매 병수에 맞춘다. 용량이 공란인 행은 규격을
+만들 수 없어 구매·병 대신 실패 행으로 보고한다. 개봉 시 지정한 잔량은 0 초과·용량 이하여야 한다.
+구매 건 삭제는 병 행을 잠근 뒤 시음(삭제되지 않은)이 붙은 병이 있으면 409로 거부한다(D250).
 수량 수정은 구매 행을 잠근 뒤 처리한다. 줄일 때는 번호가 큰 미개봉 병부터 soft delete하고,
 다시 늘릴 때는 삭제된 병까지 포함한 최대 번호 다음부터 생성해 기존 병 ID·시음을 보존한다.
 구매 분할은 명시한 구매처와 상속할 구매처의 소유권·삭제 여부를 모두 검증한다. 기존에
@@ -638,6 +641,7 @@ UTC `timestamptz`다.
 | tastings | `POST /tastings/{tasting_id}:correct` | 기록만 정정 또는 양쪽 병 최종 상태 명시 |
 | tastings | `DELETE /tastings/{tasting_id}` | `request_id`·`expected_updated_at`을 검증한 기록 삭제. 200에 최신 버전 반환 |
 | tastings | `POST /tastings/{tasting_id}:restore` | 같은 ID·첨부·내용 복구, 현재 잔량은 그대로 |
+| tastings | `GET /tastings/deleted` | 최근 30일 삭제 시음 중 제품·규격·병이 살아 있어 복구 가능한 기록(최신 삭제순) |
 | vendors | `GET /vendors` | 구매처 목록 |
 | vendors | `POST /vendors` | 구매처 등록 |
 | vendors | `DELETE /vendors/{vendor_id}` | 구매처 삭제 |
@@ -798,7 +802,9 @@ sequenceDiagram
 제품 삭제는 하위 규격·구매·병을 같은 시각으로 soft delete 한다(구매 삭제가 병을 함께 지우는
 것과 같은 규칙, D214). 시음 기록은 지우지 않는다. 이전 버전에서 제품만 지워져 남은 하위 행은
 조회(보관·실사 목록, 병 목록, 구매처 집계, 품질 보고, 최근 시음)에서 부모 삭제를 함께 확인해
-제외한다. 주종 삭제는 온라인·동기화 모두 하위 주종·소속 제품이 있으면 거부한다.
+제외한다. 주종 삭제는 온라인·동기화 모두 하위 주종·소속 제품이 있으면 거부한다. 구매 삭제는
+시음이 붙은 병이 있으면 온라인·동기화 모두 거부한다(D250). 늦게 동기화된 시음은 이미 소진한
+병의 개봉·소진일·잔량을 바꾸지 않는다.
 
 ### 5.6 빠른 시음과 작성 중 초안
 
