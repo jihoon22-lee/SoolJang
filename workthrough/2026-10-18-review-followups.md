@@ -67,4 +67,16 @@ Codex 리뷰(5b6954e 기준) 4건을 재현해 반영했다.
   `window is not defined` 미처리 오류가 났다(검사 exit 1). 타이머를 추적해 지운다.
 - RED→GREEN: `test_create_idempotency.py` 신규 3건(수정 전 2건 실패), `drafts.test.tsx` 3건,
   `Toast.test.tsx` 1건(수정 전 실패).
+- 세 번째 리뷰(00ec285 기준) 3건:
+  1. **제품·구매 요청 키 분리(P1).** 새 제품+첫 구매 폼 전체로 지문을 하나 만들어 두 단계에 같이 썼다. 제품
+     응답만 잃고 구매 칸만 고쳐 다시 내면 제품 요청 id가 바뀌어 같은 제품을 한 번 더 만들었다. 제품 요청
+     본문과 구매 요청 본문으로 따로 지문을 만들고, 구매 키는 구매 성공 직후, 제품 키는 전체 성공 뒤 지운다.
+  2. **품종 순서(P2).** 지문에서 품종을 정렬해 `[A, B]`와 `[B, A]`가 같은 요청이 됐다. 저장 순서가 뜻을
+     가지므로 정규화만 하고 순서는 보존한다.
+  3. **복제 탭(P2).** 탭 복제 시 `sessionStorage`가 복사되는데 요청 키에 탭 id가 없어 두 탭이 같은 요청 id를
+     써 한쪽 저장이 409가 됐다. 키에 다시 만든 탭 id를 넣는다.
+  - RED→GREEN: `useCreateProduct.online.test.tsx`(제품 응답 유실 뒤 구매 칸만 고친 재제출이 같은 제품 요청
+    id), `drafts.test.tsx` 복제 탭, `test_create_idempotency.py` 품종 순서 — 세 건 모두 수정 전 실패.
+  - 반영 후 `sooljang_test` 단독 전체 pytest 1,720 passed / 30 skipped, branch 92.26%. `ruff`·`ty`·secret
+    scan 통과. `npm --prefix web run check` 통과(Vitest 1,292건, branch 83.08%).
   CI 통과 전에는 병합하지 않는다.

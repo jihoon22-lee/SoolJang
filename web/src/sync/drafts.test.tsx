@@ -111,6 +111,16 @@ it("저장 성공 뒤 같은 내용을 다시 등록하면 새 요청이 된다"
   expect(submissionRequestId("purchase:p1", payload)).not.toBe(saved);
 });
 
+it("복제한 탭은 탭 id를 새로 받으므로 같은 내용도 다른 요청으로 보낸다", () => {
+  const payload = { sku_id: "s1", quantity: 1 };
+  sessionStorage.setItem("sooljang-draft-tab", "tab-original");
+  const original = submissionRequestId("purchase:p1", payload);
+  // 복제 탭은 sessionStorage 를 복사해 오지만 initializeDraftTab 이 탭 id 를 새로 만든다.
+  sessionStorage.setItem("sooljang-draft-tab", "tab-duplicate");
+
+  expect(submissionRequestId("purchase:p1", payload)).not.toBe(original);
+});
+
 it("다른 계정의 요청 식별자는 이어받지 않는다", async () => {
   const payload = { name: "같은 술" };
   const mine = submissionRequestId("product:create", payload);

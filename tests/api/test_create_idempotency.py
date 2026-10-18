@@ -185,3 +185,20 @@ def test_purchase_replay_is_judged_by_original_request_not_later_edits(
     assert edited.status_code == 409
     bottles = api_client.get(f"{prefix}/purchases/{created['id']}/bottles").json()
     assert len(bottles) == 2
+
+
+def test_product_request_id_reused_with_reordered_varieties_conflicts(
+    api_client: TestClient, prefix: str
+) -> None:
+    """품종 순서는 저장되는 값(sort_order)이라 순서가 다른 요청은 같은 재전송이 아니다."""
+    body = {"name": "품종 순서 위스키", "variety_names": ["셰리 캐스크", "버번 캐스크"]}
+    request_id = str(uuid.uuid4())
+    first = api_client.post(f"{prefix}/products", json=body | {"request_id": request_id})
+    assert first.status_code == 201, first.text
+
+    reordered = api_client.post(
+        f"{prefix}/products",
+        json=body | {"variety_names": ["버번 캐스크", "셰리 캐스크"], "request_id": request_id},
+    )
+
+    assert reordered.status_code == 409

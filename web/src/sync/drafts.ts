@@ -80,7 +80,9 @@ export function captureFormDraft(form: string) {
 
 const REQUEST_PREFIX = "sooljang-request-v1:";
 function requestKey(form: string, userId: string): string {
-  return `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${form}`;
+  // 복제한 탭은 sessionStorage 를 복사해 오지만 탭 id 는 새로 받는다. 탭 id 를 넣어 두 탭의
+  // 같은 내용 등록이 한 요청으로 합쳐지지 않게 한다.
+  return `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${tabId()}:${form}`;
 }
 
 /**

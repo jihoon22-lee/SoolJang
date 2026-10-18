@@ -73,8 +73,27 @@ export function useCreateProduct() {
       const owner = session.userId;
       const checkSession = session.assertCurrent;
       if (!offline) {
-        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게 같은 내용은 같은 키를 쓴다.
-        const requestId = submissionRequestId("product:create", values);
+        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게 같은 내용은 같은 키를 쓴다. 제품과
+        // 구매는 따로 확정되므로 각 요청 내용으로 키를 따로 만든다 — 한쪽만 고쳐 다시 보내도
+        // 바뀌지 않은 쪽은 같은 기록으로 돌아온다.
+        const productPayload = {
+          name: values.name.trim(),
+          name_en: values.nameEn?.trim() || null,
+          search_aliases: (values.searchAliases ?? "")
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean),
+          category_id: values.categoryId || null,
+          abv: values.abv || null,
+          vintage: values.vintage ? Number(values.vintage) : null,
+          age_years: values.ageYears || null,
+          producer_name: values.producerName?.trim() || null,
+          personal_rating: values.personalRating || null,
+          note: values.note || null,
+          variety_names: splitVarieties(values.varietyNames),
+          skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
+        };
+        const productRequestId = submissionRequestId("product:create:product", productPayload);
         checkSession();
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
@@ -84,24 +103,7 @@ export function useCreateProduct() {
         // 다시 부르면 중복 제품이 생긴다(B7).
         const product =
           existingProduct ??
-          (await productsApi.create({
-            name: values.name.trim(),
-            name_en: values.nameEn?.trim() || null,
-            search_aliases: (values.searchAliases ?? "")
-              .split(",")
-              .map((v) => v.trim())
-              .filter(Boolean),
-            category_id: values.categoryId || null,
-            abv: values.abv || null,
-            vintage: values.vintage ? Number(values.vintage) : null,
-            age_years: values.ageYears || null,
-            producer_name: values.producerName?.trim() || null,
-            personal_rating: values.personalRating || null,
-            note: values.note || null,
-            variety_names: splitVarieties(values.varietyNames),
-            skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
-            request_id: requestId,
-          }));
+          (await productsApi.create({ ...productPayload, request_id: productRequestId }));
 
         checkSession();
         if (!existingProduct) {
@@ -127,15 +129,20 @@ export function useCreateProduct() {
               ? await resolveVendorId(values.vendorName.trim(), session)
               : null;
             checkSession();
-            await purchasesApi.create({
+            const purchasePayload = {
               sku_id: skuId,
               quantity,
               vendor_id: vendorId,
               purchased_on: values.purchasedOn || null,
               unit_list_price: values.unitListPrice || null,
               unit_paid_price: values.unitPaidPrice || null,
-              request_id: requestId,
-            });
+            };
+            const purchaseRequestId = submissionRequestId(
+              "product:create:purchase",
+              purchasePayload,
+            );
+            await purchasesApi.create({ ...purchasePayload, request_id: purchaseRequestId });
+            finishSubmission("product:create:purchase", purchaseRequestId);
             purchaseCreated = true;
           }
           checkSession();
@@ -154,7 +161,8 @@ export function useCreateProduct() {
             purchaseCreated,
           );
         }
-        finishSubmission("product:create", requestId);
+        // 제품 키는 전부 끝난 뒤에 버린다. 그 전 실패의 재시도는 같은 제품으로 돌아와야 한다.
+        finishSubmission("product:create:product", productRequestId);
         return product.id;
       }
 

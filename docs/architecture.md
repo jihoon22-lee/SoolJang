@@ -463,7 +463,8 @@ UTC `timestamptz`다.
   처음 요청의 정규화한 내용 지문을 `outbox_receipt`(종류별 uuid5 id, `operation=create_request`)에
   남기고, 같은 키의 재전송은 행의 현재 값이 아니라 이 지문과 비교한다. 만든 뒤 고쳐도 원래 요청의
   재전송은 같은 행이고, 내용이 하나라도 다르면 409다. 30일 보관 뒤 지문이 지워지면 409로 최신 기록
-  확인을 안내한다. 웹은 제출 내용 지문별 키를 탭 `sessionStorage`에 두고 저장 성공 뒤 지운다(D249)
+  확인을 안내한다. 웹은 제품·구매 단계마다 그 요청 본문 지문별 키를 탭 `sessionStorage`(복제 탭은
+새 탭 id)에 두고 그 단계 저장 성공 뒤 지운다. 품종 순서는 지문에 남긴다(D249)
 - 쓰기 응답은 요청 세션 commit 뒤에만 나간다(`db_session`의 `scope="function"`). commit이
   실패하면 5xx이므로 클라이언트가 성공으로 오인해 대기열·초안을 지우지 않는다(D249)
 - 에러는 RFC 9457 Problem Details

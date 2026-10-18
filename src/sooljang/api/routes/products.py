@@ -383,9 +383,8 @@ def _create_fingerprint(payload: ProductCreate) -> str:
         | {
             "name": payload.name.strip(),
             "producer_name": (payload.producer_name or "").strip().lower(),
-            "variety_names": sorted(
-                item.name for item in normalize_varieties(payload.variety_names)
-            ),
+            # 품종 순서는 `ProductVariety.sort_order`로 저장되므로 순서가 다르면 다른 요청이다.
+            "variety_names": [item.name for item in normalize_varieties(payload.variety_names)],
             "skus": sorted(sku_key(sku) for sku in payload.skus),
         }
     )
