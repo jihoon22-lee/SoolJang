@@ -210,5 +210,20 @@ R2 브랜치 위에 쌓았다. 스키마 변경은 없다(마이그레이션 없
   중단·폐기했고, 이후 R4 이후 검증은 같은 격리 클러스터의 별도 DB `sooljang_test_r4`를 쓴다.
 - 웹: `npm --prefix web run check` 통과(Vitest 103파일/1,299건, branch 83.24%, build). 새
   `DeletedTastings.test.tsx` 4건(복구 버전·같은 요청 재시도·충돌 후 새 요청·오프라인).
-- 미실행: 실브라우저 확인(최근 삭제한 시음 목록 화면), CI(Actions 러너 미할당 지속).
+- 미실행: 실브라우저 확인(최근 삭제한 시음 목록 화면). CI는 Actions 재개 후 Quality `39117131039` 성공.
+
+### PR 자동 리뷰 반영
+
+Codex 리뷰(428a0b6 기준) 3건을 재현해 반영했다.
+
+1. **구매 삭제 잠금 순서(P2).** 온라인 삭제가 구매를 잠그지 않고 병을 먼저 잠가, 병수 수정(구매 → 병)과
+   동시에 오면 교착할 수 있었다. 삭제도 구매 행을 먼저 잠근다. 다른 연결이 구매를 잡은 동안 삭제가 병을
+   잠그지 않는지(`FOR UPDATE NOWAIT`)로 고정했다(수정 전 `LockNotAvailable`).
+2. **반드시 실패할 행의 미리보기(P2).** 용량 공란에 구매가 있는 행은 적재 때 행 전체가 실패하는데 미리보기
+   합계·표본에는 들어 있었다. 계획에서 `failing_rows`로 따로 두고 분석 응답 `review.failing_rows`와 화면에
+   줄 번호를 보이며, 적재 결과에는 실패 행으로 남긴다.
+3. **복구 요청 id 재사용(P2).** 복구 성공 뒤에도 요청 id가 남아 같은 기록을 다시 지웠다 복구하면 옛 id로
+   409가 났다. 성공·4xx처럼 결과가 확정되면 버리고, 연결 오류·5xx에서만 같은 id로 재시도한다.
+- RED→GREEN: `test_record_integrity.py` 잠금 순서 1건, `test_import_plan.py`·`test_legacy_import.py`
+  미리보기 기대 보강 2건, `DeletedTastings.test.tsx` 1건, `ImportPage.test.tsx` 표시 1건.
 
