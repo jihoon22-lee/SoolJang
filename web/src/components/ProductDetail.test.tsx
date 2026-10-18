@@ -919,3 +919,19 @@ it("선택 조건은 구매와 그 병에만 적용하고 전체 이력으로 �
   expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(1);
   expect(screen.getByText("102,667원")).toBeInTheDocument();
 });
+
+it("병·시음을 구매 이력보다 먼저 보이고 구역 바로가기로 이동한다", () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  setup();
+  const bottles = document.getElementById("detail-bottles") as HTMLElement;
+  const purchases = document.getElementById("detail-purchases") as HTMLElement;
+
+  expect(
+    bottles.compareDocumentPosition(purchases) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  const nav = screen.getByRole("navigation", { name: "상세 구역 바로가기" });
+  fireEvent.click(within(nav).getByRole("button", { name: "구매" }));
+  expect(scrolled).toHaveBeenCalledWith({ block: "start" });
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});

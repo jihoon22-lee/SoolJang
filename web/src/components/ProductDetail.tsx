@@ -432,162 +432,184 @@ export function ProductDetail({
           </p>
         </fieldset>
       ) : null}
-      <PurchaseSection
-        matchingPurchaseIds={visibleMatchingIds}
-        key={`purchase:${product.id}`}
-        onSavingChange={setSavingPurchase}
-        selectedSkuId={activeSkuId}
-        selectedPurchaseId={contextPurchaseId}
-        product={product}
-        purchases={purchases}
-        offline={offline}
-        onAddPurchase={onAddPurchase}
-        addingPurchase={addingPurchase}
-        addPurchaseError={addPurchaseError}
-        vendorNames={vendorNames}
-        onDeletePurchase={onDeletePurchase}
-        deletingPurchaseId={deletingPurchaseId}
-        onUpdatePurchase={onUpdatePurchase}
-        onSplitPurchase={onSplitPurchase}
-        splittingPurchaseId={splittingPurchaseId}
-        splitError={splitError}
-        onAddSku={onAddSku}
-        addingSku={addingSku}
-        correctionPending={savingCorrection}
-        onCorrectSku={(id) => {
-          if (!savingCorrection) setCorrectionPurchaseId(id);
-        }}
-      />
-
-      {correctionPurchaseId ? (
-        <div ref={purchaseCorrectionRef}>
-          <PurchaseSkuCorrectionForm
-            key={correctionPurchaseId}
-            purchaseId={correctionPurchaseId}
+      <nav className="detail-jump button-row" aria-label="상세 구역 바로가기">
+        {(
+          [
+            ["detail-bottles", "병·시음"],
+            ["detail-purchases", "구매"],
+            ["detail-prices", "가격·외부"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => document.getElementById(id)?.scrollIntoView?.({ block: "start" })}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {/* 가장 잦은 일(병 상태·시음)을 구매 이력보다 먼저 둔다. */}
+      <div id="detail-bottles" className="detail-anchor">
+        {matchingOnly && scopedBottles.length === 0 ? (
+          <output className="notice">
+            선택 조건에 맞는 병이 없습니다. 전체 구매 이력에서 확인하세요.
+          </output>
+        ) : (
+          <BottleSection
+            product={product}
+            bottles={scopedBottles}
+            purchases={purchases}
             offline={offline}
-            onSavingChange={setSavingCorrection}
-            onCancel={() => {
-              if (!savingCorrection) setCorrectionPurchaseId(null);
-            }}
-            onSaved={() => {
-              setSavingCorrection(false);
-              setCorrectionPurchaseId(null);
-              const next = { purchaseScope: undefined };
-              if (onSelectContext) onSelectContext(next);
-              else setLocalContext(next);
-            }}
-          />
-        </div>
-      ) : null}
-
-      {matchingOnly && scopedBottles.length === 0 ? (
-        <output className="notice">
-          선택 조건에 맞는 병이 없습니다. 전체 구매 이력에서 확인하세요.
-        </output>
-      ) : (
-        <BottleSection
-          product={product}
-          bottles={scopedBottles}
-          purchases={purchases}
-          offline={offline}
-          selectedSkuId={activeSkuId}
-          selectedBottleId={contextBottleId}
-          selectedTastingId={contextTastingId}
-          onCorrectTasting={correctTasting}
-          onTastingDeleted={tastingDeleted}
-          onSelectContext={selectContext}
-          onSavingChange={setSavingBottle}
-        />
-      )}
-
-      <details
-        className="panel mt-2"
-        open={historyOpen}
-        onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
-      >
-        <summary>시음 기록 찾기·정정</summary>
-        {historyOpen ? (
-          <ProductTastingHistory
-            productId={product.id}
             selectedSkuId={activeSkuId}
             selectedBottleId={contextBottleId}
             selectedTastingId={contextTastingId}
-            offline={offline}
-            correctionPending={savingCorrection}
-            onCorrect={correctTasting}
-            onDeleted={tastingDeleted}
-            onSelectTasting={(tasting) =>
-              selectContext({
-                skuId: tasting.sku_id,
-                bottleId: tasting.bottle_id ?? undefined,
-                tastingId: tasting.id,
-              })
-            }
-          />
-        ) : null}
-      </details>
-      {correctionTastingId ? (
-        <div ref={tastingCorrectionRef}>
-          <TastingCorrectionForm
-            key={correctionTastingId}
-            tastingId={correctionTastingId}
-            offline={offline}
-            bottleOptions={correctionOptions?.bottles}
-            skuOptions={correctionOptions?.skus}
-            onSavingChange={setSavingCorrection}
-            onCancel={() => {
-              if (!savingCorrection) setCorrectionTastingId(null);
-            }}
-            onSaved={(result) => {
-              setSavingCorrection(false);
-              setCorrectionTastingId(null);
-              if (onTastingCorrected) onTastingCorrected(result);
-              else {
-                const next = {
-                  skuId: result.sku_id,
-                  bottleId: result.bottle_id ?? undefined,
-                  tastingId: result.id,
-                  purchaseScope: undefined,
-                };
-                if (onSelectContext) onSelectContext(next);
-                else setLocalContext(next);
-              }
-            }}
-          />
-        </div>
-      ) : null}
-
-      <ProductAttachments key={product.id} productId={product.id} offline={offline} />
-
-      <details
-        className="panel mt-2"
-        onToggle={(event) => setPriceHistoryOpen(event.currentTarget.open)}
-      >
-        <summary>가격 이력 보기</summary>
-        {priceHistoryOpen && (
-          <PriceHistoryPanel
-            key={product.id}
-            productId={product.id}
-            onSaveInterest={() => setExternalInfoOpen(true)}
+            onCorrectTasting={correctTasting}
+            onTastingDeleted={tastingDeleted}
+            onSelectContext={selectContext}
+            onSavingChange={setSavingBottle}
           />
         )}
-      </details>
-      {product.skus.length > 1 ? (
-        <p className="muted text-sm">
-          {selectedSummary
-            ? `${formatVolume(selectedSummary.volume_ml)}의 전체 구매 실평단가를 외부 제안과 비교합니다.`
-            : "내 가격과 비교하려면 용량을 선택하세요."}
-        </p>
-      ) : null}
-      <ExternalInfoCard
-        open={externalInfoOpen}
-        onOpenChange={setExternalInfoOpen}
-        productId={product.id}
-        productName={product.name}
-        offline={offline}
-        myPricePer100ml={selectedSummary?.metrics.price_per_100ml_paid ?? null}
-        selectedVolumeMl={selectedSummary?.volume_ml ?? null}
-      />
+
+        <details
+          className="panel mt-2"
+          open={historyOpen}
+          onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+        >
+          <summary>시음 기록 찾기·정정</summary>
+          {historyOpen ? (
+            <ProductTastingHistory
+              productId={product.id}
+              selectedSkuId={activeSkuId}
+              selectedBottleId={contextBottleId}
+              selectedTastingId={contextTastingId}
+              offline={offline}
+              correctionPending={savingCorrection}
+              onCorrect={correctTasting}
+              onDeleted={tastingDeleted}
+              onSelectTasting={(tasting) =>
+                selectContext({
+                  skuId: tasting.sku_id,
+                  bottleId: tasting.bottle_id ?? undefined,
+                  tastingId: tasting.id,
+                })
+              }
+            />
+          ) : null}
+        </details>
+        {correctionTastingId ? (
+          <div ref={tastingCorrectionRef}>
+            <TastingCorrectionForm
+              key={correctionTastingId}
+              tastingId={correctionTastingId}
+              offline={offline}
+              bottleOptions={correctionOptions?.bottles}
+              skuOptions={correctionOptions?.skus}
+              onSavingChange={setSavingCorrection}
+              onCancel={() => {
+                if (!savingCorrection) setCorrectionTastingId(null);
+              }}
+              onSaved={(result) => {
+                setSavingCorrection(false);
+                setCorrectionTastingId(null);
+                if (onTastingCorrected) onTastingCorrected(result);
+                else {
+                  const next = {
+                    skuId: result.sku_id,
+                    bottleId: result.bottle_id ?? undefined,
+                    tastingId: result.id,
+                    purchaseScope: undefined,
+                  };
+                  if (onSelectContext) onSelectContext(next);
+                  else setLocalContext(next);
+                }
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+      <div id="detail-purchases" className="detail-anchor">
+        <PurchaseSection
+          matchingPurchaseIds={visibleMatchingIds}
+          key={`purchase:${product.id}`}
+          onSavingChange={setSavingPurchase}
+          selectedSkuId={activeSkuId}
+          selectedPurchaseId={contextPurchaseId}
+          product={product}
+          purchases={purchases}
+          offline={offline}
+          onAddPurchase={onAddPurchase}
+          addingPurchase={addingPurchase}
+          addPurchaseError={addPurchaseError}
+          vendorNames={vendorNames}
+          onDeletePurchase={onDeletePurchase}
+          deletingPurchaseId={deletingPurchaseId}
+          onUpdatePurchase={onUpdatePurchase}
+          onSplitPurchase={onSplitPurchase}
+          splittingPurchaseId={splittingPurchaseId}
+          splitError={splitError}
+          onAddSku={onAddSku}
+          addingSku={addingSku}
+          correctionPending={savingCorrection}
+          onCorrectSku={(id) => {
+            if (!savingCorrection) setCorrectionPurchaseId(id);
+          }}
+        />
+
+        {correctionPurchaseId ? (
+          <div ref={purchaseCorrectionRef}>
+            <PurchaseSkuCorrectionForm
+              key={correctionPurchaseId}
+              purchaseId={correctionPurchaseId}
+              offline={offline}
+              onSavingChange={setSavingCorrection}
+              onCancel={() => {
+                if (!savingCorrection) setCorrectionPurchaseId(null);
+              }}
+              onSaved={() => {
+                setSavingCorrection(false);
+                setCorrectionPurchaseId(null);
+                const next = { purchaseScope: undefined };
+                if (onSelectContext) onSelectContext(next);
+                else setLocalContext(next);
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+      <ProductAttachments key={product.id} productId={product.id} offline={offline} />
+
+      <div id="detail-prices" className="detail-anchor">
+        <details
+          className="panel mt-2"
+          onToggle={(event) => setPriceHistoryOpen(event.currentTarget.open)}
+        >
+          <summary>가격 이력 보기</summary>
+          {priceHistoryOpen && (
+            <PriceHistoryPanel
+              key={product.id}
+              productId={product.id}
+              onSaveInterest={() => setExternalInfoOpen(true)}
+            />
+          )}
+        </details>
+        {product.skus.length > 1 ? (
+          <p className="muted text-sm">
+            {selectedSummary
+              ? `${formatVolume(selectedSummary.volume_ml)}의 전체 구매 실평단가를 외부 제안과 비교합니다.`
+              : "내 가격과 비교하려면 용량을 선택하세요."}
+          </p>
+        ) : null}
+        <ExternalInfoCard
+          open={externalInfoOpen}
+          onOpenChange={setExternalInfoOpen}
+          productId={product.id}
+          productName={product.name}
+          offline={offline}
+          myPricePer100ml={selectedSummary?.metrics.price_per_100ml_paid ?? null}
+          selectedVolumeMl={selectedSummary?.volume_ml ?? null}
+        />
+      </div>
     </article>
   );
 }
