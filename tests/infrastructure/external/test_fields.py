@@ -86,3 +86,20 @@ def test_none_values_are_dropped_entirely() -> None:
 )
 def test_edge_cases(raw: dict[str, object], expected: NormalizedFields) -> None:
     assert split_fields(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"price_krw": float("inf"), "volume_ml": float("nan"), "rating": 10**400},
+        {"price_krw": "9" * 400, "volume_ml": "9" * 400, "rating": "9" * 400},
+    ],
+)
+def test_non_finite_or_huge_numbers_become_missing_instead_of_raising(
+    raw: dict[str, object],
+) -> None:
+    normalized = split_fields(raw)
+
+    assert normalized.price_krw is None
+    assert normalized.volume_ml is None
+    assert normalized.rating is None

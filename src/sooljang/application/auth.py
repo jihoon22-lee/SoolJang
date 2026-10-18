@@ -7,6 +7,7 @@ DB 가 유출되어도 세션을 재현할 수 없게 한다.
 공유 저장소가 필요해진다. 그 시점의 판단으로 남긴다.
 """
 
+import asyncio
 import datetime
 import hashlib
 import hmac
@@ -107,7 +108,26 @@ class LoginRateLimiter:
 
     max_attempts: int = 8
     window_seconds: int = 300
+    #: 이보다 많은 키가 쌓이면 창이 지난 키를 비운다. 주소·이메일을 바꿔 가며 보내는 요청이
+    #: 프로세스 메모리를 끝없이 늘리지 못하게 한다.
+    max_keys: int = 10_000
     _attempts: dict[str, list[float]] = field(default_factory=dict)
+
+    def _recent(self, key: str, now: float) -> list[float]:
+        recent = [
+            stamp for stamp in self._attempts.get(key, []) if now - stamp < self.window_seconds
+        ]
+        if recent:
+            self._attempts[key] = recent
+        else:
+            self._attempts.pop(key, None)
+        return recent
+
+    def _prune(self, now: float) -> None:
+        if len(self._attempts) <= self.max_keys:
+            return
+        for key in list(self._attempts):
+            self._recent(key, now)
 
     def check(self, *keys: str | None) -> None:
         """제한을 넘었으면 예외를 던진다."""
@@ -115,14 +135,21 @@ class LoginRateLimiter:
         for key in keys:
             if key is None:
                 continue
-            recent = [
-                stamp for stamp in self._attempts.get(key, []) if now - stamp < self.window_seconds
-            ]
-            self._attempts[key] = recent
+            recent = self._recent(key, now)
             if len(recent) >= self.max_attempts:
                 oldest = min(recent)
                 retry_after = int(self.window_seconds - (now - oldest)) + 1
                 raise RateLimitedError(retry_after)
+
+    def acquire(self, *keys: str | None) -> None:
+        """검사와 시도 기록을 await 없이 한 번에 한다.
+
+        검사 → 비밀번호 확인(await) → 실패 기록 순서면 동시에 들어온 요청이 모두 검사를
+        통과해 제한 없이 시도할 수 있다. 시도를 먼저 세고 성공하면 `reset` 으로 지운다.
+        """
+        self.check(*keys)
+        self.record_failure(*keys)
+        self._prune(time.monotonic())
 
     def record_failure(self, *keys: str | None) -> None:
         now = time.monotonic()
@@ -198,11 +225,15 @@ async def authenticate(
     """
     limiter = get_rate_limiter()
     normalized = normalize_email(email)
-    limiter.check(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    limiter.acquire(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
 
     user = await find_user_by_email(session, normalized)
-    if user is None or not user.is_active or not verify_password(password, user.password_hash):
-        limiter.record_failure(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    # Argon2 확인은 수십 ms 동안 CPU 를 쓴다. 이벤트 루프에서 돌리면 그동안 다른 요청이 멈춘다.
+    if (
+        user is None
+        or not user.is_active
+        or not await asyncio.to_thread(verify_password, password, user.password_hash)
+    ):
         raise AuthError("이메일 또는 비밀번호가 올바르지 않습니다")
 
     if needs_rehash(user.password_hash):

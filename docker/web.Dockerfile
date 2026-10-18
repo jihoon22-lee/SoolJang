@@ -22,6 +22,7 @@ FROM nginx:1.29-alpine AS runtime
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/security-headers.conf /etc/nginx/snippets/security-headers.conf
 
 EXPOSE 8080
 

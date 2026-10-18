@@ -21,7 +21,7 @@ from sooljang.api.schemas.legacy_import import (
 from sooljang.application.import_plan import ImportPlan, build_plan, summarize_warnings
 from sooljang.application.legacy_import import apply_plan
 from sooljang.infrastructure.legacy.blocks import LEGACY_ENCODING, LegacySheetError
-from sooljang.infrastructure.legacy.records import parse_sheet
+from sooljang.infrastructure.legacy.records import ParseReport, parse_sheet
 from sooljang.infrastructure.storage import UploadTooLargeError, read_upload_within_limit
 
 router = APIRouter(prefix="/imports/legacy", tags=["imports"])
@@ -32,6 +32,12 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 async def _plan_from_upload(file: UploadFile) -> ImportPlan:
     """업로드 파일을 계획으로 바꾼다. 인코딩·구조 오류를 사용자에게 알린다."""
+    plan, _ = await _plan_and_report(file)
+    return plan
+
+
+async def _plan_and_report(file: UploadFile) -> tuple[ImportPlan, ParseReport]:
+    """크기 상한 안에서만 읽어 계획과 파싱 리포트를 함께 만든다."""
     try:
         raw = await read_upload_within_limit(file, max_bytes=MAX_UPLOAD_BYTES)
     except UploadTooLargeError as error:
@@ -51,7 +57,7 @@ async def _plan_from_upload(file: UploadFile) -> ImportPlan:
     except LegacySheetError as error:
         raise ValidationFailedError(str(error)) from error
 
-    return build_plan(report)
+    return build_plan(report), report
 
 
 def _to_analysis(
@@ -119,12 +125,9 @@ async def analyze(
     단일 시트에 통계 블록이 섞여 있으므로, 어떤 행을 통과했고 어떤 행을 배제했는지 함께
     보고한다. 사용자가 블록 분리가 제대로 됐는지 확인할 수 있어야 한다.
     """
-    raw = await file.read()
-    await file.seek(0)
-    plan = await _plan_from_upload(file)
-
-    # 블록 정보는 파싱 리포트에 있다. 계획을 다시 만들지 않고 한 번 더 파싱해 꺼낸다.
-    report = parse_sheet(raw)
+    # 예전에는 상한 검사 전에 업로드 전체를 한 번 더 메모리로 읽었다. 같은 제한 읽기에서
+    # 나온 리포트를 그대로 쓴다.
+    plan, report = await _plan_and_report(file)
     block = report.block
     return _to_analysis(
         plan,

@@ -15,6 +15,7 @@
 경로에서 공통으로 호출해, 어느 경로든 같은 규칙으로 분류·계산된다.
 """
 
+import math
 import re
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -81,15 +82,18 @@ def _coerce_int(value: Any) -> int | None:
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        return round(value)
+        # JSON 의 1e400 은 inf, 아주 긴 숫자 문자열도 inf 가 된다. round(inf) 는 OverflowError,
+        # round(nan) 은 ValueError 라 어댑터 밖으로 새어 조회 전체가 500 이 됐다.
+        return round(value) if math.isfinite(value) else None
     if isinstance(value, str):
         cleaned = re.sub(r"[^\d.\-]", "", value)
         if not cleaned:
             return None
         try:
-            return round(float(cleaned))
+            parsed = float(cleaned)
         except ValueError:
             return None
+        return round(parsed) if math.isfinite(parsed) else None
     return None
 
 
@@ -97,15 +101,20 @@ def _coerce_float(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int | float):
-        return float(value)
+        try:
+            parsed = float(value)
+        except OverflowError:  # 10**400 같은 큰 정수
+            return None
+        return parsed if math.isfinite(parsed) else None
     if isinstance(value, str):
         cleaned = re.sub(r"[^\d.\-]", "", value)
         if not cleaned:
             return None
         try:
-            return float(cleaned)
+            parsed = float(cleaned)
         except ValueError:
             return None
+        return parsed if math.isfinite(parsed) else None
     return None
 
 
