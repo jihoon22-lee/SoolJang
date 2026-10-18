@@ -8,7 +8,6 @@
 
 import {
   createContext,
-  type KeyboardEvent,
   type ReactNode,
   useCallback,
   useContext,
@@ -23,6 +22,11 @@ export interface ConfirmOptions {
   title?: string;
   confirmLabel?: string;
   danger?: boolean;
+  /**
+   * 닫힌 뒤 포커스를 돌릴 요소. 기본은 확인창을 연 요소다. 그 요소가 곧 사라지면(접히는 메뉴 안
+   * 버튼) 메뉴를 연 버튼처럼 남아 있는 요소를 준다.
+   */
+  returnFocus?: HTMLElement | null;
 }
 
 type Confirm = (options: ConfirmOptions) => Promise<boolean>;
@@ -37,6 +41,7 @@ export function useConfirm(): Confirm {
 }
 
 interface Pending {
+  id: number;
   options: ConfirmOptions;
   resolve: (confirmed: boolean) => void;
   returnFocus: HTMLElement | null;
@@ -45,6 +50,7 @@ interface Pending {
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const pendingRef = useRef<Pending | null>(null);
+  const nextId = useRef(0);
 
   const confirm = useCallback<Confirm>(
     (options) =>
@@ -52,10 +58,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         // 확인창은 한 번에 하나다. 앞선 요청은 취소로 끝내 기다리는 쪽이 멈추지 않게 한다.
         pendingRef.current?.resolve(false);
         const active = document.activeElement;
+        nextId.current += 1;
         const next = {
+          id: nextId.current,
           options,
           resolve,
-          returnFocus: active instanceof HTMLElement ? active : null,
+          returnFocus: options.returnFocus ?? (active instanceof HTMLElement ? active : null),
         };
         pendingRef.current = next;
         setPending(next);
@@ -75,7 +83,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {pending ? <ConfirmSheet pending={pending} onClose={close} /> : null}
+      {/* 요청마다 새로 그려 앞선 확인창의 복귀 위치를 이어받지 않는다. */}
+      {pending ? <ConfirmSheet key={pending.id} pending={pending} onClose={close} /> : null}
     </ConfirmContext.Provider>
   );
 }
@@ -91,21 +100,21 @@ function ConfirmSheet({
   const dialogRef = useModalDialog(returnFocusRef);
   const { message, title = "확인", confirmLabel = "확인", danger = false } = pending.options;
 
-  function onKeyDown(event: KeyboardEvent) {
-    if (event.key !== "Escape") return;
-    // 아래에 열린 패널(동기화 상태 등)의 Escape 닫기까지 번지지 않게 한다.
-    event.stopPropagation();
-    onClose(false);
-  }
+  useEffect(() => {
+    // 배경을 눌러 포커스가 body 로 빠져도 Escape 는 확인창만 닫는다. document 캡처 단계에서 받아
+    // 아래에 열린 패널(동기화 상태 등)의 document Escape 닫기까지 번지지 않게 한다.
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onClose(false);
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
 
   return (
     // 바깥 클릭으로 닫히는 패널 위에서 열려도, 확인창을 누른 것은 그 패널의 바깥 클릭이 아니다.
-    // biome-ignore lint/a11y/noStaticElementInteractions: 이벤트 전파만 막는 배경이다.
-    <div
-      className="sheet-backdrop"
-      onPointerDown={(event) => event.stopPropagation()}
-      onKeyDown={onKeyDown}
-    >
+    <div className="sheet-backdrop" onPointerDown={(event) => event.stopPropagation()}>
       <div
         ref={dialogRef}
         role="alertdialog"

@@ -58,7 +58,7 @@ it("저장본에는 보관·삭제하지 않은 관심과 활성 감시의 목�
 
   expect(snapshot.interests.map((item) => item.name)).toEqual(["The Glenlivet 12"]);
   expect(snapshot.interests[0]?.targets).toEqual([
-    { amount: "45000", currency: "KRW", source: "합성 판매처" },
+    { amount: "45000", currency: "KRW", source: "합성 판매처", volumeMl: null },
   ]);
 });
 
@@ -129,6 +129,37 @@ it("더 늦게 받은 저장본은 오래된 목록으로 덮지 않는다", asy
   const raw = (await db.sync_meta.get("interest-snapshot"))?.value ?? "";
   expect(raw).toContain("새 목록");
   expect(raw).not.toContain("옛 목록");
+});
+
+it("온라인이어도 목록을 받지 못하면 저장본임과 저장 시각을 함께 보인다", async () => {
+  await saveInterestSnapshot(
+    buildInterestSnapshot(
+      [interest("i1", "The Glenlivet 12")],
+      [],
+      new Date("2026-10-18T03:00:00Z"),
+    ),
+  );
+  vi.spyOn(interestsApi, "list").mockRejectedValue(new Error("502"));
+  vi.spyOn(priceWatchApi, "list").mockResolvedValue([]);
+  renderWithQuery(<StoreModeInterests query="" offline={false} />);
+
+  expect(await screen.findByText(/관심 목록 1개 · 저장본\(/)).toBeInTheDocument();
+});
+
+it("목표가에는 감시한 용량을 함께 적는다", async () => {
+  vi.spyOn(interestsApi, "list").mockResolvedValue([
+    interest("i1", "The Glenlivet 12", {
+      identity: { name: "The Glenlivet 12", volumes_ml: [700, 1750] },
+    }),
+  ]);
+  vi.spyOn(priceWatchApi, "list").mockResolvedValue([
+    watch({
+      criteria: { target_amount: "45000", currency: "KRW", volume_ml: "700.00" },
+    } as never),
+  ]);
+  renderWithQuery(<StoreModeInterests query="Glenlivet" offline={false} />);
+
+  expect(await screen.findByText(/목표 45,000원 \(700ml, 합성 판매처\)/)).toBeInTheDocument();
 });
 
 it("저장본이 없는 오프라인에서는 언제부터 볼 수 있는지 알린다", async () => {

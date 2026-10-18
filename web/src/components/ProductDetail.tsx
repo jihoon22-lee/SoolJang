@@ -114,6 +114,19 @@ function errorText(error: unknown): string | null {
 }
 
 /**
+ * 외화 단가 × 환율과 원화 실구매가가 1%(최소 1원) 넘게 다른 구매. 수정·레거시로 어긋난 기록을
+ * 맞는 것처럼 나란히 보이지 않게 표시한다(새 등록은 서버가 이 차이를 거부한다).
+ */
+export function foreignPriceMismatch(
+  purchase: Pick<Purchase, "foreign_unit_price" | "fx_rate" | "unit_paid_price">,
+): boolean {
+  if (!purchase.foreign_unit_price || !purchase.fx_rate || purchase.unit_paid_price == null)
+    return false;
+  const converted = Number(purchase.foreign_unit_price) * Number(purchase.fx_rate);
+  return Math.abs(Number(purchase.unit_paid_price) - converted) > Math.max(1, converted / 100);
+}
+
+/**
  * 제품 상세.
  *
  * 파생 지표를 먼저 보여준다. 사용자가 이 화면에서 가장 자주 확인하는 것이 "이 술이 얼마짜리
@@ -204,6 +217,7 @@ export function ProductDetail({
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [externalInfoOpen, setExternalInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [historyOpen, setHistoryOpen] = useState(Boolean(contextTastingId));
   const [correctionPurchaseId, setCorrectionPurchaseId] = useState<string | null>(null);
   const [correctionTastingId, setCorrectionTastingId] = useState<string | null>(null);
@@ -276,6 +290,7 @@ export function ProductDetail({
           </button>
           <div className="overflow-menu">
             <button
+              ref={moreButtonRef}
               type="button"
               aria-label="더 보기"
               aria-expanded={moreOpen}
@@ -302,6 +317,8 @@ export function ProductDetail({
                       message,
                       confirmLabel: "삭제",
                       danger: true,
+                      // 메뉴가 접히며 이 버튼은 사라진다. 닫힌 뒤에는 메뉴 버튼으로 돌아간다.
+                      returnFocus: moreButtonRef.current,
                     }).then((confirmed) => {
                       if (confirmed) onDelete();
                     });
@@ -892,6 +909,7 @@ function PurchaseSection({
                         <span className="muted text-sm foreign-price-note">
                           {purchase.foreign_unit_price} {purchase.currency}
                           {purchase.fx_rate ? ` × ${Number(purchase.fx_rate)}` : ""}
+                          {foreignPriceMismatch(purchase) ? " · 원화 실구매가와 다름" : ""}
                         </span>
                       ) : null}
                     </td>

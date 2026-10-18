@@ -135,3 +135,58 @@ it("다른 모달 위에서 열려도 아래 패널을 닫지 않고 Tab을 확�
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: "동기화" })).toBeInTheDocument();
 });
+
+it("배경을 눌러 포커스가 빠진 뒤의 Escape도 확인창만 닫는다", async () => {
+  render(
+    <ConfirmProvider>
+      <PanelWithConfirm />
+    </ConfirmProvider>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "건너뛰기" }));
+  const backdrop = screen.getByRole("alertdialog").parentElement as HTMLElement;
+  await userEvent.click(backdrop);
+  expect(screen.getByRole("alertdialog")).not.toContainElement(
+    document.activeElement as HTMLElement,
+  );
+  await userEvent.keyboard("{Escape}");
+
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "동기화" })).toBeInTheDocument();
+});
+
+it("확인창을 연 버튼이 사라지면 지정한 버튼으로 포커스를 돌린다", async () => {
+  function Menu() {
+    const confirm = useConfirm();
+    const [open, setOpen] = useState(true);
+    const menuButton = useRef<HTMLButtonElement>(null);
+    return (
+      <>
+        <button ref={menuButton} type="button" onClick={() => setOpen(true)}>
+          메뉴
+        </button>
+        {open ? (
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              void confirm({ message: "지울까요?", returnFocus: menuButton.current });
+            }}
+          >
+            메뉴 안 삭제
+          </button>
+        ) : null}
+      </>
+    );
+  }
+  render(
+    <ConfirmProvider>
+      <Menu />
+    </ConfirmProvider>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "메뉴 안 삭제" }));
+  await userEvent.click(screen.getByRole("button", { name: "취소" }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "메뉴" })).toHaveFocus());
+});

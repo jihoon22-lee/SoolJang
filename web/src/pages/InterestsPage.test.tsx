@@ -279,15 +279,42 @@ const observation = (overrides: Partial<PriceHistoryRow>): PriceHistoryRow => ({
   currency: "KRW",
   source_url: "https://example.com/p",
   fetched_at: "2026-10-01T00:00:00Z",
-  facts: { volume_ml: 700, units: 1 },
+  facts: {
+    volume_ml: 700,
+    units: 1,
+    is_set: false,
+    in_stock: true,
+    price_kind: "regular",
+    membership: "none",
+    coupon: "none",
+    fulfillment: "delivery",
+    region: "KR",
+    shipping: "included",
+    tax: "included",
+  },
   ...overrides,
 });
 
 it("관측가 100ml당은 용량·수량이 확인된 원화 관측만 계산한다", () => {
+  const facts = observation({}).facts;
   expect(observedPricePer100ml(observation({}))).toBe(10000);
-  expect(observedPricePer100ml(observation({ facts: { volume_ml: 500, units: 2 } }))).toBe(7000);
-  expect(observedPricePer100ml(observation({ facts: { units: 1 } }))).toBeNull();
+  expect(
+    observedPricePer100ml(observation({ facts: { ...facts, volume_ml: 500, units: 2 } })),
+  ).toBe(7000);
+  expect(observedPricePer100ml(observation({ facts: { ...facts, volume_ml: null } }))).toBeNull();
   expect(observedPricePer100ml(observation({ currency: "USD" }))).toBeNull();
+  // 모르는 수량을 1병으로, 세트·추천가·품절·조건 미상을 일반 단품가로 계산하지 않는다.
+  for (const unknown of [
+    { units: null },
+    { units: 1.5 },
+    { is_set: true },
+    { price_kind: "recommended" },
+    { price_kind: "snippet" },
+    { in_stock: false },
+    { coupon: null },
+  ])
+    expect(observedPricePer100ml(observation({ facts: { ...facts, ...unknown } }))).toBeNull();
+  expect(observedPricePer100ml(observation({ amount: "0" }))).toBeNull();
   expect(
     latestObservation([
       observation({ id: "old" }),

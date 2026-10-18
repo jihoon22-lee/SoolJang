@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { cloneElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Product, ProductMetrics, Purchase, Sku } from "@/api/types";
-import { ProductDetail } from "@/components/ProductDetail";
+import { foreignPriceMismatch, ProductDetail } from "@/components/ProductDetail";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
 
@@ -955,4 +955,16 @@ it("병·시음을 구매 이력보다 먼저 보이고 구역 바로가기로 �
   fireEvent.click(within(nav).getByRole("button", { name: "구매" }));
   expect(scrolled).toHaveBeenCalledWith({ block: "start" });
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});
+
+it("외화 단가 × 환율과 원화 실구매가가 1% 넘게 다르면 어긋난 기록으로 본다", () => {
+  const foreign = { foreign_unit_price: "10", fx_rate: "1350" };
+  expect(foreignPriceMismatch({ ...foreign, unit_paid_price: "13500" })).toBe(false);
+  // 줄여 적은 환율로 생긴 1% 안의 차이는 같은 값으로 본다.
+  expect(foreignPriceMismatch({ ...foreign, unit_paid_price: "13600" })).toBe(false);
+  expect(foreignPriceMismatch({ ...foreign, unit_paid_price: "135" })).toBe(true);
+  expect(foreignPriceMismatch({ ...foreign, unit_paid_price: null })).toBe(false);
+  expect(
+    foreignPriceMismatch({ foreign_unit_price: null, fx_rate: null, unit_paid_price: "135" }),
+  ).toBe(false);
 });

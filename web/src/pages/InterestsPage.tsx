@@ -389,15 +389,41 @@ export function latestObservation(rows: readonly PriceHistoryRow[]): PriceHistor
   );
 }
 
+// 서버 비교 묶음(`offers.py`)과 같은 판매 조건. 하나라도 모르면 일반가로 가정하지 않는다.
+const SALE_CONDITIONS = [
+  "price_kind",
+  "membership",
+  "coupon",
+  "fulfillment",
+  "region",
+  "shipping",
+  "tax",
+] as const;
+
 /**
- * 관측가의 100ml당 원화 가격. 용량·수량이 확인된 원화 관측만 계산한다. 정가 기준
- * `price_per_100ml`과 다른 값이라 화면에서도 "관측가"로 구분한다.
+ * 관측가의 100ml당 원화 가격. 정가 기준 `price_per_100ml`과 다른 값이라 화면에서도 "관측가"로
+ * 구분한다. 서버가 가격 비교에 넣는 관측만 계산한다 — 원화·0원 초과, 용량과 정수 수량 확인,
+ * 세트 아님, 검색 요약·추천가 아님, 품절 아님, 판매 조건을 모두 앎. 모르는 값은 1병·일반가로
+ * 채우지 않는다.
  */
 export function observedPricePer100ml(row: PriceHistoryRow): number | null {
-  const volume = Number(row.facts.volume_ml);
-  const units = Number(row.facts.units ?? 1);
+  const { facts } = row;
+  const volume = Number(facts.volume_ml);
+  const units = facts.units;
   const amount = Number(row.amount);
-  if (row.currency !== "KRW" || !(volume > 0) || !(units > 0) || !Number.isFinite(amount))
+  if (
+    row.currency !== "KRW" ||
+    !(amount > 0) ||
+    !(volume > 0) ||
+    typeof units !== "number" ||
+    !Number.isInteger(units) ||
+    units < 1 ||
+    facts.is_set === true ||
+    facts.in_stock === false ||
+    facts.price_kind === "snippet" ||
+    facts.price_kind === "recommended" ||
+    SALE_CONDITIONS.some((key) => facts[key] === null || facts[key] === undefined)
+  )
     return null;
   return (amount / (volume * units)) * 100;
 }
@@ -428,7 +454,10 @@ function InterestComparison({
     const per100 = observedPricePer100ml(latest);
     return {
       text: `${latest.currency === "KRW" ? formatMoney(latest.amount) : `${latest.amount} ${latest.currency}`} · ${latest.source_name} · ${new Date(latest.fetched_at).toLocaleDateString("ko-KR")}`,
-      per100: per100 === null ? "계산 불가(원화·용량·수량 미확인)" : formatMoney(per100.toFixed(2)),
+      per100:
+        per100 === null
+          ? "계산 불가(원화·용량·수량·판매 조건 미확인 또는 세트·품절)"
+          : formatMoney(per100.toFixed(2)),
     };
   };
   const rows: [string, (row: Interest, index: number) => ReactNode][] = [

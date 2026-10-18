@@ -19,8 +19,11 @@ export interface SnapshotInterest {
   nameEn: string | null;
   aliases: string[];
   volumesMl: number[];
-  /** 활성 감시의 목표가. 같은 관심에 여러 판매 조건이 있으면 모두 둔다. */
-  targets: { amount: string; currency: string; source: string }[];
+  /**
+   * 활성 감시의 목표가. 같은 관심에 여러 판매 조건이 있으면 모두 둔다. 목표가는 그 감시의
+   * 용량 기준이라 함께 둔다(이전 저장본에는 없을 수 있다).
+   */
+  targets: { amount: string; currency: string; source: string; volumeMl?: string | null }[];
 }
 
 export interface InterestSnapshot {
@@ -53,6 +56,7 @@ export function buildInterestSnapshot(
             amount: String(watch.criteria.target_amount),
             currency: watch.criteria.currency,
             source: watch.source_name,
+            volumeMl: watch.criteria.volume_ml ? String(watch.criteria.volume_ml) : null,
           })),
       })),
   };

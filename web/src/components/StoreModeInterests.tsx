@@ -25,10 +25,17 @@ const MAX_RESULTS = 8;
 function targetText(item: SnapshotInterest): string {
   if (!item.targets.length) return "목표가 없음";
   return item.targets
-    .map(
-      (target) =>
-        `목표 ${target.currency === "KRW" ? formatMoney(target.amount) : `${target.amount} ${target.currency}`} (${target.source})`,
-    )
+    .map((target) => {
+      const amount =
+        target.currency === "KRW"
+          ? formatMoney(target.amount)
+          : `${target.amount} ${target.currency}`;
+      // 목표가는 감시한 용량 기준이다. 관심의 다른 용량과 섞어 읽지 않게 함께 적는다.
+      const basis = [target.volumeMl ? `${Number(target.volumeMl)}ml` : null, target.source]
+        .filter(Boolean)
+        .join(", ");
+      return `목표 ${amount} (${basis})`;
+    })
     .join(" · ");
 }
 
@@ -54,7 +61,16 @@ export function StoreModeInterests({ query, offline }: { query: string; offline:
     void saveInterestSnapshot(buildInterestSnapshot(interests.data, watches.data, fetchedAt));
   }, [interests.data, interests.dataUpdatedAt, watches.data, watches.dataUpdatedAt, userId]);
 
-  const snapshot = useInterestSnapshot();
+  const saved = useInterestSnapshot();
+  // 이번에 받은 목록이 있으면 그것을, 없거나(오프라인·실패·받는 중) 아직이면 저장본을 보인다.
+  const live = !offline && interests.isSuccess && watches.isSuccess;
+  const snapshot = live
+    ? buildInterestSnapshot(
+        interests.data,
+        watches.data,
+        new Date(Math.min(interests.dataUpdatedAt, watches.dataUpdatedAt)),
+      )
+    : saved;
   if (!snapshot) {
     return offline ? (
       <p className="muted text-sm">
@@ -68,9 +84,9 @@ export function StoreModeInterests({ query, offline }: { query: string; offline:
         [item.name, item.nameEn ?? "", ...item.aliases].some((name) => matchesQuery(name, trimmed)),
       )
     : snapshot.interests;
-  const stale = offline
-    ? ` · 오프라인 저장본(${new Date(snapshot.savedAt).toLocaleString("ko-KR")} 기준)`
-    : "";
+  const stale = live
+    ? ""
+    : ` · ${offline ? "오프라인 " : ""}저장본(${new Date(snapshot.savedAt).toLocaleString("ko-KR")} 기준)`;
   if (trimmed && matching.length === 0) return null;
 
   const list = (
