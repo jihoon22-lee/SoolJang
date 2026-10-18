@@ -162,4 +162,3 @@ const ALIAS_PREFIX_PARITY: [string, string, boolean][] = [
 it.each(ALIAS_PREFIX_PARITY)("한글 별칭 앞부분: %s / %s → %s", (name, query, match) => {
   expect(matchesQuery(name, query)).toBe(match);
 });
-
