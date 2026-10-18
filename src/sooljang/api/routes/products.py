@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, status
 from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, UserDep
-from sooljang.api.errors import ValidationFailedError
+from sooljang.api.errors import ConflictError, ValidationFailedError
 from sooljang.api.pagination import (
     Cursor,
     SortOrder,
@@ -218,6 +218,19 @@ async def create_product(
     4계층 구조의 입력 부담을 줄이려면 한 번의 요청으로 제품·규격·품종을 만들 수 있어야 한다.
     """
     await lock_user_writes(session, user_id)
+    product_id = (
+        uuid.uuid5(user_id, f"product-create:{payload.request_id}")
+        if payload.request_id
+        else uuid.uuid4()
+    )
+    if payload.request_id:
+        replay = await session.scalar(
+            select(Product).where(Product.id == product_id, Product.user_id == user_id)
+        )
+        if replay is not None:
+            if replay.deleted_at is not None or replay.name != payload.name.strip():
+                raise ConflictError("같은 요청 식별자로 다른 제품을 등록할 수 없습니다")
+            return await _detail(session, user_id, replay.id)
     await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
     producer_id = payload.producer_id
@@ -228,6 +241,7 @@ async def create_product(
         )
 
     product = Product(
+        id=product_id,
         user_id=user_id,
         name=payload.name.strip(),
         name_en=payload.name_en,

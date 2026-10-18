@@ -5,6 +5,7 @@ import {
   captureFormDraft,
   clearFormDraft,
   clearSubmittedDraft,
+  draftRequestId,
   useDraftState,
 } from "@/sync/drafts";
 
@@ -87,4 +88,19 @@ it("새 필드 입력과 같은 계정의 재로그인도 이전 제출의 초�
   act(() => form.result.current[1]("99"));
   expect(Object.values(localStorage).join()).toContain('"2"');
   expect(Object.values(localStorage).join()).not.toContain('"99"');
+});
+it("같은 초안 버전의 재전송은 같은 요청 식별자를, 수정·저장 후에는 새 식별자를 쓴다", async () => {
+  const form = renderHook(() => useDraftState("purchase:p1", { quantity: "1" }));
+  act(() => form.result.current[1]({ quantity: "2" }));
+  const first = await draftRequestId("purchase:p1");
+  expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(await draftRequestId("purchase:p1")).toBe(first);
+  act(() => form.result.current[1]({ quantity: "3" }));
+  const edited = await draftRequestId("purchase:p1");
+  expect(edited).not.toBe(first);
+  clearFormDraft("purchase:p1");
+  const afterSave = await draftRequestId("purchase:p1");
+  expect(afterSave).not.toBe(edited);
+  expect(await draftRequestId("purchase:p1")).not.toBe(afterSave);
+  form.unmount();
 });

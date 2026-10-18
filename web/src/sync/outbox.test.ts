@@ -4,6 +4,7 @@ import { confirmedBottleOperationKey, localBottleOperationKey } from "@/sync/bot
 import { activateDatabase, db } from "@/sync/db";
 import { OUTBOX_CHANGED, syncEvents } from "@/sync/events";
 import {
+  dependentEntries,
   discardAllFailedEntries,
   discardFailedEntry,
   enqueue,
@@ -28,6 +29,41 @@ afterEach(async () => {
 });
 
 describe("enqueue", () => {
+  it("보내지 않은 수정 뒤의 수정은 낙관적 기기 시각 대신 마지막 서버 버전을 기준으로 삼는다", async () => {
+    const row = {
+      id: "p1",
+      user_id: "u1",
+      name: "원래 이름",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+      deleted_at: null,
+    };
+    await db.product.put(row);
+    await enqueue({
+      entity: "product",
+      op: "update",
+      entityId: "p1",
+      baseUpdatedAt: row.updated_at,
+      fields: { name: "첫 수정" },
+      optimisticRow: { ...row, name: "첫 수정", updated_at: "2026-01-05T00:00:00Z" },
+    });
+    const local = await db.product.get("p1");
+    await enqueue({
+      entity: "product",
+      op: "update",
+      entityId: "p1",
+      baseUpdatedAt: local?.updated_at as string,
+      fields: { note: "두 번째 수정" },
+      optimisticRow: { ...row, name: "첫 수정", updated_at: "2026-01-06T00:00:00Z" },
+    });
+
+    const queued = await db.outbox.orderBy("created_at").toArray();
+    expect(queued.map((entry) => entry.base_updated_at)).toEqual([
+      "2026-01-01T00:00:00Z",
+      "2026-01-01T00:00:00Z",
+    ]);
+  });
+
   it("outbox 항목을 적재하고 낙관적 행을 반영한다", async () => {
     const listener = vi.fn();
     syncEvents.addEventListener(OUTBOX_CHANGED, listener);
@@ -427,5 +463,64 @@ describe("실패 명령 일괄 처리", () => {
     await db.outbox.update(retried?.idempotency_key as string, { status: "failed" });
     expect(await discardAllFailedEntries()).toBe(2);
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe("dependentEntries", () => {
+  const entry = (key: string, extra: Record<string, unknown>) =>
+    ({
+      idempotency_key: key,
+      sequence_key: key,
+      user_id: "u1",
+      created_at: key,
+      status: "pending",
+      error: null,
+      ...extra,
+    }) as never;
+
+  it("실패한 병 동작을 폐기해도 같은 병의 시음은 남기고 그 동작에 이어진 명령만 묶는다", () => {
+    const failed = entry("k1", {
+      entity: "bottle",
+      op: "action",
+      action: "set_remaining",
+      entity_id: "b1",
+      fields: { remaining_ml: 300, expected_revision: "r1" },
+      status: "failed",
+    });
+    const tasting = entry("k2", {
+      entity: "tasting_session",
+      op: "action",
+      action: "record_tasting",
+      entity_id: "t1",
+      fields: { bottle_id: "b1", sku_id: "s1", tasted_on: "2026-10-10", poured_ml: 30 },
+      touched_ids: ["b1"],
+    });
+    const chained = entry("k3", {
+      entity: "bottle",
+      op: "action",
+      action: "set_remaining",
+      entity_id: "b1",
+      fields: { remaining_ml: 200, expected_operation_id: "k1" },
+    });
+
+    expect(dependentEntries(failed, [failed, tasting, chained])).toEqual([chained]);
+  });
+
+  it("실패한 생성은 그 행을 참조하는 후속 명령을 계속 함께 묶는다", () => {
+    const failed = entry("k1", {
+      entity: "bottle",
+      op: "create",
+      entity_id: "b1",
+      fields: {},
+      status: "failed",
+    });
+    const tasting = entry("k2", {
+      entity: "tasting_session",
+      op: "action",
+      action: "record_tasting",
+      entity_id: "t1",
+      fields: { bottle_id: "b1" },
+    });
+    expect(dependentEntries(failed, [failed, tasting])).toEqual([tasting]);
   });
 });

@@ -75,6 +75,9 @@ class ProductCreate(ProductBase):
     # 생산자는 자유 텍스트 이름으로 받아 서버가 id 로 해석한다(없으면 생성). `producer_id`
     # (UUID)보다 UI 입력에 자연스러운 경로다 — `resolve_producer_id` 참조.
     producer_name: str | None = Field(default=None, max_length=200)
+    #: 응답을 잃은 재전송이 같은 제품을 다시 만들지 않게 하는 멱등키. 같은 키는 같은 제품 id로
+    #: 이어진다. 생략하면 기존처럼 매번 새로 만든다.
+    request_id: uuid.UUID | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -245,6 +248,8 @@ class PurchaseCreate(BaseModel):
     discount_note: str | None = None
     # 병 레코드를 함께 만들 것인지. 임포트는 상태별 개수를 직접 지정하므로 끌 수 있어야 한다.
     create_bottles: bool = True
+    #: 응답 유실 후 재전송이 구매·병을 중복 생성하지 않게 하는 멱등키.
+    request_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _foreign_price_needs_rate(self) -> PurchaseCreate:

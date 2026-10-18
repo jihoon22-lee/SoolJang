@@ -25,7 +25,7 @@ import { hasPurchaseScope, purchaseScopeLabel, selectPurchaseScope } from "@/pur
 import type { ProductContext } from "@/router";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { databaseIdentity, db } from "@/sync/db";
-import { clearFormDraft } from "@/sync/drafts";
+import { clearFormDraft, draftRequestId } from "@/sync/drafts";
 import { enqueue } from "@/sync/outbox";
 import { resolveProductContext } from "@/sync/productContext";
 import { enqueueProductDelete } from "@/sync/productDelete";
@@ -887,6 +887,8 @@ function ProductDetailView({
       const vendorId = input.vendorName ? await resolveVendorId(input.vendorName, session) : null;
       session.assertCurrent();
       const submittedContext = contextSignature;
+      const requestId = await draftRequestId(`purchase:${productId}`);
+      session.assertCurrent();
       await purchasesApi.create({
         sku_id: input.skuId,
         quantity: input.quantity,
@@ -894,6 +896,7 @@ function ProductDetailView({
         purchased_on: input.purchasedOn || null,
         unit_list_price: input.unitListPrice || null,
         unit_paid_price: input.unitPaidPrice || null,
+        request_id: requestId,
       });
       return { skuId: input.skuId, contextSignature: submittedContext };
     },

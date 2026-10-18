@@ -298,11 +298,29 @@ async def create_purchase(
     기록이며 이 프로젝트의 존재 이유다.
     """
     await lock_user_writes(session, user_id)
+    purchase_id = (
+        uuid.uuid5(user_id, f"purchase-create:{payload.request_id}")
+        if payload.request_id
+        else uuid.uuid4()
+    )
+    if payload.request_id:
+        replay = await session.scalar(
+            select(Purchase).where(Purchase.id == purchase_id, Purchase.user_id == user_id)
+        )
+        if replay is not None:
+            if (
+                replay.deleted_at is not None
+                or replay.sku_id != payload.sku_id
+                or replay.quantity != payload.quantity
+            ):
+                raise ConflictError("같은 요청 식별자로 다른 구매를 기록할 수 없습니다")
+            return await _to_purchase_out(session, replay)
     await load_live_sku_for_write(session, user_id=user_id, sku_id=payload.sku_id)
     if payload.vendor_id is not None:
         await _owned_vendor(session, user_id, payload.vendor_id)
 
     purchase = Purchase(
+        id=purchase_id,
         user_id=user_id,
         sku_id=payload.sku_id,
         vendor_id=payload.vendor_id,

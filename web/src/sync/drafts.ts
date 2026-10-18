@@ -78,6 +78,28 @@ export function captureFormDraft(form: string) {
   return { identity, prefix, entries };
 }
 
+/**
+ * 초안 버전에서 멱등 요청 식별자를 만든다. 같은 초안을 다시 보내면 같은 값이고, 입력을
+ * 고치거나 저장 성공으로 초안이 지워진 뒤에는 새 값이 된다. 초안이 없거나 해시를 쓸 수
+ * 없으면(비보안 컨텍스트) 매번 새 식별자를 쓴다.
+ */
+export async function draftRequestId(form: string): Promise<string> {
+  const { identity, entries } = captureFormDraft(form);
+  const subtle = globalThis.crypto?.subtle;
+  if (!entries.length || !subtle) return crypto.randomUUID();
+  const digest = new Uint8Array(
+    await subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(JSON.stringify([identity.userId, form, entries])),
+    ),
+  );
+  const bytes = digest.slice(0, 16);
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** 이전 저장의 성공으로 이후 입력이나 재로그인한 세션의 초안을 지우지 않는다. */
 export function clearSubmittedDraft(snapshot: ReturnType<typeof captureFormDraft>): boolean {
   const current = databaseIdentity();

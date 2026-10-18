@@ -4,7 +4,7 @@ import type { ProductFormValues } from "@/components/ProductForm";
 import { setLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching } from "@/search";
 import { db, type SoolJangDB } from "@/sync/db";
-import { clearFormDraft } from "@/sync/drafts";
+import { clearFormDraft, draftRequestId } from "@/sync/drafts";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
@@ -73,6 +73,8 @@ export function useCreateProduct() {
       const owner = session.userId;
       const checkSession = session.assertCurrent;
       if (!offline) {
+        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게 같은 초안 버전은 같은 키를 쓴다.
+        const requestId = await draftRequestId("product:create");
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
         //
@@ -97,6 +99,7 @@ export function useCreateProduct() {
             note: values.note || null,
             variety_names: splitVarieties(values.varietyNames),
             skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
+            request_id: requestId,
           }));
 
         checkSession();
@@ -130,6 +133,7 @@ export function useCreateProduct() {
               purchased_on: values.purchasedOn || null,
               unit_list_price: values.unitListPrice || null,
               unit_paid_price: values.unitPaidPrice || null,
+              request_id: requestId,
             });
             purchaseCreated = true;
           }

@@ -202,6 +202,8 @@ export interface ProductCreateInput {
   note?: string | null;
   variety_names?: string[];
   skus?: { volume_ml: number; barcode?: string | null }[];
+  /** 같은 폼 버전의 재전송은 같은 제품을 돌려받는 멱등키. */
+  request_id?: string;
 }
 
 // --- 구매처·구매 건 ---------------------------------------------------------
@@ -279,6 +281,8 @@ export interface PurchaseCreateInput {
   fx_rate?: string | null;
   foreign_unit_price?: string | null;
   discount_note?: string | null;
+  /** 같은 폼 버전의 재전송은 같은 구매를 돌려받는 멱등키. */
+  request_id?: string;
 }
 
 export type BottleStatus = "unopened" | "open" | "finished" | "gifted" | "sold";

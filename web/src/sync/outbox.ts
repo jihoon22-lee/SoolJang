@@ -72,6 +72,26 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
       entry.user_id ??= existing?.user_id;
       if (entry.user_id !== identity.userId || (existing && existing.user_id !== identity.userId))
         throw new Error("다른 계정의 입력을 저장할 수 없습니다");
+      if (input.op === "update" && input.baseUpdatedAt !== undefined) {
+        // 아직 보내지 않은 수정이 있으면 로컬 updated_at 은 기기 시각의 낙관값이다. 그 값을
+        // 기준으로 삼으면 앞 수정이 충돌해도 이 수정이 다른 기기의 변경을 조용히 덮어쓴다.
+        // 앞 수정이 마지막으로 확인한 서버 버전을 그대로 이어받는다(성공하면 엔진이 갱신한다).
+        const earlier = (await store.outbox.toArray())
+          .filter(
+            (other) =>
+              other.entity === input.entity &&
+              other.entity_id === input.entityId &&
+              other.op === "update" &&
+              other.base_updated_at !== undefined,
+          )
+          .sort((a, b) =>
+            (a.sequence_key ?? a.idempotency_key).localeCompare(
+              b.sequence_key ?? b.idempotency_key,
+            ),
+          )
+          .at(-1);
+        if (earlier) entry.base_updated_at = earlier.base_updated_at;
+      }
       await store.outbox.add(entry);
       if (input.op === "delete") {
         const existing = await store.table(input.entity).get(input.entityId);
@@ -99,6 +119,7 @@ export async function enqueue(input: EnqueueInput): Promise<string> {
 
 /** 실패한 부모에 의존하는 명령을 찾는다. 참조 ID와 병 연쇄 생성까지 추적한다. */
 export function dependentEntries(entry: OutboxEntry, queue: OutboxEntry[]): OutboxEntry[] {
+  if (entry.op === "update" || entry.op === "action") return chainedEntries(entry, queue);
   const affected = new Set([entry.entity_id, ...(entry.touched_ids ?? [])]);
   for (const id of Array.isArray(entry.fields.bottle_ids) ? entry.fields.bottle_ids : []) {
     if (typeof id === "string") affected.add(id);
@@ -130,6 +151,32 @@ export function dependentEntries(entry: OutboxEntry, queue: OutboxEntry[]): Outb
           ? candidate.fields.bottle_ids
           : [])
           if (typeof id === "string") affected.add(id);
+        changed = true;
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * 이미 서버에 있는 행의 수정·동작이 실패해도 그 행을 참조하는 다른 기록(같은 병의 시음 등)은
+ * 여전히 유효하다. 이 명령의 결과를 전제로 이어진 명령(`expected_operation_id`)만 함께 묶는다.
+ */
+function chainedEntries(entry: OutboxEntry, queue: OutboxEntry[]): OutboxEntry[] {
+  const keys = new Set([entry.idempotency_key]);
+  const result: OutboxEntry[] = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const candidate of queue) {
+      if (keys.has(candidate.idempotency_key)) continue;
+      const parents = [
+        candidate.fields.expected_operation_id,
+        candidate.fields.origin_operation_id,
+      ];
+      if (parents.some((parent) => typeof parent === "string" && keys.has(parent))) {
+        keys.add(candidate.idempotency_key);
+        result.push(candidate);
         changed = true;
       }
     }
