@@ -31,4 +31,13 @@
 
 ### 실행 검증
 
-(작성 중)
+- RED: commit 실패 주입 테스트 기대 500·실제 201. 연속 수정 기준 테스트는 수정 전 코드로 실패.
+- GREEN(격리 DB): 전체 `uv run --frozen pytest` 1,710 passed / 30 opt-in skipped(11분 35초).
+  이 실행 뒤 추가한 멱등성 테스트와 products/purchases/commit 경계 69건 통과.
+- `ruff check .`, `ruff format --check .`, `ty check`, `scan-secrets.sh`, 버전 일치(1.10.1) 통과.
+- `npm --prefix web run check`: lint(기존 경고 18), typecheck, Vitest 100파일/1,287건,
+  branch 83.18%, build(precache 16) 통과.
+- `BottlePanel.pagination` 200건 경우는 coverage 계측에서 기본 5초를 넘겨 main 기준에서도
+  타임아웃이 재현됐다(5.1초). 동작 변경 없이 해당 테스트만 20초 제한을 명시했다.
+- 미실행: 실브라우저(이번 변경은 서버 commit 시점·요청 본문·outbox 기준값이며 화면 변화 없음),
+  실제 commit 실패(연결 단절) 주입은 단위 수준의 commit 예외로 대체했다.
