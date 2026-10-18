@@ -460,7 +460,8 @@ UTC `timestamptz`다.
   둘 이유가 없다(Task 15, 코드와 어긋난 이전 문구를 정정)
 - 온라인 전용 생성(`POST /products`, `POST /purchases`)은 본문의 선택 `request_id`로 응답
   유실 후 재전송을 같은 행으로 돌려준다. 서버가 `uuid5(user_id, 종류:request_id)`로 id를 정하고,
-  같은 키에 다른 이름·규격·병수가 오면 409다. 웹은 폼 초안 버전의 해시를 키로 쓴다(D249)
+  같은 키에 생성 내용(제품 필드·규격·생산자·품종, 구매처·날짜·가격·통화·병 생성 여부)이 하나라도
+  다르면 409다. 웹은 제출 내용 지문별 키를 탭 `sessionStorage`에 두고 저장 성공 뒤 지운다(D249)
 - 쓰기 응답은 요청 세션 commit 뒤에만 나간다(`db_session`의 `scope="function"`). commit이
   실패하면 5xx이므로 클라이언트가 성공으로 오인해 대기열·초안을 지우지 않는다(D249)
 - 에러는 RFC 9457 Problem Details
