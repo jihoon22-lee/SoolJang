@@ -2731,6 +2731,19 @@ legend {
 }
 
 /* 상세 구역 바로가기. 고정 헤더에 제목이 가리지 않게 여백을 둔다. */
+.store-mode-interests {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.store-mode-interests li {
+  display: grid;
+  gap: 2px;
+}
+
 .foreign-price-note {
   display: block;
 }
