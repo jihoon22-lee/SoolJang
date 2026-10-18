@@ -113,7 +113,7 @@ export function CollectionQualityPage({
 
   return (
     <section className="collection-page">
-      <h1>데이터 품질</h1>
+      <h2 className="page-title">데이터 품질</h2>
       <p className="muted">
         누락과 중복 후보를 확인하고 필요한 기록만 정리하세요. 정리는 영향 미리보기를 거쳐 한 번에
         적용되며 온라인에서만 할 수 있습니다.

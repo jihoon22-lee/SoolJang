@@ -1,25 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, authApi, setUnauthorizedHandler } from "@/api/client";
 import type { User } from "@/api/types";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
+import { LoadingState } from "@/components/StatusViews";
 import { ToastProvider } from "@/components/Toast";
 import { type Density, DISPLAY_PREFERENCES_CHANGED, getDensity } from "@/displayPreferences";
-import { CategoriesPage } from "@/pages/CategoriesPage";
-import { CollectionQualityPage } from "@/pages/CollectionQualityPage";
-import { DiscoverPage } from "@/pages/DiscoverPage";
+import { lazyPage } from "@/lazyPage";
 import { HomePage } from "@/pages/HomePage";
-import { ImportPage } from "@/pages/ImportPage";
 import { InterestsPage } from "@/pages/InterestsPage";
-import { InventoryPage } from "@/pages/InventoryPage";
-import { PriceWatchPage } from "@/pages/PriceWatchPage";
 import { ProductsPage } from "@/pages/ProductsPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { StatsPage } from "@/pages/StatsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
-import { VendorsPage } from "@/pages/VendorsPage";
 import { clearBrowserPush } from "@/push/browserPush";
 import { parseHash, type Route, routeToHash, shouldResetScroll, type View } from "@/router";
 import { activateDatabase, lockDatabase } from "@/sync/db";
@@ -36,6 +30,23 @@ import {
 import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { UpdateNotice } from "@/sync/UpdateNotice";
+
+// 자주 쓰지 않는 화면은 따로 나눠 첫 화면이 받는 JS 를 줄인다.
+const CategoriesPage = lazyPage(() =>
+  import("@/pages/CategoriesPage").then((m) => m.CategoriesPage),
+);
+const CollectionQualityPage = lazyPage(() =>
+  import("@/pages/CollectionQualityPage").then((m) => m.CollectionQualityPage),
+);
+const DiscoverPage = lazyPage(() => import("@/pages/DiscoverPage").then((m) => m.DiscoverPage));
+const ImportPage = lazyPage(() => import("@/pages/ImportPage").then((m) => m.ImportPage));
+const InventoryPage = lazyPage(() => import("@/pages/InventoryPage").then((m) => m.InventoryPage));
+const PriceWatchPage = lazyPage(() =>
+  import("@/pages/PriceWatchPage").then((m) => m.PriceWatchPage),
+);
+const SettingsPage = lazyPage(() => import("@/pages/SettingsPage").then((m) => m.SettingsPage));
+const StatsPage = lazyPage(() => import("@/pages/StatsPage").then((m) => m.StatsPage));
+const VendorsPage = lazyPage(() => import("@/pages/VendorsPage").then((m) => m.VendorsPage));
 
 const SKIP_LINK_HASH = "#main";
 
@@ -145,7 +156,8 @@ export function App() {
     const label =
       [...VIEWS, ...SETTINGS_VIEWS].find((item) => item.id === route.view)?.label ??
       (route.view === "scan" ? "매장 모드" : "술장");
-    document.title = route.productId ? "술 상세 · 술장" : `${label} · 술장`;
+    // 상세 제목은 제품명을 아는 상세 화면이 정한다.
+    if (!route.productId) document.title = `${label} · 술장`;
     if (firstRoute.current) {
       firstRoute.current = false;
       return;
@@ -296,176 +308,182 @@ export function App() {
   return (
     <SyncStatusProvider key={user?.id} userId={user?.id}>
       <ToastProvider>
-        <div className={`app-shell${density === "compact" ? " density-compact" : ""}`}>
-          <a className="skip-link" href="#main">
-            본문으로 건너뛰기
-          </a>
+        <ConfirmProvider>
+          <div className={`app-shell${density === "compact" ? " density-compact" : ""}`}>
+            <a className="skip-link" href="#main">
+              본문으로 건너뛰기
+            </a>
 
-          <UpdateNotice />
-          <header className="app-header">
-            <h1>술장</h1>
-            <nav className="app-nav" aria-label="주요 화면">
-              {VIEWS.map((item) => (
-                <a
-                  key={item.id}
-                  href={`#${item.id}`}
-                  aria-current={route.view === item.id ? "page" : undefined}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigate({ view: item.id });
-                  }}
-                >
-                  {item.label}
-                </a>
-              ))}
-            </nav>
-            <div className="app-account">
-              <SyncStatusBadge />
-              {user ? <span className="app-account-name">{user.display_name}</span> : null}
-              <div className="settings-menu" ref={settingsMenuRef}>
-                <button
-                  type="button"
-                  ref={settingsTriggerRef}
-                  className="settings-menu-trigger"
-                  aria-expanded={settingsOpen}
-                  aria-controls="settings-menu-panel"
-                  aria-current={isSettingsView ? "page" : undefined}
-                  onClick={() => setSettingsOpen((open) => !open)}
-                >
-                  설정
-                </button>
-                {settingsOpen && (
-                  <nav
-                    id="settings-menu-panel"
-                    className="settings-menu-panel"
-                    aria-label="설정 메뉴"
+            <UpdateNotice />
+            <header className="app-header">
+              <h1>술장</h1>
+              <nav className="app-nav" aria-label="주요 화면">
+                {VIEWS.map((item) => (
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    aria-current={route.view === item.id ? "page" : undefined}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigate({ view: item.id });
+                    }}
                   >
-                    {SETTINGS_VIEWS.map((item) => (
-                      <a
-                        key={item.id}
-                        href={`#${item.id}`}
-                        aria-current={route.view === item.id ? "page" : undefined}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          navigate({ view: item.id });
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
+              <div className="app-account">
+                <SyncStatusBadge />
+                {user ? <span className="app-account-name">{user.display_name}</span> : null}
+                <div className="settings-menu" ref={settingsMenuRef}>
+                  <button
+                    type="button"
+                    ref={settingsTriggerRef}
+                    className="settings-menu-trigger"
+                    aria-expanded={settingsOpen}
+                    aria-controls="settings-menu-panel"
+                    aria-current={isSettingsView ? "page" : undefined}
+                    onClick={() => setSettingsOpen((open) => !open)}
+                  >
+                    설정
+                  </button>
+                  {settingsOpen && (
+                    <nav
+                      id="settings-menu-panel"
+                      className="settings-menu-panel"
+                      aria-label="설정 메뉴"
+                    >
+                      {SETTINGS_VIEWS.map((item) => (
+                        <a
+                          key={item.id}
+                          href={`#${item.id}`}
+                          aria-current={route.view === item.id ? "page" : undefined}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            navigate({ view: item.id });
+                            setSettingsOpen(false);
+                          }}
+                        >
+                          {item.label}
+                        </a>
+                      ))}
+                      <button
+                        type="button"
+                        className="settings-menu-logout"
+                        onClick={() => {
                           setSettingsOpen(false);
+                          handleUnauthorized();
+                          void clearBrowserPush().catch(() => undefined);
+                          void authApi
+                            .logout()
+                            .then(() => {
+                              clearPendingLogout();
+                              setLogoutNotice(null);
+                            })
+                            .catch((error: unknown) => {
+                              if (error instanceof ApiError && error.status === 401) return;
+                              markPendingLogout();
+                              setLogoutNotice(
+                                "서버 로그아웃을 확인하지 못했습니다. 다음에 온라인으로 열 때 마저 로그아웃합니다",
+                              );
+                            })
+                            .finally(() => {
+                              queryClient.setQueryData(["auth", "me"], null);
+                              queryClient.removeQueries({
+                                predicate: (query) => query.queryKey[0] !== "auth",
+                              });
+                            });
                         }}
                       >
-                        {item.label}
-                      </a>
-                    ))}
-                    <button
-                      type="button"
-                      className="settings-menu-logout"
-                      onClick={() => {
-                        setSettingsOpen(false);
-                        handleUnauthorized();
-                        void clearBrowserPush().catch(() => undefined);
-                        void authApi
-                          .logout()
-                          .then(() => {
-                            clearPendingLogout();
-                            setLogoutNotice(null);
-                          })
-                          .catch((error: unknown) => {
-                            if (error instanceof ApiError && error.status === 401) return;
-                            markPendingLogout();
-                            setLogoutNotice(
-                              "서버 로그아웃을 확인하지 못했습니다. 다음에 온라인으로 열 때 마저 로그아웃합니다",
-                            );
-                          })
-                          .finally(() => {
-                            queryClient.setQueryData(["auth", "me"], null);
-                            queryClient.removeQueries({
-                              predicate: (query) => query.queryKey[0] !== "auth",
-                            });
-                          });
-                      }}
-                    >
-                      로그아웃
-                    </button>
-                  </nav>
-                )}
+                        로그아웃
+                      </button>
+                    </nav>
+                  )}
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
 
-          <main className="app-main" id="main" tabIndex={-1}>
-            {route.view === "price-watch" && <PriceWatchPage key={user?.id} />}
-            {route.view === "discover" && <DiscoverPage key={user?.id} />}
-            {route.view === "home" && (
-              <HomePage
-                onSelectProduct={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-                onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
-                onNavigate={(view) => navigate({ view })}
-              />
-            )}
-            {route.view === "products" && (
-              <ProductsPage
-                selectedProductId={route.productId ?? null}
-                context={route}
-                onSelectProduct={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-                onDeselectProduct={() => navigate({ view: "products" })}
-                initialCategoryId={route.categoryId}
-                initialVendorId={route.vendorId}
-                onOpenStoreMode={() => navigate({ view: "scan" })}
-              />
-            )}
-            {route.view === "scan" && (
-              <StoreModePage
-                onOpenDetail={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-              />
-            )}
-            {route.view === "categories" && (
-              <CategoriesPage
-                onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
-              />
-            )}
-            {route.view === "vendors" && (
-              <VendorsPage onSelectVendor={(id) => navigate({ view: "products", vendorId: id })} />
-            )}
-            {route.view === "sources" && <SettingsPage key={user?.id} />}
-            {route.view === "stats" && (
-              <StatsPage
-                onOpenQuality={() => navigate({ view: "quality" })}
-                onSelectProduct={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-                onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
-              />
-            )}
-            {route.view === "interests" && (
-              <InterestsPage
-                onSelectProduct={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-              />
-            )}
-            {route.view === "inventory" && (
-              <InventoryPage
-                onSelectProduct={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-              />
-            )}
-            {route.view === "quality" && (
-              <CollectionQualityPage
-                onSelectProduct={(id, context) =>
-                  navigate({ view: "products", productId: id, ...context })
-                }
-              />
-            )}
-            {route.view === "import" && <ImportPage />}
-            {route.view === "settings" && <SettingsPage key={user?.id} />}
-            {route.view === "status" && <HealthPanel />}
-          </main>
-        </div>
+            <main className="app-main" id="main" tabIndex={-1}>
+              <Suspense fallback={<LoadingState label="화면을 불러오는 중…" />}>
+                {route.view === "price-watch" && <PriceWatchPage key={user?.id} />}
+                {route.view === "discover" && <DiscoverPage key={user?.id} />}
+                {route.view === "home" && (
+                  <HomePage
+                    onSelectProduct={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                    onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+                    onNavigate={(view) => navigate({ view })}
+                  />
+                )}
+                {route.view === "products" && (
+                  <ProductsPage
+                    selectedProductId={route.productId ?? null}
+                    context={route}
+                    onSelectProduct={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                    onDeselectProduct={() => navigate({ view: "products" })}
+                    initialCategoryId={route.categoryId}
+                    initialVendorId={route.vendorId}
+                    onOpenStoreMode={() => navigate({ view: "scan" })}
+                  />
+                )}
+                {route.view === "scan" && (
+                  <StoreModePage
+                    onOpenDetail={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                  />
+                )}
+                {route.view === "categories" && (
+                  <CategoriesPage
+                    onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+                  />
+                )}
+                {route.view === "vendors" && (
+                  <VendorsPage
+                    onSelectVendor={(id) => navigate({ view: "products", vendorId: id })}
+                  />
+                )}
+                {route.view === "sources" && <SettingsPage key={user?.id} />}
+                {route.view === "stats" && (
+                  <StatsPage
+                    onOpenQuality={() => navigate({ view: "quality" })}
+                    onSelectProduct={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                    onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+                  />
+                )}
+                {route.view === "interests" && (
+                  <InterestsPage
+                    onSelectProduct={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                  />
+                )}
+                {route.view === "inventory" && (
+                  <InventoryPage
+                    onSelectProduct={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                  />
+                )}
+                {route.view === "quality" && (
+                  <CollectionQualityPage
+                    onSelectProduct={(id, context) =>
+                      navigate({ view: "products", productId: id, ...context })
+                    }
+                  />
+                )}
+                {route.view === "import" && <ImportPage />}
+                {route.view === "settings" && <SettingsPage key={user?.id} />}
+                {route.view === "status" && <HealthPanel />}
+              </Suspense>
+            </main>
+          </div>
+        </ConfirmProvider>
       </ToastProvider>
     </SyncStatusProvider>
   );

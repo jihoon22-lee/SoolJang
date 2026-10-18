@@ -4,7 +4,7 @@ export function DiscoverPage() {
   const { state } = useSyncStatus();
   return (
     <section>
-      <h1>술 탐색</h1>
+      <h2 className="page-title">술 탐색</h2>
       <DiscoveryPanel offline={state === "offline"} />
     </section>
   );

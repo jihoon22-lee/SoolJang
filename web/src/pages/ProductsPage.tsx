@@ -826,6 +826,12 @@ function ProductDetailView({
   const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const [editing, setEditing] = useState(false);
+  const productName = product?.name;
+  // 탭·방문 기록에서 어떤 술의 상세인지 알 수 있게 제품명을 제목에 넣는다(App 은 상세 제목을
+  // 정하지 않는다).
+  useEffect(() => {
+    document.title = `${productName ?? "술 상세"} · 술장`;
+  }, [productName]);
   const contextSignature = JSON.stringify(context);
   const [pendingPurchaseTarget, setPendingPurchaseTarget] = useState<{
     skuId: string;

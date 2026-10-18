@@ -93,7 +93,7 @@ export function InterestsPage({
     <section className="collection-page interest-page">
       <div className="interest-heading">
         <div>
-          <h1>관심 목록</h1>
+          <h2 className="page-title">관심 목록</h2>
           <p className="muted">
             다음에 경험할 술을 모으고 비교하세요. 관심 저장은 재고와 지출에 포함되지 않습니다.
           </p>

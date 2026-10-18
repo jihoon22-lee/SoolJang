@@ -661,6 +661,7 @@ describe("ProductsPage", () => {
 
     expect(await screen.findByRole("heading", { name: /상세 대상/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "← 목록으로" })).toBeInTheDocument();
+    expect(document.title).toBe("상세 대상 · 술장");
   });
 
   it("제품 상세에서 수정하면 필드가 갱신된다(온라인)", async () => {
