@@ -136,3 +136,52 @@ def test_purchase_request_id_reused_with_other_content_conflicts(
     ):
         response = api_client.post(f"{prefix}/purchases", json=body | changed)
         assert response.status_code == 409, changed
+
+
+def test_product_replay_is_judged_by_original_request_not_later_edits(
+    api_client: TestClient, prefix: str
+) -> None:
+    """만든 뒤 고친 제품도 처음 요청의 재전송은 같은 제품이고, 고친 값으로 보낸 요청은 409다."""
+    request_id = str(uuid.uuid4())
+    original = _product(api_client, prefix, request_id)
+    sku_id = original["skus"][0]["id"]
+    assert api_client.patch(f"{prefix}/skus/{sku_id}", json={"volume_ml": 750}).status_code == 200
+    assert (
+        api_client.patch(f"{prefix}/products/{original['id']}", json={"abv": "43"}).status_code
+        == 200
+    )
+
+    retried = _product(api_client, prefix, request_id)
+    edited = api_client.post(
+        f"{prefix}/products",
+        json={
+            "name": "멱등 위스키",
+            "abv": "43",
+            "skus": [{"volume_ml": 750}],
+            "request_id": request_id,
+        },
+    )
+
+    assert retried["id"] == original["id"]
+    assert edited.status_code == 409
+
+
+def test_purchase_replay_is_judged_by_original_request_not_later_edits(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = _product(api_client, prefix, str(uuid.uuid4()))
+    body = {"sku_id": product["skus"][0]["id"], "quantity": 1, "request_id": str(uuid.uuid4())}
+    created = api_client.post(f"{prefix}/purchases", json=body).json()
+    assert (
+        api_client.patch(f"{prefix}/purchases/{created['id']}", json={"quantity": 2}).status_code
+        == 200
+    )
+
+    retried = api_client.post(f"{prefix}/purchases", json=body)
+    edited = api_client.post(f"{prefix}/purchases", json=body | {"quantity": 2})
+
+    assert retried.status_code == 201, retried.text
+    assert retried.json()["id"] == created["id"]
+    assert edited.status_code == 409
+    bottles = api_client.get(f"{prefix}/purchases/{created['id']}/bottles").json()
+    assert len(bottles) == 2

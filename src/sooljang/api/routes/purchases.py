@@ -12,7 +12,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.deps import SessionDep, UserDep
 from sooljang.api.errors import ConflictError, NotFoundError, ValidationFailedError
@@ -31,6 +30,11 @@ from sooljang.api.schemas.product import (
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
 from sooljang.application.corrections import correct_purchase_sku
+from sooljang.application.create_receipts import (
+    ensure_same_request,
+    request_fingerprint,
+    save_request,
+)
 from sooljang.application.history import changes, entity_history, log_event
 from sooljang.application.skus import load_live_sku_for_write
 from sooljang.application.tasting_context import correction_purchase_context
@@ -287,27 +291,6 @@ async def list_purchases(
     ]
 
 
-async def _replays_create(session: AsyncSession, replay: Purchase, payload: PurchaseCreate) -> bool:
-    """같은 요청 식별자의 재전송인지 판단한다. 내용이 다르면 처음 결과로 덮지 않고 거부한다."""
-    created_bottles = await session.scalar(
-        select(func.count()).select_from(Bottle).where(Bottle.purchase_id == replay.id)
-    )
-    return (
-        (replay.sku_id, replay.vendor_id, replay.purchased_on, replay.quantity)
-        == (payload.sku_id, payload.vendor_id, payload.purchased_on, payload.quantity)
-        and (replay.unit_list_price, replay.unit_paid_price)
-        == (payload.unit_list_price, payload.unit_paid_price)
-        and (replay.currency, replay.fx_rate, replay.foreign_unit_price, replay.discount_note)
-        == (
-            payload.currency.upper(),
-            payload.fx_rate,
-            payload.foreign_unit_price,
-            payload.discount_note,
-        )
-        and bool(created_bottles) == payload.create_bottles
-    )
-
-
 @purchases_router.post(
     "", response_model=PurchaseOut, status_code=status.HTTP_201_CREATED, summary="구매 건 등록"
 )
@@ -325,13 +308,23 @@ async def create_purchase(
         if payload.request_id
         else uuid.uuid4()
     )
+    fingerprint = request_fingerprint(
+        payload.model_dump(exclude={"request_id"}) | {"currency": payload.currency.upper()}
+    )
     if payload.request_id:
         replay = await session.scalar(
             select(Purchase).where(Purchase.id == purchase_id, Purchase.user_id == user_id)
         )
         if replay is not None:
-            if replay.deleted_at is not None or not await _replays_create(session, replay, payload):
-                raise ConflictError("같은 요청 식별자로 다른 구매를 기록할 수 없습니다")
+            await ensure_same_request(
+                session,
+                user_id=user_id,
+                kind="purchase",
+                request_id=payload.request_id,
+                fingerprint=fingerprint,
+            )
+            if replay.deleted_at is not None:
+                raise ConflictError("이 요청으로 만든 구매 건은 이미 삭제되었습니다")
             return await _to_purchase_out(session, replay)
     await load_live_sku_for_write(session, user_id=user_id, sku_id=payload.sku_id)
     if payload.vendor_id is not None:
@@ -356,7 +349,16 @@ async def create_purchase(
 
     if payload.create_bottles:
         _add_bottles(session, user_id, purchase, count=payload.quantity, start=1)
-        await session.flush()
+    if payload.request_id:
+        save_request(
+            session,
+            user_id=user_id,
+            kind="purchase",
+            request_id=payload.request_id,
+            entity_id=purchase.id,
+            fingerprint=fingerprint,
+        )
+    await session.flush()
 
     return await _to_purchase_out(session, purchase)
 
