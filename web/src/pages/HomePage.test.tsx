@@ -151,9 +151,7 @@ describe("HomePage", () => {
     expect(await screen.findByText("400ml 남음 · 2026-01-02 개봉")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "보관·실사 병 위치와 재고 확인" }));
     expect(onNavigate).toHaveBeenCalledWith("inventory");
-    await userEvent.click(
-      screen.getByRole("button", { name: "매장 모드 바코드로 보유·가격 확인" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "매장 모드 바코드로 보유 확인" }));
     expect(onNavigate).toHaveBeenCalledWith("scan");
 
     await userEvent.click(screen.getByRole("button", { name: "오늘 마셨어요" }));

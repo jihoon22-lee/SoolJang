@@ -2444,7 +2444,13 @@ legend {
 
 .inventory-table select {
   min-height: var(--control-h-sm);
+  /* 좁은 화면에서도 선택한 위치 이름이 보이게 한다. 없으면 술 이름 칸에 밀려 화살표만 남는다. */
+  min-width: 6rem;
   padding-block: 4px;
+}
+
+.inventory-table td:last-child {
+  white-space: nowrap;
 }
 
 /* --- v1.8.0 디자인 정비: 위계·밀도·모바일 ---------------------------------------- */

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activateDatabase, db, lockDatabase } from "@/sync/db";
@@ -555,8 +555,10 @@ it("받기에 실패했으면 빈 대기열 패널에서 문제가 없다고 표
   ]);
   renderBadge();
   await userEvent.click(await screen.findByRole("button", { name: "동기화 확인 필요" }));
-  expect(await screen.findByRole("dialog", { name: "동기화 문제" })).toBeInTheDocument();
+  const dialog = await screen.findByRole("dialog", { name: "동기화 문제" });
   expect(screen.queryByText("확인할 문제가 없습니다.")).not.toBeInTheDocument();
+  // 오류 문구는 헤더 줄이 아니라 패널 안에 있어야 좁은 화면에서 배지·설정을 밀어내지 않는다.
+  expect(within(dialog).getByRole("alert")).toBeInTheDocument();
 });
 
 it("원본 읽기 직후 로그아웃하면 내보내기 파일을 만들지 않는다", async () => {

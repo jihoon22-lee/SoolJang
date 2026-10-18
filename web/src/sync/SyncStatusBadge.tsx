@@ -179,7 +179,6 @@ export function SyncStatusBadge() {
       </button>
       {/* 마지막 항목을 확인/건너뛴 직후에도 "확인할 게 없습니다" 를 보여줘야 하므로
           opensPanel 이 아니라 panelOpen 에만 걸어 둔다. */}
-      {panelOpen && lastError && <p role="alert">{lastError}</p>}
       {panelOpen && (
         <SyncIssuesPanel onClose={() => setPanelOpen(false)} returnFocusRef={badgeRef} />
       )}
@@ -390,6 +389,8 @@ function SyncIssuesPanel({
         </button>
       </div>
 
+      {/* 헤더 줄 안에 두면 좁은 화면에서 배지·설정 버튼을 밀어낸다. 패널 안에서 알린다. */}
+      {lastError && <p role="alert">{lastError}</p>}
       {resolveError && <p role="alert">{resolveError}</p>}
       {editingEntry && (
         <form

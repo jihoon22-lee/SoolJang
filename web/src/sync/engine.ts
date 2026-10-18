@@ -252,7 +252,7 @@ export class SyncEngine {
       if (queue.length === 0) return;
       const failedIndex = queue.findIndex((entry) => entry.status === "failed");
       if (failedIndex === 0)
-        throw new Error("실패한 명령을 수정하거나 의존 항목과 함께 폐기하세요");
+        throw new Error("실패한 입력을 고치거나, 연결된 입력과 함께 건너뛰세요");
       const candidates = queue.slice(
         0,
         Math.min(BATCH_SIZE, failedIndex < 0 ? queue.length : failedIndex),
