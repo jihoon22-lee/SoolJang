@@ -243,3 +243,37 @@ def test_recently_deleted_tastings_hides_records_of_deleted_products(
     assert api_client.delete(f"{prefix}/products/{setup['product_id']}").status_code == 204
 
     assert api_client.get(f"{prefix}/tastings/deleted").json() == []
+
+
+def test_purchase_delete_locks_purchase_before_its_bottles(
+    api_client: TestClient, prefix: str
+) -> None:
+    """병수 수정과 같은 구매 → 병 순서로 잠가 두 기기의 수정·삭제가 교착하지 않게 한다."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    import psycopg
+
+    from sooljang.config import get_settings
+
+    setup = _purchase_with_bottles(api_client, prefix, quantity=1)
+    url = str(get_settings().database_url).replace("postgresql+psycopg://", "postgresql://")
+    # 실패해도 연결이 먼저 닫혀(잠금 해제) 기다리던 요청이 끝나도록 pool 을 바깥에 둔다.
+    with (
+        ThreadPoolExecutor(1) as pool,
+        psycopg.connect(url) as resize,
+        psycopg.connect(url, autocommit=True) as probe,
+    ):
+        resize.execute("SELECT id FROM purchase WHERE id = %s FOR UPDATE", (setup["purchase_id"],))
+        pending = pool.submit(api_client.delete, f"{prefix}/purchases/{setup['purchase_id']}")
+        time.sleep(1)
+        assert not pending.done(), "삭제가 구매 행 잠금을 기다리지 않았다"
+        # 삭제가 병을 먼저 잠갔다면 이 조회가 바로 실패한다(교착의 반쪽).
+        probe.execute(
+            "SELECT id FROM bottle WHERE purchase_id = %s FOR UPDATE NOWAIT",
+            (setup["purchase_id"],),
+        )
+        resize.commit()
+        response = pending.result(timeout=30)
+
+    assert response.status_code == 204, response.text

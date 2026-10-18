@@ -448,7 +448,9 @@ async def purchase_history(
 )
 async def delete_purchase(purchase_id: uuid.UUID, session: SessionDep, user_id: UserDep) -> None:
     """구매 건과 그에 속한 병을 함께 soft delete 한다. 시음이 붙은 병이 있으면 409다."""
-    purchase = await _owned_purchase(session, user_id, purchase_id)
+    await _owned_purchase(session, user_id, purchase_id)
+    # 병수 수정·동기화 삭제와 같은 구매 → 병 순서로 잠가 두 기기의 요청이 교착하지 않게 한다.
+    purchase = await owned(session, Purchase, user_id, purchase_id)
     now = datetime.datetime.now(datetime.UTC)
     await delete_purchase_bottles(session, purchase_id, now=now)
     purchase.deleted_at = now
