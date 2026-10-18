@@ -1,10 +1,11 @@
 """인증 경계: 위조한 X-Forwarded-For, 운영 Secure 쿠키, 동시 로그인 시도 제한."""
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.routes import auth as auth_routes
 from sooljang.application.auth import (
@@ -81,9 +82,9 @@ async def test_concurrent_failed_logins_cannot_exceed_the_limit(
     results = await asyncio.gather(
         *(
             authenticate(
-                _SlowLookupSession(),  # type: ignore[arg-type]
+                cast(AsyncSession, _SlowLookupSession()),
                 email="target@example.com",
-                password="틀린비밀번호1234",
+                password=f"{TEST_PASSWORD}-wrong",
                 client_ip="198.51.100.7",
             )
             for _ in range(10)
@@ -112,11 +113,30 @@ def test_rate_limiter_drops_expired_keys_when_many_accumulate(
     assert list(limiter._attempts) == ["ip:new"]  # noqa: SLF001
 
 
-def test_rate_limiter_cap_holds_even_when_all_keys_are_recent() -> None:
-    limiter = LoginRateLimiter(max_keys=5)
-    for index in range(20):
-        limiter.acquire(f"ip:{index}")
-    limiter.acquire("ip:0")
+def test_rate_limiter_cap_never_evicts_locked_keys_and_fails_closed() -> None:
+    limiter = LoginRateLimiter(max_attempts=2, max_keys=3)
+    for _ in range(2):
+        limiter.acquire("email:victim")
+    limiter.acquire("ip:a")
+    limiter.acquire("ip:b")
 
-    assert len(limiter._attempts) == 5  # noqa: SLF001
-    assert "ip:0" in limiter._attempts  # noqa: SLF001
+    # 가득 찬 상태에서 새 키는 잠기지 않은 키 중 시도가 적은 것을 밀어낸다.
+    limiter.acquire("ip:c")
+    assert "email:victim" in limiter._attempts  # noqa: SLF001
+    assert len(limiter._attempts) == 3  # noqa: SLF001
+    for key in ("ip:b", "ip:c"):
+        if key in limiter._attempts:  # noqa: SLF001
+            limiter.acquire(key)
+    # 남은 키가 모두 잠기면 새 키를 받지 않는다.
+    with pytest.raises(RateLimitedError):
+        limiter.acquire("ip:flood")
+    with pytest.raises(RateLimitedError):
+        limiter.acquire("email:victim")
+
+
+def test_ipv6_addresses_in_one_prefix_share_a_limit() -> None:
+    from sooljang.application.auth import _address_group
+
+    assert _address_group("2001:db8:1:2::1") == _address_group("2001:db8:1:2:ffff::9")
+    assert _address_group("2001:db8:1:3::1") != _address_group("2001:db8:1:2::1")
+    assert _address_group("198.51.100.7") == "198.51.100.7"

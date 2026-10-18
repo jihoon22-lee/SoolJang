@@ -11,6 +11,7 @@ import asyncio
 import datetime
 import hashlib
 import hmac
+import ipaddress
 import secrets
 import time
 import uuid
@@ -123,19 +124,28 @@ class LoginRateLimiter:
             self._attempts.pop(key, None)
         return recent
 
-    def _prune(self, now: float) -> None:
-        """상한을 넘었을 때만 정리한다. 만료 키를 지워도 넘치면 가장 오래 쓰지 않은 키부터 버린다.
+    def _make_room(self, now: float, keys: list[str]) -> None:
+        """새 키를 넣을 자리를 만든다. 넘치면 만료 키 → 시도가 적고 오래된 키 순으로 버린다.
 
-        키는 기록할 때마다 맨 뒤로 옮기므로 dict 의 앞쪽이 가장 오래된 키다. 한 주소는
-        8회 뒤 IP 키에서 막혀 이메일 키를 더 만들 수 없으므로, 상한을 채우려면 많은 주소가
-        필요하다.
+        제한에 걸린 키는 절대 버리지 않는다(버리면 키를 쏟아부어 잠금을 풀 수 있다). 버릴 수
+        있는 키가 없으면 새 키를 받지 않고 거부한다(fail closed).
         """
-        if len(self._attempts) <= self.max_keys:
+        new = [key for key in keys if key not in self._attempts]
+        if len(self._attempts) + len(new) <= self.max_keys:
             return
         for key in list(self._attempts):
             self._recent(key, now)
-        while len(self._attempts) > self.max_keys:
-            del self._attempts[next(iter(self._attempts))]
+        evictable = sorted(
+            (
+                (len(stamps), stamps[-1], key)
+                for key, stamps in self._attempts.items()
+                if len(stamps) < self.max_attempts and key not in keys
+            ),
+        )
+        while len(self._attempts) + len(new) > self.max_keys and evictable:
+            del self._attempts[evictable.pop(0)[2]]
+        if len(self._attempts) + len(new) > self.max_keys:
+            raise RateLimitedError(self.window_seconds)
 
     def check(self, *keys: str | None) -> None:
         """제한을 넘었으면 예외를 던진다."""
@@ -156,16 +166,15 @@ class LoginRateLimiter:
         통과해 제한 없이 시도할 수 있다. 시도를 먼저 세고 성공하면 `reset` 으로 지운다.
         """
         self.check(*keys)
+        self._make_room(time.monotonic(), [key for key in keys if key is not None])
         self.record_failure(*keys)
-        self._prune(time.monotonic())
 
     def record_failure(self, *keys: str | None) -> None:
         now = time.monotonic()
         for key in keys:
             if key is None:
                 continue
-            # 맨 뒤로 옮겨 최근에 쓴 키가 상한 정리에서 마지막에 버려지게 한다.
-            self._attempts[key] = [*self._attempts.pop(key, []), now]
+            self._attempts.setdefault(key, []).append(now)
 
     def reset(self, *keys: str | None) -> None:
         """로그인 성공 시 카운터를 비운다."""
@@ -176,6 +185,17 @@ class LoginRateLimiter:
 
 #: 프로세스 전역 레이트 리미터. 테스트는 `reset_rate_limiter()` 로 초기화한다.
 _rate_limiter = LoginRateLimiter()
+
+
+def _address_group(client_ip: str) -> str:
+    """IPv6 는 /64 단위로 묶는다. 한 사용자가 받는 대역 안에서 주소를 바꿔 키를 늘리지 못한다."""
+    try:
+        address = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return client_ip
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
 
 
 def get_rate_limiter() -> LoginRateLimiter:
@@ -234,7 +254,8 @@ async def authenticate(
     """
     limiter = get_rate_limiter()
     normalized = normalize_email(email)
-    limiter.acquire(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    ip_key = f"ip:{_address_group(client_ip)}" if client_ip else None
+    limiter.acquire(f"email:{normalized}", ip_key)
 
     user = await find_user_by_email(session, normalized)
     # Argon2 확인은 수십 ms 동안 CPU 를 쓴다. 이벤트 루프에서 돌리면 그동안 다른 요청이 멈춘다.
@@ -249,7 +270,7 @@ async def authenticate(
         # Argon2 파라미터가 올라갔다. 로그인 시점에 조용히 갱신한다.
         user.password_hash = hash_password(password)
 
-    limiter.reset(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    limiter.reset(f"email:{normalized}", ip_key)
     user.last_login_at = datetime.datetime.now(datetime.UTC)
     await session.flush()
     return user
