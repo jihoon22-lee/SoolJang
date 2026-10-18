@@ -1,12 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
+import { type PriceHistoryRow, priceWatchApi } from "@/api/priceWatch";
 import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import { InterestEditor } from "@/components/InterestEditor";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { publicLink } from "@/discovery/useDiscovery";
-import { todayLocal } from "@/format";
+import { formatMoney, todayLocal } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { databaseIdentity } from "@/sync/db";
@@ -374,40 +375,104 @@ export function InterestsPage({
           <button type="button" onClick={() => setSelected([])}>
             비교 선택 해제
           </button>
-          <div className="table-scroll table-scroll--always">
-            <table>
-              <thead>
-                <tr>
-                  <th>항목</th>
-                  {comparisons.map((row) => (
-                    <th key={row.id}>{row.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(
-                  [
-                    ["용량", (row: Interest) => row.identity.volumes_ml?.join(" / ") || "미상"],
-                    ["도수", (row: Interest) => row.identity.abv ?? "미상"],
-                    ["빈티지", (row: Interest) => row.identity.vintage ?? "미상"],
-                    ["노트", (row: Interest) => row.note || "없음"],
-                  ] as const
-                ).map(([label, value]) => (
-                  <tr key={label}>
-                    <th>{label}</th>
-                    {comparisons.map((row) => (
-                      <td key={row.id}>{value(row)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <InterestComparison interests={comparisons} online={online} />
         </section>
       )}
     </section>
   );
 }
+/** 가장 최근에 실제로 저장한 가격 관측. 관측 전 가격은 추정하지 않는다. */
+export function latestObservation(rows: readonly PriceHistoryRow[]): PriceHistoryRow | null {
+  return rows.reduce<PriceHistoryRow | null>(
+    (latest, row) => (!latest || row.fetched_at > latest.fetched_at ? row : latest),
+    null,
+  );
+}
+
+/**
+ * 관측가의 100ml당 원화 가격. 용량·수량이 확인된 원화 관측만 계산한다. 정가 기준
+ * `price_per_100ml`과 다른 값이라 화면에서도 "관측가"로 구분한다.
+ */
+export function observedPricePer100ml(row: PriceHistoryRow): number | null {
+  const volume = Number(row.facts.volume_ml);
+  const units = Number(row.facts.units ?? 1);
+  const amount = Number(row.amount);
+  if (row.currency !== "KRW" || !(volume > 0) || !(units > 0) || !Number.isFinite(amount))
+    return null;
+  return (amount / (volume * units)) * 100;
+}
+
+function InterestComparison({
+  interests,
+  online,
+}: {
+  interests: readonly Interest[];
+  online: boolean;
+}) {
+  const userId = databaseIdentity().userId;
+  const histories = useQueries({
+    queries: interests.map((row) => ({
+      // 가격 이력 패널과 같은 키라 이미 연 이력은 다시 받지 않는다.
+      queryKey: ["price-history", userId, row.id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => priceWatchApi.history(row.id, signal),
+      enabled: online && Boolean(userId),
+    })),
+  });
+  const observed = (index: number) => {
+    const history = histories[index];
+    if (!online) return { text: "온라인에서 확인", per100: "온라인에서 확인" };
+    if (!history || history.isPending) return { text: "불러오는 중…", per100: "불러오는 중…" };
+    if (history.isError) return { text: "불러오지 못함", per100: "불러오지 못함" };
+    const latest = latestObservation(history.data ?? []);
+    if (!latest) return { text: "관측 없음", per100: "관측 없음" };
+    const per100 = observedPricePer100ml(latest);
+    return {
+      text: `${latest.currency === "KRW" ? formatMoney(latest.amount) : `${latest.amount} ${latest.currency}`} · ${latest.source_name} · ${new Date(latest.fetched_at).toLocaleDateString("ko-KR")}`,
+      per100: per100 === null ? "계산 불가(원화·용량·수량 미확인)" : formatMoney(per100.toFixed(2)),
+    };
+  };
+  const rows: [string, (row: Interest, index: number) => ReactNode][] = [
+    ["용량", (row) => row.identity.volumes_ml?.join(" / ") || "미상"],
+    ["도수", (row) => row.identity.abv ?? "미상"],
+    ["빈티지", (row) => row.identity.vintage ?? "미상"],
+    [
+      "숙성 연수",
+      (row) => (row.identity.age_years != null ? `${row.identity.age_years}년` : "미상"),
+    ],
+    ["최근 관측가", (_row, index) => observed(index).text],
+    ["관측가 100ml당", (_row, index) => observed(index).per100],
+    ["노트", (row) => row.note || "없음"],
+  ];
+  return (
+    <div className="table-scroll table-scroll--always">
+      <table>
+        <thead>
+          <tr>
+            <th>항목</th>
+            {interests.map((row) => (
+              <th key={row.id}>{row.name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, value]) => (
+            <tr key={label}>
+              <th>{label}</th>
+              {interests.map((row, index) => (
+                <td key={row.id}>{value(row, index)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted text-sm">
+        관측가는 판매처에서 실제로 조회해 저장한 최근 가격이며 판매 조건이 서로 다를 수 있습니다.
+        100ml당 값은 그 관측의 용량·수량으로만 계산합니다.
+      </p>
+    </div>
+  );
+}
+
 /** 행 아래에 펼치는 수정·삭제 확인·구매 전환. 연 행으로 화면을 옮겨 목록 끝까지 찾지 않게 한다. */
 function RowPanel({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);

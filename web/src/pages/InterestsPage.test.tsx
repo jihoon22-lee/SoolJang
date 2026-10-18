@@ -4,8 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, interestsApi } from "@/api/interests";
+import { type PriceHistoryRow, priceWatchApi } from "@/api/priceWatch";
 import { todayLocal } from "@/format";
-import { InterestsPage } from "@/pages/InterestsPage";
+import { InterestsPage, latestObservation, observedPricePer100ml } from "@/pages/InterestsPage";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery } from "@/testing";
@@ -266,4 +267,59 @@ it("수정·삭제 확인·구매 전환은 누른 관심 행 아래에 펼치�
   expect(within(first).queryByRole("region", { name: "관심 삭제 확인" })).toBeNull();
   expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});
+
+const observation = (overrides: Partial<PriceHistoryRow>): PriceHistoryRow => ({
+  id: "obs",
+  offer_id: "offer",
+  source_id: "source",
+  source_name: "합성 판매처",
+  condition_key: "c",
+  amount: "70000",
+  currency: "KRW",
+  source_url: "https://example.com/p",
+  fetched_at: "2026-10-01T00:00:00Z",
+  facts: { volume_ml: 700, units: 1 },
+  ...overrides,
+});
+
+it("관측가 100ml당은 용량·수량이 확인된 원화 관측만 계산한다", () => {
+  expect(observedPricePer100ml(observation({}))).toBe(10000);
+  expect(observedPricePer100ml(observation({ facts: { volume_ml: 500, units: 2 } }))).toBe(7000);
+  expect(observedPricePer100ml(observation({ facts: { units: 1 } }))).toBeNull();
+  expect(observedPricePer100ml(observation({ currency: "USD" }))).toBeNull();
+  expect(
+    latestObservation([
+      observation({ id: "old" }),
+      observation({ id: "new", fetched_at: "2026-10-05T00:00:00Z" }),
+    ])?.id,
+  ).toBe("new");
+  expect(latestObservation([])).toBeNull();
+});
+
+it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함께 보인다", async () => {
+  vi.mocked(interestsApi.list).mockResolvedValue([
+    { ...item, identity: { ...item.identity, age_years: "12" } },
+    { ...item, id: "interest-2", name: "다른 몰트", identity: { name: "다른 몰트" }, note: null },
+  ]);
+  vi.spyOn(priceWatchApi, "history").mockImplementation(async (interestId) =>
+    interestId === item.id
+      ? [
+          observation({ id: "old", amount: "80000" }),
+          observation({ id: "new", fetched_at: "2026-10-05T00:00:00Z" }),
+        ]
+      : [],
+  );
+  renderPage();
+  for (const choice of await screen.findAllByLabelText("비교 선택")) await userEvent.click(choice);
+
+  const table = screen.getByRole("table");
+  expect(within(table).getByRole("row", { name: /숙성 연수/ })).toHaveTextContent("12년");
+  await waitFor(() =>
+    expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent(
+      "70,000원 · 합성 판매처",
+    ),
+  );
+  expect(within(table).getByRole("row", { name: /관측가 100ml당/ })).toHaveTextContent("10,000원");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent("관측 없음");
 });
