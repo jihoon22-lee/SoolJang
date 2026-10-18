@@ -331,4 +331,11 @@ R4 위에 쌓았다. 스키마·API 경로 변경 없음(새 제품 전환 요�
 - 전체: R4 위로 rebase 후 `sooljang_test` 단독 실행 pytest 1,749 passed / 30 skipped, branch coverage
   92.44%. `ruff check`·`ruff format --check`·`ty check`·`scan-secrets.sh` 통과. 웹 코드는 rebase로 바뀌지
   않아 rebase 전 웹 check 결과를 유지한다.
-- 미실행: 실브라우저(탐색 출처 고정·초안 복원 화면), CI(PR 생성 후 확인).
+- 미실행: 실브라우저(탐색 출처 고정·초안 복원 화면).
+
+### PR 자동 리뷰 반영
+
+Codex 리뷰 1건(P2): 새 관심에서 후보 A를 고른 뒤 **같은 출처**의 후보 B로 바꾸면 고정·근거는 B인데 제품명·
+용량은 A로 남아 잘못된 식별값과 외부 고정이 함께 저장됐다. 식별값을 정한 출처(`identitySource`)를 기억해
+그 출처에서 후보를 바꾸면 식별값도 바꾸고, 다른 출처를 더할 때만 처음 식별값을 지킨다.
+- RED→GREEN: `DiscoveryPanel.test.tsx` 같은 출처 후보 교체 1건(수정 전 실패).
