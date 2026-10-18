@@ -388,3 +388,13 @@ it("첫 화면은 인사이트이고 기존 합계·집계·피벗은 보조 보
   expect(await screen.findByRole("heading", { name: "전체 합계" })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "피벗·추이" })).toBeInTheDocument();
 });
+
+it("근거를 보고 돌아와 다시 마운트해도 고른 통계 탭을 유지한다", async () => {
+  const first = renderStatsPage();
+  await openSection("랭킹");
+  expect(screen.getByRole("tab", { name: "랭킹" })).toHaveAttribute("aria-selected", "true");
+  first.unmount();
+
+  renderStatsPage();
+  expect(await screen.findByRole("tab", { name: "랭킹" })).toHaveAttribute("aria-selected", "true");
+});

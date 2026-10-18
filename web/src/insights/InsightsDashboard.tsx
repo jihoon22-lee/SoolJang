@@ -11,6 +11,7 @@ import {
 import { loadInsightSnapshot } from "@/insights/load";
 import type { ProductContext } from "@/router";
 import "@/insights/insights.css";
+import { useViewState } from "@/viewState";
 
 type SelectProduct = (productId: string, context?: ProductContext) => void;
 function EvidenceList({
@@ -112,10 +113,15 @@ export function InsightsDashboard({
       };
     }
   }, []);
-  const [filters, setFilters] = useState(() => initialFilters(today));
-  const [dimension, setDimension] = useState<RatingDimension>("category"),
-    [ratingLabel, setRatingLabel] = useState("");
-  const [priceKey, setPriceKey] = useState("");
+  // 근거 → 제품 → 뒤로 와도 기간·필터·선택을 유지한다(같은 탭 세션, 계정별).
+  const [filters, setFilters] = useViewState("insights:filters", initialFilters(today));
+  const [dimension, setDimension] = useViewState<RatingDimension>(
+      "insights:dimension",
+      "category",
+      ["category", "producer", "region", "price"],
+    ),
+    [ratingLabel, setRatingLabel] = useViewState("insights:rating-label", "");
+  const [priceKey, setPriceKey] = useViewState("insights:price-key", "");
   const invalid = Boolean(filters.from && filters.to && filters.from > filters.to);
   const data = useMemo(
     () => (source?.data ? calculateInsights(source.data.snapshot, filters, today) : null),
