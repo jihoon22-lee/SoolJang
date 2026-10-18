@@ -435,6 +435,9 @@ async def delete_category(
     (`docs/architecture.md` §2.3 삭제 정책).
     """
     category = await _load_owned(session, user_id, category_id, "대상")
+    if reassign_to == category_id:
+        # 자기 자신으로 옮기면 제품이 곧 삭제될 주종을 계속 가리켜 목록·통계에서 사라진다.
+        raise CategoryCycleError("삭제할 주종으로는 제품을 옮길 수 없습니다")
 
     children = await _child_ids(session, category_id)
     if children:

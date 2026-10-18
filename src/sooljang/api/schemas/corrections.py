@@ -42,6 +42,12 @@ class ContextualTasting(TastingOut):
     bottle: BottleSnapshot | None
 
 
+class DeletedTasting(ContextualTasting):
+    """최근 삭제한 시음. 복구 요청의 `expected_updated_at`으로 `updated_at`을 쓴다."""
+
+    deleted_at: datetime.datetime
+
+
 class ContextualTastingPage(BaseModel):
     items: list[ContextualTasting]
     next_cursor: str | None = None

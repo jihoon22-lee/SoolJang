@@ -307,3 +307,28 @@ def test_failed_row_does_not_break_later_rows_sharing_its_new_references(
 def _first_row_bottles() -> int:
     # 픽스처 첫 행은 1병짜리 구매다(`sample_sheet.csv`).
     return 1
+
+
+def test_blank_volume_row_fails_instead_of_dropping_purchases(
+    api_client: TestClient, prefix: str
+) -> None:
+    from sooljang.infrastructure.legacy.blocks import MAIN_HEADER
+
+    cells = [""] * 20
+    cells[0] = "용량 공란 합성 위스키"
+    cells[3] = "싱글몰트 위스키"
+    cells[10:15] = ["2", "0", "2", "2", "0"]
+    sheet = "\n".join(",".join(row) for row in (MAIN_HEADER, cells)).encode("cp949")
+
+    response = api_client.post(
+        f"{prefix}/imports/legacy:commit",
+        files={"file": ("blank_volume.csv", sheet, "text/csv")},
+    )
+
+    assert response.status_code in {200, 201}, response.text
+    result = response.json()
+    assert [reason for _, reason in result["failed_rows"]] == [
+        "용량이 비어 있어 구매·병을 만들 수 없습니다. 용량을 채워 다시 가져오세요"
+    ]
+    assert result["products_created"] == 0
+    assert result["bottles_created"] == 0

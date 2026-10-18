@@ -133,7 +133,7 @@ export function TastingRow({
       };
       toast.show({
         message:
-          "시음 기록을 삭제했습니다. 잔량은 그대로입니다. 다시 입력하면 새로 따른 양만큼 차감됩니다.",
+          "시음 기록을 삭제했습니다. 잔량은 그대로입니다. 30일 안에는 데이터 품질 화면의 최근 삭제한 시음에서도 복구할 수 있습니다.",
         actionLabel: "기록 복구",
         onAction: restore,
         durationMs: 60_000,

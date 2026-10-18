@@ -20,6 +20,7 @@ from sooljang.api.schemas.corrections import (
     BottleCorrectionContext,
     ContextualTasting,
     ContextualTastingPage,
+    DeletedTasting,
     TastingCorrection,
 )
 from sooljang.api.schemas.tasting import (
@@ -37,7 +38,12 @@ from sooljang.application.bottle_commands import require_no_tasting, require_rev
 from sooljang.application.corrections import correct_tasting
 from sooljang.application.history import bottle_history
 from sooljang.application.skus import load_live_sku_for_write
-from sooljang.application.tasting_context import bottle_context, contextual_tastings, owned_tasting
+from sooljang.application.tasting_context import (
+    bottle_context,
+    contextual_tastings,
+    owned_tasting,
+    recently_deleted_tastings,
+)
 from sooljang.application.tasting_lifecycle import change_tasting_visibility
 from sooljang.application.tastings import (
     BottleTransitionError,
@@ -473,6 +479,21 @@ async def timeline_page(
         ],
         next_cursor=page.next_cursor,
     )
+
+
+@tastings_router.get(
+    "/deleted", response_model=list[DeletedTasting], summary="최근 삭제한 시음(복구 가능)"
+)
+async def deleted_tastings(
+    session: SessionDep,
+    user_id: UserDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[DeletedTasting]:
+    """30일 안에 지운 시음 중 복구할 수 있는 것. 복구는 `POST /tastings/{id}:restore`."""
+    return [
+        DeletedTasting.model_validate(row)
+        for row in await recently_deleted_tastings(session, user_id, limit=limit)
+    ]
 
 
 @tastings_router.get("/{tasting_id}", response_model=ContextualTasting)

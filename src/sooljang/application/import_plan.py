@@ -245,6 +245,8 @@ def _plan_product(record: LegacyRecord) -> PlannedProduct:
         )
 
     purchases = _plan_purchases(record, shares)
+    if record.volume_ml is None and record.purchased_count > 0:
+        warnings.append("용량이 비어 있어 이 행의 구매·병은 적재하지 않고 실패로 남깁니다")
 
     return PlannedProduct(
         line_number=record.line_number,
@@ -284,26 +286,28 @@ def _plan_purchases(record: LegacyRecord, shares: list[VendorShare]) -> list[Pla
         "discount_note": record.note,
     }
 
-    if not shares:
-        # 분할하지 않은 경우. 구매처 원문을 그대로 보존한다.
-        raw_vendors = "\n".join(record.vendors) if record.vendors else None
-        return [
-            PlannedPurchase(
-                vendor_name=record.vendors[0] if len(record.vendors) == 1 else None,
-                quantity=record.purchased_count,
-                import_note=raw_vendors if raw_vendors and "\n" in raw_vendors else None,
-                unopened=record.unopened_count,
-                opened=record.opened_count,
-                finished=record.consumed_count,
-                **common,  # type: ignore[arg-type]
-            )
-        ]
-
     remaining = {
         "unopened": record.unopened_count,
         "opened": record.opened_count,
         "finished": record.consumed_count,
     }
+    if not shares:
+        # 분할하지 않은 경우. 구매처 원문을 그대로 보존한다. 병 수는 분할 경로와 같은 규칙으로
+        # 구매 병수에 맞춘다 — 시트의 상태 합계가 어긋나면 구매 2병에 병 3개가 생겼다.
+        raw_vendors = "\n".join(record.vendors) if record.vendors else None
+        allotted = _allot(remaining, record.purchased_count)
+        return [
+            PlannedPurchase(
+                vendor_name=record.vendors[0] if len(record.vendors) == 1 else None,
+                quantity=record.purchased_count,
+                import_note=raw_vendors if raw_vendors and "\n" in raw_vendors else None,
+                unopened=allotted["unopened"],
+                opened=allotted["opened"],
+                finished=allotted["finished"],
+                **common,  # type: ignore[arg-type]
+            )
+        ]
+
     purchases: list[PlannedPurchase] = []
     for share in shares:
         allotted = _allot(remaining, share.quantity)

@@ -453,6 +453,11 @@ export interface ContextualTasting extends Tasting {
   bottle: BottleSnapshot | null;
 }
 
+/** 최근 삭제한 시음. 복구 요청의 기준 버전으로 `updated_at`을 쓴다. */
+export interface DeletedTasting extends ContextualTasting {
+  deleted_at: string;
+}
+
 export interface ContextualTastingPage {
   items: ContextualTasting[];
   next_cursor: string | null;

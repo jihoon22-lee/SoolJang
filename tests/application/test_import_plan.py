@@ -169,3 +169,36 @@ def test_warning_summary_groups_by_kind() -> None:
     assert summary
     # 같은 종류의 경고가 하나로 묶여야 429행에서도 읽을 수 있다.
     assert all(isinstance(count, int) for _, count in summary)
+
+
+def _row(name: str, *, volume: str = "700ml", counts: list[str] | None = None) -> list[str]:
+    cells = [""] * 20
+    cells[0] = name
+    cells[1] = volume
+    cells[2] = "40.0%"
+    cells[3] = "싱글몰트 위스키"
+    cells[10:15] = counts or ["1", "0", "1", "1", "0"]
+    return cells
+
+
+def test_unsplit_row_bottles_match_purchased_count_when_states_disagree() -> None:
+    """구매 2병인데 미개봉 2 + 개봉 1로 적힌 행도 병은 2개만 만든다(분할 경로와 같은 규칙)."""
+    from sooljang.infrastructure.legacy.blocks import MAIN_HEADER
+    from sooljang.infrastructure.legacy.records import parse_rows
+
+    plan = build_plan(
+        parse_rows([list(MAIN_HEADER), _row("상태 합계 불일치", counts=["2", "0", "2", "2", "1"])])
+    )
+
+    (purchase,) = plan.products[0].purchases
+    assert purchase.quantity == 2
+    assert purchase.unopened + purchase.opened + purchase.finished == 2
+
+
+def test_blank_volume_row_with_purchases_is_flagged_in_preview() -> None:
+    from sooljang.infrastructure.legacy.blocks import MAIN_HEADER
+    from sooljang.infrastructure.legacy.records import parse_rows
+
+    plan = build_plan(parse_rows([list(MAIN_HEADER), _row("용량 공란", volume="")]))
+
+    assert any("용량이 비어 있어" in warning for warning in plan.products[0].warnings)

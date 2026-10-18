@@ -42,6 +42,7 @@ from sooljang.api.pagination import Cursor
 from sooljang.application.barcodes import InvalidBarcodeError, normalize_optional
 from sooljang.application.bottle_commands import (
     RESTORE_FIELDS,
+    delete_purchase_bottles,
     require_no_tasting,
     require_revision,
     undo_bottle_command,
@@ -891,12 +892,8 @@ async def _dispatch_purchase(
     if op.op == "delete":
         if purchase.deleted_at is None:
             now = datetime.now(UTC)
+            await delete_purchase_bottles(session, purchase.id, now=now)
             purchase.deleted_at = now
-            bottles = await session.scalars(
-                select(Bottle).where(Bottle.purchase_id == purchase.id, Bottle.deleted_at.is_(None))
-            )
-            for bottle in bottles:
-                bottle.deleted_at = now
             await session.flush()
         return await _applied(session, op, purchase)
 

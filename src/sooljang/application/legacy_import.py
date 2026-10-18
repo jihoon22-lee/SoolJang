@@ -239,7 +239,12 @@ async def _apply_product(
             result.skus_created += 1
 
     if sku_id is None:
-        # 용량이 없으면 규격을 만들 수 없어 구매 건도 붙일 수 없다. 제품만 남긴다.
+        if planned.purchases:
+            # 용량이 없으면 규격을 만들 수 없어 구매·병을 붙일 수 없다. 조용히 제품만 남기면
+            # 산 병이 사라진 채 "성공"으로 보인다. 행을 실패로 돌려 용량을 채워 다시 넣게 한다.
+            raise ValueError(
+                "용량이 비어 있어 구매·병을 만들 수 없습니다. 용량을 채워 다시 가져오세요"
+            )
         return
 
     for index, purchase in enumerate(planned.purchases, start=1):

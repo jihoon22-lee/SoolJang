@@ -884,7 +884,7 @@ function PurchaseSection({
                             onClick={() => {
                               if (
                                 window.confirm(
-                                  "이 구매 건을 삭제할까요? 연결된 병 기록도 함께 사라집니다.",
+                                  "이 구매 건과 병을 함께 삭제할까요? 시음 기록이 있는 병이 있으면 삭제되지 않으니 시음 기록을 먼저 정리하세요.",
                                 )
                               ) {
                                 onDeletePurchase(purchase.id);

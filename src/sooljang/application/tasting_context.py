@@ -4,7 +4,7 @@ import datetime
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import raiseload
 
@@ -196,3 +196,57 @@ async def correction_purchase_context(
         bottles=[columns(b) for b in bottles],
         tastings=[columns(t) for t in tastings],
     )
+
+
+RECENTLY_DELETED_DAYS = 30
+
+
+async def recently_deleted_tastings(
+    session: AsyncSession, user_id: uuid.UUID, *, limit: int = 50
+) -> list[dict[str, Any]]:
+    """최근 30일 안에 지운 시음 중 지금 복구할 수 있는 것만 최신 삭제순으로 돌려준다.
+
+    복구는 연결된 제품·규격·병이 살아 있어야 가능하다(`tasting_lifecycle`). 복구할 수 없는
+    기록을 목록에 보이면 버튼이 매번 실패하므로 같은 조건으로 거른다.
+    """
+    since = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=RECENTLY_DELETED_DAYS)
+    rows = (
+        await session.execute(
+            select(TastingSession, Sku, Product, Bottle, Purchase, Vendor.name)
+            .select_from(TastingSession)
+            .join(Sku, Sku.id == TastingSession.sku_id)
+            .join(Product, Product.id == Sku.product_id)
+            .outerjoin(Bottle, Bottle.id == TastingSession.bottle_id)
+            .outerjoin(Purchase, Purchase.id == Bottle.purchase_id)
+            .outerjoin(Vendor, (Vendor.id == Purchase.vendor_id) & (Vendor.user_id == user_id))
+            .where(
+                TastingSession.user_id == user_id,
+                TastingSession.deleted_at.is_not(None),
+                TastingSession.deleted_at >= since,
+                Sku.user_id == user_id,
+                Sku.deleted_at.is_(None),
+                Product.user_id == user_id,
+                Product.deleted_at.is_(None),
+                or_(
+                    TastingSession.bottle_id.is_(None),
+                    TastingSession.bottle_id.in_(
+                        live_bottles_query(user_id).with_only_columns(Bottle.id)
+                    ),
+                ),
+            )
+            .order_by(TastingSession.deleted_at.desc(), TastingSession.id.desc())
+            .limit(limit)
+            .options(raiseload("*"))
+        )
+    ).tuples()
+    return [
+        {
+            **columns(record),
+            "context": product_context(sku, product),
+            "bottle": columns(bottle) if bottle is not None else None,
+            "purchase": {**columns(purchase), "vendor_name": vendor_name}
+            if purchase is not None
+            else None,
+        }
+        for record, sku, product, bottle, purchase, vendor_name in rows
+    ]

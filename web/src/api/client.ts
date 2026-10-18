@@ -19,6 +19,7 @@ import type {
   ConnectionUpdate,
   ContextualTasting,
   ContextualTastingPage,
+  DeletedTasting,
   DeleteStrategy,
   ExternalMatchInput,
   ExternalSource,
@@ -518,6 +519,12 @@ export const tastingsApi = {
     request<TastingLifecycleResult>(`/tastings/${id}`, { method: "DELETE", body: input }),
   restore: (id: string, input: TastingLifecycleInput) =>
     request<TastingLifecycleResult>(`/tastings/${id}:restore`, { method: "POST", body: input }),
+
+  deleted: (signal?: AbortSignal) =>
+    request<DeletedTasting[]>("/tastings/deleted", {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    }),
 };
 
 export const statsApi = {
