@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { type Interest, interestsApi } from "@/api/interests";
 import { type PriceWatch, priceWatchApi } from "@/api/priceWatch";
@@ -88,6 +89,46 @@ it("오프라인이면 받지 않고 마지막 저장본을 저장 시각과 함
 
   expect(await screen.findByText(/관심 목록 1개 · 오프라인 저장본/)).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
+});
+
+it("오프라인에서 캐시로 다시 그린 목록은 저장 시각을 새로 쓰지 않는다", async () => {
+  vi.spyOn(interestsApi, "list").mockResolvedValue([interest("i1", "The Glenlivet 12")]);
+  vi.spyOn(priceWatchApi, "list").mockResolvedValue([]);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const mount = (offline: boolean) =>
+    render(
+      <QueryClientProvider client={client}>
+        <StoreModeInterests query="" offline={offline} />
+      </QueryClientProvider>,
+    );
+  const savedAt = async () => {
+    const raw = (await db.sync_meta.get("interest-snapshot"))?.value;
+    return raw ? (JSON.parse(raw) as { savedAt: string }).savedAt : undefined;
+  };
+  const online = mount(false);
+  await waitFor(async () => expect(await savedAt()).toBeDefined());
+  const first = await savedAt();
+  online.unmount();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  mount(true);
+
+  expect(await screen.findByText(/관심 목록 1개 · 오프라인 저장본/)).toBeInTheDocument();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(await savedAt()).toBe(first);
+});
+
+it("더 늦게 받은 저장본은 오래된 목록으로 덮지 않는다", async () => {
+  await saveInterestSnapshot(
+    buildInterestSnapshot([interest("i1", "새 목록")], [], new Date("2026-10-18T05:00:00Z")),
+  );
+  await saveInterestSnapshot(
+    buildInterestSnapshot([interest("i2", "옛 목록")], [], new Date("2026-10-18T04:00:00Z")),
+  );
+
+  const raw = (await db.sync_meta.get("interest-snapshot"))?.value ?? "";
+  expect(raw).toContain("새 목록");
+  expect(raw).not.toContain("옛 목록");
 });
 
 it("저장본이 없는 오프라인에서는 언제부터 볼 수 있는지 알린다", async () => {

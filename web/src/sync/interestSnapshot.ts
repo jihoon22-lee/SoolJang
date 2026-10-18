@@ -58,8 +58,13 @@ export function buildInterestSnapshot(
   };
 }
 
+/** 더 늦게 받은 저장본(다른 탭 등)은 덮지 않는다. */
 export async function saveInterestSnapshot(snapshot: InterestSnapshot): Promise<void> {
-  await db.sync_meta.put({ key: KEY, value: JSON.stringify(snapshot) });
+  await db.transaction("rw", db.sync_meta, async () => {
+    const current = parseSnapshot((await db.sync_meta.get(KEY))?.value);
+    if (current && current.savedAt >= snapshot.savedAt) return;
+    await db.sync_meta.put({ key: KEY, value: JSON.stringify(snapshot) });
+  });
 }
 
 function parseSnapshot(raw: string | undefined): InterestSnapshot | null {

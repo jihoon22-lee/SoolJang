@@ -49,8 +49,10 @@ export function StoreModeInterests({ query, offline }: { query: string; offline:
     const owner = databaseIdentity();
     // 받는 동안 계정이 바뀌었으면 다른 계정의 목록을 이 계정 저장본에 쓰지 않는다.
     if (owner.userId !== userId) return;
-    void saveInterestSnapshot(buildInterestSnapshot(interests.data, watches.data, new Date()));
-  }, [interests.data, watches.data, userId]);
+    // 캐시로 다시 그린 목록이 방금 받은 것처럼 보이지 않게 실제로 받은 시각 중 이른 쪽을 쓴다.
+    const fetchedAt = new Date(Math.min(interests.dataUpdatedAt, watches.dataUpdatedAt));
+    void saveInterestSnapshot(buildInterestSnapshot(interests.data, watches.data, fetchedAt));
+  }, [interests.data, interests.dataUpdatedAt, watches.data, watches.dataUpdatedAt, userId]);
 
   const snapshot = useInterestSnapshot();
   if (!snapshot) {
