@@ -84,3 +84,23 @@ def test_raw_decimal_in_name_is_searchable_but_numbers_stay_whole(
     name: str, query: str, match: bool
 ) -> None:
     assert matches_query(name, query) is match
+
+
+# 웹 `search.test.ts`의 같은 이름 표다(D244). 입력 중인 한글 별칭 앞부분으로 영문 제품을 찾는다.
+ALIAS_PREFIX_PARITY = [
+    ("Ballantine's 17", "발렌", True),
+    ("Ballantine's 17", "발렌 17", False),
+    ("발렌타인 17년 합성", "발렌", True),
+    ("The Glenlivet 12", "글렌리", True),
+    ("Glenallachie 10", "글렌", True),
+    ("Chivas Regal 18", "시바스 리", True),
+    ("Ballantine's 17", "발", False),
+    ("Glenfarclas 15", "글렌리", False),
+]
+
+
+@pytest.mark.parametrize(("name", "query", "match"), ALIAS_PREFIX_PARITY)
+def test_korean_alias_prefix_finds_latin_product_like_web(
+    name: str, query: str, match: bool
+) -> None:
+    assert matches_query(name, query) is match

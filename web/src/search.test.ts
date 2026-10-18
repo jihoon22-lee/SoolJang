@@ -146,3 +146,20 @@ it.each([
 ] as const)("이름 원문 소수 %s를 %s로 찾되 숫자는 통째로 비교한다", (name, query, match) => {
   expect(matchesQuery(name, query)).toBe(match);
 });
+
+// 서버 `tests/domain/test_search.py`의 같은 이름 표다(D244). 입력 중인 한글 별칭 앞부분으로 찾는다.
+const ALIAS_PREFIX_PARITY: [string, string, boolean][] = [
+  ["Ballantine's 17", "발렌", true],
+  ["Ballantine's 17", "발렌 17", false],
+  ["발렌타인 17년 합성", "발렌", true],
+  ["The Glenlivet 12", "글렌리", true],
+  ["Glenallachie 10", "글렌", true],
+  ["Chivas Regal 18", "시바스 리", true],
+  ["Ballantine's 17", "발", false],
+  ["Glenfarclas 15", "글렌리", false],
+];
+
+it.each(ALIAS_PREFIX_PARITY)("한글 별칭 앞부분: %s / %s → %s", (name, query, match) => {
+  expect(matchesQuery(name, query)).toBe(match);
+});
+

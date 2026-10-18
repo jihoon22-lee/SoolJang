@@ -76,10 +76,39 @@ def _chosung(value: str) -> str:
     )
 
 
+# 한글 별칭(공백 제거). 입력 중인 앞부분("발렌", "글렌리")을 별칭 전체로 채워 볼 때 쓴다.
+_KOREAN_ALIASES = tuple(
+    sorted(
+        {
+            normalize_search_text(alias).replace(" ", "")
+            for entry in ALIASES
+            for alias in entry["aliases"]
+            if re.search(r"[가-힣]", alias)
+        }
+    )
+)
+
+
+def _alias_prefix_completions(query: str) -> list[str]:
+    """질의 끝의 한글 두 글자 이상이 별칭의 앞부분이면 그 별칭으로 채운 질의들(웹과 같은 규칙)."""
+    compact = normalize_search_text(query).replace(" ", "")
+    tail = re.search(r"[가-힣]{2,}$", compact)
+    if tail is None:
+        return []
+    head, typed = compact[: tail.start()], tail.group()
+    return [head + alias for alias in _KOREAN_ALIASES if alias != typed and alias.startswith(typed)]
+
+
 def matches_query(name: str, query: str) -> bool:
     """별칭·초성을 지원하되 질의의 숫자와 판본 토큰을 버리지 않는다."""
     if not query.strip():
         return True
+    if _matches_exactly(name, query):
+        return True
+    return any(_matches_exactly(name, completed) for completed in _alias_prefix_completions(query))
+
+
+def _matches_exactly(name: str, query: str) -> bool:
     if all(c in _CHOSUNG for c in query.strip()):
         values = [name]
         canonical = _canonical(name)

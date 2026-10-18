@@ -151,7 +151,40 @@ export function expandSearchQueries(query: string): string[] {
   return [original];
 }
 
+// 한글 별칭(공백 제거). 입력 중인 앞부분("발렌", "글렌리")을 별칭 전체로 채워 볼 때 쓴다.
+const KOREAN_ALIASES = [
+  ...new Set(
+    aliasDictionary.flatMap((entry) =>
+      entry.aliases
+        .filter((alias) => /[가-힣]/.test(alias))
+        .map((alias) => normalizeSearchText(alias).replaceAll(" ", "")),
+    ),
+  ),
+].sort();
+
+/** 질의 끝의 한글 두 글자 이상이 별칭의 앞부분이면 그 별칭으로 채운 질의들(서버와 같은 규칙). */
+function aliasPrefixCompletions(query: string): string[] {
+  const compact = normalizeSearchText(query).replaceAll(" ", "");
+  const tail = compact.match(/[가-힣]{2,}$/);
+  if (!tail || tail.index === undefined) return [];
+  const head = compact.slice(0, tail.index);
+  const typed = tail[0];
+  return KOREAN_ALIASES.filter((alias) => alias !== typed && alias.startsWith(typed)).map(
+    (alias) => head + alias,
+  );
+}
+
 function rankOf(name: string, query: string): number | null {
+  const exact = exactRankOf(name, query);
+  if (exact !== null) return exact;
+  // 별칭을 끝까지 치기 전에도 후보를 보여 준다. 직접 일치보다 뒤에 둔다.
+  const completed = aliasPrefixCompletions(query)
+    .map((candidate) => exactRankOf(name, candidate))
+    .filter((rank): rank is number => rank !== null);
+  return completed.length ? Math.min(...completed) + 3 : null;
+}
+
+function exactRankOf(name: string, query: string): number | null {
   const needle = query.trim().toLowerCase();
   if (!needle) return 0;
   if (isChosungOnly(needle)) {
