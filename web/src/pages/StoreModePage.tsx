@@ -6,6 +6,7 @@ import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { type ExistingProductCandidate, ProductForm } from "@/components/ProductForm";
 import { productEdition } from "@/components/productDisplay";
 import { LoadingState } from "@/components/StatusViews";
+import { StoreModeInterests } from "@/components/StoreModeInterests";
 import { formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
@@ -119,6 +120,8 @@ export function StoreModePage({
           placeholder="예: 글렌피딕"
         />
       </div>
+
+      <StoreModeInterests query={query} offline={offline} />
 
       {query.trim() && (
         <>

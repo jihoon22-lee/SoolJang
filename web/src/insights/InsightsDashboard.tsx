@@ -11,6 +11,7 @@ import {
 import { loadInsightSnapshot } from "@/insights/load";
 import type { ProductContext } from "@/router";
 import "@/insights/insights.css";
+import { useViewState } from "@/viewState";
 
 type SelectProduct = (productId: string, context?: ProductContext) => void;
 function EvidenceList({
@@ -92,6 +93,26 @@ function initialFilters(today: string): InsightFilters {
     status: "all",
   };
 }
+const STATUSES = ["all", "stock", "unopened", "open", "finished", "gifted", "sold"];
+/** 탭 세션에 둔 분석 범위. `day`는 저장한 날이다. */
+type StoredFilters = InsightFilters & { day: string };
+
+/**
+ * 저장해 둔 범위를 오늘에 맞춘다. 자정을 넘긴 탭에서도 "오늘까지"로 둔 종료일(과 기본 90일
+ * 시작일)은 오늘로 따라오고, 직접 고른 날짜는 그대로 둔다. 모르는 상태 값은 전체로 되돌린다.
+ */
+function currentFilters({ day, ...filters }: StoredFilters, today: string): InsightFilters {
+  const status = STATUSES.includes(filters.status) ? filters.status : "all";
+  if (day === today) return { ...filters, status };
+  const before = initialFilters(day);
+  const defaultWindow = filters.from === before.from && filters.to === before.to;
+  return {
+    ...filters,
+    status,
+    from: defaultWindow ? initialFilters(today).from : filters.from,
+    to: filters.to === day ? today : filters.to,
+  };
+}
 
 export function InsightsDashboard({
   onSelectProduct,
@@ -112,15 +133,29 @@ export function InsightsDashboard({
       };
     }
   }, []);
-  const [filters, setFilters] = useState(() => initialFilters(today));
-  const [dimension, setDimension] = useState<RatingDimension>("category"),
-    [ratingLabel, setRatingLabel] = useState("");
-  const [priceKey, setPriceKey] = useState("");
+  // 근거 → 제품 → 뒤로 와도 기간·필터·선택을 유지한다(같은 탭 세션, 계정별).
+  const [stored, setStored] = useViewState<StoredFilters>("insights:filters", {
+    ...initialFilters(today),
+    day: today,
+  });
+  const filters = useMemo(() => currentFilters(stored, today), [stored, today]);
+  const setFilters = (next: InsightFilters) => setStored({ ...next, day: today });
+  const [dimension, setDimension] = useViewState<RatingDimension>(
+      "insights:dimension",
+      "category",
+      ["category", "producer", "region", "price"],
+    ),
+    [ratingLabel, setRatingLabel] = useViewState("insights:rating-label", "");
+  const [priceKey, setPriceKey] = useViewState("insights:price-key", "");
   const invalid = Boolean(filters.from && filters.to && filters.from > filters.to);
-  const data = useMemo(
-    () => (source?.data ? calculateInsights(source.data.snapshot, filters, today) : null),
-    [source, filters, today],
-  );
+  const data = useMemo(() => {
+    if (!source?.data) return null;
+    const result = calculateInsights(source.data.snapshot, filters, today);
+    // 저장해 둔 주종이 그 사이 삭제·병합됐으면 선택 상자처럼 전체 주종으로 계산한다.
+    return filters.categoryId && !result.categories.some(({ id }) => id === filters.categoryId)
+      ? calculateInsights(source.data.snapshot, { ...filters, categoryId: "" }, today)
+      : result;
+  }, [source, filters, today]);
   if (!source) return <output>기기에 저장된 분석 기록을 불러오는 중…</output>;
   if (!data) return <p role="alert">{source.error}</p>;
   const ratings = data.ratings[dimension],
@@ -158,7 +193,9 @@ export function InsightsDashboard({
         <label>
           주종 (하위 포함)
           <select
-            value={filters.categoryId}
+            value={
+              data.categories.some(({ id }) => id === filters.categoryId) ? filters.categoryId : ""
+            }
             onChange={(event) => setFilters({ ...filters, categoryId: event.target.value })}
           >
             <option value="">전체 주종</option>
@@ -429,7 +466,12 @@ export function InsightsDashboard({
                   label="전체 구매 표본"
                   value={`${price.count}건 (0원·공란 ${price.zeroCount}건)`}
                 />
-                <Metric label="최저 병당 실구매가" value={formatMoney(price.minimum)} />
+                <Metric
+                  label="유상 최저 병당 실구매가"
+                  value={
+                    price.paidMinimum === null ? "유상 표본 없음" : formatMoney(price.paidMinimum)
+                  }
+                />
                 <Metric label="구매건별 중앙값" value={formatMoney(price.median)} />
                 <Metric
                   label={`유상 구매 중앙값 (${price.paidCount}건)`}

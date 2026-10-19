@@ -1,12 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, type InterestPurchase, interestsApi } from "@/api/interests";
+import { type PriceHistoryRow, priceWatchApi } from "@/api/priceWatch";
 import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import { InterestEditor } from "@/components/InterestEditor";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { publicLink } from "@/discovery/useDiscovery";
-import { todayLocal } from "@/format";
+import { formatMoney, todayLocal } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { databaseIdentity } from "@/sync/db";
@@ -88,12 +89,11 @@ export function InterestsPage({
           ) || a.id.localeCompare(b.id),
     );
   const comparisons = all.filter((row) => !row.deleted && selected.includes(row.id));
-  const edited = all.find((row) => row.id === editing && !row.deleted);
   return (
     <section className="collection-page interest-page">
       <div className="interest-heading">
         <div>
-          <h1>관심 목록</h1>
+          <h2 className="page-title">관심 목록</h2>
           <p className="muted">
             다음에 경험할 술을 모으고 비교하세요. 관심 저장은 재고와 지출에 포함되지 않습니다.
           </p>
@@ -162,15 +162,6 @@ export function InterestsPage({
         <button type="button" disabled={!online} onClick={() => void interests.refetch()}>
           목록 다시 불러오기
         </button>
-      )}
-      {edited && (
-        <InterestEditor
-          key={edited.id}
-          interest={edited}
-          disabled={!online}
-          onChanged={refresh}
-          onClose={() => setEditing(null)}
-        />
       )}
       {!interests.isPending && !rows.length && (
         <p className="notice">
@@ -275,6 +266,77 @@ export function InterestsPage({
                 </button>
               )}
             </div>
+            {editing === row.id && !row.deleted && (
+              <RowPanel>
+                <InterestEditor
+                  key={row.id}
+                  interest={row}
+                  disabled={!online}
+                  onChanged={refresh}
+                  onClose={() => setEditing(null)}
+                />
+              </RowPanel>
+            )}
+            {removeTarget?.id === row.id && (
+              <RowPanel>
+                <section className="card interest-delete" aria-label="관심 삭제 확인">
+                  <h2>‘{removeTarget.name}’ 관심을 삭제할까요?</h2>
+                  <p>
+                    구매·병·가격 관측은 유지합니다. 가격 감시와 대기 알림은 중지하며, 삭제 목록에서
+                    복구해도 감시를 자동 재개하지 않습니다.
+                  </p>
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      disabled={!online || action.isPending}
+                      onClick={() =>
+                        action.mutate(() =>
+                          interestsApi.remove(removeTarget.id, removeTarget.updated_at),
+                        )
+                      }
+                    >
+                      관심 삭제 확인
+                    </button>
+                    <button
+                      type="button"
+                      disabled={action.isPending}
+                      onClick={() => setRemoveTarget(null)}
+                    >
+                      취소
+                    </button>
+                    {all.some(
+                      (item) =>
+                        item.id === removeTarget.id && item.updated_at !== removeTarget.updated_at,
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRemoveTarget(all.find((item) => item.id === removeTarget.id) ?? null)
+                        }
+                      >
+                        최신 기록으로 다시 확인
+                      </button>
+                    )}
+                  </div>
+                </section>
+              </RowPanel>
+            )}
+            {convert?.id === row.id && (
+              <RowPanel>
+                <InterestConversionForm
+                  key={convert.id}
+                  interest={convert}
+                  disabled={!online}
+                  onClose={() => setConvert(null)}
+                  onConverted={(id, context) => {
+                    setConvert(null);
+                    refresh();
+                    if (context) onSelectProduct(id, context);
+                    else onSelectProduct(id);
+                  }}
+                />
+              </RowPanel>
+            )}
             {!row.deleted && (
               <details>
                 <summary>출처·가격·자료 확인</summary>
@@ -307,95 +369,169 @@ export function InterestsPage({
           관심 더 보기 ({Math.min(limit, rows.length)} / {rows.length})
         </button>
       )}
-      {removeTarget && (
-        <section className="card interest-delete" aria-label="관심 삭제 확인">
-          <h2>‘{removeTarget.name}’ 관심을 삭제할까요?</h2>
-          <p>
-            구매·병·가격 관측은 유지합니다. 가격 감시와 대기 알림은 중지하며, 삭제 목록에서 복구해도
-            감시를 자동 재개하지 않습니다.
-          </p>
-          <div className="button-row">
-            <button
-              type="button"
-              disabled={!online || action.isPending}
-              onClick={() =>
-                action.mutate(() => interestsApi.remove(removeTarget.id, removeTarget.updated_at))
-              }
-            >
-              관심 삭제 확인
-            </button>
-            <button type="button" disabled={action.isPending} onClick={() => setRemoveTarget(null)}>
-              취소
-            </button>
-            {all.some(
-              (row) => row.id === removeTarget.id && row.updated_at !== removeTarget.updated_at,
-            ) && (
-              <button
-                type="button"
-                onClick={() =>
-                  setRemoveTarget(all.find((row) => row.id === removeTarget.id) ?? null)
-                }
-              >
-                최신 기록으로 다시 확인
-              </button>
-            )}
-          </div>
-        </section>
-      )}
       {comparisons.length > 0 && (
         <section className="card">
           <h2>관심 비교 ({comparisons.length}/4)</h2>
           <button type="button" onClick={() => setSelected([])}>
             비교 선택 해제
           </button>
-          <div className="table-scroll table-scroll--always">
-            <table>
-              <thead>
-                <tr>
-                  <th>항목</th>
-                  {comparisons.map((row) => (
-                    <th key={row.id}>{row.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(
-                  [
-                    ["용량", (row: Interest) => row.identity.volumes_ml?.join(" / ") || "미상"],
-                    ["도수", (row: Interest) => row.identity.abv ?? "미상"],
-                    ["빈티지", (row: Interest) => row.identity.vintage ?? "미상"],
-                    ["노트", (row: Interest) => row.note || "없음"],
-                  ] as const
-                ).map(([label, value]) => (
-                  <tr key={label}>
-                    <th>{label}</th>
-                    {comparisons.map((row) => (
-                      <td key={row.id}>{value(row)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <InterestComparison interests={comparisons} online={online} />
         </section>
-      )}
-      {convert && (
-        <InterestConversionForm
-          key={convert.id}
-          interest={convert}
-          disabled={!online}
-          onClose={() => setConvert(null)}
-          onConverted={(id, context) => {
-            setConvert(null);
-            refresh();
-            if (context) onSelectProduct(id, context);
-            else onSelectProduct(id);
-          }}
-        />
       )}
     </section>
   );
 }
+/**
+ * 이 관심에 고정한(같은 제품으로 확인한) 출처 제품의 관측인지. 탐색은 확인 전 후보의 가격도
+ * 저장하므로, 확인하지 않은 제품의 가격을 이 관심의 관측가로 보이지 않는다.
+ */
+export function confirmedObservation(interest: Interest, row: PriceHistoryRow): boolean {
+  const pin = interest.source_matches[row.source_id];
+  if (!pin) return false;
+  // 서버 감시의 고정 판정(`price_watch.py`)과 같다. 제품 키가 없으면 고정한 판매 항목 키로 본다.
+  return pin.product_key
+    ? row.facts.product_key === pin.product_key
+    : Boolean(pin.external_key) && row.facts.offer_key === pin.external_key;
+}
+/** 가장 최근에 실제로 저장한 가격 관측. 관측 전 가격은 추정하지 않는다. */
+export function latestObservation(rows: readonly PriceHistoryRow[]): PriceHistoryRow | null {
+  return rows.reduce<PriceHistoryRow | null>(
+    (latest, row) => (!latest || row.fetched_at > latest.fetched_at ? row : latest),
+    null,
+  );
+}
+
+// 서버 비교 묶음(`offers.py`)과 같은 판매 조건. 하나라도 모르면 일반가로 가정하지 않는다.
+const SALE_CONDITIONS = [
+  "price_kind",
+  "membership",
+  "coupon",
+  "fulfillment",
+  "region",
+  "shipping",
+  "tax",
+] as const;
+
+/**
+ * 관측가의 100ml당 원화 가격. 정가 기준 `price_per_100ml`과 다른 값이라 화면에서도 "관측가"로
+ * 구분한다. 서버가 가격 비교에 넣는 관측만 계산한다 — 원화·0원 초과, 용량과 정수 수량 확인,
+ * 세트 아님, 검색 요약·추천가 아님, 품절 아님, 판매 조건을 모두 앎. 모르는 값은 1병·일반가로
+ * 채우지 않는다.
+ */
+export function observedPricePer100ml(row: PriceHistoryRow): number | null {
+  const { facts } = row;
+  const volume = Number(facts.volume_ml);
+  const units = facts.units;
+  const amount = Number(row.amount);
+  if (
+    row.currency !== "KRW" ||
+    !(amount > 0) ||
+    !(volume > 0) ||
+    typeof units !== "number" ||
+    !Number.isInteger(units) ||
+    units < 1 ||
+    facts.is_set === true ||
+    facts.in_stock === false ||
+    facts.price_kind === "snippet" ||
+    facts.price_kind === "recommended" ||
+    SALE_CONDITIONS.some((key) => facts[key] === null || facts[key] === undefined)
+  )
+    return null;
+  return (amount / (volume * units)) * 100;
+}
+
+function InterestComparison({
+  interests,
+  online,
+}: {
+  interests: readonly Interest[];
+  online: boolean;
+}) {
+  const userId = databaseIdentity().userId;
+  const histories = useQueries({
+    queries: interests.map((row) => ({
+      // 가격 이력 패널과 같은 키라 이미 연 이력은 다시 받지 않는다.
+      queryKey: ["price-history", userId, row.id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => priceWatchApi.history(row.id, signal),
+      enabled: online && Boolean(userId),
+    })),
+  });
+  const observed = (index: number) => {
+    const history = histories[index];
+    if (!online) return { text: "온라인에서 확인", per100: "온라인에서 확인" };
+    if (!history || history.isPending) return { text: "불러오는 중…", per100: "불러오는 중…" };
+    if (history.isError) return { text: "불러오지 못함", per100: "불러오지 못함" };
+    const rows = history.data ?? [];
+    if (!rows.length) return { text: "관측 없음", per100: "관측 없음" };
+    const interest = interests[index];
+    const latest = latestObservation(
+      interest ? rows.filter((row) => confirmedObservation(interest, row)) : [],
+    );
+    if (!latest) return { text: "고정한 출처의 관측 없음", per100: "고정한 출처의 관측 없음" };
+    const per100 = observedPricePer100ml(latest);
+    return {
+      text: `${latest.currency === "KRW" ? formatMoney(latest.amount) : `${latest.amount} ${latest.currency}`} · ${latest.source_name} · ${new Date(latest.fetched_at).toLocaleDateString("ko-KR")}`,
+      per100:
+        per100 === null
+          ? "계산 불가(원화·용량·수량·판매 조건 미확인 또는 세트·품절)"
+          : formatMoney(per100.toFixed(2)),
+    };
+  };
+  const rows: [string, (row: Interest, index: number) => ReactNode][] = [
+    ["용량", (row) => row.identity.volumes_ml?.join(" / ") || "미상"],
+    ["도수", (row) => row.identity.abv ?? "미상"],
+    ["빈티지", (row) => row.identity.vintage ?? "미상"],
+    [
+      "숙성 연수",
+      (row) => (row.identity.age_years != null ? `${row.identity.age_years}년` : "미상"),
+    ],
+    ["최근 관측가", (_row, index) => observed(index).text],
+    ["관측가 100ml당", (_row, index) => observed(index).per100],
+    ["노트", (row) => row.note || "없음"],
+  ];
+  return (
+    <div className="table-scroll table-scroll--always">
+      <table>
+        <thead>
+          <tr>
+            <th>항목</th>
+            {interests.map((row) => (
+              <th key={row.id}>{row.name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, value]) => (
+            <tr key={label}>
+              <th>{label}</th>
+              {interests.map((row, index) => (
+                <td key={row.id}>{value(row, index)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted text-sm">
+        관측가는 이 관심에 고정한 판매처 제품에서 실제로 조회해 저장한 최근 가격이며 판매 조건이
+        서로 다를 수 있습니다. 100ml당 값은 그 관측의 용량·수량으로만 계산합니다.
+      </p>
+    </div>
+  );
+}
+
+/** 행 아래에 펼치는 수정·삭제 확인·구매 전환. 연 행으로 화면을 옮겨 목록 끝까지 찾지 않게 한다. */
+function RowPanel({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
+  return (
+    <div ref={ref} className="interest-row-panel">
+      {children}
+    </div>
+  );
+}
+
 function InterestDiscovery({ interest, offline }: { interest: Interest; offline: boolean }) {
   const [open, setOpen] = useState(false);
   return (
@@ -576,6 +712,7 @@ function InterestConversionForm({
                 <input
                   required
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   max={100000}
                   value={form.volume}
@@ -586,6 +723,7 @@ function InterestConversionForm({
                 확정 도수 %
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   max={100}
                   step="0.01"
@@ -597,6 +735,7 @@ function InterestConversionForm({
                 확정 빈티지
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={1800}
                   max={2200}
                   value={form.vintage}
@@ -610,6 +749,7 @@ function InterestConversionForm({
             <input
               required
               type="number"
+              inputMode="numeric"
               min={1}
               max={1000}
               value={form.quantity}
@@ -642,6 +782,7 @@ function InterestConversionForm({
             병당 정가 (원)
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.01"
               value={form.list}
@@ -652,6 +793,7 @@ function InterestConversionForm({
             병당 실구매가 (원)
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.01"
               value={form.paid}

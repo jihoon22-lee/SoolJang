@@ -297,6 +297,7 @@ export function SourcesPage({ connectionsManaged = false }: { connectionsManaged
             <input
               id="source-priority"
               type="number"
+              inputMode="numeric"
               value={form.priority}
               onChange={(event) => setForm({ ...form, priority: event.target.value })}
             />
@@ -309,6 +310,7 @@ export function SourcesPage({ connectionsManaged = false }: { connectionsManaged
             <input
               id="source-rate-limit"
               type="number"
+              inputMode="numeric"
               min={1}
               max={60}
               value={form.rateLimitPerMin}
@@ -320,6 +322,7 @@ export function SourcesPage({ connectionsManaged = false }: { connectionsManaged
             <input
               id="source-daily-limit"
               type="number"
+              inputMode="numeric"
               min={1}
               max={100000}
               value={form.requestLimitPerDay}
@@ -331,6 +334,7 @@ export function SourcesPage({ connectionsManaged = false }: { connectionsManaged
             <input
               id="source-ttl"
               type="number"
+              inputMode="numeric"
               min={1}
               value={form.ttlHours}
               onChange={(event) => setForm({ ...form, ttlHours: event.target.value })}

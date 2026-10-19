@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 import { productEdition } from "@/components/productDisplay";
 import { computeProductMetrics } from "@/domain/metrics";
+import { formatMoney, formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 import type { SyncRow } from "@/sync/db";
 
@@ -250,7 +251,7 @@ export function calculateInsights(
     ...evidence(p.product, p.sku),
     id: p.row.id,
     purchaseId: p.row.id,
-    detail: `${str(p.row.purchased_on) || "구매일 미기록"} · ${str(vendors.get(str(p.row.vendor_id))?.name) || "구매처 미기록"} · 선택 ${p.quantity ?? numeric(p.row.quantity) ?? 0}병 / 구매 ${numeric(p.row.quantity) ?? 0}병 · 병당 ${money(p.row.unit_paid_price).toFixed(2)}원`,
+    detail: `${str(p.row.purchased_on) || "구매일 미기록"} · ${str(vendors.get(str(p.row.vendor_id))?.name) || "구매처 미기록"} · 선택 ${p.quantity ?? numeric(p.row.quantity) ?? 0}병 / 구매 ${numeric(p.row.quantity) ?? 0}병 · 병당 ${formatMoney(money(p.row.unit_paid_price).toFixed(2))}`,
   });
   function aggregate(from: string, to: string) {
     const bought = purchases.filter((p) => inPeriod(p.row.purchased_on, from, to));
@@ -468,6 +469,7 @@ export function calculateInsights(
           zeroCount: values.length - paid.length,
           paidCount: paid.length,
           minimum: minimum.toFixed(2),
+          paidMinimum: paid[0]?.toFixed(2) ?? null,
           median: median.toFixed(2),
           paidMedian: middle(paid)?.toFixed(2) ?? null,
           latestCount: latestValues.length,
@@ -669,26 +671,38 @@ export function calculateInsights(
   const allOwnedBottles = index(
     live(snapshot.bottles).filter((b) => allOwnedPurchases.has(str(b.purchase_id))),
   );
+  // 상세에는 UUID 대신 사용자가 알아볼 수 있는 기록 종류와 날짜·번호를 보인다.
   const orphan = [
-    ...live(snapshot.skus).filter((s) => !allOwnedSkus.has(s.id)),
-    ...live(snapshot.purchases).filter((p) => !allOwnedPurchases.has(p.id)),
-    ...live(snapshot.bottles).filter((b) => !allOwnedBottles.has(b.id)),
-    ...live(snapshot.tastings).filter((t) => {
-      if (!allOwnedSkus.has(str(t.sku_id))) return true;
-      if (!t.bottle_id) return false;
-      const bottle = allOwnedBottles.get(str(t.bottle_id));
-      const purchase = bottle ? allOwnedPurchases.get(str(bottle.purchase_id)) : null;
-      return !purchase || purchase.sku_id !== t.sku_id;
-    }),
+    ...live(snapshot.skus)
+      .filter((s) => !allOwnedSkus.has(s.id))
+      .map((row) => ({ row, detail: `규격 ${formatVolume(numeric(row.volume_ml))}` })),
+    ...live(snapshot.purchases)
+      .filter((p) => !allOwnedPurchases.has(p.id))
+      .map((row) => ({ row, detail: `구매 ${str(row.purchased_on) || "구매일 미기록"}` })),
+    ...live(snapshot.bottles)
+      .filter((b) => !allOwnedBottles.has(b.id))
+      .map((row) => {
+        const labelNo = numeric(row.label_no);
+        return { row, detail: labelNo === null ? "병 (번호 미기록)" : `${labelNo}번 병` };
+      }),
+    ...live(snapshot.tastings)
+      .filter((t) => {
+        if (!allOwnedSkus.has(str(t.sku_id))) return true;
+        if (!t.bottle_id) return false;
+        const bottle = allOwnedBottles.get(str(t.bottle_id));
+        const purchase = bottle ? allOwnedPurchases.get(str(bottle.purchase_id)) : null;
+        return !purchase || purchase.sku_id !== t.sku_id;
+      })
+      .map((row) => ({ row, detail: `시음 ${str(row.tasted_on) || "날짜 미기록"}` })),
   ];
   coverage.push({
     key: "orphan",
     label: "부모 연결을 확인할 수 없는 기록: 전체 분석 제외 (필터 밖 포함)",
-    items: orphan.map((row) => ({
+    items: orphan.map(({ row, detail }) => ({
       id: row.id,
       productId: null,
       label: "연결 확인 필요",
-      detail: row.id,
+      detail,
     })),
   });
   return {

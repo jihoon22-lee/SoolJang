@@ -6,7 +6,7 @@ import { priceWatchApi } from "@/api/priceWatch";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 
-const CONDITION_LABELS: Record<string, string> = {
+export const CONDITION_LABELS: Record<string, string> = {
   price_kind: "가격 종류",
   membership: "회원",
   coupon: "쿠폰",
@@ -176,6 +176,7 @@ function NewWatch({
         <input
           id={`watch-amount-${offer.offer_id}`}
           type="number"
+          inputMode="decimal"
           min="0"
           step="0.0001"
           required
@@ -188,6 +189,7 @@ function NewWatch({
         <input
           id={`watch-age-${offer.offer_id}`}
           type="number"
+          inputMode="numeric"
           min="1"
           max="1440"
           required

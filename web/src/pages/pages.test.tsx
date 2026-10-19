@@ -661,6 +661,8 @@ describe("ProductsPage", () => {
 
     expect(await screen.findByRole("heading", { name: /상세 대상/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "← 목록으로" })).toBeInTheDocument();
+    // 제목은 상세의 제품 조회가 끝난 뒤 effect로 바뀐다. 목록 카드 제목이 먼저 잡힐 수 있어 기다린다.
+    await waitFor(() => expect(document.title).toBe("상세 대상 · 술장"));
   });
 
   it("제품 상세에서 수정하면 필드가 갱신된다(온라인)", async () => {

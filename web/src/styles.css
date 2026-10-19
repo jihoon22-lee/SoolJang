@@ -1966,6 +1966,10 @@ legend {
   white-space: nowrap;
 }
 
+.line-chart {
+  margin: 0;
+}
+
 .line-chart-svg {
   display: block;
   width: 100%;
@@ -2724,6 +2728,44 @@ legend {
   .bottom-sheet {
     border-radius: var(--radius-lg);
   }
+}
+
+/* 상세 구역 바로가기. 고정 헤더에 제목이 가리지 않게 여백을 둔다. */
+.store-mode-interests {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.store-mode-interests li {
+  display: grid;
+  gap: 2px;
+}
+
+.foreign-price-note {
+  display: block;
+}
+
+.detail-jump {
+  margin-block: var(--space-sm);
+}
+
+.detail-anchor {
+  scroll-margin-top: 5rem;
+}
+
+.interest-row-panel {
+  margin-top: var(--space-sm);
+}
+
+.confirm-sheet {
+  width: min(420px, 100%);
+}
+
+.confirm-sheet .button-row {
+  justify-content: flex-end;
 }
 
 .pick-list {

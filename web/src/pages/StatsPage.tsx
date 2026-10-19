@@ -8,7 +8,6 @@ import type { ProductContext } from "@/router";
  */
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
 
 import type { CategoryStat, RankingEntry } from "@/api/types";
 import { BarChart, type BarChartDatum } from "@/components/charts/BarChart";
@@ -28,15 +27,18 @@ import {
 import { InsightsDashboard } from "@/insights/InsightsDashboard";
 import { getStatsDashboard } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import { useViewState } from "@/viewState";
 
-type CategorySortKey =
-  | "name"
-  | "bottle_count"
-  | "total_spend"
-  | "avg_abv"
-  | "avg_rating"
-  | "avg_price_per_100ml"
-  | "discount_rate";
+const CATEGORY_SORT_KEYS = [
+  "name",
+  "bottle_count",
+  "total_spend",
+  "avg_abv",
+  "avg_rating",
+  "avg_price_per_100ml",
+  "discount_rate",
+] as const;
+type CategorySortKey = (typeof CATEGORY_SORT_KEYS)[number];
 type SortOrder = "asc" | "desc";
 
 //: `getCategoryRollup()` 의 기본 정렬(병수 내림차순)과 맞춘다 — 처음 진입했을 때 순서가
@@ -129,7 +131,8 @@ interface StatsPageProps {
   onOpenQuality?: () => void;
 }
 
-type StatsSection = "insights" | "summary" | "categories" | "rankings" | "explore";
+const STATS_SECTION_IDS = ["insights", "summary", "categories", "rankings", "explore"] as const;
+type StatsSection = (typeof STATS_SECTION_IDS)[number];
 
 const STATS_SECTIONS: { id: StatsSection; label: string }[] = [
   { id: "insights", label: "인사이트" },
@@ -150,10 +153,27 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
   const categoriesRaw = dashboard?.categories;
   const totals = dashboard?.totals;
   const categoryTree = dashboard?.tree;
-  const [categorySort, setCategorySort] = useState<CategorySortKey>(DEFAULT_CATEGORY_SORT);
-  const [categoryOrder, setCategoryOrder] = useState<SortOrder>(DEFAULT_CATEGORY_ORDER);
-  const [categoryMeasure, setCategoryMeasure] = useState<CategoryMeasureKey>("bottle_count");
-  const [section, setSection] = useState<StatsSection>("insights");
+  // 근거 → 제품 → 뒤로 와도 고른 탭·정렬을 유지한다(같은 탭 세션, 계정별).
+  const [categorySort, setCategorySort] = useViewState<CategorySortKey>(
+    "stats:category-sort",
+    DEFAULT_CATEGORY_SORT,
+    CATEGORY_SORT_KEYS,
+  );
+  const [categoryOrder, setCategoryOrder] = useViewState<SortOrder>(
+    "stats:category-order",
+    DEFAULT_CATEGORY_ORDER,
+    ["asc", "desc"],
+  );
+  const [categoryMeasure, setCategoryMeasure] = useViewState<CategoryMeasureKey>(
+    "stats:category-measure",
+    "bottle_count",
+    CATEGORY_SORT_KEYS.filter((key): key is CategoryMeasureKey => key !== "name"),
+  );
+  const [section, setSection] = useViewState<StatsSection>(
+    "stats:section",
+    "insights",
+    STATS_SECTION_IDS,
+  );
 
   if (rankings === undefined || categoriesRaw === undefined || totals === undefined) {
     return <LoadingState label="통계를 불러오고 있습니다…" />;

@@ -2,12 +2,17 @@
 
 import datetime
 import uuid
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from sooljang.infrastructure.database.models import BarcodeType, BottleStatus, VendorKind
+
+# 구매 금액·환율 열(Numeric(14, 2)·Numeric(14, 6))에 담을 수 있는 범위. 저장 자릿수로 반올림해도
+# 넘지 않는 값만 받아, 넘는 값은 저장 오류(500) 대신 입력 오류로 끝낸다.
+_MAX_AMOUNT = Decimal("999999999999.995")
+_MAX_FX_RATE = Decimal("99999999.9999995")
 
 SearchAliases = Annotated[
     list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]],
@@ -240,11 +245,11 @@ class PurchaseCreate(BaseModel):
     vendor_id: uuid.UUID | None = None
     purchased_on: datetime.date | None = None
     quantity: int = Field(default=1, gt=0, le=1000)
-    unit_list_price: Decimal | None = Field(default=None, ge=0)
-    unit_paid_price: Decimal | None = Field(default=None, ge=0)
+    unit_list_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
+    unit_paid_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     currency: str = Field(default="KRW", min_length=3, max_length=3)
-    fx_rate: Decimal | None = Field(default=None, gt=0)
-    foreign_unit_price: Decimal | None = Field(default=None, ge=0)
+    fx_rate: Decimal | None = Field(default=None, gt=0, lt=_MAX_FX_RATE)
+    foreign_unit_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     discount_note: str | None = None
     # 병 레코드를 함께 만들 것인지. 임포트는 상태별 개수를 직접 지정하므로 끌 수 있어야 한다.
     create_bottles: bool = True
@@ -255,6 +260,23 @@ class PurchaseCreate(BaseModel):
     def _foreign_price_needs_rate(self) -> PurchaseCreate:
         if self.foreign_unit_price is not None and self.fx_rate is None:
             raise ValueError("외화 가격을 넣으려면 fx_rate 가 필요합니다")
+        if self.foreign_unit_price is not None and self.currency.upper() == "KRW":
+            raise ValueError("외화 단가에는 원화가 아닌 통화 코드가 필요합니다")
+        # 실구매가는 원화 환산값이다(통계·평단가가 모두 원화로 합산한다). 기록한 환율은 소수점을
+        # 줄여 적는 일이 많아 1% 안의 차이는 받되, 외화 금액을 원화 칸에 넣는 실수처럼 크게 다르면
+        # 어느 쪽이 맞는지 알 수 없어 저장하지 않는다.
+        if self.foreign_unit_price is not None and self.fx_rate is not None:
+            try:
+                converted = self.foreign_unit_price * self.fx_rate
+            except DecimalException as error:
+                raise ValueError("외화 단가 × 환율을 계산할 수 없습니다") from error
+            if converted >= _MAX_AMOUNT:
+                raise ValueError("외화 단가 × 환율이 저장할 수 있는 금액보다 큽니다")
+            if self.unit_paid_price is None:
+                # 원화 칸을 비우면 환산값을 저장한다. 비워 두면 외화 구매가 실구매가 미상이 된다.
+                self.unit_paid_price = converted.quantize(Decimal("0.01"))
+            elif abs(self.unit_paid_price - converted) > max(Decimal(1), converted / 100):
+                raise ValueError("병당 실구매가가 외화 단가 × 환율과 1% 넘게 다릅니다")
         return self
 
 
@@ -263,11 +285,11 @@ class PurchaseUpdate(BaseModel):
     #: 병수 변경. 늘리면 미개봉 병을 추가하고, 줄이면 번호가 큰 미개봉 병부터 지운다.
     quantity: int | None = Field(default=None, gt=0, le=1000)
     purchased_on: datetime.date | None = None
-    unit_list_price: Decimal | None = Field(default=None, ge=0)
-    unit_paid_price: Decimal | None = Field(default=None, ge=0)
+    unit_list_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
+    unit_paid_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
-    fx_rate: Decimal | None = Field(default=None, gt=0)
-    foreign_unit_price: Decimal | None = Field(default=None, ge=0)
+    fx_rate: Decimal | None = Field(default=None, gt=0, lt=_MAX_FX_RATE)
+    foreign_unit_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     discount_note: str | None = None
 
 
@@ -300,8 +322,8 @@ class PurchaseSplitPart(BaseModel):
     quantity: int = Field(gt=0)
     vendor_id: uuid.UUID | None = None
     purchased_on: datetime.date | None = None
-    unit_list_price: Decimal | None = Field(default=None, ge=0)
-    unit_paid_price: Decimal | None = Field(default=None, ge=0)
+    unit_list_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
+    unit_paid_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
 
 
 class PurchaseSplit(BaseModel):

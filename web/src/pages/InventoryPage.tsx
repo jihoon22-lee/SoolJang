@@ -102,7 +102,7 @@ export function InventoryPage({
 
   return (
     <section className="collection-page">
-      <h1>보관 위치 · 재고 실사</h1>
+      <h2 className="page-title">보관 위치 · 재고 실사</h2>
       <p className="muted">
         병별 위치와 실사 관찰을 온라인에서 기록합니다. 실사에서 확인하지 못한 병도 자동으로
         소진·증여 처리하지 않습니다.

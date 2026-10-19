@@ -22,6 +22,10 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 
+// 열린 모달 순서. 확인창처럼 다른 모달 위에 겹쳐 열린 패널이 있으면 맨 위 패널만 Tab 을
+// 가둔다 — 아래 패널의 트랩이 포커스를 자기 쪽으로 되찾아 가지 않게 한다.
+const openDialogs: HTMLDivElement[] = [];
+
 export function useModalDialog<T extends HTMLElement>(
   returnFocusRef?: RefObject<T | null>,
 ): RefObject<HTMLDivElement | null> {
@@ -29,7 +33,13 @@ export function useModalDialog<T extends HTMLElement>(
 
   // 열리자마자 포커스를 패널로 옮긴다. 스크린리더가 다이얼로그 내용을 즉시 읽게 한다.
   useEffect(() => {
-    dialogRef.current?.focus();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    openDialogs.push(dialog);
+    dialog.focus();
+    return () => {
+      openDialogs.splice(openDialogs.lastIndexOf(dialog), 1);
+    };
   }, []);
 
   // 포커스 트랩: Tab 은 패널 안의 포커스 가능한 요소끼리만 순환한다. 패널 컨테이너
@@ -39,7 +49,7 @@ export function useModalDialog<T extends HTMLElement>(
     function onKeyDown(event: KeyboardEvent): void {
       if (event.key !== "Tab") return;
       const dialog = dialogRef.current;
-      if (!dialog) return;
+      if (!dialog || openDialogs.at(-1) !== dialog) return;
       const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
       const first = focusable[0];
       const last = focusable[focusable.length - 1];

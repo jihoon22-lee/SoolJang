@@ -377,6 +377,7 @@ export function ProductForm({
           <input
             id="form-age-years"
             type="number"
+            inputMode="decimal"
             min={0}
             step="0.1"
             value={values.ageYears}

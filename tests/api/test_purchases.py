@@ -7,6 +7,7 @@
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -255,6 +256,71 @@ def test_foreign_purchase_with_rate_is_accepted(api_client: TestClient, prefix: 
     assert purchase["fx_rate"] == "1431.900000"
 
 
+def test_foreign_purchase_without_won_price_stores_converted_price(
+    api_client: TestClient, prefix: str
+) -> None:
+    """원화 실구매가를 비우면 외화 단가 × 환율을 저장한다(미상으로 남기지 않는다)."""
+    _, sku_id = _product_with_sku(api_client, prefix)
+
+    purchase = _post(
+        api_client,
+        f"{prefix}/purchases",
+        {
+            "sku_id": sku_id,
+            "quantity": 1,
+            "currency": "JPY",
+            "foreign_unit_price": "5980",
+            "fx_rate": "9.12",
+        },
+    )
+
+    assert purchase["unit_paid_price"] == "54537.60"
+
+
+@pytest.mark.parametrize(
+    ("foreign", "rate"),
+    [
+        ("1e20", "1e10"),
+        ("1e999999", "1e999999"),
+        ("9999999999", "1000"),
+        # 저장 자릿수로 반올림하면 열 범위를 넘는 값.
+        ("999999999999.999", "1"),
+        ("1", "99999999.9999999"),
+    ],
+)
+def test_foreign_conversion_too_large_to_store_is_rejected(
+    api_client: TestClient, prefix: str, foreign: str, rate: str
+) -> None:
+    """환산값이 저장 범위를 넘으면 500이 아니라 입력 오류로 끝난다."""
+    _, sku_id = _product_with_sku(api_client, prefix)
+
+    response = api_client.post(
+        f"{prefix}/purchases",
+        json={
+            "sku_id": sku_id,
+            "quantity": 1,
+            "currency": "USD",
+            "foreign_unit_price": foreign,
+            "fx_rate": rate,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("price", ["999999999999.999", "1e13"])
+def test_purchase_price_beyond_column_range_is_rejected(
+    api_client: TestClient, prefix: str, price: str
+) -> None:
+    _, sku_id = _product_with_sku(api_client, prefix)
+
+    response = api_client.post(
+        f"{prefix}/purchases", json={"sku_id": sku_id, "quantity": 1, "unit_paid_price": price}
+    )
+
+    assert response.status_code == 422
+
+
 def test_unknown_sku_returns_not_found(api_client: TestClient, prefix: str) -> None:
     response = api_client.post(
         f"{prefix}/purchases",
@@ -359,6 +425,20 @@ def test_split_quantity_mismatch_is_rejected(api_client: TestClient, prefix: str
     assert response.status_code == 422
     body = response.json()
     assert "병수 합계" in body["detail"]
+
+
+def test_split_part_price_beyond_column_range_is_rejected(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, sku_id = _product_with_sku(api_client, prefix)
+    purchase = _post(api_client, f"{prefix}/purchases", {"sku_id": sku_id, "quantity": 2})
+
+    response = api_client.post(
+        f"{prefix}/purchases/{purchase['id']}:split",
+        json={"parts": [{"quantity": 1, "unit_paid_price": "1e13"}, {"quantity": 1}]},
+    )
+
+    assert response.status_code == 422
 
 
 def test_split_requires_at_least_two_parts(api_client: TestClient, prefix: str) -> None:
@@ -488,3 +568,26 @@ def test_purchase_history_names_vendors_by_their_current_name(
 
     assert history[0]["detail"] == {"vendor_id": [None, vendor["id"]]}
     assert history[0]["labels"] == {vendor["id"]: "동네 마트 본점"}
+
+
+def test_foreign_purchase_paid_price_must_match_foreign_times_rate(
+    api_client: TestClient, prefix: str
+) -> None:
+    product = api_client.post(
+        f"{prefix}/products", json={"name": "해외 구매 위스키", "skus": [{"volume_ml": 700}]}
+    ).json()
+    base = {
+        "sku_id": product["skus"][0]["id"],
+        "currency": "usd",
+        "fx_rate": "1380.5",
+        "foreign_unit_price": "49.99",
+    }
+
+    created = api_client.post(f"{prefix}/purchases", json=base | {"unit_paid_price": "69012"})
+    mismatched = api_client.post(f"{prefix}/purchases", json=base | {"unit_paid_price": "49.99"})
+    krw_foreign = api_client.post(f"{prefix}/purchases", json=base | {"currency": "KRW"})
+
+    assert created.status_code == 201, created.text
+    assert created.json()["currency"] == "USD"
+    assert mismatched.status_code == 422
+    assert krw_foreign.status_code == 422

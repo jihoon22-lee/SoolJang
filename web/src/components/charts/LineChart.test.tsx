@@ -7,7 +7,7 @@ describe("LineChart", () => {
     render(<LineChart title="월별 구매 병수" data={[]} />);
 
     expect(screen.getByText("데이터가 없습니다.")).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByRole("figure")).not.toBeInTheDocument();
   });
 
   it("점이 적으면 x축 라벨을 전부 보여준다", () => {
@@ -21,7 +21,7 @@ describe("LineChart", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "월별 구매 병수" })).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "월별 구매 병수" })).toBeInTheDocument();
     const labels = document.querySelector(".line-chart-labels") as HTMLElement;
     expect(within(labels).getByText("2026-01")).not.toHaveClass("sr-only");
     expect(within(labels).getByText("2026-02")).not.toHaveClass("sr-only");

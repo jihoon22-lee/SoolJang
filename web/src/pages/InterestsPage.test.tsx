@@ -4,8 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { productsApi, vendorsApi } from "@/api/client";
 import { type Interest, interestsApi } from "@/api/interests";
+import { type PriceHistoryRow, priceWatchApi } from "@/api/priceWatch";
 import { todayLocal } from "@/format";
-import { InterestsPage } from "@/pages/InterestsPage";
+import { InterestsPage, latestObservation, observedPricePer100ml } from "@/pages/InterestsPage";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery } from "@/testing";
@@ -245,4 +246,154 @@ it("다른 화면의 갱신 후에도 작성 시작 시점의 revision으로 노
   expect(screen.getByLabelText("관심 노트")).toHaveValue("내가 작성한 노트");
   await userEvent.click(screen.getByRole("button", { name: "최신 관심 정보 불러오기" }));
   expect(screen.getByLabelText("관심 노트")).toHaveValue("서버에서 변경한 노트");
+});
+
+it("수정·삭제 확인·구매 전환은 누른 관심 행 아래에 펼치고 그 행으로 화면을 옮긴다", async () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  renderPage();
+  const row = (await screen.findByRole("heading", { name: "다른 몰트" })).closest(
+    "li",
+  ) as HTMLElement;
+
+  await userEvent.click(within(row).getByRole("button", { name: "수정" }));
+  expect(within(row).getByRole("button", { name: "변경 저장" })).toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "삭제" }));
+  expect(within(row).getByRole("region", { name: "관심 삭제 확인" })).toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "구매 전환" }));
+  expect(within(row).getByRole("button", { name: "구매와 병 생성" })).toBeInTheDocument();
+
+  const first = screen.getByRole("heading", { name: "합성 몰트" }).closest("li") as HTMLElement;
+  expect(within(first).queryByRole("region", { name: "관심 삭제 확인" })).toBeNull();
+  expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});
+
+const observation = (overrides: Partial<PriceHistoryRow>): PriceHistoryRow => ({
+  id: "obs",
+  offer_id: "offer",
+  source_id: "source",
+  source_name: "합성 판매처",
+  condition_key: "c",
+  amount: "70000",
+  currency: "KRW",
+  source_url: "https://example.com/p",
+  fetched_at: "2026-10-01T00:00:00Z",
+  facts: {
+    volume_ml: 700,
+    units: 1,
+    is_set: false,
+    in_stock: true,
+    price_kind: "regular",
+    membership: "none",
+    coupon: "none",
+    fulfillment: "delivery",
+    region: "KR",
+    shipping: "included",
+    tax: "included",
+  },
+  ...overrides,
+});
+
+it("관측가 100ml당은 용량·수량이 확인된 원화 관측만 계산한다", () => {
+  const facts = observation({}).facts;
+  expect(observedPricePer100ml(observation({}))).toBe(10000);
+  expect(
+    observedPricePer100ml(observation({ facts: { ...facts, volume_ml: 500, units: 2 } })),
+  ).toBe(7000);
+  expect(observedPricePer100ml(observation({ facts: { ...facts, volume_ml: null } }))).toBeNull();
+  expect(observedPricePer100ml(observation({ currency: "USD" }))).toBeNull();
+  // 모르는 수량을 1병으로, 세트·추천가·품절·조건 미상을 일반 단품가로 계산하지 않는다.
+  for (const unknown of [
+    { units: null },
+    { units: 1.5 },
+    { is_set: true },
+    { price_kind: "recommended" },
+    { price_kind: "snippet" },
+    { in_stock: false },
+    { coupon: null },
+  ])
+    expect(observedPricePer100ml(observation({ facts: { ...facts, ...unknown } }))).toBeNull();
+  expect(observedPricePer100ml(observation({ amount: "0" }))).toBeNull();
+  expect(
+    latestObservation([
+      observation({ id: "old" }),
+      observation({ id: "new", fetched_at: "2026-10-05T00:00:00Z" }),
+    ])?.id,
+  ).toBe("new");
+  expect(latestObservation([])).toBeNull();
+});
+
+it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함께 보인다", async () => {
+  const pin = {
+    external_url: "https://example.com/p",
+    external_name: "합성 몰트",
+    external_key: "p",
+    product_key: "malt",
+  };
+  const confirmed = (overrides: Partial<PriceHistoryRow>) =>
+    observation({
+      ...overrides,
+      facts: { ...observation({}).facts, product_key: "malt", ...overrides.facts },
+    });
+  vi.mocked(interestsApi.list).mockResolvedValue([
+    {
+      ...item,
+      identity: { ...item.identity, age_years: "12" },
+      source_matches: { source: pin },
+    },
+    { ...item, id: "interest-2", name: "다른 몰트", identity: { name: "다른 몰트" }, note: null },
+    { ...item, id: "interest-3", name: "빈 몰트", identity: { name: "빈 몰트" }, note: null },
+    // 제품 키 없이 판매 항목 키로 고정한 출처도 서버 감시처럼 같은 제품으로 본다.
+    {
+      ...item,
+      id: "interest-4",
+      name: "키 고정 몰트",
+      identity: { name: "키 고정 몰트" },
+      note: null,
+      source_matches: { source: { ...pin, product_key: null, external_key: "offer-x" } },
+    },
+  ]);
+  vi.spyOn(priceWatchApi, "history").mockImplementation(async (interestId) =>
+    interestId === item.id
+      ? [
+          confirmed({ id: "old", amount: "80000" }),
+          confirmed({ id: "new", fetched_at: "2026-10-05T00:00:00Z" }),
+          // 탐색은 확인 전 후보의 가격도 저장한다. 고정하지 않은 제품의 더 최근 관측은 쓰지 않는다.
+          observation({
+            id: "unconfirmed",
+            amount: "50000",
+            fetched_at: "2026-10-09T00:00:00Z",
+            facts: { ...observation({}).facts, product_key: "other" },
+          }),
+        ]
+      : interestId === "interest-2"
+        ? [observation({ id: "unpinned", facts: { ...observation({}).facts, product_key: "x" } })]
+        : interestId === "interest-4"
+          ? [
+              observation({
+                id: "by-offer",
+                amount: "35000",
+                facts: { ...observation({}).facts, product_key: "y", offer_key: "offer-x" },
+              }),
+            ]
+          : [],
+  );
+  renderPage();
+  for (const choice of await screen.findAllByLabelText("비교 선택")) await userEvent.click(choice);
+
+  const table = screen.getByRole("table");
+  expect(within(table).getByRole("row", { name: /숙성 연수/ })).toHaveTextContent("12년");
+  await waitFor(() =>
+    expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent(
+      "70,000원 · 합성 판매처",
+    ),
+  );
+  expect(within(table).getByRole("row", { name: /관측가 100ml당/ })).toHaveTextContent("10,000원");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).not.toHaveTextContent("50,000원");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent(
+    "고정한 출처의 관측 없음",
+  );
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent("관측 없음");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent("35,000원");
 });

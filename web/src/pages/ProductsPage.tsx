@@ -9,6 +9,7 @@ import type {
   SortKey,
 } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { LabelOcrPanel } from "@/components/LabelOcrPanel";
 import { type AddPurchaseInput, ProductDetail, type SplitPart } from "@/components/ProductDetail";
 import { ProductFilterPanel } from "@/components/ProductFilterPanel";
@@ -105,6 +106,7 @@ export function ProductsPage({
   onOpenStoreMode,
 }: ProductsPageProps) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { state, triggerSync, lastError } = useSyncStatus();
   const offline = state === "offline";
   const owner = databaseIdentity().userId ?? "";
@@ -466,16 +468,17 @@ export function ProductsPage({
     },
   });
 
-  function confirmBulkDelete(): void {
+  async function confirmBulkDelete(): Promise<void> {
     const ids = [...liveSelected];
     const chosen = (allProducts ?? []).filter((product) => liveSelected.has(product.id));
     const bottleCount = chosen.reduce((sum, product) => sum + product.metrics.purchased_count, 0);
-    if (
-      window.confirm(
-        `선택한 술 ${ids.length}건과 그 구매·병 ${bottleCount}병 기록을 삭제할까요? 시음 기록은 남습니다.`,
-      )
-    )
-      bulkDelete.mutate(ids);
+    const confirmed = await confirm({
+      title: "선택한 술 삭제",
+      message: `선택한 술 ${ids.length}건과 그 구매·병 ${bottleCount}병 기록을 삭제할까요? 시음 기록은 남습니다.`,
+      confirmLabel: "삭제",
+      danger: true,
+    });
+    if (confirmed) bulkDelete.mutate(ids);
   }
 
   if (selectedProductId !== null) {
@@ -823,6 +826,12 @@ function ProductDetailView({
   const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const [editing, setEditing] = useState(false);
+  const productName = product?.name;
+  // 탭·방문 기록에서 어떤 술의 상세인지 알 수 있게 제품명을 제목에 넣는다(App 은 상세 제목을
+  // 정하지 않는다).
+  useEffect(() => {
+    document.title = `${productName ?? "술 상세"} · 술장`;
+  }, [productName]);
   const contextSignature = JSON.stringify(context);
   const [pendingPurchaseTarget, setPendingPurchaseTarget] = useState<{
     skuId: string;
@@ -916,6 +925,13 @@ function ProductDetailView({
         purchased_on: input.purchasedOn || null,
         unit_list_price: input.unitListPrice || null,
         unit_paid_price: input.unitPaidPrice || null,
+        ...(input.foreign
+          ? {
+              currency: input.foreign.currency,
+              fx_rate: input.foreign.fxRate,
+              foreign_unit_price: input.foreign.foreignUnitPrice,
+            }
+          : {}),
       };
       const form = `purchase:${productId}`;
       const requestId = submissionRequestId(form);

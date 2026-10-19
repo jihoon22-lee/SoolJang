@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { Bottle, ContextualTasting, Product, Purchase, Sku } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { BottleSection } from "@/components/BottleSection";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { ProductAttachments } from "@/components/ProductAttachments";
@@ -44,6 +45,30 @@ export interface AddPurchaseInput {
   purchasedOn: string;
   unitListPrice: string;
   unitPaidPrice: string;
+  /** 해외 구매. 실구매가(`unitPaidPrice`)는 외화 단가 × 환율의 원화 값이다. */
+  foreign?: { currency: string; fxRate: string; foreignUnitPrice: string };
+}
+
+/** 해외 구매에 자주 쓰는 통화. */
+const FOREIGN_CURRENCIES = ["USD", "JPY", "EUR", "GBP", "CNY", "HKD", "TWD", "SGD", "AUD"];
+
+/** "12.34" → [1234n, 2]. 음수·지수 표기·빈 값은 null. */
+function decimalParts(value: string): [bigint, number] | null {
+  const match = /^(\d*)(?:\.(\d*))?$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) return null;
+  const fraction = match[2] ?? "";
+  return [BigInt(`${match[1] ?? ""}${fraction}` || "0"), fraction.length];
+}
+/**
+ * 외화 단가 × 환율을 원 단위로 반올림(0.5는 올림)한 원화 실구매가. 둘 중 하나라도 없으면 null.
+ * 부동소수 곱셈(2.675 × 100 = 267.4999…)으로 1원이 어긋나지 않게 정수로 계산한다.
+ */
+export function convertedPaidPrice(foreignUnitPrice: string, fxRate: string): string | null {
+  const foreign = decimalParts(foreignUnitPrice);
+  const rate = decimalParts(fxRate);
+  if (!foreign || !rate || rate[0] === 0n) return null;
+  const scale = 10n ** BigInt(foreign[1] + rate[1]);
+  return String((foreign[0] * rate[0] * 2n + scale) / (2n * scale));
 }
 
 export interface SplitPart {
@@ -100,6 +125,19 @@ function errorText(error: unknown): string | null {
 }
 
 /**
+ * 외화 단가 × 환율과 원화 실구매가가 1%(최소 1원) 넘게 다른 구매. 수정·레거시로 어긋난 기록을
+ * 맞는 것처럼 나란히 보이지 않게 표시한다(새 등록은 서버가 이 차이를 거부한다).
+ */
+export function foreignPriceMismatch(
+  purchase: Pick<Purchase, "foreign_unit_price" | "fx_rate" | "unit_paid_price">,
+): boolean {
+  if (!purchase.foreign_unit_price || !purchase.fx_rate || purchase.unit_paid_price == null)
+    return false;
+  const converted = Number(purchase.foreign_unit_price) * Number(purchase.fx_rate);
+  return Math.abs(Number(purchase.unit_paid_price) - converted) > Math.max(1, converted / 100);
+}
+
+/**
  * 제품 상세.
  *
  * 파생 지표를 먼저 보여준다. 사용자가 이 화면에서 가장 자주 확인하는 것이 "이 술이 얼마짜리
@@ -145,6 +183,7 @@ export function ProductDetail({
   addingSku,
   actionError,
 }: ProductDetailProps) {
+  const confirm = useConfirm();
   const { metrics } = product;
   const matchingScope = matchingPurchaseIds ? [...matchingPurchaseIds].sort().join(":") : null;
   const [allHistoryScope, setAllHistoryScope] = useState<string | null>(null);
@@ -189,6 +228,7 @@ export function ProductDetail({
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [externalInfoOpen, setExternalInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [historyOpen, setHistoryOpen] = useState(Boolean(contextTastingId));
   const [correctionPurchaseId, setCorrectionPurchaseId] = useState<string | null>(null);
   const [correctionTastingId, setCorrectionTastingId] = useState<string | null>(null);
@@ -261,6 +301,7 @@ export function ProductDetail({
           </button>
           <div className="overflow-menu">
             <button
+              ref={moreButtonRef}
               type="button"
               aria-label="더 보기"
               aria-expanded={moreOpen}
@@ -282,7 +323,16 @@ export function ProductDetail({
                         ? `"${product.name}"과 구매 ${purchases.length}건·병 ${bottleCount}개를 함께 삭제할까요?`
                         : `"${product.name}"을 삭제할까요?`;
                     setMoreOpen(false);
-                    if (window.confirm(message)) onDelete();
+                    void confirm({
+                      title: "제품 삭제",
+                      message,
+                      confirmLabel: "삭제",
+                      danger: true,
+                      // 메뉴가 접히며 이 버튼은 사라진다. 닫힌 뒤에는 메뉴 버튼으로 돌아간다.
+                      returnFocus: moreButtonRef.current,
+                    }).then((confirmed) => {
+                      if (confirmed) onDelete();
+                    });
                   }}
                   disabled={
                     deleting ||
@@ -423,162 +473,184 @@ export function ProductDetail({
           </p>
         </fieldset>
       ) : null}
-      <PurchaseSection
-        matchingPurchaseIds={visibleMatchingIds}
-        key={`purchase:${product.id}`}
-        onSavingChange={setSavingPurchase}
-        selectedSkuId={activeSkuId}
-        selectedPurchaseId={contextPurchaseId}
-        product={product}
-        purchases={purchases}
-        offline={offline}
-        onAddPurchase={onAddPurchase}
-        addingPurchase={addingPurchase}
-        addPurchaseError={addPurchaseError}
-        vendorNames={vendorNames}
-        onDeletePurchase={onDeletePurchase}
-        deletingPurchaseId={deletingPurchaseId}
-        onUpdatePurchase={onUpdatePurchase}
-        onSplitPurchase={onSplitPurchase}
-        splittingPurchaseId={splittingPurchaseId}
-        splitError={splitError}
-        onAddSku={onAddSku}
-        addingSku={addingSku}
-        correctionPending={savingCorrection}
-        onCorrectSku={(id) => {
-          if (!savingCorrection) setCorrectionPurchaseId(id);
-        }}
-      />
-
-      {correctionPurchaseId ? (
-        <div ref={purchaseCorrectionRef}>
-          <PurchaseSkuCorrectionForm
-            key={correctionPurchaseId}
-            purchaseId={correctionPurchaseId}
+      <nav className="detail-jump button-row" aria-label="상세 구역 바로가기">
+        {(
+          [
+            ["detail-bottles", "병·시음"],
+            ["detail-purchases", "구매"],
+            ["detail-prices", "가격·외부"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => document.getElementById(id)?.scrollIntoView?.({ block: "start" })}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {/* 가장 잦은 일(병 상태·시음)을 구매 이력보다 먼저 둔다. */}
+      <div id="detail-bottles" className="detail-anchor">
+        {matchingOnly && scopedBottles.length === 0 ? (
+          <output className="notice">
+            선택 조건에 맞는 병이 없습니다. 전체 구매 이력에서 확인하세요.
+          </output>
+        ) : (
+          <BottleSection
+            product={product}
+            bottles={scopedBottles}
+            purchases={purchases}
             offline={offline}
-            onSavingChange={setSavingCorrection}
-            onCancel={() => {
-              if (!savingCorrection) setCorrectionPurchaseId(null);
-            }}
-            onSaved={() => {
-              setSavingCorrection(false);
-              setCorrectionPurchaseId(null);
-              const next = { purchaseScope: undefined };
-              if (onSelectContext) onSelectContext(next);
-              else setLocalContext(next);
-            }}
-          />
-        </div>
-      ) : null}
-
-      {matchingOnly && scopedBottles.length === 0 ? (
-        <output className="notice">
-          선택 조건에 맞는 병이 없습니다. 전체 구매 이력에서 확인하세요.
-        </output>
-      ) : (
-        <BottleSection
-          product={product}
-          bottles={scopedBottles}
-          purchases={purchases}
-          offline={offline}
-          selectedSkuId={activeSkuId}
-          selectedBottleId={contextBottleId}
-          selectedTastingId={contextTastingId}
-          onCorrectTasting={correctTasting}
-          onTastingDeleted={tastingDeleted}
-          onSelectContext={selectContext}
-          onSavingChange={setSavingBottle}
-        />
-      )}
-
-      <details
-        className="panel mt-2"
-        open={historyOpen}
-        onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
-      >
-        <summary>시음 기록 찾기·정정</summary>
-        {historyOpen ? (
-          <ProductTastingHistory
-            productId={product.id}
             selectedSkuId={activeSkuId}
             selectedBottleId={contextBottleId}
             selectedTastingId={contextTastingId}
-            offline={offline}
-            correctionPending={savingCorrection}
-            onCorrect={correctTasting}
-            onDeleted={tastingDeleted}
-            onSelectTasting={(tasting) =>
-              selectContext({
-                skuId: tasting.sku_id,
-                bottleId: tasting.bottle_id ?? undefined,
-                tastingId: tasting.id,
-              })
-            }
-          />
-        ) : null}
-      </details>
-      {correctionTastingId ? (
-        <div ref={tastingCorrectionRef}>
-          <TastingCorrectionForm
-            key={correctionTastingId}
-            tastingId={correctionTastingId}
-            offline={offline}
-            bottleOptions={correctionOptions?.bottles}
-            skuOptions={correctionOptions?.skus}
-            onSavingChange={setSavingCorrection}
-            onCancel={() => {
-              if (!savingCorrection) setCorrectionTastingId(null);
-            }}
-            onSaved={(result) => {
-              setSavingCorrection(false);
-              setCorrectionTastingId(null);
-              if (onTastingCorrected) onTastingCorrected(result);
-              else {
-                const next = {
-                  skuId: result.sku_id,
-                  bottleId: result.bottle_id ?? undefined,
-                  tastingId: result.id,
-                  purchaseScope: undefined,
-                };
-                if (onSelectContext) onSelectContext(next);
-                else setLocalContext(next);
-              }
-            }}
-          />
-        </div>
-      ) : null}
-
-      <ProductAttachments key={product.id} productId={product.id} offline={offline} />
-
-      <details
-        className="panel mt-2"
-        onToggle={(event) => setPriceHistoryOpen(event.currentTarget.open)}
-      >
-        <summary>가격 이력 보기</summary>
-        {priceHistoryOpen && (
-          <PriceHistoryPanel
-            key={product.id}
-            productId={product.id}
-            onSaveInterest={() => setExternalInfoOpen(true)}
+            onCorrectTasting={correctTasting}
+            onTastingDeleted={tastingDeleted}
+            onSelectContext={selectContext}
+            onSavingChange={setSavingBottle}
           />
         )}
-      </details>
-      {product.skus.length > 1 ? (
-        <p className="muted text-sm">
-          {selectedSummary
-            ? `${formatVolume(selectedSummary.volume_ml)}의 전체 구매 실평단가를 외부 제안과 비교합니다.`
-            : "내 가격과 비교하려면 용량을 선택하세요."}
-        </p>
-      ) : null}
-      <ExternalInfoCard
-        open={externalInfoOpen}
-        onOpenChange={setExternalInfoOpen}
-        productId={product.id}
-        productName={product.name}
-        offline={offline}
-        myPricePer100ml={selectedSummary?.metrics.price_per_100ml_paid ?? null}
-        selectedVolumeMl={selectedSummary?.volume_ml ?? null}
-      />
+
+        <details
+          className="panel mt-2"
+          open={historyOpen}
+          onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+        >
+          <summary>시음 기록 찾기·정정</summary>
+          {historyOpen ? (
+            <ProductTastingHistory
+              productId={product.id}
+              selectedSkuId={activeSkuId}
+              selectedBottleId={contextBottleId}
+              selectedTastingId={contextTastingId}
+              offline={offline}
+              correctionPending={savingCorrection}
+              onCorrect={correctTasting}
+              onDeleted={tastingDeleted}
+              onSelectTasting={(tasting) =>
+                selectContext({
+                  skuId: tasting.sku_id,
+                  bottleId: tasting.bottle_id ?? undefined,
+                  tastingId: tasting.id,
+                })
+              }
+            />
+          ) : null}
+        </details>
+        {correctionTastingId ? (
+          <div ref={tastingCorrectionRef}>
+            <TastingCorrectionForm
+              key={correctionTastingId}
+              tastingId={correctionTastingId}
+              offline={offline}
+              bottleOptions={correctionOptions?.bottles}
+              skuOptions={correctionOptions?.skus}
+              onSavingChange={setSavingCorrection}
+              onCancel={() => {
+                if (!savingCorrection) setCorrectionTastingId(null);
+              }}
+              onSaved={(result) => {
+                setSavingCorrection(false);
+                setCorrectionTastingId(null);
+                if (onTastingCorrected) onTastingCorrected(result);
+                else {
+                  const next = {
+                    skuId: result.sku_id,
+                    bottleId: result.bottle_id ?? undefined,
+                    tastingId: result.id,
+                    purchaseScope: undefined,
+                  };
+                  if (onSelectContext) onSelectContext(next);
+                  else setLocalContext(next);
+                }
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+      <div id="detail-purchases" className="detail-anchor">
+        <PurchaseSection
+          matchingPurchaseIds={visibleMatchingIds}
+          key={`purchase:${product.id}`}
+          onSavingChange={setSavingPurchase}
+          selectedSkuId={activeSkuId}
+          selectedPurchaseId={contextPurchaseId}
+          product={product}
+          purchases={purchases}
+          offline={offline}
+          onAddPurchase={onAddPurchase}
+          addingPurchase={addingPurchase}
+          addPurchaseError={addPurchaseError}
+          vendorNames={vendorNames}
+          onDeletePurchase={onDeletePurchase}
+          deletingPurchaseId={deletingPurchaseId}
+          onUpdatePurchase={onUpdatePurchase}
+          onSplitPurchase={onSplitPurchase}
+          splittingPurchaseId={splittingPurchaseId}
+          splitError={splitError}
+          onAddSku={onAddSku}
+          addingSku={addingSku}
+          correctionPending={savingCorrection}
+          onCorrectSku={(id) => {
+            if (!savingCorrection) setCorrectionPurchaseId(id);
+          }}
+        />
+
+        {correctionPurchaseId ? (
+          <div ref={purchaseCorrectionRef}>
+            <PurchaseSkuCorrectionForm
+              key={correctionPurchaseId}
+              purchaseId={correctionPurchaseId}
+              offline={offline}
+              onSavingChange={setSavingCorrection}
+              onCancel={() => {
+                if (!savingCorrection) setCorrectionPurchaseId(null);
+              }}
+              onSaved={() => {
+                setSavingCorrection(false);
+                setCorrectionPurchaseId(null);
+                const next = { purchaseScope: undefined };
+                if (onSelectContext) onSelectContext(next);
+                else setLocalContext(next);
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+      <ProductAttachments key={product.id} productId={product.id} offline={offline} />
+
+      <div id="detail-prices" className="detail-anchor">
+        <details
+          className="panel mt-2"
+          onToggle={(event) => setPriceHistoryOpen(event.currentTarget.open)}
+        >
+          <summary>가격 이력 보기</summary>
+          {priceHistoryOpen && (
+            <PriceHistoryPanel
+              key={product.id}
+              productId={product.id}
+              onSaveInterest={() => setExternalInfoOpen(true)}
+            />
+          )}
+        </details>
+        {product.skus.length > 1 ? (
+          <p className="muted text-sm">
+            {selectedSummary
+              ? `${formatVolume(selectedSummary.volume_ml)}의 전체 구매 실평단가를 외부 제안과 비교합니다.`
+              : "내 가격과 비교하려면 용량을 선택하세요."}
+          </p>
+        ) : null}
+        <ExternalInfoCard
+          open={externalInfoOpen}
+          onOpenChange={setExternalInfoOpen}
+          productId={product.id}
+          productName={product.name}
+          offline={offline}
+          myPricePer100ml={selectedSummary?.metrics.price_per_100ml_paid ?? null}
+          selectedVolumeMl={selectedSummary?.volume_ml ?? null}
+        />
+      </div>
     </article>
   );
 }
@@ -652,6 +724,7 @@ function PurchaseSection({
   onAddSku: (volumeMl: number) => Promise<Sku>;
   addingSku: boolean;
 }) {
+  const confirm = useConfirm();
   const visiblePurchases = purchases.filter(
     (purchase) =>
       (!selectedSkuId || purchase.sku_id === selectedSkuId) &&
@@ -843,6 +916,13 @@ function PurchaseSection({
                     </td>
                     <td data-label="병당 실구매가" className="numeric">
                       {formatMoney(purchase.unit_paid_price, { short: true })}
+                      {purchase.currency !== "KRW" && purchase.foreign_unit_price ? (
+                        <span className="muted text-sm foreign-price-note">
+                          {purchase.foreign_unit_price} {purchase.currency}
+                          {purchase.fx_rate ? ` × ${Number(purchase.fx_rate)}` : ""}
+                          {foreignPriceMismatch(purchase) ? " · 원화 실구매가와 다름" : ""}
+                        </span>
+                      ) : null}
                     </td>
                     <td data-label="총 지출" className="numeric">
                       {formatMoney(purchase.paid_total, { short: true })}
@@ -881,15 +961,17 @@ function PurchaseSection({
                             className="danger"
                             aria-label="구매 기록 삭제"
                             disabled={busy || deletingPurchaseId === purchase.id}
-                            onClick={() => {
-                              if (
-                                window.confirm(
+                            onClick={() =>
+                              void confirm({
+                                title: "구매 기록 삭제",
+                                message:
                                   "이 구매 건과 병을 함께 삭제할까요? 시음 기록이 있는 병이 있으면 삭제되지 않으니 시음 기록을 먼저 정리하세요.",
-                                )
-                              ) {
-                                onDeletePurchase(purchase.id);
-                              }
-                            }}
+                                confirmLabel: "삭제",
+                                danger: true,
+                              }).then((confirmed) => {
+                                if (confirmed) onDeletePurchase(purchase.id);
+                              })
+                            }
                           >
                             {deletingPurchaseId === purchase.id ? "삭제 중…" : "삭제"}
                           </button>
@@ -1001,6 +1083,17 @@ function AddPurchaseForm({
     "",
   );
   const [newVolumeMl, setNewVolumeMl] = useDraftState(`purchase:${product.id}:newVolumeMl`, "");
+  // 빈 통화는 원화 구매다.
+  const [foreignCurrency, setForeignCurrency] = useDraftState(
+    `purchase:${product.id}:foreignCurrency`,
+    "",
+  );
+  const [fxRate, setFxRate] = useDraftState(`purchase:${product.id}:fxRate`, "");
+  const [foreignUnitPrice, setForeignUnitPrice] = useDraftState(
+    `purchase:${product.id}:foreignUnitPrice`,
+    "",
+  );
+  const foreignPaid = foreignCurrency ? convertedPaidPrice(foreignUnitPrice, fxRate) : null;
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [confirmedSkus, setConfirmedSkus] = useState<Sku[]>([]);
@@ -1114,6 +1207,10 @@ function AddPurchaseForm({
           setLocalError("병수를 입력하세요");
           return;
         }
+        if (foreignCurrency && foreignPaid === null) {
+          setLocalError("해외 구매는 외화 단가와 환율을 함께 입력하세요");
+          return;
+        }
         setLocalError(null);
         onSubmit({
           skuId,
@@ -1121,7 +1218,10 @@ function AddPurchaseForm({
           vendorName: vendorName.trim(),
           purchasedOn,
           unitListPrice,
-          unitPaidPrice,
+          unitPaidPrice: foreignCurrency ? (foreignPaid ?? "") : unitPaidPrice,
+          ...(foreignCurrency
+            ? { foreign: { currency: foreignCurrency, fxRate, foreignUnitPrice } }
+            : {}),
         });
       }}
     >
@@ -1178,6 +1278,7 @@ function AddPurchaseForm({
             <input
               id="new-sku-volume"
               type="number"
+              inputMode="numeric"
               min={1}
               max={100000}
               step={1}
@@ -1248,11 +1349,73 @@ function AddPurchaseForm({
               inputMode="decimal"
               step="any"
               min={0}
-              value={unitPaidPrice}
+              value={foreignCurrency ? (foreignPaid ?? "") : unitPaidPrice}
+              readOnly={Boolean(foreignCurrency)}
+              aria-describedby={foreignCurrency ? "purchase-foreign-note" : undefined}
               onChange={(event) => setUnitPaidPrice(event.target.value)}
             />
           </div>
         </div>
+
+        <div className="checkbox-field">
+          <label>
+            <input
+              type="checkbox"
+              checked={Boolean(foreignCurrency)}
+              onChange={(event) => setForeignCurrency(event.target.checked ? "USD" : "")}
+            />
+            해외 구매(외화로 결제)
+          </label>
+        </div>
+        {foreignCurrency ? (
+          <fieldset className="fieldset-bordered">
+            <legend>외화 결제</legend>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="purchase-currency">통화</label>
+                <select
+                  id="purchase-currency"
+                  value={foreignCurrency}
+                  onChange={(event) => setForeignCurrency(event.target.value)}
+                >
+                  {FOREIGN_CURRENCIES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="purchase-foreign-price">병당 외화 단가 ({foreignCurrency})</label>
+                <input
+                  id="purchase-foreign-price"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={foreignUnitPrice}
+                  onChange={(event) => setForeignUnitPrice(event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="purchase-fx-rate">환율 (1 {foreignCurrency}당 원)</label>
+                <input
+                  id="purchase-fx-rate"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={fxRate}
+                  onChange={(event) => setFxRate(event.target.value)}
+                />
+              </div>
+            </div>
+            <p id="purchase-foreign-note" className="muted text-sm mb-0">
+              실구매가는 외화 단가 × 환율을 원 단위로 반올림해 저장합니다. 카드 청구액 기준으로
+              맞추려면 청구 원화 ÷ 외화 단가를 환율로 넣으세요.
+            </p>
+          </fieldset>
+        ) : null}
 
         <div className="field">
           <label htmlFor="purchase-vendor">구매처</label>
@@ -1336,6 +1499,7 @@ function SplitPurchaseForm({
             <input
               id={`split-quantity-${index}`}
               type="number"
+              inputMode="numeric"
               min={1}
               value={part.quantity}
               onChange={(event) => updatePart(index, { quantity: event.target.value })}

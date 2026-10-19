@@ -102,6 +102,7 @@ export function ProductFilterPanel({
             <input
               id="filter-volume"
               type="number"
+              inputMode="numeric"
               min={1}
               step={1}
               placeholder="전체 용량"
@@ -160,6 +161,7 @@ export function ProductFilterPanel({
               <input
                 id="filter-abv-min"
                 type="number"
+                inputMode="decimal"
                 min={0}
                 max={100}
                 step="0.1"
@@ -170,6 +172,7 @@ export function ProductFilterPanel({
               <input
                 aria-label="도수 최대"
                 type="number"
+                inputMode="decimal"
                 min={0}
                 max={100}
                 step="0.1"
@@ -187,6 +190,7 @@ export function ProductFilterPanel({
             <input
               id="filter-rating"
               type="number"
+              inputMode="decimal"
               min={0.5}
               max={6}
               step="0.5"
@@ -283,6 +287,7 @@ export function ProductFilterPanel({
               <input
                 id="filter-vintage-min"
                 type="number"
+                inputMode="numeric"
                 min={1800}
                 max={2200}
                 placeholder="최소"
@@ -296,6 +301,7 @@ export function ProductFilterPanel({
               <input
                 aria-label="빈티지 최대"
                 type="number"
+                inputMode="numeric"
                 min={1800}
                 max={2200}
                 placeholder="최대"
@@ -348,6 +354,7 @@ export function ProductFilterPanel({
               <input
                 id="filter-price-min"
                 type="number"
+                inputMode="numeric"
                 min={0}
                 placeholder="최소"
                 value={filters.price_per_100ml_min ?? ""}
@@ -358,6 +365,7 @@ export function ProductFilterPanel({
               <input
                 aria-label="100ml당 가격 최대"
                 type="number"
+                inputMode="numeric"
                 min={0}
                 placeholder="최대"
                 value={filters.price_per_100ml_max ?? ""}

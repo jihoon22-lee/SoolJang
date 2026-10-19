@@ -354,6 +354,7 @@ function WatchEditor({
         <input
           id={`target-${watch.id}`}
           type="number"
+          inputMode="decimal"
           min="0"
           step="0.0001"
           required
@@ -366,6 +367,7 @@ function WatchEditor({
         <input
           id={`fresh-${watch.id}`}
           type="number"
+          inputMode="numeric"
           min="1"
           max="1440"
           required
@@ -387,6 +389,7 @@ function WatchEditor({
           <input
             id={`interval-${watch.id}`}
             type="number"
+            inputMode="numeric"
             min="15"
             max="10080"
             required
@@ -402,6 +405,7 @@ function WatchEditor({
         <input
           id={`cooldown-${watch.id}`}
           type="number"
+          inputMode="numeric"
           min="15"
           max="10080"
           required

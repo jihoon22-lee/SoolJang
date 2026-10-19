@@ -95,10 +95,67 @@ it("같은 SKU의 여러 구매 중 클릭한 가격 근거의 구매 ID로 이�
   render(<InsightsDashboard onSelectProduct={navigate} today="2026-03-01" />);
   const prices = await screen.findByRole("region", { name: "같은 규격의 구매 가격" });
   const source = within(prices)
-    .getByText(/2026-02-02.*병당 12000/)
+    .getByText(/2026-02-02.*병당 12,000원/)
     .closest("li");
   expect(source).not.toBeNull();
   if (!source) throw new Error("가격 근거 누락");
   await userEvent.click(within(source).getByRole("button"));
   expect(navigate).toHaveBeenCalledWith("p", { skuId: "s", purchaseId: "pu2" });
+});
+
+const storeFilters = (filters: Record<string, string>) =>
+  sessionStorage.setItem("sooljang:view:insight-ui:insights:filters", JSON.stringify(filters));
+
+it("저장해 둔 주종이 사라졌으면 전체 주종으로 계산하고 모르는 상태는 전체로 되돌린다", async () => {
+  storeFilters({
+    from: "",
+    to: "2026-03-01",
+    categoryId: "deleted-category",
+    status: "bogus",
+    day: "2026-03-01",
+  });
+  render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
+
+  const period = await screen.findByRole("region", { name: "선택 기간의 변화" });
+  expect(within(period).getByTestId("period-purchased")).toHaveTextContent("2병");
+  expect(screen.getByLabelText("주종 (하위 포함)")).toHaveValue("");
+  expect(screen.getByLabelText("대상 병의 현재 상태")).toHaveValue("all");
+});
+
+it("자정을 넘긴 탭에서 오늘까지로 둔 기간은 오늘로 따라오고 직접 고른 날짜는 유지한다", async () => {
+  storeFilters({
+    from: "2025-12-01",
+    to: "2026-02-28",
+    categoryId: "",
+    status: "all",
+    day: "2026-02-28",
+  });
+  const view = render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
+
+  // 기본 90일 창(2025-12-01 ~ 2026-02-28)은 오늘 기준 90일로 함께 옮긴다.
+  expect(await screen.findByLabelText("종료일")).toHaveValue("2026-03-01");
+  expect(screen.getByLabelText("시작일")).toHaveValue("2025-12-02");
+  view.unmount();
+
+  storeFilters({
+    from: "2026-01-01",
+    to: "2026-02-28",
+    categoryId: "",
+    status: "all",
+    day: "2026-02-28",
+  });
+  const custom = render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
+  expect(await screen.findByLabelText("종료일")).toHaveValue("2026-03-01");
+  expect(screen.getByLabelText("시작일")).toHaveValue("2026-01-01");
+  custom.unmount();
+
+  storeFilters({
+    from: "2026-01-01",
+    to: "2026-02-10",
+    categoryId: "",
+    status: "all",
+    day: "2026-02-28",
+  });
+  render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
+  expect(await screen.findByLabelText("종료일")).toHaveValue("2026-02-10");
 });

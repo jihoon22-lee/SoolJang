@@ -9,7 +9,7 @@
 export const CHART_PALETTE: readonly string[] = [
   "#ddb161", // 골드 (accent-strong)
   "#7fbf95", // 세이지 (ok)
-  "#e8837a", // 코랄 (danger)
+  "#d9987a", // 살구 (의미색 danger 와 구분)
   "#7aa7e8", // 블루
   "#b98ae0", // 퍼플
   "#5fb8b0", // 틸

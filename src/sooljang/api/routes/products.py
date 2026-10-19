@@ -110,7 +110,9 @@ def _to_out(
 async def list_products(  # noqa: PLR0913 - 필터가 많은 것이 이 엔드포인트의 목적이다
     session: SessionDep,
     user_id: UserDep,
-    q: Annotated[str | None, Query(description="이름 부분 문자열 검색 (한글 지원)")] = None,
+    q: Annotated[
+        str | None, Query(max_length=300, description="이름 부분 문자열 검색 (한글 지원)")
+    ] = None,
     category_id: Annotated[uuid.UUID | None, Query(description="하위 주종 포함")] = None,
     include_descendants: Annotated[bool, Query()] = True,
     country: Annotated[str | None, Query()] = None,

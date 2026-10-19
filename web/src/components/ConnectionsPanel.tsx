@@ -455,6 +455,7 @@ function ConnectionEditor({
           <input
             id={`conn-minute-${connection.id}`}
             type="number"
+            inputMode="numeric"
             min={1}
             max={60}
             value={perMinute}
@@ -467,6 +468,7 @@ function ConnectionEditor({
           <input
             id={`conn-day-${connection.id}`}
             type="number"
+            inputMode="numeric"
             min={1}
             max={100000}
             value={perDay}
@@ -504,6 +506,7 @@ function ConnectionEditor({
               <input
                 id={`conn-rematch-${connection.id}`}
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={100000}
                 value={rematchCap}
