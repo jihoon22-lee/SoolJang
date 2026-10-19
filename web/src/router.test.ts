@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseHash, routeToHash } from "@/router";
+import { parseHash, routeToHash, shouldResetScroll } from "@/router";
 
 describe("parseHash", () => {
   it("빈 해시는 홈으로 해석한다", () => {
@@ -134,4 +134,28 @@ it("선택한 구매 조건은 상세 URL의 새로고침에서도 전체 이력
 it("구매 근거 ID가 새로고침 URL에서도 유지된다", () => {
   const route = { view: "products" as const, productId: "p", skuId: "s", purchaseId: "purchase" };
   expect(parseHash(routeToHash(route))).toMatchObject(route);
+});
+
+describe("shouldResetScroll", () => {
+  it("다른 화면이나 새 제품 상세로 가면 맨 위에서 시작하고 상세→목록 복귀는 목록 위치를 둔다", () => {
+    expect(shouldResetScroll({ view: "home" }, { view: "stats" })).toBe(true);
+    expect(shouldResetScroll({ view: "products" }, { view: "products", productId: "p1" })).toBe(
+      true,
+    );
+    expect(
+      shouldResetScroll(
+        { view: "products", productId: "p1" },
+        { view: "products", productId: "p2" },
+      ),
+    ).toBe(true);
+    expect(shouldResetScroll({ view: "products", productId: "p1" }, { view: "products" })).toBe(
+      false,
+    );
+    expect(
+      shouldResetScroll(
+        { view: "products", productId: "p1" },
+        { view: "products", productId: "p1", tastingId: "t1" },
+      ),
+    ).toBe(false);
+  });
 });

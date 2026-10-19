@@ -337,7 +337,7 @@ export function PivotExplorer({ categories }: PivotExplorerProps) {
       {savedViews.data && savedViews.data.length > 0 && (
         <div className="field">
           <h4>저장된 뷰</h4>
-          <ul className="stats-cards">
+          <ul className="quality-record-list saved-view-list">
             {savedViews.data.map((view) => (
               <li className="stats-card" key={view.id}>
                 <span>{view.name}</span>

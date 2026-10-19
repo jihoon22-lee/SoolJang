@@ -114,6 +114,15 @@ export function parseHash(hash: string): Route {
   };
 }
 
+/**
+ * 화면 전환 뒤 맨 위로 스크롤할지. 다른 화면으로 가거나 새 제품 상세를 열면 처음부터 보여준다.
+ * 같은 목록으로 돌아오는 경우(상세 → 목록)는 목록이 기억한 위치를 복원하므로 건드리지 않는다.
+ */
+export function shouldResetScroll(previous: Route, next: Route): boolean {
+  if (previous.view !== next.view) return true;
+  return next.productId !== undefined && next.productId !== previous.productId;
+}
+
 /** 라우트를 `#` 로 시작하는 해시 문자열로 되돌린다. `parseHash` 의 역함수다. */
 export function routeToHash(route: Route): string {
   if (route.view === "products" && route.productId) {

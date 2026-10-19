@@ -344,7 +344,7 @@ export function InterestsPage({
           <button type="button" onClick={() => setSelected([])}>
             비교 선택 해제
           </button>
-          <div className="table-scroll">
+          <div className="table-scroll table-scroll--always">
             <table>
               <thead>
                 <tr>
