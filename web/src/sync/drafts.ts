@@ -190,24 +190,39 @@ export function clearSubmittedDraft(snapshot: ReturnType<typeof captureFormDraft
 }
 /**
  * 이전 형식 이름(`isLegacy`)으로 저장된 이 계정의 초안을 `to` 로 옮긴다(탭마다). 폼 키를 바꾼 뒤에도
- * 업데이트 전에 쓰던 초안을 잃지 않게 한다. 새 이름에 이미 초안이 있는 탭은 그대로 둔다.
+ * 업데이트 전에 쓰던 초안을 잃지 않게 한다. 한 탭에 여럿이면 가장 최근에 고친 초안을 옮긴다(저장
+ * 순서는 고친 순서가 아니다). 새 이름에 이미 초안이 있는 탭은 그대로 둔다.
  */
 export function migrateFormDrafts(isLegacy: (form: string) => boolean, to: string): void {
   const userId = databaseIdentity().userId;
   if (!userId) return;
   const prefix = `${PREFIX}${encodeURIComponent(userId)}:`;
+  const newest = new Map<string, { key: string; stored: string; at: number }>();
   for (const key of Object.keys(localStorage)) {
     if (!key.startsWith(prefix)) continue;
     const suffix = key.slice(prefix.length);
     const separator = suffix.indexOf(":");
     const form = suffix.slice(separator + 1);
     if (separator < 0 || form === to || !isLegacy(form)) continue;
-    const target = `${prefix}${suffix.slice(0, separator)}:${to}`;
+    const stored = localStorage.getItem(key);
+    if (stored === null) continue;
+    let at = Number.NEGATIVE_INFINITY;
     try {
-      const stored = localStorage.getItem(key);
-      if (stored === null || localStorage.getItem(target) !== null) continue;
-      localStorage.setItem(target, stored);
-      localStorage.removeItem(key);
+      const updatedAt = Number(JSON.parse(stored)?.updatedAt);
+      if (Number.isFinite(updatedAt)) at = updatedAt;
+    } catch {
+      /* 시각을 읽을 수 없는 초안은 다른 후보가 없을 때만 옮긴다. */
+    }
+    const tab = suffix.slice(0, separator);
+    const best = newest.get(tab);
+    if (!best || at > best.at) newest.set(tab, { key, stored, at });
+  }
+  for (const [tab, legacy] of newest) {
+    const target = `${prefix}${tab}:${to}`;
+    try {
+      if (localStorage.getItem(target) !== null) continue;
+      localStorage.setItem(target, legacy.stored);
+      localStorage.removeItem(legacy.key);
     } catch {
       /* 옮기지 못하면 원래 초안을 그대로 둔다. */
     }

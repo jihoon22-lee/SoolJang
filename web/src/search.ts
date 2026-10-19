@@ -98,6 +98,7 @@ export function litersToMl(liters: string): string {
   return rest ? `${integer}.${rest}` : integer;
 }
 
+// 리터는 `0.7l병`처럼 한글이 붙어도 바꾸되, `batch 1l2` 같은 판본 표기(뒤에 숫자·밑줄)는 그대로 둔다.
 export function normalizeSearchText(value: string): string {
   return value
     .normalize("NFKC")
@@ -106,7 +107,7 @@ export function normalizeSearchText(value: string): string {
     .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
     .normalize("NFC")
     .replace(/(\d+)\s*(?:years?\s*old|years?|yo|yr|y|년)(?![a-z])/g, "$1")
-    .replace(/(\d+(?:\.\d+)?)\s*l(?![a-z])/g, (_, n: string) => `${litersToMl(n)}ml`)
+    .replace(/(\d+(?:\.\d+)?)\s*l(?![a-z0-9_])/g, (_, n: string) => `${litersToMl(n)}ml`)
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();

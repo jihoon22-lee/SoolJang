@@ -239,6 +239,39 @@ it("새 관심에서 두 번째 출처 후보를 골라도 첫 출처 고정을 
   expect(Object.keys(call?.[1] ?? {}).sort()).toEqual(["source", "source2"]);
   expect(call?.[3]).toEqual([source.candidates[0]?.url, second.candidates[0]?.url]);
 });
+it("새 관심에서 다시 검색하면 앞 검색의 고정은 새 선택과 함께 저장하지 않는다", async () => {
+  vi.spyOn(db, "databaseIdentity").mockReturnValue({ userId: "pin-user", generation: 1 });
+  const second: DiscoverySource = {
+    ...source,
+    source_id: "source2",
+    source_name: "합성 두번째",
+    source_url: "https://other.example.com/b",
+    candidates: [
+      {
+        ...(source.candidates[0] as DiscoverySource["candidates"][number]),
+        name: "합성 몰트 700ml 다른 판매처",
+        url: "https://other.example.com/b?sku=700",
+        key: "b700",
+      },
+    ],
+  };
+  vi.mocked(discoveryApi.lookup).mockResolvedValueOnce([source]).mockResolvedValueOnce([second]);
+  renderWithQuery(<DiscoveryPanel />);
+  await userEvent.type(screen.getByLabelText("검색할 술"), "관심 몰트");
+  await userEvent.click(await screen.findByLabelText("합성 전문 · 전문 소스"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(await screen.findByLabelText("합성 몰트 700ml"));
+  await userEvent.click(screen.getByRole("button", { name: "앱에서 검색" }));
+  await userEvent.click(await screen.findByLabelText("합성 몰트 700ml 다른 판매처"));
+  await userEvent.click(screen.getByLabelText("제품명·판본·규격과 선택 출처를 확인했습니다"));
+  await userEvent.click(screen.getByRole("button", { name: "관심에 저장" }));
+  await screen.findByText(/관심에 저장했습니다/);
+
+  const call = vi.mocked(discoveryApi.saveInterest).mock.calls[0];
+  expect(Object.keys(call?.[1] ?? {})).toEqual(["source2"]);
+  expect(call?.[3]).toEqual([second.candidates[0]?.url]);
+  expect(vi.mocked(discoveryApi.lookup).mock.calls[1]?.[2]).toEqual({});
+});
 it("새 관심에서 같은 출처의 다른 후보로 바꾸면 식별값·고정·근거를 모두 새 후보로 바꾼다", async () => {
   vi.spyOn(db, "databaseIdentity").mockReturnValue({ userId: "pin-user", generation: 1 });
   const first = source.candidates[0] as DiscoverySource["candidates"][number];

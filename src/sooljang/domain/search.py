@@ -35,7 +35,8 @@ def normalize_search_text(value: str) -> str:
     value = "".join(decomposed)
     value = unicodedata.normalize("NFC", value)
     value = re.sub(r"(\d+)\s*(?:years?\s*old|years?|yo|yr|y|년)(?![a-z])", r"\1", value)
-    value = re.sub(r"(\d+(?:\.\d+)?)\s*l(?![a-z])", lambda m: f"{_liters_to_ml(m[1])}ml", value)
+    # `0.7l병`처럼 한글이 붙어도 바꾸되, `batch 1l2` 같은 판본 표기(뒤에 숫자·밑줄)는 그대로 둔다.
+    value = re.sub(r"(\d+(?:\.\d+)?)\s*l(?![a-z0-9_])", lambda m: f"{_liters_to_ml(m[1])}ml", value)
     value = re.sub(r"[^\w\s]", " ", value).replace("_", " ")
     return " ".join(value.split())
 

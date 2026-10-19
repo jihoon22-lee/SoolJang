@@ -124,6 +124,9 @@ const LITER_PARITY: [string, string][] = [
   ["1.2345l", "1234 5ml"],
   ["0.7l병", "700ml병"],
   ["1 liter", "1 liter"],
+  // 단위 뒤에 숫자·밑줄이 이어지면 판본 표기다(용량으로 바꾸지 않는다).
+  ["batch 1l2", "batch 1l2"],
+  ["cask_1l_a", "cask 1l a"],
 ];
 
 it.each(

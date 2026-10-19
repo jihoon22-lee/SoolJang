@@ -264,7 +264,11 @@ export function DiscoveryPanel({
     setSaved(null);
     setCompare([]);
     setTarget(null);
-    void run(identity(), selectedJobs, currentMatches, productId, interest?.id);
+    // 새 관심은 다시 검색하면 선택을 처음부터 한다. 앞 검색의 고정이 남으면 이번 결과에서 고르지
+    // 않은 출처의 고정이 새 선택과 함께 저장됐다.
+    const fresh = !interest && !productId;
+    if (fresh) setMatches({});
+    void run(identity(), selectedJobs, fresh ? {} : currentMatches, productId, interest?.id);
   };
   return (
     <section className="discovery-panel" aria-label="술 탐색">

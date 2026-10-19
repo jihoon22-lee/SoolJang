@@ -212,3 +212,18 @@ it("이전 형식 키의 초안을 새 키로 옮기고 새 키에 이미 있는
   expect(localStorage.getItem(legacy("tab-b", "#products/p1"))).toBe(draft("다른 탭 이전 초안"));
   expect(localStorage.getItem(legacy("tab-a", "#products/p10"))).toBe(draft("다른 제품"));
 });
+
+it("한 탭에 이전 형식 초안이 여럿이면 가장 최근에 고친 초안을 옮긴다", () => {
+  const prefix = "sooljang-draft-v1:draft-owner:";
+  const legacy = (hash: string) => `${prefix}tab-a:product:edit:${hash}`;
+  const draft = (name: string, updatedAt: number) => JSON.stringify({ value: { name }, updatedAt });
+  localStorage.setItem(legacy("#products/p1"), draft("먼저 쓴 초안", 1));
+  localStorage.setItem(legacy("#products/p1?bottle=b1"), draft("나중에 고친 초안", 2));
+  const isLegacy = (form: string) =>
+    form === "product:edit:#products/p1" || form.startsWith("product:edit:#products/p1?");
+
+  migrateFormDrafts(isLegacy, "product:edit:p1");
+
+  expect(localStorage.getItem(`${prefix}tab-a:product:edit:p1`)).toBe(draft("나중에 고친 초안", 2));
+  expect(localStorage.getItem(legacy("#products/p1?bottle=b1"))).toBeNull();
+});
