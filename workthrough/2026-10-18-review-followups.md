@@ -288,4 +288,9 @@ Codex 리뷰(16f87a5 기준) 1건을 반영했다.
   거치지 않았고, 유한한 `1e300`도 반올림하면 거대한 정수라 100ml당 가격 `quantize()`가 InvalidOperation으로
   500을 냈다. 외부 정수 필드를 절댓값 10¹⁵(1,000조) 이하로 묶고 넘으면 누락으로 둔다. RED→GREEN:
   `test_fields.py` 거대 정수·유한 거대 float 2건(수정 전 실패), 10¹²원 정상 계산 1건. 외부 어댑터 테스트 342건 통과.
+- 세 번째 리뷰(d5f60da 기준) 1건: **`extra`에 남는 비유한 값(P2).** JSON `1e400`은 float inf로 읽혀 표준
+  필드에서는 걸러도 원값이 `extra`·조회 결과 `fields`·캐시 스냅샷에 남았다. 엄격한 응답 JSON과 캐시 JSONB가
+  모두 거부해 500이 될 수 있었다. `finite_json`으로 dict·list 안까지 NaN·inf를 빼고, 모든 조회 결과가 거치는
+  `AdapterResult` 생성 시(`fields`·`offers`)와 `split_fields`에 적용한다. RED→GREEN: `test_fields.py` 2건(수정 전
+  실패). 외부 어댑터 344건, 외부 소스·탐색 API/애플리케이션 65건(격리 DB) 통과.
 

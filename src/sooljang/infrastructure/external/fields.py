@@ -154,13 +154,30 @@ _COERCERS: dict[str, Any] = {
 }
 
 
+def _non_finite(value: Any) -> bool:
+    return isinstance(value, float) and not math.isfinite(value)
+
+
+def finite_json(value: Any) -> Any:
+    """NaN·inf 를 뺀 사본(dict·list 안까지).
+
+    JSON 의 `1e400` 은 float inf 로 읽힌다. 응답 JSON(엄격 렌더링)과 캐시 JSONB 모두 이 값을
+    거부해, 조회 결과에 그대로 남기면 표준 필드에서 걸러도 조회 전체가 500 이 됐다.
+    """
+    if isinstance(value, dict):
+        return {key: finite_json(item) for key, item in value.items() if not _non_finite(item)}
+    if isinstance(value, list):
+        return [finite_json(item) for item in value if not _non_finite(item)]
+    return value
+
+
 def split_fields(raw: dict[str, Any]) -> NormalizedFields:
     """추출된 `fields` dict 를 표준 필드와 `extra` 로 나눈다."""
     values: dict[str, Any] = {}
     extra: dict[str, Any] = {}
     currency = "KRW"
 
-    for key, value in raw.items():
+    for key, value in finite_json(raw).items():
         if value is None:
             continue
         if key == "currency":
