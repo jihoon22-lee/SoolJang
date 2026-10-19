@@ -87,6 +87,9 @@ class ImportPlan:
     merge_groups: dict[tuple[str, int | None, Decimal | None], list[int]] = field(
         default_factory=dict
     )
+    #: 적재하면 반드시 실패할 행(줄 번호, 사유). 미리보기 합계·표본에 넣지 않고 따로 알리며
+    #: 적재 결과에는 실패 행으로 남긴다.
+    failing_rows: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def product_count(self) -> int:
@@ -215,12 +218,20 @@ def parse_vendor_shares(raw_vendors: tuple[str, ...], total_quantity: int) -> li
     return []
 
 
+#: 용량이 없으면 규격을 만들 수 없어 구매·병을 붙일 수 없다. 조용히 제품만 남기면 산 병이
+#: 사라진 채 "성공"으로 보인다.
+BLANK_VOLUME_FAILURE = "용량이 비어 있어 구매·병을 만들 수 없습니다. 용량을 채워 다시 가져오세요"
+
+
 def build_plan(report: ParseReport) -> ImportPlan:
     """파싱 리포트를 임포트 계획으로 바꾼다."""
     plan = ImportPlan(warnings=list(report.warnings))
 
     for record in report.records:
         planned = _plan_product(record)
+        if planned.volume_ml is None and planned.purchases:
+            plan.failing_rows.append((planned.line_number, BLANK_VOLUME_FAILURE))
+            continue
         plan.products.append(planned)
 
     grouped: dict[tuple[str, int | None, Decimal | None], list[int]] = {}
@@ -284,26 +295,28 @@ def _plan_purchases(record: LegacyRecord, shares: list[VendorShare]) -> list[Pla
         "discount_note": record.note,
     }
 
-    if not shares:
-        # 분할하지 않은 경우. 구매처 원문을 그대로 보존한다.
-        raw_vendors = "\n".join(record.vendors) if record.vendors else None
-        return [
-            PlannedPurchase(
-                vendor_name=record.vendors[0] if len(record.vendors) == 1 else None,
-                quantity=record.purchased_count,
-                import_note=raw_vendors if raw_vendors and "\n" in raw_vendors else None,
-                unopened=record.unopened_count,
-                opened=record.opened_count,
-                finished=record.consumed_count,
-                **common,  # type: ignore[arg-type]
-            )
-        ]
-
     remaining = {
         "unopened": record.unopened_count,
         "opened": record.opened_count,
         "finished": record.consumed_count,
     }
+    if not shares:
+        # 분할하지 않은 경우. 구매처 원문을 그대로 보존한다. 병 수는 분할 경로와 같은 규칙으로
+        # 구매 병수에 맞춘다 — 시트의 상태 합계가 어긋나면 구매 2병에 병 3개가 생겼다.
+        raw_vendors = "\n".join(record.vendors) if record.vendors else None
+        allotted = _allot(remaining, record.purchased_count)
+        return [
+            PlannedPurchase(
+                vendor_name=record.vendors[0] if len(record.vendors) == 1 else None,
+                quantity=record.purchased_count,
+                import_note=raw_vendors if raw_vendors and "\n" in raw_vendors else None,
+                unopened=allotted["unopened"],
+                opened=allotted["opened"],
+                finished=allotted["finished"],
+                **common,  # type: ignore[arg-type]
+            )
+        ]
+
     purchases: list[PlannedPurchase] = []
     for share in shares:
         allotted = _allot(remaining, share.quantity)

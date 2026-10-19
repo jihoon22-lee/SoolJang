@@ -155,13 +155,18 @@ async def open_bottle(
     if bottle.status != BottleStatus.UNOPENED:
         raise BottleTransitionError(f"미개봉 병만 개봉할 수 있습니다 (현재 상태: {bottle.status})")
 
+    volume = await _bottle_volume_ml(session, bottle)
+    if remaining_ml is not None:
+        # 0ml 로 열면 열린 채 영구 재고로 남고, 용량보다 많으면 이후 따르기·통계가 틀린다.
+        if remaining_ml <= 0:
+            raise BottleInputError("개봉 잔량은 0보다 커야 합니다. 비었다면 소진으로 기록하세요")
+        if volume is not None and remaining_ml > volume:
+            raise BottleInputError(f"잔량이 병 용량({volume}ml)보다 클 수 없습니다")
+
     before = _state(bottle)
     bottle.status = BottleStatus.OPEN
     bottle.opened_on = opened_on or local_today()
-    if remaining_ml is not None:
-        bottle.remaining_ml = remaining_ml
-    else:
-        bottle.remaining_ml = await _bottle_volume_ml(session, bottle)
+    bottle.remaining_ml = remaining_ml if remaining_ml is not None else volume
     if log:
         _log_transition(session, bottle, "open", before)
     await session.flush()
@@ -337,13 +342,17 @@ async def record_tasting(
 
     `reconcile=True` 는 오프라인에서 이미 일어난 시음을 나중에 반영할 때 쓴다. 다른 기기가
     그 사이 잔량을 줄였거나 병을 내보냈어도 마신 사실은 잃지 않는다 — 잔량은 0 으로 맞추고,
-    이미 내보낸 병은 상태를 바꾸지 않은 채 기록만 연결한다.
+    이미 내보내거나 소진한 병은 상태·날짜를 바꾸지 않은 채 기록만 연결한다.
     """
     validate_rating(data.rating)
 
     bottle_before = _state(bottle) if bottle is not None else None
     if bottle is not None:
-        handed_over = bottle.status in {BottleStatus.GIFTED, BottleStatus.SOLD}
+        # 늦게 도착한 오프라인 시음은 이미 소진된 병의 개봉·소진일과 잔량을 다시 쓰지 않는다.
+        # 마신 사실만 연결한다(내보낸 병과 같은 규칙).
+        handed_over = bottle.status in {BottleStatus.GIFTED, BottleStatus.SOLD} or (
+            reconcile and bottle.status == BottleStatus.FINISHED
+        )
         if bottle.status == BottleStatus.UNOPENED:
             # 시음 이력 한 줄에 개봉까지 함께 남긴다(개봉 이력을 따로 쌓지 않는다).
             await open_bottle(session, bottle, opened_on=data.tasted_on, log=False)

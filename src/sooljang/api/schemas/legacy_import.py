@@ -52,6 +52,10 @@ class ImportReview(BaseModel):
     warning_summary: list[tuple[str, int]] = Field(
         default_factory=list, description="경고를 종류별로 묶은 개수"
     )
+    failing_rows: list[int] = Field(
+        default_factory=list,
+        description="적재하면 실패로 남을 행(용량 공란에 구매가 있는 행). 합계·표본에 넣지 않는다",
+    )
 
 
 class ImportAnalysis(BaseModel):

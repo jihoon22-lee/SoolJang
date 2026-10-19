@@ -174,4 +174,64 @@ Codex 리뷰(c327c9c 기준) 2건을 반영했다.
   실패한 개봉(`open`)의 잘못 넣은 잔량을 지워 "용량으로 시작"으로 되돌릴 수 없었다(`open_bottle`은 공란을
   받는다). 공란 허용을 동작별로 판정해 잔량 기록(`set_remaining`)만 필수로 둔다. 소수는 둘 다 막는다.
   RED→GREEN: 판정 단위 테스트(수정 전 실패), SyncStatusBadge 22건 통과.
+- c6e8e16에서 CI 14개 검사 통과·Codex 미해결 지적 없음을 확인하고 2026-10-19 `gh pr merge 174 --merge`로
+  병합(`236bf15`).
+
+## R3 기록 무결성 (`feature/review-record-integrity`)
+
+R2 브랜치 위에 쌓았다. 스키마 변경은 없다(마이그레이션 없음, schema 0021 유지).
+
+### 재현과 변경
+
+1. **시음 있는 구매 삭제(B6).** 구매 삭제(온라인 `DELETE /purchases/{id}`, 동기화 purchase delete)가
+   시음이 붙은 병까지 soft delete해 시음이 수정·삭제할 수 없는 고아가 됐다. 병 행을 잠근 뒤 삭제되지
+   않은 시음이 붙은 병이 있으면 409(동기화는 failed)로 거부하고 병·시음을 그대로 둔다. 시음을 먼저
+   지우면 구매를 삭제할 수 있다. 확인창 문구도 바꿨다. 수정 전 온라인·동기화 테스트 모두 실패했다.
+2. **개봉 잔량(B10).** `open_bottle`이 잔량 0·용량 초과를 받아 0ml 개봉 병(영구 재고)이나 700ml 병의
+   701ml가 저장됐다. 0 이하·용량 초과는 입력 오류(온라인 409, 동기화 failed)다.
+3. **소진 병 날짜(B11).** 늦게 동기화된 오프라인 시음(`reconcile=True`)이 이미 소진한 병의
+   `opened_on`을 더 이른 시음일로 덮어썼다. 소진 병은 내보낸 병과 같이 기록만 연결한다.
+   수정 전 `opened_on`이 `2026-09-10 → 2026-09-01`로 바뀌어 실패했다.
+4. **주종 자기 재배정(B23).** `strategy=reassign&target_id=자기자신`이 제품을 삭제되는 주종에 남겼다.
+   422로 거부한다. 주종 동시 수정 잠금은 이번 범위에서 다루지 않았다.
+5. **레거시 용량 공란(B24)·병수 불일치(B25).** 용량 공란 행은 제품만 만들고 구매·병을 조용히 버렸다.
+   실패 행으로 보고하고 미리보기 경고에 남긴다. 분할하지 않은 행의 병 수를 구매 병수에 맞춰(구매 2병에
+   병 3개 방지) 분할 경로와 같은 배분 규칙을 쓴다.
+6. **최근 삭제한 시음(F2·U4).** `GET /tastings/deleted`(30일, 제품·병이 살아 있는 복구 가능 기록)와
+   데이터 품질 화면의 "최근 삭제한 시음" 목록을 추가했다. 복구는 기존 `:restore`와 같은 버전 검증을
+   쓰며, 일시 실패 재시도는 같은 요청 id, 409 뒤에는 새 요청 id를 쓴다. 삭제 알림 문구에 이 경로를
+   안내한다. 구매·병 휴지통은 시음 고아화를 막은 뒤 필요성이 낮아 범위에서 뺐다.
+
+### 실행 검증
+
+- RED: `tests/api/test_record_integrity.py`의 구매 삭제 2건·개봉 잔량·소진 병 날짜·주종 재배정,
+  `test_import_plan.py` 2건, `test_legacy_import.py` 1건이 수정 전 코드에서 실패했다.
+- GREEN(격리 DB 단독 실행): 전체 `uv run --frozen pytest` 1,725 passed / 30 opt-in skipped,
+  branch 커버리지 92.36%(13분 9초). `ruff check`, `ruff format --check`, `ty check` 통과.
+- 진행 중 실수: 첫 전체 실행 도중 R4 테스트를 같은 `sooljang_test`에 돌려 deadlock이 났다. 그 실행은
+  중단·폐기했고, 이후 R4 이후 검증은 같은 격리 클러스터의 별도 DB `sooljang_test_r4`를 쓴다.
+- 웹: `npm --prefix web run check` 통과(Vitest 103파일/1,299건, branch 83.24%, build). 새
+  `DeletedTastings.test.tsx` 4건(복구 버전·같은 요청 재시도·충돌 후 새 요청·오프라인).
+- 미실행: 실브라우저 확인(최근 삭제한 시음 목록 화면). CI는 Actions 재개 후 Quality `39117131039` 성공.
+
+### PR 자동 리뷰 반영
+
+Codex 리뷰(428a0b6 기준) 3건을 재현해 반영했다.
+
+1. **구매 삭제 잠금 순서(P2).** 온라인 삭제가 구매를 잠그지 않고 병을 먼저 잠가, 병수 수정(구매 → 병)과
+   동시에 오면 교착할 수 있었다. 삭제도 구매 행을 먼저 잠근다. 다른 연결이 구매를 잡은 동안 삭제가 병을
+   잠그지 않는지(`FOR UPDATE NOWAIT`)로 고정했다(수정 전 `LockNotAvailable`).
+2. **반드시 실패할 행의 미리보기(P2).** 용량 공란에 구매가 있는 행은 적재 때 행 전체가 실패하는데 미리보기
+   합계·표본에는 들어 있었다. 계획에서 `failing_rows`로 따로 두고 분석 응답 `review.failing_rows`와 화면에
+   줄 번호를 보이며, 적재 결과에는 실패 행으로 남긴다.
+3. **복구 요청 id 재사용(P2).** 복구 성공 뒤에도 요청 id가 남아 같은 기록을 다시 지웠다 복구하면 옛 id로
+   409가 났다. 성공·4xx처럼 결과가 확정되면 버리고, 연결 오류·5xx에서만 같은 id로 재시도한다.
+- RED→GREEN: `test_record_integrity.py` 잠금 순서 1건, `test_import_plan.py`·`test_legacy_import.py`
+  미리보기 기대 보강 2건, `DeletedTastings.test.tsx` 1건, `ImportPage.test.tsx` 표시 1건.
+- 두 번째 리뷰(39c37ef 기준) 1건: **삭제 시음 목록 쪽 나눔(P2).** 목록이 최신 50건(최대 100)에서 잘려 30일 안에
+  그보다 많이 지우면 오래된 기록은 복구할 길이 없었다. 응답을 `{items, next_cursor}`(삭제 시각·id keyset)로
+  바꾸고 화면에 "이전 삭제 기록 더 보기"를 둔다. 아직 배포 전 API라 이전 형식 호환은 두지 않는다.
+  RED→GREEN: API 5건 쪽 넘김(겹침·누락 없음, 잘못된 cursor 422), `DeletedTastings.test.tsx` 더 보기 1건(수정 전
+  실패). 기록 무결성 API 10건, DeletedTastings 6건 통과.
+  main(`236bf15`) 위에서 `npm --prefix web run check` 통과(Vitest 1,313건, branch 83.11%), `ruff`·`ty` 통과.
 

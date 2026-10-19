@@ -12,6 +12,7 @@ import { useState } from "react";
 import { categoriesApi, vendorsApi } from "@/api/client";
 import { type CleanupPreview, collectionApi, type QualityReport } from "@/api/collection";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
+import { DeletedTastings } from "@/components/DeletedTastings";
 import { formatMoney } from "@/format";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 
@@ -299,6 +300,7 @@ export function CollectionQualityPage({
         </>
       )}
       {action.error && <p role="alert">{action.error.message}</p>}
+      <DeletedTastings online={online} />
     </section>
   );
 }

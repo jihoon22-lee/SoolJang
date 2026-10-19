@@ -331,6 +331,8 @@ export interface ImportReview {
   split_vendor_rows: number[];
   unsplit_vendor_rows: number[];
   warning_summary: [string, number][];
+  /** 적재하면 실패로 남을 행(용량 공란에 구매가 있는 행). 합계·표본에 들어 있지 않다. */
+  failing_rows?: number[];
 }
 
 export interface ImportSampleRow {
@@ -451,6 +453,16 @@ export interface ContextualTasting extends Tasting {
   context: ProductSkuContext;
   purchase: PurchaseContext | null;
   bottle: BottleSnapshot | null;
+}
+
+/** 최근 삭제한 시음. 복구 요청의 기준 버전으로 `updated_at`을 쓴다. */
+export interface DeletedTasting extends ContextualTasting {
+  deleted_at: string;
+}
+
+export interface DeletedTastingPage {
+  items: DeletedTasting[];
+  next_cursor: string | null;
 }
 
 export interface ContextualTastingPage {

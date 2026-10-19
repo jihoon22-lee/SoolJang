@@ -27,6 +27,7 @@ from sooljang.api.schemas.product import (
     VendorOut,
     VendorUpdate,
 )
+from sooljang.application.bottle_commands import delete_purchase_bottles
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
 from sooljang.application.corrections import correct_purchase_sku
@@ -446,15 +447,13 @@ async def purchase_history(
     "/{purchase_id}", status_code=status.HTTP_204_NO_CONTENT, summary="구매 건 삭제"
 )
 async def delete_purchase(purchase_id: uuid.UUID, session: SessionDep, user_id: UserDep) -> None:
-    """구매 건과 그에 속한 병을 함께 soft delete 한다."""
-    purchase = await _owned_purchase(session, user_id, purchase_id)
+    """구매 건과 그에 속한 병을 함께 soft delete 한다. 시음이 붙은 병이 있으면 409다."""
+    await _owned_purchase(session, user_id, purchase_id)
+    # 병수 수정·동기화 삭제와 같은 구매 → 병 순서로 잠가 두 기기의 요청이 교착하지 않게 한다.
+    purchase = await owned(session, Purchase, user_id, purchase_id)
     now = datetime.datetime.now(datetime.UTC)
+    await delete_purchase_bottles(session, purchase_id, now=now)
     purchase.deleted_at = now
-    bottles = await session.scalars(
-        select(Bottle).where(Bottle.purchase_id == purchase_id, Bottle.deleted_at.is_(None))
-    )
-    for bottle in bottles:
-        bottle.deleted_at = now
     await session.flush()
 
 
