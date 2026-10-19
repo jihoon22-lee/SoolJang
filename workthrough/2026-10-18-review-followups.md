@@ -414,7 +414,7 @@ R5 위에 쌓았다. 스키마 변경 없음. API 변화는 구매 등록의 외
   종류·날짜·번호로 바꿨다. 근거 금액은 `formatMoney`로 쓴다.
 - **U12 차트.** 선 차트의 `role="img"`가 대체 표를 가리던 문제를 막대·도넛과 같은 `figure`로 고쳤다.
   SVG 팔레트 3번이 위험색이었고 CSS 토큰과 달랐다 → CSS와 같은 살구색, 일치 테스트 추가.
-- **U13 코드 분할.** 9개 드문 화면을 `React.lazy`로 나눠 첫 JS가 888KB → 746KB(gzip 269 → 231KB).
+- **U13 코드 분할.** 9개 드문 화면을 `React.lazy`로 나눠 첫 JS가 888KB → 762KB(gzip 269 → 236KB, 최종 빌드).
   서비스 워커 precache가 나눈 파일도 받는다. 배포 뒤 옛 파일을 못 찾으면 새로고침을 안내한다.
 - **U14 제목.** 페이지 h1 중복을 `page-title` h2로 맞추고 상세 탭 제목에 제품명을 넣었다.
 - **U2 관심 행 안 편집.** 수정·삭제 확인·구매 전환을 누른 행 아래에 펼치고 그 행으로 스크롤한다.
@@ -471,8 +471,10 @@ PR 전에 R6 변경만 읽기 전용 리뷰어에게 맡겨 7건을 받았고 �
 
 ### 전체 검사와 실브라우저
 
-- R5(`5edb0da`) 위로 다시 쌓은 뒤 `sooljang_test` 단독 전체 pytest 1,769 passed / 30 skipped, branch 92.41%.
-  `ruff`·`ty`·secret scan 통과. `npm --prefix web run check` 통과(Vitest 1,363건, branch 83.3%).
+- R5 최종(`8c08bfb`) 위로 다시 쌓은 뒤 `sooljang_test` 단독 전체 pytest 1,780 passed / 30 skipped, branch 92.40%.
+  `ruff`·`ty`·secret scan 통과. `npm --prefix web run check` 통과(Vitest 1,379건, branch 83.26%). pytest와 함께
+  돌린 첫 웹 검사에서 상세 제목 테스트가 제품 조회 effect보다 먼저 제목을 읽어 실패했다(단독 3회 통과). 제목이
+  바뀔 때까지 기다리게 고친 뒤 단독 전체 검사가 통과했다. 동작 코드는 바꾸지 않았다.
 - 실브라우저(Playwright Chromium, Vite 개발 서버 + 격리 API 8210, 빈 격리 DB `sooljang_browser_r6`에
   0021 적용, 임시 키, 합성 계정·제품·관심만 사용, 운영 데이터·키 미사용):
   - 390×844 제품 상세: 병(재고 3)이 구매 이력보다 먼저, "병·시음/구매/가격·외부" 바로가기. 원화 없이 보낸
