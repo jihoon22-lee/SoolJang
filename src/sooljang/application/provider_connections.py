@@ -536,12 +536,27 @@ async def attach_source(
     return connection
 
 
+def _search_target(source: ExternalSource) -> httpx.URL:
+    """명세의 검색 주소. 형식이 깨진 명세는 조회 실패(설정 오류)로 돌린다.
+
+    `"search": "x"` 처럼 객체가 아닌 값이나 해석할 수 없는 주소가 들어오면 예전에는
+    AttributeError·InvalidURL 이 어댑터 경계 밖으로 새어 모든 출처 조회가 500 이 됐다.
+    """
+    spec = source.adapter_spec if isinstance(source.adapter_spec, dict) else {}
+    search = spec.get("search") or {}
+    if not isinstance(search, dict):
+        raise ValidationFailedError("소스 명세의 search 항목은 객체여야 합니다")
+    try:
+        return httpx.URL(str(search.get("url_template", source.base_url)))
+    except httpx.InvalidURL as error:
+        raise ValidationFailedError("소스 명세의 검색 주소를 해석할 수 없습니다") from error
+
+
 async def validate_source_connection(
     session: AsyncSession, source: ExternalSource, connection: ProviderConnection
 ) -> None:
     """공유 키를 제공자와 무관한 원문 사이트로 보내지 않는다."""
-    search = source.adapter_spec.get("search") or {}
-    target = httpx.URL(str(search.get("url_template", source.base_url)))
+    target = _search_target(source)
     allowed = {
         "naver_hub": (
             "naverapihub.apigw.ntruss.com",
@@ -563,8 +578,7 @@ async def validate_source_connection(
         original = await session.get(ExternalSource, connection.origin_id)
         if original is None or original.user_id != connection.user_id:
             raise ValidationFailedError("기존 인증 대상 소스를 확인할 수 없습니다")
-        original_search = original.adapter_spec.get("search") or {}
-        original_url = httpx.URL(str(original_search.get("url_template", original.base_url)))
+        original_url = _search_target(original)
         if target.host != original_url.host:
             raise ValidationFailedError("서로 다른 사이트는 별도 인증 연결로 등록하세요")
 

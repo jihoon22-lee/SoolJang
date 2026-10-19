@@ -7,10 +7,13 @@ DB 가 유출되어도 세션을 재현할 수 없게 한다.
 공유 저장소가 필요해진다. 그 시점의 판단으로 남긴다.
 """
 
+import asyncio
 import datetime
 import hashlib
 import hmac
+import ipaddress
 import secrets
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -30,6 +33,9 @@ TOKEN_BYTES = 32
 MIN_PASSWORD_LENGTH = 10
 
 _hasher = PasswordHasher()
+#: 동시에 돌리는 Argon2 확인 수. 확인 하나가 기본 64MiB를 쓰므로 허용된 로그인 시도가 한꺼번에
+#: 몰려도 메모리를 묶음으로 잡지 않게 한다. 기다리는 동안 이벤트 루프는 막지 않는다.
+_VERIFY_SLOTS = threading.BoundedSemaphore(2)
 
 
 class AuthError(Exception):
@@ -107,7 +113,43 @@ class LoginRateLimiter:
 
     max_attempts: int = 8
     window_seconds: int = 300
+    #: 이보다 많은 키가 쌓이면 창이 지난 키를 비운다. 주소·이메일을 바꿔 가며 보내는 요청이
+    #: 프로세스 메모리를 끝없이 늘리지 못하게 한다.
+    max_keys: int = 10_000
     _attempts: dict[str, list[float]] = field(default_factory=dict)
+
+    def _recent(self, key: str, now: float) -> list[float]:
+        recent = [
+            stamp for stamp in self._attempts.get(key, []) if now - stamp < self.window_seconds
+        ]
+        if recent:
+            self._attempts[key] = recent
+        else:
+            self._attempts.pop(key, None)
+        return recent
+
+    def _make_room(self, now: float, keys: list[str]) -> None:
+        """새 키를 넣을 자리를 만든다. 넘치면 만료 키 → 시도가 적고 오래된 키 순으로 버린다.
+
+        제한에 걸린 키는 절대 버리지 않는다(버리면 키를 쏟아부어 잠금을 풀 수 있다). 버릴 수
+        있는 키가 없으면 새 키를 받지 않고 거부한다(fail closed).
+        """
+        new = [key for key in keys if key not in self._attempts]
+        if len(self._attempts) + len(new) <= self.max_keys:
+            return
+        for key in list(self._attempts):
+            self._recent(key, now)
+        evictable = sorted(
+            (
+                (len(stamps), stamps[-1], key)
+                for key, stamps in self._attempts.items()
+                if len(stamps) < self.max_attempts and key not in keys
+            ),
+        )
+        while len(self._attempts) + len(new) > self.max_keys and evictable:
+            del self._attempts[evictable.pop(0)[2]]
+        if len(self._attempts) + len(new) > self.max_keys:
+            raise RateLimitedError(self.window_seconds)
 
     def check(self, *keys: str | None) -> None:
         """제한을 넘었으면 예외를 던진다."""
@@ -115,14 +157,21 @@ class LoginRateLimiter:
         for key in keys:
             if key is None:
                 continue
-            recent = [
-                stamp for stamp in self._attempts.get(key, []) if now - stamp < self.window_seconds
-            ]
-            self._attempts[key] = recent
+            recent = self._recent(key, now)
             if len(recent) >= self.max_attempts:
                 oldest = min(recent)
                 retry_after = int(self.window_seconds - (now - oldest)) + 1
                 raise RateLimitedError(retry_after)
+
+    def acquire(self, *keys: str | None) -> None:
+        """검사와 시도 기록을 await 없이 한 번에 한다.
+
+        검사 → 비밀번호 확인(await) → 실패 기록 순서면 동시에 들어온 요청이 모두 검사를
+        통과해 제한 없이 시도할 수 있다. 시도를 먼저 세고 성공하면 `reset` 으로 지운다.
+        """
+        self.check(*keys)
+        self._make_room(time.monotonic(), [key for key in keys if key is not None])
+        self.record_failure(*keys)
 
     def record_failure(self, *keys: str | None) -> None:
         now = time.monotonic()
@@ -140,6 +189,17 @@ class LoginRateLimiter:
 
 #: 프로세스 전역 레이트 리미터. 테스트는 `reset_rate_limiter()` 로 초기화한다.
 _rate_limiter = LoginRateLimiter()
+
+
+def _address_group(client_ip: str) -> str:
+    """IPv6 는 /64 단위로 묶는다. 한 사용자가 받는 대역 안에서 주소를 바꿔 키를 늘리지 못한다."""
+    try:
+        address = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return client_ip
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
 
 
 def get_rate_limiter() -> LoginRateLimiter:
@@ -184,6 +244,11 @@ async def find_user_by_email(session: AsyncSession, email: str) -> User | None:
     )
 
 
+def _verify_bounded(password: str, password_hash: str) -> bool:
+    with _VERIFY_SLOTS:
+        return verify_password(password, password_hash)
+
+
 async def authenticate(
     session: AsyncSession,
     *,
@@ -198,18 +263,23 @@ async def authenticate(
     """
     limiter = get_rate_limiter()
     normalized = normalize_email(email)
-    limiter.check(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    ip_key = f"ip:{_address_group(client_ip)}" if client_ip else None
+    limiter.acquire(f"email:{normalized}", ip_key)
 
     user = await find_user_by_email(session, normalized)
-    if user is None or not user.is_active or not verify_password(password, user.password_hash):
-        limiter.record_failure(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    # Argon2 확인은 수십 ms 동안 CPU 를 쓴다. 이벤트 루프에서 돌리면 그동안 다른 요청이 멈춘다.
+    if (
+        user is None
+        or not user.is_active
+        or not await asyncio.to_thread(_verify_bounded, password, user.password_hash)
+    ):
         raise AuthError("이메일 또는 비밀번호가 올바르지 않습니다")
 
     if needs_rehash(user.password_hash):
         # Argon2 파라미터가 올라갔다. 로그인 시점에 조용히 갱신한다.
         user.password_hash = hash_password(password)
 
-    limiter.reset(f"email:{normalized}", f"ip:{client_ip}" if client_ip else None)
+    limiter.reset(f"email:{normalized}", ip_key)
     user.last_login_at = datetime.datetime.now(datetime.UTC)
     await session.flush()
     return user

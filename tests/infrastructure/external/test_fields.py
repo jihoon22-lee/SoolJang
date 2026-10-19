@@ -1,9 +1,11 @@
 """표준 필드 스키마 표 기반 테스트(Task 34 PR3). 네트워크 불필요."""
 
+import json
 from decimal import Decimal
 
 import pytest
 
+from sooljang.infrastructure.external.adapter import AdapterResult
 from sooljang.infrastructure.external.fields import NormalizedFields, split_fields
 
 
@@ -86,3 +88,58 @@ def test_none_values_are_dropped_entirely() -> None:
 )
 def test_edge_cases(raw: dict[str, object], expected: NormalizedFields) -> None:
     assert split_fields(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"price_krw": float("inf"), "volume_ml": float("nan"), "rating": 10**400},
+        {"price_krw": "9" * 400, "volume_ml": "9" * 400, "rating": "9" * 400},
+        # JSON 정수는 inf 가 되지 않고 int 로 들어온다. 유한한 1e300 도 반올림하면 거대한 정수다.
+        {"price_krw": 10**400, "volume_ml": 10**30, "rating": None},
+        {"price_krw": 1e300, "volume_ml": "9" * 300, "rating": None},
+    ],
+)
+def test_non_finite_or_huge_numbers_become_missing_instead_of_raising(
+    raw: dict[str, object],
+) -> None:
+    normalized = split_fields(raw)
+
+    assert normalized.price_krw is None
+    assert normalized.volume_ml is None
+    assert normalized.rating is None
+    assert normalized.price_per_100ml is None
+
+
+def test_non_finite_values_are_dropped_everywhere_instead_of_kept_in_extra() -> None:
+    raw = {
+        "price_krw": float("inf"),
+        "tasting": {"score": float("nan"), "note": "합성"},
+        "history": [1.5, float("-inf")],
+    }
+
+    normalized = split_fields(raw)
+
+    assert normalized.price_krw is None
+    assert normalized.extra == {"tasting": {"note": "합성"}, "history": [1.5]}
+    json.dumps(normalized.extra, allow_nan=False)
+
+
+def test_adapter_result_strips_non_finite_values_before_response_and_cache() -> None:
+    result = AdapterResult(
+        source_url="https://example.com/p",
+        fields={"price_krw": float("inf"), "volume_ml": 700, "nested": [float("nan")]},
+        raw_excerpt=None,
+        degraded=False,
+        warning=None,
+        offers=[{"amount": "1000", "facts": {"rating": float("inf")}}],
+    )
+
+    assert result.fields == {"volume_ml": 700, "nested": []}
+    json.dumps({"fields": result.fields, "offers": result.offers}, allow_nan=False)
+
+
+def test_large_but_plausible_price_still_computes_per_100ml() -> None:
+    normalized = split_fields({"price_krw": 10**12, "volume_ml": 750})
+
+    assert normalized.price_per_100ml == Decimal("133333333333.33")

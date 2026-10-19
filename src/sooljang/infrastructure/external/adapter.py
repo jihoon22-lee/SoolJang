@@ -40,7 +40,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from sooljang.domain.discovery import RequestBudgetExceeded, SourceOutcome
-from sooljang.infrastructure.external.fields import STANDARD_KEYS
+from sooljang.infrastructure.external.fields import STANDARD_KEYS, finite_json
 from sooljang.infrastructure.external.matching import (
     ProductIdentity,
     build_queries,
@@ -145,6 +145,11 @@ class AdapterResult:
     outcome: SourceOutcome = SourceOutcome.UNKNOWN
     offers: list[dict[str, Any]] = field(default_factory=list)
     product_key: str | None = None
+
+    def __post_init__(self) -> None:
+        # 결과 응답과 캐시 스냅샷이 모두 이 값을 JSON 으로 쓴다. 외부 응답의 NaN·inf 는 여기서 뺀다.
+        self.fields = finite_json(self.fields)
+        self.offers = finite_json(self.offers)
 
 
 def _apply_transform(value: Any, transform: str) -> Any:

@@ -15,6 +15,7 @@
 경로에서 공통으로 호출해, 어느 경로든 같은 규칙으로 분류·계산된다.
 """
 
+import math
 import re
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -75,21 +76,35 @@ class NormalizedFields:
         return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
 
 
+# 가격·용량으로 볼 수 있는 정수의 상한(1,000조). 이보다 큰 값은 오기·악성 응답이다.
+# JSON 정수 `10**400`은 inf 검사를 거치지 않고 int 로 들어오고, 1e300 같은 유한 float 도
+# 반올림하면 거대한 정수가 된다. 둘 다 100ml당 가격의 `Decimal.quantize()` 에서
+# InvalidOperation 을 내 조회가 500 이 됐다.
+_MAX_FIELD_INT = 10**15
+
+
+def _bounded(value: int) -> int | None:
+    return value if abs(value) <= _MAX_FIELD_INT else None
+
+
 def _coerce_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None  # bool 은 int 의 서브클래스라 여기서 걸러야 in_stock 오분류를 막는다
     if isinstance(value, int):
-        return value
+        return _bounded(value)
     if isinstance(value, float):
-        return round(value)
+        # JSON 의 1e400 은 inf, 아주 긴 숫자 문자열도 inf 가 된다. round(inf) 는 OverflowError,
+        # round(nan) 은 ValueError 라 어댑터 밖으로 새어 조회 전체가 500 이 됐다.
+        return _bounded(round(value)) if math.isfinite(value) else None
     if isinstance(value, str):
         cleaned = re.sub(r"[^\d.\-]", "", value)
         if not cleaned:
             return None
         try:
-            return round(float(cleaned))
+            parsed = float(cleaned)
         except ValueError:
             return None
+        return _bounded(round(parsed)) if math.isfinite(parsed) else None
     return None
 
 
@@ -97,15 +112,20 @@ def _coerce_float(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int | float):
-        return float(value)
+        try:
+            parsed = float(value)
+        except OverflowError:  # 10**400 같은 큰 정수
+            return None
+        return parsed if math.isfinite(parsed) else None
     if isinstance(value, str):
         cleaned = re.sub(r"[^\d.\-]", "", value)
         if not cleaned:
             return None
         try:
-            return float(cleaned)
+            parsed = float(cleaned)
         except ValueError:
             return None
+        return parsed if math.isfinite(parsed) else None
     return None
 
 
@@ -134,13 +154,30 @@ _COERCERS: dict[str, Any] = {
 }
 
 
+def _non_finite(value: Any) -> bool:
+    return isinstance(value, float) and not math.isfinite(value)
+
+
+def finite_json(value: Any) -> Any:
+    """NaN·inf 를 뺀 사본(dict·list 안까지).
+
+    JSON 의 `1e400` 은 float inf 로 읽힌다. 응답 JSON(엄격 렌더링)과 캐시 JSONB 모두 이 값을
+    거부해, 조회 결과에 그대로 남기면 표준 필드에서 걸러도 조회 전체가 500 이 됐다.
+    """
+    if isinstance(value, dict):
+        return {key: finite_json(item) for key, item in value.items() if not _non_finite(item)}
+    if isinstance(value, list):
+        return [finite_json(item) for item in value if not _non_finite(item)]
+    return value
+
+
 def split_fields(raw: dict[str, Any]) -> NormalizedFields:
     """추출된 `fields` dict 를 표준 필드와 `extra` 로 나눈다."""
     values: dict[str, Any] = {}
     extra: dict[str, Any] = {}
     currency = "KRW"
 
-    for key, value in raw.items():
+    for key, value in finite_json(raw).items():
         if value is None:
             continue
         if key == "currency":

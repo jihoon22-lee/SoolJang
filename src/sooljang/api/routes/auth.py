@@ -5,6 +5,7 @@ CSRF 는 double-submit cookie 방식이다. 쿠키와 헤더에 같은 값을 �
 """
 
 import datetime
+import ipaddress
 from typing import Annotated
 
 from fastapi import APIRouter, Request, Response, status
@@ -33,6 +34,7 @@ from sooljang.application.auth import (
     revoke_session,
     verify_password,
 )
+from sooljang.config import get_settings
 from sooljang.infrastructure.database.models import Session, User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -57,13 +59,20 @@ class TooManyRequestsError(DomainError):
 def _client_ip(request: Request) -> str | None:
     """클라이언트 IP.
 
-    Tailscale 뒤의 리버스 프록시를 거치므로 `X-Forwarded-For` 를 우선한다. 신뢰할 수 있는
-    프록시가 앞에 있다는 전제이며, 인터넷에 직접 노출하지 않는다는 배포 조건에 기반한다.
+    웹 컨테이너(nginx)가 앞단이 덧붙인 `X-Forwarded-For` 의 마지막 값을 `X-Real-IP` 로
+    덮어써 넘긴다(`docker/nginx.conf`). `X-Forwarded-For` 의 맨 앞 값은 클라이언트가 임의로
+    보낼 수 있어 로그인 제한 키로 쓰면 요청마다 주소를 바꿔 제한을 우회한다. 주소 형식이
+    아니면 버린다(세션 기록의 inet 컬럼이 거부해 로그인 자체가 500 이 된다).
     """
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else None
+    candidate = request.headers.get("X-Real-IP") or (
+        request.client.host if request.client else None
+    )
+    if not candidate:
+        return None
+    try:
+        return str(ipaddress.ip_address(candidate.strip()))
+    except ValueError:
+        return None
 
 
 def _set_auth_cookies(
@@ -200,9 +209,10 @@ def _use_secure_cookie(request: Request) -> bool:
     """`Secure` 플래그 여부.
 
     HTTPS 로 접속했을 때만 켠다. 로컬 개발은 평문 HTTP 라 항상 켜면 쿠키가 저장되지 않아
-    로그인이 안 된다. 운영은 Tailscale HTTPS 를 거치므로 자동으로 켜진다.
+    로그인이 안 된다. 운영은 항상 Tailscale HTTPS 뒤에 있어 앞단 헤더와 무관하게 켠다 —
+    예전 nginx 는 `X-Forwarded-Proto` 를 내부 scheme(http)으로 덮어써 Secure 가 빠졌다.
     """
-    if request.url.scheme == "https":
+    if get_settings().is_production or request.url.scheme == "https":
         return True
     return request.headers.get("X-Forwarded-Proto", "").lower() == "https"
 
