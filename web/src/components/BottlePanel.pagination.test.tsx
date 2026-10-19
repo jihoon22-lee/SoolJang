@@ -173,7 +173,7 @@ it.each([
     state.items.map((item) => item.id),
   );
   expect(new Set(shownNotes().map((element) => element.textContent)).size).toBe(total);
-});
+}, 20_000); // 200건 렌더링·4페이지 왕복은 coverage 계측에서 기본 5초를 넘긴다.
 
 it("첫 페이지 오류는 재시도 후 실제 query cache에 기록을 채운다", async () => {
   const state = server(51);

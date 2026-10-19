@@ -1,10 +1,15 @@
-import { attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
+import { ApiError, attachmentsApi, productsApi, purchasesApi, vendorsApi } from "@/api/client";
 import type { Product } from "@/api/types";
 import type { ProductFormValues } from "@/components/ProductForm";
 import { setLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching } from "@/search";
 import { db, type SoolJangDB } from "@/sync/db";
-import { clearFormDraft } from "@/sync/drafts";
+import {
+  clearFormDraft,
+  finishSubmission,
+  settleFailedSubmission,
+  submissionRequestId,
+} from "@/sync/drafts";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
@@ -73,6 +78,29 @@ export function useCreateProduct() {
       const owner = session.userId;
       const checkSession = session.assertCurrent;
       if (!offline) {
+        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게, 결과를 확인할 때까지 단계마다 같은
+        // 키를 쓴다. 구매 키는 제품 id(제품 키에서 정해짐) 아래에 두어 새로고침 뒤 재시도도 같은
+        // 구매로 돌아오고 다른 제품의 구매와 섞이지 않는다. 두 키 모두 전체가 끝난 뒤 버린다.
+        const productPayload = {
+          name: values.name.trim(),
+          name_en: values.nameEn?.trim() || null,
+          search_aliases: (values.searchAliases ?? "")
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean),
+          category_id: values.categoryId || null,
+          abv: values.abv || null,
+          vintage: values.vintage ? Number(values.vintage) : null,
+          age_years: values.ageYears || null,
+          producer_name: values.producerName?.trim() || null,
+          personal_rating: values.personalRating || null,
+          note: values.note || null,
+          variety_names: splitVarieties(values.varietyNames),
+          skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
+        };
+        const productForm = "product:create:product";
+        const productRequestId = submissionRequestId(productForm);
+        checkSession();
         // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
         // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
         //
@@ -81,23 +109,17 @@ export function useCreateProduct() {
         // 다시 부르면 중복 제품이 생긴다(B7).
         const product =
           existingProduct ??
-          (await productsApi.create({
-            name: values.name.trim(),
-            name_en: values.nameEn?.trim() || null,
-            search_aliases: (values.searchAliases ?? "")
-              .split(",")
-              .map((v) => v.trim())
-              .filter(Boolean),
-            category_id: values.categoryId || null,
-            abv: values.abv || null,
-            vintage: values.vintage ? Number(values.vintage) : null,
-            age_years: values.ageYears || null,
-            producer_name: values.producerName?.trim() || null,
-            personal_rating: values.personalRating || null,
-            note: values.note || null,
-            variety_names: splitVarieties(values.varietyNames),
-            skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
-          }));
+          (await productsApi
+            .create({ ...productPayload, request_id: productRequestId })
+            .catch((error: unknown) => {
+              settleFailedSubmission(
+                productForm,
+                productRequestId,
+                error instanceof ApiError ? error.status : undefined,
+              );
+              throw error;
+            }));
+        const purchaseForm = `product:create:purchase:${product.id}`;
 
         checkSession();
         if (!existingProduct) {
@@ -123,14 +145,25 @@ export function useCreateProduct() {
               ? await resolveVendorId(values.vendorName.trim(), session)
               : null;
             checkSession();
-            await purchasesApi.create({
+            const purchasePayload = {
               sku_id: skuId,
               quantity,
               vendor_id: vendorId,
               purchased_on: values.purchasedOn || null,
               unit_list_price: values.unitListPrice || null,
               unit_paid_price: values.unitPaidPrice || null,
-            });
+            };
+            const purchaseRequestId = submissionRequestId(purchaseForm);
+            await purchasesApi
+              .create({ ...purchasePayload, request_id: purchaseRequestId })
+              .catch((error: unknown) => {
+                settleFailedSubmission(
+                  purchaseForm,
+                  purchaseRequestId,
+                  error instanceof ApiError ? error.status : undefined,
+                );
+                throw error;
+              });
             purchaseCreated = true;
           }
           checkSession();
@@ -149,6 +182,9 @@ export function useCreateProduct() {
             purchaseCreated,
           );
         }
+        // 전부 끝난 뒤에 버린다. 그 전 실패의 재시도는 같은 제품·구매로 돌아와야 한다.
+        finishSubmission(purchaseForm);
+        finishSubmission(productForm, productRequestId);
         return product.id;
       }
 

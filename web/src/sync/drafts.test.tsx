@@ -5,6 +5,9 @@ import {
   captureFormDraft,
   clearFormDraft,
   clearSubmittedDraft,
+  finishSubmission,
+  settleFailedSubmission,
+  submissionRequestId,
   useDraftState,
 } from "@/sync/drafts";
 
@@ -87,4 +90,49 @@ it("새 필드 입력과 같은 계정의 재로그인도 이전 제출의 초�
   act(() => form.result.current[1]("99"));
   expect(Object.values(localStorage).join()).toContain('"2"');
   expect(Object.values(localStorage).join()).not.toContain('"99"');
+});
+it("결과를 확인하기 전에는 내용을 고쳐 다시 보내도 같은 요청 식별자를 쓴다", () => {
+  const first = submissionRequestId("purchase:p1");
+
+  expect(submissionRequestId("purchase:p1")).toBe(first);
+  expect(submissionRequestId("purchase:p2")).not.toBe(first);
+});
+
+it("저장 성공 뒤 같은 내용을 다시 등록하면 새 요청이 된다", () => {
+  const saved = submissionRequestId("purchase:p1");
+  finishSubmission("purchase:p1", "older-request");
+  expect(submissionRequestId("purchase:p1")).toBe(saved);
+
+  finishSubmission("purchase:p1", saved);
+
+  expect(submissionRequestId("purchase:p1")).not.toBe(saved);
+});
+
+it("409만 결과 확정으로 보고 다른 실패는 요청 식별자를 유지한다", () => {
+  const sent = submissionRequestId("purchase:p1");
+  for (const status of [undefined, 401, 422, 500, 503]) {
+    settleFailedSubmission("purchase:p1", sent, status);
+    expect(submissionRequestId("purchase:p1")).toBe(sent);
+  }
+
+  settleFailedSubmission("purchase:p1", sent, 409);
+
+  expect(submissionRequestId("purchase:p1")).not.toBe(sent);
+});
+
+it("복제한 탭은 탭 id를 새로 받으므로 다른 요청으로 보낸다", () => {
+  sessionStorage.setItem("sooljang-draft-tab", "tab-original");
+  const original = submissionRequestId("purchase:p1");
+  // 복제 탭은 sessionStorage 를 복사해 오지만 initializeDraftTab 이 탭 id 를 새로 만든다.
+  sessionStorage.setItem("sooljang-draft-tab", "tab-duplicate");
+
+  expect(submissionRequestId("purchase:p1")).not.toBe(original);
+});
+
+it("다른 계정의 요청 식별자는 이어받지 않는다", async () => {
+  const mine = submissionRequestId("product:create");
+  lockDatabase();
+  await activateDatabase("other-owner");
+
+  expect(submissionRequestId("product:create")).not.toBe(mine);
 });

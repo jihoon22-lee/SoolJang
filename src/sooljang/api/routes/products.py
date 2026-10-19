@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, status
 from sqlalchemy import select
 
 from sooljang.api.deps import SessionDep, UserDep
-from sooljang.api.errors import ValidationFailedError
+from sooljang.api.errors import ConflictError, ValidationFailedError
 from sooljang.api.pagination import (
     Cursor,
     SortOrder,
@@ -28,6 +28,11 @@ from sooljang.api.schemas.product import (
     SkuUpdate,
 )
 from sooljang.application.barcodes import InvalidBarcodeError, normalize_optional
+from sooljang.application.create_receipts import (
+    ensure_same_request,
+    request_fingerprint,
+    save_request,
+)
 from sooljang.application.products import (
     ProductFilters,
     SortKey,
@@ -56,6 +61,7 @@ from sooljang.application.skus import (
 from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.metrics_sql import single_product_metrics_query
 from sooljang.infrastructure.database.models import Product, ProductVariety, Sku
+from sooljang.infrastructure.legacy.varieties import normalize_varieties
 
 router = APIRouter(prefix="/products", tags=["products"])
 skus_router = APIRouter(prefix="/skus", tags=["products"])
@@ -218,6 +224,27 @@ async def create_product(
     4계층 구조의 입력 부담을 줄이려면 한 번의 요청으로 제품·규격·품종을 만들 수 있어야 한다.
     """
     await lock_user_writes(session, user_id)
+    product_id = (
+        uuid.uuid5(user_id, f"product-create:{payload.request_id}")
+        if payload.request_id
+        else uuid.uuid4()
+    )
+    fingerprint = _create_fingerprint(payload)
+    if payload.request_id:
+        replay = await session.scalar(
+            select(Product).where(Product.id == product_id, Product.user_id == user_id)
+        )
+        if replay is not None:
+            await ensure_same_request(
+                session,
+                user_id=user_id,
+                kind="product",
+                request_id=payload.request_id,
+                fingerprint=fingerprint,
+            )
+            if replay.deleted_at is not None:
+                raise ConflictError("이 요청으로 만든 제품은 이미 삭제되었습니다")
+            return await _detail(session, user_id, replay.id)
     await ensure_category_exists(session, user_id=user_id, category_id=payload.category_id)
 
     producer_id = payload.producer_id
@@ -228,6 +255,7 @@ async def create_product(
         )
 
     product = Product(
+        id=product_id,
         user_id=user_id,
         name=payload.name.strip(),
         name_en=payload.name_en,
@@ -252,6 +280,15 @@ async def create_product(
             session.add(_new_sku(user_id, product.id, sku))
     except InvalidBarcodeError as error:
         raise ValidationFailedError(str(error)) from error
+    if payload.request_id:
+        save_request(
+            session,
+            user_id=user_id,
+            kind="product",
+            request_id=payload.request_id,
+            entity_id=product.id,
+            fingerprint=fingerprint,
+        )
     await session.flush()
 
     return await _detail(session, user_id, product.id)
@@ -328,6 +365,29 @@ async def add_sku(
     except InvalidBarcodeError as error:
         raise ValidationFailedError(str(error)) from error
     return SkuOut.model_validate(sku)
+
+
+def _create_fingerprint(payload: ProductCreate) -> str:
+    """처음 생성 요청의 정규화한 내용. 같은 뜻의 재전송(공백·대소문자·바코드 표기)은 같다."""
+
+    def sku_key(sku: SkuCreate) -> tuple[int, str, str]:
+        try:
+            barcode = normalize_optional(sku.barcode)[0] or ""
+        except InvalidBarcodeError:
+            barcode = sku.barcode or ""
+        return (sku.volume_ml, barcode, sku.package_note or "")
+
+    fields = payload.model_dump(exclude={"request_id", "skus", "variety_names", "producer_name"})
+    return request_fingerprint(
+        fields
+        | {
+            "name": payload.name.strip(),
+            "producer_name": (payload.producer_name or "").strip().lower(),
+            # 품종 순서는 `ProductVariety.sort_order`로 저장되므로 순서가 다르면 다른 요청이다.
+            "variety_names": [item.name for item in normalize_varieties(payload.variety_names)],
+            "skus": sorted(sku_key(sku) for sku in payload.skus),
+        }
+    )
 
 
 def _new_sku(user_id: uuid.UUID, product_id: uuid.UUID, payload: SkuCreate) -> Sku:

@@ -25,7 +25,12 @@ import { hasPurchaseScope, purchaseScopeLabel, selectPurchaseScope } from "@/pur
 import type { ProductContext } from "@/router";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { databaseIdentity, db } from "@/sync/db";
-import { clearFormDraft } from "@/sync/drafts";
+import {
+  clearFormDraft,
+  finishSubmission,
+  settleFailedSubmission,
+  submissionRequestId,
+} from "@/sync/drafts";
 import { enqueue } from "@/sync/outbox";
 import { resolveProductContext } from "@/sync/productContext";
 import { enqueueProductDelete } from "@/sync/productDelete";
@@ -887,14 +892,25 @@ function ProductDetailView({
       const vendorId = input.vendorName ? await resolveVendorId(input.vendorName, session) : null;
       session.assertCurrent();
       const submittedContext = contextSignature;
-      await purchasesApi.create({
+      const payload = {
         sku_id: input.skuId,
         quantity: input.quantity,
         vendor_id: vendorId,
         purchased_on: input.purchasedOn || null,
         unit_list_price: input.unitListPrice || null,
         unit_paid_price: input.unitPaidPrice || null,
+      };
+      const form = `purchase:${productId}`;
+      const requestId = submissionRequestId(form);
+      await purchasesApi.create({ ...payload, request_id: requestId }).catch((error: unknown) => {
+        settleFailedSubmission(
+          form,
+          requestId,
+          error instanceof ApiError ? error.status : undefined,
+        );
+        throw error;
       });
+      finishSubmission(form, requestId);
       return { skuId: input.skuId, contextSignature: submittedContext };
     },
     onSuccess: (result, input) => {

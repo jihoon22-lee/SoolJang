@@ -78,6 +78,67 @@ export function captureFormDraft(form: string) {
   return { identity, prefix, entries };
 }
 
+const REQUEST_PREFIX = "sooljang-request-v1:";
+function requestKey(form: string, userId: string): string {
+  // 복제한 탭은 sessionStorage 를 복사해 오지만 탭 id 는 새로 받는다. 탭 id 를 넣어 두 탭의
+  // 같은 내용 등록이 한 요청으로 합쳐지지 않게 한다.
+  return `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${tabId()}:${form}`;
+}
+
+/**
+ * 온라인 생성 요청의 멱등 식별자. 결과가 확정될 때까지(`finishSubmission`) 같은 값을 돌려준다.
+ * 응답을 잃은 뒤 내용을 고쳐 다시 보내도 같은 키라, 앞선 요청이 저장됐으면 서버가 중복을 만들지
+ * 않고 409로 알린다. 기본값만으로 제출해 초안이 저장되지 않은 폼도 같은 값을 쓴다. 이 탭·계정
+ * 안에서만 유효하다.
+ */
+export function submissionRequestId(form: string): string {
+  const userId = databaseIdentity().userId;
+  if (!userId) return crypto.randomUUID();
+  const key = requestKey(form, userId);
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
+      requestId?: unknown;
+    } | null;
+    if (typeof stored?.requestId === "string") return stored.requestId;
+  } catch {
+    // 손상된 값은 새 요청으로 덮는다.
+  }
+  const requestId = crypto.randomUUID();
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ requestId }));
+  } catch {
+    // 저장할 수 없으면 이번 요청만 멱등하다(재시도는 새 요청).
+  }
+  return requestId;
+}
+
+/**
+ * 결과가 확정된 요청을 잊는다. 이후 같은 내용을 일부러 한 번 더 등록하면 새 기록이 된다.
+ * `requestId` 를 주면 그 요청일 때만 지운다.
+ */
+export function finishSubmission(form: string, requestId?: string): void {
+  const userId = databaseIdentity().userId;
+  if (!userId) return;
+  const key = requestKey(form, userId);
+  try {
+    if (
+      requestId === undefined ||
+      JSON.parse(sessionStorage.getItem(key) ?? "null")?.requestId === requestId
+    )
+      sessionStorage.removeItem(key);
+  } catch {
+    sessionStorage.removeItem(key);
+  }
+}
+
+/**
+ * 실패한 생성 요청 중 결과가 확정된 것만 잊는다. 409는 이 키로 이미 다른 내용이 저장됐다는
+ * 답이다. 연결 실패·5xx는 물론 422·401도 앞선 시도가 저장됐는지 알려 주지 않으므로 키를 유지한다.
+ */
+export function settleFailedSubmission(form: string, requestId: string, status?: number): void {
+  if (status === 409) finishSubmission(form, requestId);
+}
+
 /** 이전 저장의 성공으로 이후 입력이나 재로그인한 세션의 초안을 지우지 않는다. */
 export function clearSubmittedDraft(snapshot: ReturnType<typeof captureFormDraft>): boolean {
   const current = databaseIdentity();

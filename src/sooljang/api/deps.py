@@ -37,7 +37,11 @@ class CsrfError(DomainError):
 
 
 async def db_session() -> AsyncGenerator[AsyncSession]:
-    """요청 범위 세션. 예외가 나면 롤백하고, 정상 종료 시 커밋한다."""
+    """요청 범위 세션. 예외가 나면 롤백하고, 정상 종료 시 커밋한다.
+
+    `scope="function"`으로 등록해 응답을 보내기 전에 커밋한다. 기본 범위는 응답 전송 뒤에
+    정리되므로 커밋이 실패해도 클라이언트가 성공을 받아 outbox·초안을 지우게 된다.
+    """
     async with get_session_factory()() as session:
         try:
             yield session
@@ -51,7 +55,7 @@ def settings_dependency() -> Settings:
     return get_settings()
 
 
-SessionDep = Annotated[AsyncSession, Depends(db_session)]
+SessionDep = Annotated[AsyncSession, Depends(db_session, scope="function")]
 SettingsDep = Annotated[Settings, Depends(settings_dependency)]
 
 

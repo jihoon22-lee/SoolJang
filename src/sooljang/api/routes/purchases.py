@@ -30,6 +30,11 @@ from sooljang.api.schemas.product import (
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
 from sooljang.application.corrections import correct_purchase_sku
+from sooljang.application.create_receipts import (
+    ensure_same_request,
+    request_fingerprint,
+    save_request,
+)
 from sooljang.application.history import changes, entity_history, log_event
 from sooljang.application.skus import load_live_sku_for_write
 from sooljang.application.tasting_context import correction_purchase_context
@@ -298,11 +303,35 @@ async def create_purchase(
     기록이며 이 프로젝트의 존재 이유다.
     """
     await lock_user_writes(session, user_id)
+    purchase_id = (
+        uuid.uuid5(user_id, f"purchase-create:{payload.request_id}")
+        if payload.request_id
+        else uuid.uuid4()
+    )
+    fingerprint = request_fingerprint(
+        payload.model_dump(exclude={"request_id"}) | {"currency": payload.currency.upper()}
+    )
+    if payload.request_id:
+        replay = await session.scalar(
+            select(Purchase).where(Purchase.id == purchase_id, Purchase.user_id == user_id)
+        )
+        if replay is not None:
+            await ensure_same_request(
+                session,
+                user_id=user_id,
+                kind="purchase",
+                request_id=payload.request_id,
+                fingerprint=fingerprint,
+            )
+            if replay.deleted_at is not None:
+                raise ConflictError("이 요청으로 만든 구매 건은 이미 삭제되었습니다")
+            return await _to_purchase_out(session, replay)
     await load_live_sku_for_write(session, user_id=user_id, sku_id=payload.sku_id)
     if payload.vendor_id is not None:
         await _owned_vendor(session, user_id, payload.vendor_id)
 
     purchase = Purchase(
+        id=purchase_id,
         user_id=user_id,
         sku_id=payload.sku_id,
         vendor_id=payload.vendor_id,
@@ -320,7 +349,16 @@ async def create_purchase(
 
     if payload.create_bottles:
         _add_bottles(session, user_id, purchase, count=payload.quantity, start=1)
-        await session.flush()
+    if payload.request_id:
+        save_request(
+            session,
+            user_id=user_id,
+            kind="purchase",
+            request_id=payload.request_id,
+            entity_id=purchase.id,
+            fingerprint=fingerprint,
+        )
+    await session.flush()
 
     return await _to_purchase_out(session, purchase)
 
