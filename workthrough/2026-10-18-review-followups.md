@@ -361,3 +361,6 @@ Codex 리뷰 1건(P2): 새 관심에서 후보 A를 고른 뒤 **같은 출처**
   - RED→GREEN: `InterestsPage.test.tsx` 별칭 25개 전환 1건, `test_search.py`·`search.test.ts` 조각 숫자 각 2건
     (수정 전 실패). 검색 도메인·제품 API 180건, 웹 검색 152건, `npm --prefix web run check`(Vitest 1,330건,
     branch 83.16%) 통과.
+- R4(`764e33d`, main `024d058` 위) 위로 다시 쌓은 뒤 `sooljang_test` 단독 전체 pytest 1,766 passed / 30 skipped,
+  branch 92.38%, `ruff`·`ty`·secret scan 통과. `npm --prefix web run check` 통과(Vitest 1,337건, branch 83.16%).
+  다시 쌓으며 R1의 `settleFailedSubmission`과 R5의 `migrateFormDrafts` import가 겹쳐 둘 다 남겼다.
