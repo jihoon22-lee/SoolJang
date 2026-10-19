@@ -174,6 +174,8 @@ Codex 리뷰(c327c9c 기준) 2건을 반영했다.
   실패한 개봉(`open`)의 잘못 넣은 잔량을 지워 "용량으로 시작"으로 되돌릴 수 없었다(`open_bottle`은 공란을
   받는다). 공란 허용을 동작별로 판정해 잔량 기록(`set_remaining`)만 필수로 둔다. 소수는 둘 다 막는다.
   RED→GREEN: 판정 단위 테스트(수정 전 실패), SyncStatusBadge 22건 통과.
+- c6e8e16에서 CI 14개 검사 통과·Codex 미해결 지적 없음을 확인하고 2026-10-19 `gh pr merge 174 --merge`로
+  병합(`236bf15`).
 
 ## R3 기록 무결성 (`feature/review-record-integrity`)
 
