@@ -6,6 +6,7 @@ import {
   clearFormDraft,
   clearSubmittedDraft,
   finishSubmission,
+  migrateFormDrafts,
   settleFailedSubmission,
   submissionRequestId,
   useDraftState,
@@ -161,4 +162,24 @@ it("다른 계정의 요청 식별자는 이어받지 않는다", async () => {
   await activateDatabase("other-owner");
 
   expect(submissionRequestId("product:create")).not.toBe(mine);
+});
+
+it("이전 형식 키의 초안을 새 키로 옮기고 새 키에 이미 있는 초안은 덮지 않는다", async () => {
+  const prefix = "sooljang-draft-v1:draft-owner:";
+  const legacy = (tab: string, hash: string) => `${prefix}${tab}:product:edit:${hash}`;
+  const draft = (name: string) => JSON.stringify({ value: { name }, updatedAt: 1 });
+  localStorage.setItem(legacy("tab-a", "#products/p1?bottle=b1"), draft("고치던 이름"));
+  localStorage.setItem(legacy("tab-b", "#products/p1"), draft("다른 탭 이전 초안"));
+  localStorage.setItem(`${prefix}tab-b:product:edit:p1`, draft("새 키 초안"));
+  localStorage.setItem(legacy("tab-a", "#products/p10"), draft("다른 제품"));
+  const isLegacy = (form: string) =>
+    form === "product:edit:#products/p1" || form.startsWith("product:edit:#products/p1?");
+
+  migrateFormDrafts(isLegacy, "product:edit:p1");
+
+  expect(localStorage.getItem(`${prefix}tab-a:product:edit:p1`)).toBe(draft("고치던 이름"));
+  expect(localStorage.getItem(legacy("tab-a", "#products/p1?bottle=b1"))).toBeNull();
+  expect(localStorage.getItem(`${prefix}tab-b:product:edit:p1`)).toBe(draft("새 키 초안"));
+  expect(localStorage.getItem(legacy("tab-b", "#products/p1"))).toBe(draft("다른 탭 이전 초안"));
+  expect(localStorage.getItem(legacy("tab-a", "#products/p10"))).toBe(draft("다른 제품"));
 });

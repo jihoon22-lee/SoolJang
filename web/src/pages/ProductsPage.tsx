@@ -28,6 +28,7 @@ import { databaseIdentity, db } from "@/sync/db";
 import {
   clearFormDraft,
   finishSubmission,
+  migrateFormDrafts,
   settleFailedSubmission,
   submissionRequestId,
 } from "@/sync/drafts";
@@ -753,6 +754,18 @@ function productEditDraftKey(productId: string): string {
   return `product:edit:${productId}`;
 }
 
+/**
+ * 이전 빌드는 수정 초안을 URL 해시(`#products/<id>?…`)로 저장했다. 수정 폼을 열기 전에 새 키로
+ * 옮겨 업데이트 전에 고치던 내용을 이어 쓰게 한다.
+ */
+function migrateLegacyEditDraft(productId: string): void {
+  const legacy = `product:edit:#products/${productId}`;
+  migrateFormDrafts(
+    (form) => form === legacy || form.startsWith(`${legacy}?`),
+    productEditDraftKey(productId),
+  );
+}
+
 function valuesFromProduct(product: Product): Partial<ProductFormValues> {
   return {
     name: product.name,
@@ -1074,7 +1087,10 @@ function ProductDetailView({
       bottles={bottles ?? []}
       offline={offline}
       onBack={onBack}
-      onEdit={() => setEditing(true)}
+      onEdit={() => {
+        migrateLegacyEditDraft(productId);
+        setEditing(true);
+      }}
       onDelete={() => remove.mutate()}
       deleting={remove.isPending}
       onAddPurchase={(input) => addPurchase.mutateAsync(input)}

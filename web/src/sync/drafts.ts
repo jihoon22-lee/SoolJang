@@ -178,6 +178,31 @@ export function clearSubmittedDraft(snapshot: ReturnType<typeof captureFormDraft
   draftEvents.dispatchEvent(new Event("saved"));
   return true;
 }
+/**
+ * 이전 형식 이름(`isLegacy`)으로 저장된 이 계정의 초안을 `to` 로 옮긴다(탭마다). 폼 키를 바꾼 뒤에도
+ * 업데이트 전에 쓰던 초안을 잃지 않게 한다. 새 이름에 이미 초안이 있는 탭은 그대로 둔다.
+ */
+export function migrateFormDrafts(isLegacy: (form: string) => boolean, to: string): void {
+  const userId = databaseIdentity().userId;
+  if (!userId) return;
+  const prefix = `${PREFIX}${encodeURIComponent(userId)}:`;
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(prefix)) continue;
+    const suffix = key.slice(prefix.length);
+    const separator = suffix.indexOf(":");
+    const form = suffix.slice(separator + 1);
+    if (separator < 0 || form === to || !isLegacy(form)) continue;
+    const target = `${prefix}${suffix.slice(0, separator)}:${to}`;
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored === null || localStorage.getItem(target) !== null) continue;
+      localStorage.setItem(target, stored);
+      localStorage.removeItem(key);
+    } catch {
+      /* 옮기지 못하면 원래 초안을 그대로 둔다. */
+    }
+  }
+}
 /** 다른 탭/이전 세션의 입력은 자동으로 덮어쓰지 않고 명시적으로 복원한다. */
 export function recoverableDraft(form: string): string | null {
   const userId = databaseIdentity().userId;

@@ -260,6 +260,8 @@ describe("queryLanguage", () => {
     ["진 700ml", "ko"],
     ["글렌피딕 12y 700ml", "ko"],
     ["Glenfiddich 12 years 700ml", "en"],
+    ["진 12 years old 700ml", "ko"],
+    ["Glenfiddich 12 years old", "en"],
     ["Hendrick's Gin 1l", "en"],
     ["발렌타인", "ko"],
   ] as const)("%s는 단위를 빼고 %s로 본다", (query, language) => {

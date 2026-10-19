@@ -127,7 +127,7 @@ export function publicLink(value: string): string | undefined {
  */
 export function queryLanguage(query: string): "ko" | "en" {
   const letters = query.replace(
-    /\d+(?:\.\d+)?\s*(?:ml|cl|l|%|years?|yo|yr|y|년|도)(?![a-z])/gi,
+    /\d+(?:\.\d+)?\s*(?:ml|cl|l|%|years?(?:\s+old)?|yo|yr|y|년|도)(?![a-z])/gi,
     " ",
   );
   const korean = letters.match(/[가-힣]/g)?.length ?? 0;
