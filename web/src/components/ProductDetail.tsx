@@ -52,12 +52,23 @@ export interface AddPurchaseInput {
 /** 해외 구매에 자주 쓰는 통화. */
 const FOREIGN_CURRENCIES = ["USD", "JPY", "EUR", "GBP", "CNY", "HKD", "TWD", "SGD", "AUD"];
 
-/** 외화 단가 × 환율을 원 단위로 반올림한 원화 실구매가. 둘 중 하나라도 없으면 null. */
+/** "12.34" → [1234n, 2]. 음수·지수 표기·빈 값은 null. */
+function decimalParts(value: string): [bigint, number] | null {
+  const match = /^(\d*)(?:\.(\d*))?$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) return null;
+  const fraction = match[2] ?? "";
+  return [BigInt(`${match[1] ?? ""}${fraction}` || "0"), fraction.length];
+}
+/**
+ * 외화 단가 × 환율을 원 단위로 반올림(0.5는 올림)한 원화 실구매가. 둘 중 하나라도 없으면 null.
+ * 부동소수 곱셈(2.675 × 100 = 267.4999…)으로 1원이 어긋나지 않게 정수로 계산한다.
+ */
 export function convertedPaidPrice(foreignUnitPrice: string, fxRate: string): string | null {
-  const foreign = Number(foreignUnitPrice);
-  const rate = Number(fxRate);
-  if (!foreignUnitPrice.trim() || !fxRate.trim() || !(foreign >= 0) || !(rate > 0)) return null;
-  return String(Math.round(foreign * rate));
+  const foreign = decimalParts(foreignUnitPrice);
+  const rate = decimalParts(fxRate);
+  if (!foreign || !rate || rate[0] === 0n) return null;
+  const scale = 10n ** BigInt(foreign[1] + rate[1]);
+  return String((foreign[0] * rate[0] * 2n + scale) / (2n * scale));
 }
 
 export interface SplitPart {

@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { cloneElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bottle, Product, ProductMetrics, Purchase, Sku } from "@/api/types";
-import { foreignPriceMismatch, ProductDetail } from "@/components/ProductDetail";
+import {
+  convertedPaidPrice,
+  foreignPriceMismatch,
+  ProductDetail,
+} from "@/components/ProductDetail";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
 
@@ -967,4 +971,19 @@ it("외화 단가 × 환율과 원화 실구매가가 1% 넘게 다르면 어긋
   expect(
     foreignPriceMismatch({ foreign_unit_price: null, fx_rate: null, unit_paid_price: "135" }),
   ).toBe(false);
+});
+
+it("외화 환산은 부동소수 오차 없이 원 단위 반올림한다", () => {
+  // 2.675 × 100 은 부동소수로 267.4999…라 267이 됐다. 정확한 값 267.5는 268이다.
+  expect(convertedPaidPrice("2.675", "100")).toBe("268");
+  expect(convertedPaidPrice("46.67", "1431.9")).toBe("66827");
+  expect(convertedPaidPrice("5980", "9.12")).toBe("54538");
+  expect(convertedPaidPrice("0.5", "1")).toBe("1");
+  expect(convertedPaidPrice(".5", "3")).toBe("2");
+  expect(convertedPaidPrice("46.", "2")).toBe("92");
+  expect(convertedPaidPrice(".", "2")).toBeNull();
+  expect(convertedPaidPrice("10", "0")).toBeNull();
+  expect(convertedPaidPrice("", "1")).toBeNull();
+  expect(convertedPaidPrice("1e3", "1")).toBeNull();
+  expect(convertedPaidPrice("-1", "1")).toBeNull();
 });

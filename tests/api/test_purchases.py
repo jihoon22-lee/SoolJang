@@ -7,6 +7,7 @@
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -274,6 +275,29 @@ def test_foreign_purchase_without_won_price_stores_converted_price(
     )
 
     assert purchase["unit_paid_price"] == "54537.60"
+
+
+@pytest.mark.parametrize(
+    ("foreign", "rate"), [("1e20", "1e10"), ("1e999999", "1e999999"), ("9999999999", "1000")]
+)
+def test_foreign_conversion_too_large_to_store_is_rejected(
+    api_client: TestClient, prefix: str, foreign: str, rate: str
+) -> None:
+    """환산값이 저장 범위를 넘으면 500이 아니라 입력 오류로 끝난다."""
+    _, sku_id = _product_with_sku(api_client, prefix)
+
+    response = api_client.post(
+        f"{prefix}/purchases",
+        json={
+            "sku_id": sku_id,
+            "quantity": 1,
+            "currency": "USD",
+            "foreign_unit_price": foreign,
+            "fx_rate": rate,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_unknown_sku_returns_not_found(api_client: TestClient, prefix: str) -> None:

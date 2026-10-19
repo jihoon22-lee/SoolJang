@@ -2,12 +2,17 @@
 
 import datetime
 import uuid
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from sooljang.infrastructure.database.models import BarcodeType, BottleStatus, VendorKind
+
+# 구매 금액·환율 열(Numeric(14, 2)·Numeric(14, 6))에 담을 수 있는 범위. 넘는 값은 저장 오류(500)
+# 대신 입력 오류로 끝낸다.
+_MAX_AMOUNT = Decimal(10) ** 12
+_MAX_FX_RATE = Decimal(10) ** 8
 
 SearchAliases = Annotated[
     list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]],
@@ -240,11 +245,11 @@ class PurchaseCreate(BaseModel):
     vendor_id: uuid.UUID | None = None
     purchased_on: datetime.date | None = None
     quantity: int = Field(default=1, gt=0, le=1000)
-    unit_list_price: Decimal | None = Field(default=None, ge=0)
-    unit_paid_price: Decimal | None = Field(default=None, ge=0)
+    unit_list_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
+    unit_paid_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     currency: str = Field(default="KRW", min_length=3, max_length=3)
-    fx_rate: Decimal | None = Field(default=None, gt=0)
-    foreign_unit_price: Decimal | None = Field(default=None, ge=0)
+    fx_rate: Decimal | None = Field(default=None, gt=0, lt=_MAX_FX_RATE)
+    foreign_unit_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     discount_note: str | None = None
     # 병 레코드를 함께 만들 것인지. 임포트는 상태별 개수를 직접 지정하므로 끌 수 있어야 한다.
     create_bottles: bool = True
@@ -261,7 +266,12 @@ class PurchaseCreate(BaseModel):
         # 줄여 적는 일이 많아 1% 안의 차이는 받되, 외화 금액을 원화 칸에 넣는 실수처럼 크게 다르면
         # 어느 쪽이 맞는지 알 수 없어 저장하지 않는다.
         if self.foreign_unit_price is not None and self.fx_rate is not None:
-            converted = self.foreign_unit_price * self.fx_rate
+            try:
+                converted = self.foreign_unit_price * self.fx_rate
+            except DecimalException as error:
+                raise ValueError("외화 단가 × 환율을 계산할 수 없습니다") from error
+            if converted >= _MAX_AMOUNT:
+                raise ValueError("외화 단가 × 환율이 저장할 수 있는 금액보다 큽니다")
             if self.unit_paid_price is None:
                 # 원화 칸을 비우면 환산값을 저장한다. 비워 두면 외화 구매가 실구매가 미상이 된다.
                 self.unit_paid_price = converted.quantize(Decimal("0.01"))
@@ -275,11 +285,11 @@ class PurchaseUpdate(BaseModel):
     #: 병수 변경. 늘리면 미개봉 병을 추가하고, 줄이면 번호가 큰 미개봉 병부터 지운다.
     quantity: int | None = Field(default=None, gt=0, le=1000)
     purchased_on: datetime.date | None = None
-    unit_list_price: Decimal | None = Field(default=None, ge=0)
-    unit_paid_price: Decimal | None = Field(default=None, ge=0)
+    unit_list_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
+    unit_paid_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
-    fx_rate: Decimal | None = Field(default=None, gt=0)
-    foreign_unit_price: Decimal | None = Field(default=None, ge=0)
+    fx_rate: Decimal | None = Field(default=None, gt=0, lt=_MAX_FX_RATE)
+    foreign_unit_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
     discount_note: str | None = None
 
 
