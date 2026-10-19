@@ -658,7 +658,10 @@ it("원본 읽기 직후 로그아웃하면 내보내기 파일을 만들지 않
 
 it("서버가 정수로만 받는 필드의 소수·공란은 다시 보내기 전에 막는다", () => {
   expect(correctionError("quantity", 2.5)).toBe("병수은(는) 정수로 입력하세요");
-  expect(correctionError("remaining_ml", null)).toMatch(/정수로 입력하세요/);
+  expect(correctionError("remaining_ml", null, "set_remaining")).toMatch(/정수로 입력하세요/);
+  // 개봉의 잔량은 비우면 용량으로 시작한다(`open_bottle`). 잘못 넣은 개봉 잔량을 지울 수 있어야 한다.
+  expect(correctionError("remaining_ml", null, "open")).toBeNull();
+  expect(correctionError("remaining_ml", 12.5, "open")).toMatch(/정수로 입력하세요/);
   expect(correctionError("volume_ml", "칠백")).toMatch(/정수로 입력하세요/);
   expect(correctionError("remaining_ml", 0)).toBeNull();
   expect(correctionError("vintage", null)).toBeNull();
