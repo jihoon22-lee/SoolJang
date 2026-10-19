@@ -66,9 +66,32 @@ it("이전 브라우저 세션의 입력은 새 탭에서 명시적으로 복원
   expect(source).toBe("old-session");
   act(() => restoreFormDraft("product:create", source ?? ""));
   expect(current.result.current[0].name).toBe("이전 세션의 입력");
-  // 옮긴 원본은 남지 않는다. 남으면 저장한 뒤에도 같은 초안의 복원 버튼이 다시 뜬다.
+  // 한 번 불러온 초안은 다시 권하지 않는다. 다시 뜨면 저장한 뒤 같은 기록을 또 등록할 수 있다.
   expect(recoverableDraft("product:create")).toBeNull();
-  expect(Object.keys(localStorage).some((key) => key.includes(":old-session:"))).toBe(false);
+});
+
+it("열려 있는 다른 탭의 초안을 불러와도 그 탭의 초안은 지우지 않고, 그 탭이 고치면 다시 권한다", async () => {
+  const { recoverableDraft, restoreFormDraft } = await import("@/sync/drafts");
+  sessionStorage.setItem("sooljang-draft-tab", "live-tab");
+  const live = renderHook(() => useDraftState("product:create", { name: "" }));
+  act(() => live.result.current[1]({ name: "다른 탭에서 쓰는 중" }));
+  sessionStorage.setItem("sooljang-draft-tab", "this-tab");
+  const current = renderHook(() => useDraftState("product:create", { name: "" }));
+  const source = "sooljang-draft-v1:draft-owner:live-tab:product:create";
+
+  act(() => restoreFormDraft("product:create", recoverableDraft("product:create") ?? ""));
+
+  expect(current.result.current[0].name).toBe("다른 탭에서 쓰는 중");
+  expect(JSON.parse(localStorage.getItem(source) ?? "null")?.value).toEqual({
+    name: "다른 탭에서 쓰는 중",
+  });
+  expect(recoverableDraft("product:create")).toBeNull();
+  const stored = JSON.parse(localStorage.getItem(source) ?? "null");
+  localStorage.setItem(
+    source,
+    JSON.stringify({ ...stored, value: { name: "이어서 고침" }, updatedAt: stored.updatedAt + 1 }),
+  );
+  expect(recoverableDraft("product:create")).toBe("live-tab");
 });
 
 it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () => {
@@ -83,6 +106,8 @@ it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () =
   put("recent-tab", now - 1000);
   put("current-tab", now - STALE_DRAFT_MS - 1);
   localStorage.setItem("sooljang-draft-v1:draft-owner:broken-tab:product:create", "{");
+  localStorage.setItem("sooljang-draft-restored-v1:draft-owner:stale-tab:product:create", "1");
+  localStorage.setItem("sooljang-draft-restored-v1:draft-owner:recent-tab:product:create", "1");
   sessionStorage.setItem("sooljang-draft-tab", "current-tab");
 
   pruneStaleDrafts(now);
@@ -92,6 +117,10 @@ it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () =
   expect(keys).toContain("recent-tab");
   expect(keys).toContain("current-tab");
   expect(keys).toContain("broken-tab");
+  // 불러옴 표시는 원본 초안과 함께 정리된다.
+  expect(
+    localStorage.getItem("sooljang-draft-restored-v1:draft-owner:recent-tab:product:create"),
+  ).toBe("1");
 });
 
 it("같은 값을 다시 작성해도 이전 제출 버전으로는 새 초안을 지우지 않는다", () => {

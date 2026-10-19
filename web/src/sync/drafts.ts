@@ -3,6 +3,8 @@ import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { databaseIdentity } from "@/sync/db";
 
 const PREFIX = "sooljang-draft-v1:";
+/** 불러온 다른 탭 초안의 `updatedAt`. 원본 탭이 열려 있을 수 있어 원본 대신 이 표시를 남긴다. */
+const RESTORED_PREFIX = "sooljang-draft-restored-v1:";
 const TAB_KEY = "sooljang-draft-tab";
 export const draftEvents = new EventTarget();
 /** 새 탭은 복제된 sessionStorage ID를 재사용하지 않는다. reload는 같은 draft를 연다. */
@@ -19,11 +21,19 @@ export const STALE_DRAFT_MS = 30 * 24 * 60 * 60 * 1000;
 export function pruneStaleDrafts(now = Date.now()): void {
   const current = sessionStorage.getItem(TAB_KEY);
   for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(RESTORED_PREFIX)) {
+      if (localStorage.getItem(PREFIX + key.slice(RESTORED_PREFIX.length)) === null)
+        localStorage.removeItem(key);
+      continue;
+    }
     if (!key.startsWith(PREFIX)) continue;
     if (current && key.includes(`:${current}:`)) continue;
     try {
       const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
-      if (Number.isFinite(at) && now - at > STALE_DRAFT_MS) localStorage.removeItem(key);
+      if (Number.isFinite(at) && now - at > STALE_DRAFT_MS) {
+        localStorage.removeItem(key);
+        localStorage.removeItem(RESTORED_PREFIX + key.slice(PREFIX.length));
+      }
     } catch {
       /* 손상된 기록은 사용자가 확인할 수 있게 그대로 둔다. */
     }
@@ -218,6 +228,8 @@ export function recoverableDraft(form: string): string | null {
     if (tab === tabId() || !(kind === form || kind.startsWith(`${form}:`))) continue;
     try {
       const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
+      const restored = localStorage.getItem(RESTORED_PREFIX + key.slice(PREFIX.length));
+      if (restored !== null && Number(restored) === at) continue;
       if (Number.isFinite(at) && (!latest || at > latest.at)) latest = { tab, at };
     } catch {
       /* Damaged records remain untouched. */
@@ -263,15 +275,21 @@ export function useDraftState<T>(
       try {
         const stored = localStorage.getItem(source);
         if (!stored) return;
-        const restored = (JSON.parse(stored) as { value: T }).value;
+        const parsed = JSON.parse(stored) as { value: T; updatedAt?: unknown };
+        const restored = parsed.value;
         if (containsSecret(restored)) return;
         localStorage.setItem(
           key,
           JSON.stringify({ value: restored, updatedAt: Date.now(), revision: crypto.randomUUID() }),
         );
-        // 옮긴 원본은 지운다. 남겨 두면 이 탭에서 저장한 뒤에도 같은 초안의 복원 버튼이 다시 떠
-        // 이미 저장한 기록을 한 번 더 등록할 수 있었다.
-        if (detail.sourceTab !== tabId()) localStorage.removeItem(source);
+        // 불러온 버전은 다시 권하지 않는다. 다시 뜨면 이 탭에서 저장한 뒤 같은 기록을 한 번 더
+        // 등록할 수 있다. 원본 탭이 아직 그 폼을 쓰고 있을 수 있어 원본은 지우지 않고, 원본이
+        // 고쳐지면(`updatedAt` 변경) 다시 권한다.
+        if (detail.sourceTab !== tabId())
+          localStorage.setItem(
+            RESTORED_PREFIX + source.slice(PREFIX.length),
+            String(parsed.updatedAt),
+          );
         setValue((previous) => decodeDraft(restored, previous));
       } catch {
         draftEvents.dispatchEvent(new Event("storage-error"));
