@@ -295,7 +295,8 @@ Codex 리뷰(16f87a5 기준) 1건을 반영했다.
   모두 거부해 500이 될 수 있었다. `finite_json`으로 dict·list 안까지 NaN·inf를 빼고, 모든 조회 결과가 거치는
   `AdapterResult` 생성 시(`fields`·`offers`)와 `split_fields`에 적용한다. RED→GREEN: `test_fields.py` 2건(수정 전
   실패). 외부 어댑터 344건, 외부 소스·탐색 API/애플리케이션 65건(격리 DB) 통과.
-
+- 764e33d에서 CI 14개 검사 통과·Codex 미해결 지적 없음을 확인하고 2026-10-19 `gh pr merge 176 --merge`로
+  병합(`90f14c3`). d5f60da 기준 Codex의 삭제 시음 쪽 나눔 지적은 R3(561c4f4)에서 고친 내용이 다시 쌓으며 들어왔다.
 
 ## R5 PR #168 후속·정합성 (`feature/review-pr168-followups`)
 
