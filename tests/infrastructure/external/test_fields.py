@@ -93,6 +93,9 @@ def test_edge_cases(raw: dict[str, object], expected: NormalizedFields) -> None:
     [
         {"price_krw": float("inf"), "volume_ml": float("nan"), "rating": 10**400},
         {"price_krw": "9" * 400, "volume_ml": "9" * 400, "rating": "9" * 400},
+        # JSON 정수는 inf 가 되지 않고 int 로 들어온다. 유한한 1e300 도 반올림하면 거대한 정수다.
+        {"price_krw": 10**400, "volume_ml": 10**30, "rating": None},
+        {"price_krw": 1e300, "volume_ml": "9" * 300, "rating": None},
     ],
 )
 def test_non_finite_or_huge_numbers_become_missing_instead_of_raising(
@@ -103,3 +106,10 @@ def test_non_finite_or_huge_numbers_become_missing_instead_of_raising(
     assert normalized.price_krw is None
     assert normalized.volume_ml is None
     assert normalized.rating is None
+    assert normalized.price_per_100ml is None
+
+
+def test_large_but_plausible_price_still_computes_per_100ml() -> None:
+    normalized = split_fields({"price_krw": 10**12, "volume_ml": 750})
+
+    assert normalized.price_per_100ml == Decimal("133333333333.33")

@@ -76,15 +76,26 @@ class NormalizedFields:
         return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
 
 
+# 가격·용량으로 볼 수 있는 정수의 상한(1,000조). 이보다 큰 값은 오기·악성 응답이다.
+# JSON 정수 `10**400`은 inf 검사를 거치지 않고 int 로 들어오고, 1e300 같은 유한 float 도
+# 반올림하면 거대한 정수가 된다. 둘 다 100ml당 가격의 `Decimal.quantize()` 에서
+# InvalidOperation 을 내 조회가 500 이 됐다.
+_MAX_FIELD_INT = 10**15
+
+
+def _bounded(value: int) -> int | None:
+    return value if abs(value) <= _MAX_FIELD_INT else None
+
+
 def _coerce_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None  # bool 은 int 의 서브클래스라 여기서 걸러야 in_stock 오분류를 막는다
     if isinstance(value, int):
-        return value
+        return _bounded(value)
     if isinstance(value, float):
         # JSON 의 1e400 은 inf, 아주 긴 숫자 문자열도 inf 가 된다. round(inf) 는 OverflowError,
         # round(nan) 은 ValueError 라 어댑터 밖으로 새어 조회 전체가 500 이 됐다.
-        return round(value) if math.isfinite(value) else None
+        return _bounded(round(value)) if math.isfinite(value) else None
     if isinstance(value, str):
         cleaned = re.sub(r"[^\d.\-]", "", value)
         if not cleaned:
@@ -93,7 +104,7 @@ def _coerce_int(value: Any) -> int | None:
             parsed = float(cleaned)
         except ValueError:
             return None
-        return round(parsed) if math.isfinite(parsed) else None
+        return _bounded(round(parsed)) if math.isfinite(parsed) else None
     return None
 
 
