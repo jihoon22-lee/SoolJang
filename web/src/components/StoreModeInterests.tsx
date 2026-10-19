@@ -39,10 +39,17 @@ function targetText(item: SnapshotInterest): string {
       ]
         .filter(Boolean)
         .join(" × ");
+      const known = (key: string) =>
+        target.conditions?.[key] !== null && target.conditions?.[key] !== undefined;
       const conditions = Object.entries(CONDITION_LABELS)
-        .filter(([key]) => target.conditions?.[key] !== undefined)
+        .filter(([key]) => known(key))
         .map(([key, label]) => `${label} ${String(target.conditions?.[key])}`);
-      const basis = [size, ...conditions, target.source].filter(Boolean).join(", ");
+      // 모르는 조건을 빼고 적으면 조건 없는 일반가처럼 읽힌다.
+      const unknown =
+        target.conditions && Object.keys(CONDITION_LABELS).some((key) => !known(key))
+          ? "일부 조건 미확인"
+          : null;
+      const basis = [size, ...conditions, unknown, target.source].filter(Boolean).join(", ");
       return `목표 ${amount} (${basis})`;
     })
     .join(" · ");

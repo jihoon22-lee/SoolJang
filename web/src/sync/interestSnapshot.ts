@@ -29,7 +29,8 @@ export interface SnapshotInterest {
     source: string;
     volumeMl?: string | null;
     units?: number | null;
-    conditions?: Record<string, string | boolean | number>;
+    /** 감시의 판매 조건 그대로. 값이 null 인 조건은 모르는 조건이다. */
+    conditions?: Record<string, string | boolean | number | null>;
   }[];
 }
 
@@ -65,11 +66,7 @@ export function buildInterestSnapshot(
             source: watch.source_name,
             volumeMl: watch.criteria.volume_ml ? String(watch.criteria.volume_ml) : null,
             units: watch.criteria.units ?? null,
-            conditions: Object.fromEntries(
-              Object.entries(watch.criteria.conditions ?? {}).filter(
-                ([, value]) => value !== null && value !== undefined,
-              ),
-            ),
+            ...(watch.criteria.conditions ? { conditions: { ...watch.criteria.conditions } } : {}),
           })),
       })),
   };

@@ -344,6 +344,15 @@ it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함�
     },
     { ...item, id: "interest-2", name: "다른 몰트", identity: { name: "다른 몰트" }, note: null },
     { ...item, id: "interest-3", name: "빈 몰트", identity: { name: "빈 몰트" }, note: null },
+    // 제품 키 없이 판매 항목 키로 고정한 출처도 서버 감시처럼 같은 제품으로 본다.
+    {
+      ...item,
+      id: "interest-4",
+      name: "키 고정 몰트",
+      identity: { name: "키 고정 몰트" },
+      note: null,
+      source_matches: { source: { ...pin, product_key: null, external_key: "offer-x" } },
+    },
   ]);
   vi.spyOn(priceWatchApi, "history").mockImplementation(async (interestId) =>
     interestId === item.id
@@ -360,7 +369,15 @@ it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함�
         ]
       : interestId === "interest-2"
         ? [observation({ id: "unpinned", facts: { ...observation({}).facts, product_key: "x" } })]
-        : [],
+        : interestId === "interest-4"
+          ? [
+              observation({
+                id: "by-offer",
+                amount: "35000",
+                facts: { ...observation({}).facts, product_key: "y", offer_key: "offer-x" },
+              }),
+            ]
+          : [],
   );
   renderPage();
   for (const choice of await screen.findAllByLabelText("비교 선택")) await userEvent.click(choice);
@@ -378,4 +395,5 @@ it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함�
     "고정한 출처의 관측 없음",
   );
   expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent("관측 없음");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent("35,000원");
 });

@@ -386,8 +386,12 @@ export function InterestsPage({
  * 저장하므로, 확인하지 않은 제품의 가격을 이 관심의 관측가로 보이지 않는다.
  */
 export function confirmedObservation(interest: Interest, row: PriceHistoryRow): boolean {
-  const pinned = interest.source_matches[row.source_id]?.product_key;
-  return Boolean(pinned) && row.facts.product_key === pinned;
+  const pin = interest.source_matches[row.source_id];
+  if (!pin) return false;
+  // 서버 감시의 고정 판정(`price_watch.py`)과 같다. 제품 키가 없으면 고정한 판매 항목 키로 본다.
+  return pin.product_key
+    ? row.facts.product_key === pin.product_key
+    : Boolean(pin.external_key) && row.facts.offer_key === pin.external_key;
 }
 /** 가장 최근에 실제로 저장한 가격 관측. 관측 전 가격은 추정하지 않는다. */
 export function latestObservation(rows: readonly PriceHistoryRow[]): PriceHistoryRow | null {

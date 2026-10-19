@@ -64,7 +64,6 @@ it("저장본에는 보관·삭제하지 않은 관심과 활성 감시의 목�
       source: "합성 판매처",
       volumeMl: null,
       units: null,
-      conditions: {},
     },
   ]);
 });
@@ -196,7 +195,7 @@ it("묶음 수량·판매 조건이 붙은 목표가는 단품 진열가와 섞�
 
   expect(
     await screen.findByText(
-      /목표 300,000원 \(700ml × 6병, 가격 종류 regular, 회원 member, 합성 판매처\)/,
+      /목표 300,000원 \(700ml × 6병, 가격 종류 regular, 회원 member, 일부 조건 미확인, 합성 판매처\)/,
     ),
   ).toBeInTheDocument();
 });
