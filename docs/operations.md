@@ -266,13 +266,13 @@ docker compose ps
 
 ### 4.8 현재 배포 기준
 
-2026-10-12 00:20:20 KST에 v1.10.1 / `0021_quality_aliases`를 배포했다. API와 웹은
-모두 태그 커밋 `451a86811d9cd7685610be4213ef4145453ef59f`이며 이후 문서 커밋과 구분한다.
-이번 핫픽스는 frontend와 버전만 바꾸며 migration을 실행하지 않았다. DB 컨테이너·DB/uploads
-볼륨과 기존 모든 테이블·열을 보존했다. 태그 전과 전환 직전 새 백업의 빈 격리 복원·쿠키 인증,
-새 이미지의 읽기 전용 조회·전체 해시, HTTPS와 기존 PWA의 새 웹 파일 전환을 확인했다.
-정확한 image digest·시작 시각·검증 제한은
-[핫픽스 릴리스·운영 기록](../workthrough/2026-10-11-tasting-correction-v1101.md)에 있다.
+2026-10-20 08:26:34 KST에 v1.11.0 / `0021_quality_aliases`를 배포했다. API와 웹은 모두 태그
+커밋 `605f299ec1203c93eb7f2d19bf8323a6637e23d1`이며 이후 문서 커밋과 구분한다. 리뷰 후속
+R1~R6의 백엔드·웹 변경을 담았지만 schema와 의존성은 그대로라 migration을 실행하지 않았다.
+DB 컨테이너·DB/uploads 볼륨과 기존 모든 테이블·열을 보존했다. 태그 전과 전환 직전 새 백업의 빈
+격리 복원·쿠키 인증·새 코드의 SQL 대 API 대조, 새 이미지의 읽기 전용 조회·전체 해시, 보안
+헤더·CSP, HTTPS와 기존 PWA의 새 웹 파일 전환을 확인했다. 정확한 image digest·시작 시각·검증
+제한은 [v1.11.0 릴리스 기록](../workthrough/2026-10-20-v1110-release.md)에 있다.
 
 ## 5. 접속(Tailscale HTTPS)
 
