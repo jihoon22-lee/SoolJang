@@ -71,6 +71,10 @@ def test_liters_normalize_without_float_error_like_web(raw: str, normalized: str
         ("합성 진 0.7L", "0.7", True),
         ("합성 진 0.7L", "700ml", True),
         ("합성 위스키 120", "12", False),
+        # 원문 소수의 조각은 숫자로 보지 않는다(700ml에 "7"·"0"이 걸리지 않게). 웹과 같은 표.
+        ("합성 진 0.7L", "7", False),
+        ("합성 진 0.7L", "0", False),
+        ("합성 몰트 43.5%", "43", True),
     ],
 )
 def test_raw_decimal_in_name_is_searchable_but_numbers_stay_whole(

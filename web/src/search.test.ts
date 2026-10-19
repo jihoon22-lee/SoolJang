@@ -136,6 +136,10 @@ it.each([
   ["합성 진 0.7L", "0.7", true],
   ["합성 진 0.7L", "700ml", true],
   ["합성 위스키 120", "12", false],
+  // 원문 소수의 조각은 숫자로 보지 않는다(700ml에 "7"·"0"이 걸리지 않게).
+  ["합성 진 0.7L", "7", false],
+  ["합성 진 0.7L", "0", false],
+  ["합성 몰트 43.5%", "43", true],
 ] as const)("이름 원문 소수 %s를 %s로 찾되 숫자는 통째로 비교한다", (name, query, match) => {
   expect(matchesQuery(name, query)).toBe(match);
 });

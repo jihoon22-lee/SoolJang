@@ -152,6 +152,24 @@ it("새 제품 구매는 확인 전에는 생성하지 않고 선물·포인트 
     }),
   );
 });
+it("관심 별칭이 제품 상한보다 많으면 앞의 20개만 새 제품으로 옮긴다", async () => {
+  const aliases = Array.from({ length: 25 }, (_, index) => `합성별칭${index + 1}`);
+  vi.mocked(interestsApi.list).mockResolvedValue([
+    { ...item, identity: { ...item.identity, search_aliases: aliases } },
+  ]);
+  renderPage();
+  const row = (await screen.findByRole("heading", { name: "합성 몰트" })).closest("li");
+  await userEvent.click(within(row as HTMLElement).getByRole("button", { name: "구매 전환" }));
+  await userEvent.selectOptions(screen.getByLabelText("등록 방식"), "new");
+  await userEvent.clear(screen.getByLabelText("구매한 용량 ml"));
+  await userEvent.type(screen.getByLabelText("구매한 용량 ml"), "700");
+  await userEvent.click(screen.getByLabelText("제품·판본·규격과 실제 구매 내용을 확인했습니다"));
+  await userEvent.click(screen.getByRole("button", { name: "구매와 병 생성" }));
+
+  await waitFor(() => expect(interestsApi.purchase).toHaveBeenCalled());
+  const input = vi.mocked(interestsApi.purchase).mock.calls[0]?.[1];
+  expect(input?.new_product?.search_aliases).toEqual(aliases.slice(0, 20));
+});
 it("기존 제품·규격을 확정하고 보관 목록에서 연결 제품으로 이동한다", async () => {
   const onSelectProduct = renderPage();
   const row = (await screen.findByRole("heading", { name: "합성 몰트" })).closest("li");

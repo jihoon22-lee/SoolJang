@@ -88,9 +88,15 @@ def matches_query(name: str, query: str) -> bool:
                 values.extend(canonical.replace(key, str(alias)) for alias in entry["aliases"])
         return any(query.strip() in _chosung(value) for value in values)
     haystack, needle = _canonical(name), _canonical(query)
-    # 이름 원문의 숫자도 인정한다("… 0.7L"을 "0.7"로 찾기). 정규화하면 700ml가 된다.
-    numbers = set(re.findall(r"\d+", haystack)) | set(re.findall(r"\d+", name.lower()))
-    if not set(re.findall(r"\d+", needle)).issubset(numbers):
+    # 질의의 숫자는 정규화한 이름의 숫자와 통째로 맞아야 한다. 이름 원문의 소수("… 0.7L"의 "0.7")도
+    # 인정하되 소수 전체로만 본다 — "0"·"7" 조각으로 나누면 "7"이 700ml에 걸린다.
+    haystack_numbers = set(re.findall(r"\d+", haystack))
+    raw_numbers = set(re.findall(r"\d+(?:\.\d+)?", name.lower())) | haystack_numbers
+    if not (
+        set(re.findall(r"\d+", needle)) <= haystack_numbers
+        # 정규화는 "0.7"을 "0 7"로 나누므로 소수는 질의 원문에서 읽는다.
+        or set(re.findall(r"\d+(?:\.\d+)?", query.lower())) <= raw_numbers
+    ):
         return False
     return query.strip().lower() in name.lower() or needle.replace(" ", "") in haystack.replace(
         " ", ""

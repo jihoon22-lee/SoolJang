@@ -169,12 +169,19 @@ function rankOf(name: string, query: string): number | null {
   }
   const haystack = canonicalSearch(name);
   const canonicalNeedle = canonicalSearch(needle);
-  // 이름 원문의 숫자도 인정한다. "0.7L"는 정규화하면 700ml라 질의 "0.7"이 숫자 검사에서 떨어졌다.
-  const numbers = new Set([
-    ...(haystack.match(/\d+/g) ?? []),
-    ...(name.toLowerCase().match(/\d+/g) ?? []),
+  // 질의의 숫자는 정규화한 이름의 숫자와 통째로 맞아야 한다. 이름 원문의 소수("0.7L"의 "0.7")도
+  // 인정하되 소수 전체로만 본다 — "0"·"7" 조각으로 나누면 "7"이 700ml에 걸린다(서버와 같은 규칙).
+  const haystackNumbers = new Set(haystack.match(/\d+/g) ?? []);
+  const rawNumbers = new Set([
+    ...(name.toLowerCase().match(/\d+(?:\.\d+)?/g) ?? []),
+    ...haystackNumbers,
   ]);
-  if ((canonicalNeedle.match(/\d+/g) ?? []).some((n) => !numbers.has(n))) return null;
+  const wholeNumbers = (canonicalNeedle.match(/\d+/g) ?? []).every((n) => haystackNumbers.has(n));
+  // 정규화는 "0.7"을 "0 7"로 나누므로 소수는 질의 원문에서 읽는다.
+  const rawDecimals = (needle.toLowerCase().match(/\d+(?:\.\d+)?/g) ?? []).every((n) =>
+    rawNumbers.has(n),
+  );
+  if (!wholeNumbers && !rawDecimals) return null;
   const direct = matchRank(name.toLowerCase(), needle);
   if (direct !== null) return direct;
   const canonicalRank = matchRank(
