@@ -492,10 +492,11 @@ Codex 자동 리뷰가 사용 한도로 멈춰(R5 #177 마지막 커밋부터 �
 
 ### 전체 검사와 실브라우저
 
-- R5 최종(`8c08bfb`) 위로 다시 쌓은 뒤 `sooljang_test` 단독 전체 pytest 1,780 passed / 30 skipped, branch 92.40%.
-  `ruff`·`ty`·secret scan 통과. `npm --prefix web run check` 통과(Vitest 1,379건, branch 83.26%). pytest와 함께
-  돌린 첫 웹 검사에서 상세 제목 테스트가 제품 조회 effect보다 먼저 제목을 읽어 실패했다(단독 3회 통과). 제목이
-  바뀔 때까지 기다리게 고친 뒤 단독 전체 검사가 통과했다. 동작 코드는 바꾸지 않았다.
+- 독립 리뷰 반영 뒤 `sooljang_test` 단독 전체 pytest 1,783 passed / 30 skipped, branch 92.39%, `ruff`·`ty`·
+  secret scan 통과. R5 병합(main `a72f234`) 위로 다시 쌓은 뒤 `npm --prefix web run check` 통과(Vitest
+  1,384건, branch 83.38%). R5의 마지막 커밋(`28a1905`)은 웹만 바꿔 pytest는 다시 돌리지 않았다.
+- 앞선 재정렬 때 pytest와 함께 돌린 웹 검사에서 상세 제목 테스트가 제품 조회 effect보다 먼저 제목을 읽어
+  실패했다(단독 3회 통과). 제목이 바뀔 때까지 기다리게 고쳤다. 동작 코드는 바꾸지 않았다.
 - 실브라우저(Playwright Chromium, Vite 개발 서버 + 격리 API 8210, 빈 격리 DB `sooljang_browser_r6`에
   0021 적용, 임시 키, 합성 계정·제품·관심만 사용, 운영 데이터·키 미사용):
   - 390×844 제품 상세: 병(재고 3)이 구매 이력보다 먼저, "병·시음/구매/가격·외부" 바로가기. 원화 없이 보낸
