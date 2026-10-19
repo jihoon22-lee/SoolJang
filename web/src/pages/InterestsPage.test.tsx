@@ -325,17 +325,42 @@ it("관측가 100ml당은 용량·수량이 확인된 원화 관측만 계산한
 });
 
 it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함께 보인다", async () => {
+  const pin = {
+    external_url: "https://example.com/p",
+    external_name: "합성 몰트",
+    external_key: "p",
+    product_key: "malt",
+  };
+  const confirmed = (overrides: Partial<PriceHistoryRow>) =>
+    observation({
+      ...overrides,
+      facts: { ...observation({}).facts, product_key: "malt", ...overrides.facts },
+    });
   vi.mocked(interestsApi.list).mockResolvedValue([
-    { ...item, identity: { ...item.identity, age_years: "12" } },
+    {
+      ...item,
+      identity: { ...item.identity, age_years: "12" },
+      source_matches: { source: pin },
+    },
     { ...item, id: "interest-2", name: "다른 몰트", identity: { name: "다른 몰트" }, note: null },
+    { ...item, id: "interest-3", name: "빈 몰트", identity: { name: "빈 몰트" }, note: null },
   ]);
   vi.spyOn(priceWatchApi, "history").mockImplementation(async (interestId) =>
     interestId === item.id
       ? [
-          observation({ id: "old", amount: "80000" }),
-          observation({ id: "new", fetched_at: "2026-10-05T00:00:00Z" }),
+          confirmed({ id: "old", amount: "80000" }),
+          confirmed({ id: "new", fetched_at: "2026-10-05T00:00:00Z" }),
+          // 탐색은 확인 전 후보의 가격도 저장한다. 고정하지 않은 제품의 더 최근 관측은 쓰지 않는다.
+          observation({
+            id: "unconfirmed",
+            amount: "50000",
+            fetched_at: "2026-10-09T00:00:00Z",
+            facts: { ...observation({}).facts, product_key: "other" },
+          }),
         ]
-      : [],
+      : interestId === "interest-2"
+        ? [observation({ id: "unpinned", facts: { ...observation({}).facts, product_key: "x" } })]
+        : [],
   );
   renderPage();
   for (const choice of await screen.findAllByLabelText("비교 선택")) await userEvent.click(choice);
@@ -348,5 +373,9 @@ it("관심 비교에 숙성 연수·최근 관측가·관측가 100ml당을 함�
     ),
   );
   expect(within(table).getByRole("row", { name: /관측가 100ml당/ })).toHaveTextContent("10,000원");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).not.toHaveTextContent("50,000원");
+  expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent(
+    "고정한 출처의 관측 없음",
+  );
   expect(within(table).getByRole("row", { name: /최근 관측가/ })).toHaveTextContent("관측 없음");
 });

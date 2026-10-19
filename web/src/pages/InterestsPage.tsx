@@ -381,6 +381,14 @@ export function InterestsPage({
     </section>
   );
 }
+/**
+ * 이 관심에 고정한(같은 제품으로 확인한) 출처 제품의 관측인지. 탐색은 확인 전 후보의 가격도
+ * 저장하므로, 확인하지 않은 제품의 가격을 이 관심의 관측가로 보이지 않는다.
+ */
+export function confirmedObservation(interest: Interest, row: PriceHistoryRow): boolean {
+  const pinned = interest.source_matches[row.source_id]?.product_key;
+  return Boolean(pinned) && row.facts.product_key === pinned;
+}
 /** 가장 최근에 실제로 저장한 가격 관측. 관측 전 가격은 추정하지 않는다. */
 export function latestObservation(rows: readonly PriceHistoryRow[]): PriceHistoryRow | null {
   return rows.reduce<PriceHistoryRow | null>(
@@ -449,8 +457,13 @@ function InterestComparison({
     if (!online) return { text: "온라인에서 확인", per100: "온라인에서 확인" };
     if (!history || history.isPending) return { text: "불러오는 중…", per100: "불러오는 중…" };
     if (history.isError) return { text: "불러오지 못함", per100: "불러오지 못함" };
-    const latest = latestObservation(history.data ?? []);
-    if (!latest) return { text: "관측 없음", per100: "관측 없음" };
+    const rows = history.data ?? [];
+    if (!rows.length) return { text: "관측 없음", per100: "관측 없음" };
+    const interest = interests[index];
+    const latest = latestObservation(
+      interest ? rows.filter((row) => confirmedObservation(interest, row)) : [],
+    );
+    if (!latest) return { text: "고정한 출처의 관측 없음", per100: "고정한 출처의 관측 없음" };
     const per100 = observedPricePer100ml(latest);
     return {
       text: `${latest.currency === "KRW" ? formatMoney(latest.amount) : `${latest.amount} ${latest.currency}`} · ${latest.source_name} · ${new Date(latest.fetched_at).toLocaleDateString("ko-KR")}`,
@@ -495,8 +508,8 @@ function InterestComparison({
         </tbody>
       </table>
       <p className="muted text-sm">
-        관측가는 판매처에서 실제로 조회해 저장한 최근 가격이며 판매 조건이 서로 다를 수 있습니다.
-        100ml당 값은 그 관측의 용량·수량으로만 계산합니다.
+        관측가는 이 관심에 고정한 판매처 제품에서 실제로 조회해 저장한 최근 가격이며 판매 조건이
+        서로 다를 수 있습니다. 100ml당 값은 그 관측의 용량·수량으로만 계산합니다.
       </p>
     </div>
   );
