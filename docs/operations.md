@@ -217,9 +217,12 @@ gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
 새 데이터가 생기기 전 검증 실패도 DB+uploads를 격리 복원해 확인한 뒤 명시적으로 전환한다.
 `docker compose down -v`, 운영 DB 테스트 초기화, 자동 downgrade는 복구 절차가 아니다.
 
-스키마와 백엔드 동작이 같은 v1.10.0→v1.10.1 전환 실패는 이전 api/web 이미지로 복귀할 수
-있다. 단, v1.10.0에는 숨은 시음 정정 초안 제출 결함이 있으므로 복귀는 서비스 복구이며
-결함 해결이 아니다. 현재 DB·uploads를 유지하고 자동 downgrade나 덤프 덮어쓰기를 하지 않는다.
+v1.11.0도 schema 0021을 그대로 쓰므로 v1.10.1에서 올릴 때 migration·데이터 이전이 없다. 전환
+실패는 이전 v1.10.1 api/web 이미지로 복귀할 수 있다. 단, v1.10.1에는 응답 뒤 commit, 시음이 붙은
+구매 삭제처럼 v1.11.0이 고친 결함이 있으므로 복귀는 서비스 복구이며 결함 해결이 아니다. v1.11.0
+api는 이전 nginx 뒤에서도 동작하지만(운영 쿠키는 항상 Secure, 클라이언트 주소는 `X-Real-IP`),
+보안 헤더·CSP와 실제 접속 주소 전달은 새 web 이미지에만 있으므로 api 다음 web을 바로 전환한다.
+현재 DB·uploads를 유지하고 자동 downgrade나 덤프 덮어쓰기를 하지 않는다.
 
 ### 4.6 생존·준비 상태와 실제 기능 검증
 
