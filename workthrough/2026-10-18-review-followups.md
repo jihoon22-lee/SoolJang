@@ -234,6 +234,8 @@ Codex 리뷰(428a0b6 기준) 3건을 재현해 반영했다.
   RED→GREEN: API 5건 쪽 넘김(겹침·누락 없음, 잘못된 cursor 422), `DeletedTastings.test.tsx` 더 보기 1건(수정 전
   실패). 기록 무결성 API 10건, DeletedTastings 6건 통과.
   main(`236bf15`) 위에서 `npm --prefix web run check` 통과(Vitest 1,313건, branch 83.11%), `ruff`·`ty` 통과.
+- 561c4f4에서 CI 14개 검사 통과·Codex 미해결 지적 없음을 확인하고 2026-10-19 `gh pr merge 175 --merge`로
+  병합(`024d058`).
 
 ## R4 경계 보안 (`feature/review-edge-security`)
 
