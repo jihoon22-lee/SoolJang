@@ -58,7 +58,14 @@ it("저장본에는 보관·삭제하지 않은 관심과 활성 감시의 목�
 
   expect(snapshot.interests.map((item) => item.name)).toEqual(["The Glenlivet 12"]);
   expect(snapshot.interests[0]?.targets).toEqual([
-    { amount: "45000", currency: "KRW", source: "합성 판매처", volumeMl: null },
+    {
+      amount: "45000",
+      currency: "KRW",
+      source: "합성 판매처",
+      volumeMl: null,
+      units: null,
+      conditions: {},
+    },
   ]);
 });
 
@@ -131,6 +138,16 @@ it("더 늦게 받은 저장본은 오래된 목록으로 덮지 않는다", asy
   expect(raw).not.toContain("옛 목록");
 });
 
+it("기기 시계가 앞서 있던 때의 미래 저장본은 새 목록이 덮는다", async () => {
+  await saveInterestSnapshot(
+    buildInterestSnapshot([interest("i1", "미래 목록")], [], new Date(Date.now() + 86_400_000)),
+  );
+  await saveInterestSnapshot(buildInterestSnapshot([interest("i2", "지금 목록")], [], new Date()));
+
+  const raw = (await db.sync_meta.get("interest-snapshot"))?.value ?? "";
+  expect(raw).toContain("지금 목록");
+});
+
 it("온라인이어도 목록을 받지 못하면 저장본임과 저장 시각을 함께 보인다", async () => {
   await saveInterestSnapshot(
     buildInterestSnapshot(
@@ -160,6 +177,28 @@ it("목표가에는 감시한 용량을 함께 적는다", async () => {
   renderWithQuery(<StoreModeInterests query="Glenlivet" offline={false} />);
 
   expect(await screen.findByText(/목표 45,000원 \(700ml, 합성 판매처\)/)).toBeInTheDocument();
+});
+
+it("묶음 수량·판매 조건이 붙은 목표가는 단품 진열가와 섞이지 않게 함께 적는다", async () => {
+  vi.spyOn(interestsApi, "list").mockResolvedValue([interest("i1", "The Glenlivet 12")]);
+  vi.spyOn(priceWatchApi, "list").mockResolvedValue([
+    watch({
+      criteria: {
+        target_amount: "300000",
+        currency: "KRW",
+        volume_ml: "700.00",
+        units: 6,
+        conditions: { price_kind: "regular", membership: "member", coupon: null },
+      },
+    } as never),
+  ]);
+  renderWithQuery(<StoreModeInterests query="Glenlivet" offline={false} />);
+
+  expect(
+    await screen.findByText(
+      /목표 300,000원 \(700ml × 6병, 가격 종류 regular, 회원 member, 합성 판매처\)/,
+    ),
+  ).toBeInTheDocument();
 });
 
 it("저장본이 없는 오프라인에서는 언제부터 볼 수 있는지 알린다", async () => {

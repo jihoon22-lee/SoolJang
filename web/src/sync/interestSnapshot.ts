@@ -21,9 +21,16 @@ export interface SnapshotInterest {
   volumesMl: number[];
   /**
    * 활성 감시의 목표가. 같은 관심에 여러 판매 조건이 있으면 모두 둔다. 목표가는 그 감시의
-   * 용량 기준이라 함께 둔다(이전 저장본에는 없을 수 있다).
+   * 용량·묶음 수량·알려진 판매 조건 기준이라 함께 둔다(이전 저장본에는 없을 수 있다).
    */
-  targets: { amount: string; currency: string; source: string; volumeMl?: string | null }[];
+  targets: {
+    amount: string;
+    currency: string;
+    source: string;
+    volumeMl?: string | null;
+    units?: number | null;
+    conditions?: Record<string, string | boolean | number>;
+  }[];
 }
 
 export interface InterestSnapshot {
@@ -57,16 +64,26 @@ export function buildInterestSnapshot(
             currency: watch.criteria.currency,
             source: watch.source_name,
             volumeMl: watch.criteria.volume_ml ? String(watch.criteria.volume_ml) : null,
+            units: watch.criteria.units ?? null,
+            conditions: Object.fromEntries(
+              Object.entries(watch.criteria.conditions ?? {}).filter(
+                ([, value]) => value !== null && value !== undefined,
+              ),
+            ),
           })),
       })),
   };
 }
 
-/** 더 늦게 받은 저장본(다른 탭 등)은 덮지 않는다. */
+/**
+ * 더 늦게 받은 저장본(다른 탭 등)은 덮지 않는다. 기기 시계가 앞서 있던 때 저장해 지금보다 미래인
+ * 저장본은 예외다. 그대로 두면 시계가 따라잡을 때까지 새 목록을 저장하지 못한다.
+ */
 export async function saveInterestSnapshot(snapshot: InterestSnapshot): Promise<void> {
   await db.transaction("rw", db.sync_meta, async () => {
     const current = parseSnapshot((await db.sync_meta.get(KEY))?.value);
-    if (current && current.savedAt >= snapshot.savedAt) return;
+    if (current && current.savedAt >= snapshot.savedAt && Date.parse(current.savedAt) <= Date.now())
+      return;
     await db.sync_meta.put({ key: KEY, value: JSON.stringify(snapshot) });
   });
 }

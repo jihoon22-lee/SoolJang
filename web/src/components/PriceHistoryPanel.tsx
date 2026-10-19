@@ -6,7 +6,7 @@ import { priceWatchApi } from "@/api/priceWatch";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { clearFormDraft, useDraftState } from "@/sync/drafts";
 
-const CONDITION_LABELS: Record<string, string> = {
+export const CONDITION_LABELS: Record<string, string> = {
   price_kind: "가격 종류",
   membership: "회원",
   coupon: "쿠폰",

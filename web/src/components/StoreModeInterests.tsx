@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { interestsApi } from "@/api/interests";
 import { priceWatchApi } from "@/api/priceWatch";
+import { CONDITION_LABELS } from "@/components/PriceHistoryPanel";
 import { formatMoney } from "@/format";
 import { matchesQuery } from "@/search";
 import { databaseIdentity } from "@/sync/db";
@@ -30,10 +31,18 @@ function targetText(item: SnapshotInterest): string {
         target.currency === "KRW"
           ? formatMoney(target.amount)
           : `${target.amount} ${target.currency}`;
-      // 목표가는 감시한 용량 기준이다. 관심의 다른 용량과 섞어 읽지 않게 함께 적는다.
-      const basis = [target.volumeMl ? `${Number(target.volumeMl)}ml` : null, target.source]
+      // 목표가는 감시한 용량·묶음·판매 조건 기준이다. 관심의 다른 용량이나 단품 진열가와 섞어
+      // 읽지 않게 함께 적는다.
+      const size = [
+        target.volumeMl ? `${Number(target.volumeMl)}ml` : null,
+        target.units && target.units > 1 ? `${target.units}병` : null,
+      ]
         .filter(Boolean)
-        .join(", ");
+        .join(" × ");
+      const conditions = Object.entries(CONDITION_LABELS)
+        .filter(([key]) => target.conditions?.[key] !== undefined)
+        .map(([key, label]) => `${label} ${String(target.conditions?.[key])}`);
+      const basis = [size, ...conditions, target.source].filter(Boolean).join(", ");
       return `목표 ${amount} (${basis})`;
     })
     .join(" · ");
