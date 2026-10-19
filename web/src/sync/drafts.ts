@@ -241,10 +241,9 @@ export function recoverableDraft(form: string): string | null {
     const tab = suffix.slice(0, separator);
     const kind = suffix.slice(separator + 1);
     if (tab === tabId() || !(kind === form || kind.startsWith(`${form}:`))) continue;
+    if (alreadyRestored(key)) continue;
     try {
       const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
-      const restored = localStorage.getItem(RESTORED_PREFIX + key.slice(PREFIX.length));
-      if (restored !== null && Number(restored) === at) continue;
       if (Number.isFinite(at) && (!latest || at > latest.at)) latest = { tab, at };
     } catch {
       /* Damaged records remain untouched. */
@@ -252,9 +251,28 @@ export function recoverableDraft(form: string): string | null {
   }
   return latest?.tab ?? null;
 }
+/** 이 탭이 이미 불러온 버전 그대로인 다른 탭 초안. 원본이 그 뒤에 고쳐졌으면 false다. */
+function alreadyRestored(key: string): boolean {
+  try {
+    const marker = localStorage.getItem(RESTORED_PREFIX + key.slice(PREFIX.length));
+    const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
+    return marker !== null && Number(marker) === at;
+  } catch {
+    return false;
+  }
+}
 export function restoreFormDraft(form: string, sourceTab: string): void {
+  const userId = databaseIdentity().userId;
+  // 이미 불러온 버전은 다시 채우지 않는다. 저장한 뒤 같은 폼을 다시 열 때 복원 요청이 되풀이돼도
+  // 저장한 입력이 새 기록에 되살아나지 않게, 보내기 전에 한 번만 판단한다.
+  const prefix = userId ? `${PREFIX}${encodeURIComponent(userId)}:${sourceTab}:${form}` : null;
+  const restored = prefix
+    ? Object.keys(localStorage).filter(
+        (key) => (key === prefix || key.startsWith(`${prefix}:`)) && alreadyRestored(key),
+      )
+    : [];
   draftEvents.dispatchEvent(
-    new CustomEvent("restore", { detail: { form, sourceTab, userId: databaseIdentity().userId } }),
+    new CustomEvent("restore", { detail: { form, sourceTab, userId, restored } }),
   );
 }
 export function useDraftState<T>(
@@ -277,8 +295,14 @@ export function useDraftState<T>(
   });
   useEffect(() => {
     const restore = (event: Event) => {
-      const detail = (event as CustomEvent<{ form: string; sourceTab: string; userId: string }>)
-        .detail;
+      const detail = (
+        event as CustomEvent<{
+          form: string;
+          sourceTab: string;
+          userId: string;
+          restored: string[];
+        }>
+      ).detail;
       if (
         !key ||
         identity.generation !== databaseIdentity().generation ||
@@ -287,6 +311,7 @@ export function useDraftState<T>(
       )
         return;
       const source = `${PREFIX}${encodeURIComponent(detail.userId)}:${detail.sourceTab}:${form}`;
+      if (source === key || detail.restored.includes(source)) return;
       try {
         const stored = localStorage.getItem(source);
         if (!stored) return;

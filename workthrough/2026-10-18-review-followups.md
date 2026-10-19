@@ -386,3 +386,14 @@ Codex 리뷰 1건(P2): 새 관심에서 후보 A를 고른 뒤 **같은 출처**
   - RED→GREEN: `DiscoveryPanel.test.tsx` 재검색 고정 1건, `drafts.test.tsx` 최근 초안 이전 1건,
     `test_search.py`·`search.test.ts` 판본 표기 각 2건(수정 전 모두 실패). 검색 도메인·제품 API 184건,
     `npm --prefix web run check`(Vitest 1,342건, branch 83.19%), `ruff`·`ty`·secret scan 통과.
+- 8c08bfb는 Codex 사용 한도로 자동 리뷰를 받지 못해(요약 상태 `failed`) 읽기 전용 독립 리뷰로 대신했다.
+  지적 1건(P2)과 관련 P3·테스트 보강을 반영했다.
+  - **불러온 초안의 재복원(P2).** 원본을 지우지 않게 바꾼 뒤 `recoverableDraft`만 불러옴 표시를 보고, 복원
+    이벤트는 보지 않았다. 빠른 시음에서 다른 탭 입력을 불러와 저장한 뒤 "같은 병에 새 기록"을 누르면 폼이 다시
+    마운트되며 같은 원본을 또 채워, 저장한 메모·양으로 시음을 한 번 더 만들 수 있었다. `restoreFormDraft`가
+    보내기 전에 이미 불러온 버전(표시와 `updatedAt`이 같음)을 골라 두고 각 폼은 그 원본과 자기 키를 건너뛴다.
+    빠른 시음의 새 기록은 복원 출처도 비운다(원본 탭이 그 뒤에 고친 입력도 새 기록에 들어오지 않게).
+  - 테스트: 원본을 같은 JS 환경의 훅 대신 저장소에 직접 두는 반복 복원 테스트, 원본이 사라진 표시 정리를 더했다.
+  - RED→GREEN: `QuickTastingSheet.test.tsx` 저장 뒤 새 기록 1건(수정 전 저장한 메모가 다시 채워짐),
+    `drafts.test.tsx` 반복 복원 1건(복원 이벤트 가드를 빼면 실패). `npm --prefix web run check` 통과(Vitest 1,344건,
+    branch 83.2%).

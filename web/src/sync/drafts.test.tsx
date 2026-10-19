@@ -94,6 +94,29 @@ it("열려 있는 다른 탭의 초안을 불러와도 그 탭의 초안은 지�
   expect(recoverableDraft("product:create")).toBe("live-tab");
 });
 
+it("이미 불러온 버전은 복원 요청이 되풀이돼도 이 탭에서 고친 입력을 덮지 않는다", async () => {
+  const { restoreFormDraft } = await import("@/sync/drafts");
+  const source = "sooljang-draft-v1:draft-owner:other-tab:product:create";
+  localStorage.setItem(
+    source,
+    JSON.stringify({ value: { name: "다른 탭 입력" }, updatedAt: 1, revision: "r1" }),
+  );
+  sessionStorage.setItem("sooljang-draft-tab", "this-tab");
+  const current = renderHook(() => useDraftState("product:create", { name: "" }));
+  act(() => restoreFormDraft("product:create", "other-tab"));
+  act(() => current.result.current[1]({ name: "이 탭에서 고침" }));
+
+  act(() => restoreFormDraft("product:create", "other-tab"));
+
+  expect(current.result.current[0].name).toBe("이 탭에서 고침");
+  localStorage.setItem(
+    source,
+    JSON.stringify({ value: { name: "다른 탭이 다시 고침" }, updatedAt: 2, revision: "r2" }),
+  );
+  act(() => restoreFormDraft("product:create", "other-tab"));
+  expect(current.result.current[0].name).toBe("다른 탭이 다시 고침");
+});
+
 it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () => {
   const { pruneStaleDrafts, STALE_DRAFT_MS } = await import("@/sync/drafts");
   const now = Date.now();
@@ -108,6 +131,7 @@ it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () =
   localStorage.setItem("sooljang-draft-v1:draft-owner:broken-tab:product:create", "{");
   localStorage.setItem("sooljang-draft-restored-v1:draft-owner:stale-tab:product:create", "1");
   localStorage.setItem("sooljang-draft-restored-v1:draft-owner:recent-tab:product:create", "1");
+  localStorage.setItem("sooljang-draft-restored-v1:draft-owner:gone-tab:product:create", "1");
   sessionStorage.setItem("sooljang-draft-tab", "current-tab");
 
   pruneStaleDrafts(now);
@@ -117,6 +141,7 @@ it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () =
   expect(keys).toContain("recent-tab");
   expect(keys).toContain("current-tab");
   expect(keys).toContain("broken-tab");
+  expect(keys).not.toContain("gone-tab");
   // 불러옴 표시는 원본 초안과 함께 정리된다.
   expect(
     localStorage.getItem("sooljang-draft-restored-v1:draft-owner:recent-tab:product:create"),
