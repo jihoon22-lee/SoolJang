@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activateDatabase, db, lockDatabase } from "@/sync/db";
 import { quarantineContext, quarantineInvalidEntries } from "@/sync/quarantine";
-import { SyncStatusBadge } from "@/sync/SyncStatusBadge";
+import { correctionError, SyncStatusBadge } from "@/sync/SyncStatusBadge";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { authenticatedRoutes, renderWithQuery, stubRoutes } from "@/testing";
 
@@ -369,13 +369,20 @@ describe("SyncStatusBadge", () => {
     await userEvent.type(remaining, "12.5");
     expect(remaining).toHaveValue("12.5");
     expect(screen.getByLabelText("날짜")).toHaveValue("2026-01-01");
+    // 서버는 잔량을 정수로만 받는다. 소수로 바꿔 넣으면 다시 보내도 같은 이유로 막힌다.
+    await userEvent.click(screen.getByRole("button", { name: "수정 후 다시 시도" }));
+    expect(await screen.findByText("남은 양(ml)은(는) 정수로 입력하세요")).toBeInTheDocument();
+    expect(await db.outbox.where("status").equals("pending").count()).toBe(0);
+
+    await userEvent.clear(remaining);
+    await userEvent.type(remaining, "350");
     await userEvent.click(screen.getByRole("button", { name: "수정 후 다시 시도" }));
 
     await waitFor(async () => {
       const entries = await db.outbox.where("status").equals("pending").toArray();
       expect(entries).toHaveLength(1);
       expect(entries[0]?.fields).toEqual({
-        remaining_ml: 12.5,
+        remaining_ml: 350,
         on: "2026-01-01",
         expected_operation_id: "op-before",
         revision: 3,
@@ -647,4 +654,16 @@ it("원본 읽기 직후 로그아웃하면 내보내기 파일을 만들지 않
     await screen.findByText("계정이 변경되어 저장을 중단했습니다. 다시 확인하세요"),
   ).toBeInTheDocument();
   expect(create).not.toHaveBeenCalled();
+});
+
+it("서버가 정수로만 받는 필드의 소수·공란은 다시 보내기 전에 막는다", () => {
+  expect(correctionError("quantity", 2.5)).toBe("병수은(는) 정수로 입력하세요");
+  expect(correctionError("remaining_ml", null)).toMatch(/정수로 입력하세요/);
+  expect(correctionError("volume_ml", "칠백")).toMatch(/정수로 입력하세요/);
+  expect(correctionError("remaining_ml", 0)).toBeNull();
+  expect(correctionError("vintage", null)).toBeNull();
+  expect(correctionError("poured_ml", 30)).toBeNull();
+  // 소수를 받는 필드는 그대로 둔다.
+  expect(correctionError("abv", 40.5)).toBeNull();
+  expect(correctionError("unit_paid_price", 12.5)).toBeNull();
 });

@@ -136,6 +136,26 @@ export function correctionValue(field: string, raw: string): string | number | n
   return Number.isFinite(parsed) ? parsed : raw;
 }
 
+/**
+ * 서버(`sync.py::_bounded_int`)가 정수로만 받는 필드. 소수나 숫자가 아닌 값을 넣으면 다시 보내도
+ * 같은 이유로 실패해 대기열 맨 앞이 계속 막히므로 바꿔 넣기 전에 막는다. 빈티지·따른 양은 비울 수 있다.
+ */
+const INTEGER_FIELDS = new Map([
+  ["remaining_ml", { nullable: false }],
+  ["quantity", { nullable: false }],
+  ["volume_ml", { nullable: false }],
+  ["poured_ml", { nullable: true }],
+  ["vintage", { nullable: true }],
+]);
+
+/** 저장할 값이 서버에서 다시 실패할 것이 확실하면 그 이유. */
+export function correctionError(field: string, value: string | number | null): string | null {
+  const integer = INTEGER_FIELDS.get(field);
+  if (!integer || (value === null && integer.nullable)) return null;
+  if (typeof value === "number" && Number.isInteger(value)) return null;
+  return `${FIELD_LABELS[field] ?? field}은(는) 정수로 입력하세요`;
+}
+
 function formatTimestamp(value: unknown): string {
   if (typeof value !== "string") return "시각 미상";
   const parsed = new Date(value);
@@ -378,6 +398,13 @@ function SyncIssuesPanel({
           )
           .map(([field]) => [field, correctionValue(field, editText[field] ?? "")]),
       );
+      const invalid = Object.entries(edited)
+        .map(([field, value]) => correctionError(field, value))
+        .find(Boolean);
+      if (invalid) {
+        setResolveError(invalid);
+        return;
+      }
       await replaceFailedEntry(editingEntry.idempotency_key, { ...editFields, ...edited });
       setEditingEntry(null);
       setResolveError(null);
