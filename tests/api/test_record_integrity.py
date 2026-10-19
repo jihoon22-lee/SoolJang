@@ -195,7 +195,7 @@ def test_recently_deleted_tastings_lists_restorable_records_until_restored(
         f"{prefix}/tastings",
         json={"bottle_id": setup["bottle_ids"][0], "tasted_on": "2026-10-01", "rating": "4"},
     ).json()
-    assert api_client.get(f"{prefix}/tastings/deleted").json() == []
+    assert api_client.get(f"{prefix}/tastings/deleted").json()["items"] == []
     removed = api_client.request(
         "DELETE",
         f"{prefix}/tastings/{tasting['id']}",
@@ -205,7 +205,7 @@ def test_recently_deleted_tastings_lists_restorable_records_until_restored(
         },
     ).json()
 
-    listed = api_client.get(f"{prefix}/tastings/deleted").json()
+    listed = api_client.get(f"{prefix}/tastings/deleted").json()["items"]
 
     assert [item["id"] for item in listed] == [tasting["id"]]
     assert listed[0]["context"]["product_name"] == "무결성 위스키"
@@ -221,7 +221,7 @@ def test_recently_deleted_tastings_lists_restorable_records_until_restored(
         },
     )
     assert restored.status_code == 200, restored.text
-    assert api_client.get(f"{prefix}/tastings/deleted").json() == []
+    assert api_client.get(f"{prefix}/tastings/deleted").json()["items"] == []
 
 
 def test_recently_deleted_tastings_hides_records_of_deleted_products(
@@ -242,7 +242,44 @@ def test_recently_deleted_tastings_hides_records_of_deleted_products(
     )
     assert api_client.delete(f"{prefix}/products/{setup['product_id']}").status_code == 204
 
-    assert api_client.get(f"{prefix}/tastings/deleted").json() == []
+    assert api_client.get(f"{prefix}/tastings/deleted").json()["items"] == []
+
+
+def test_recently_deleted_tastings_page_through_every_restorable_record(
+    api_client: TestClient, prefix: str
+) -> None:
+    """한 쪽보다 많이 지워도 30일 안의 기록은 모두 이어 읽어 복구할 수 있다."""
+    setup = _purchase_with_bottles(api_client, prefix, quantity=1)
+    removed_ids = []
+    for day in range(1, 6):
+        tasting = api_client.post(
+            f"{prefix}/tastings",
+            json={"bottle_id": setup["bottle_ids"][0], "tasted_on": f"2026-10-0{day}"},
+        ).json()
+        api_client.request(
+            "DELETE",
+            f"{prefix}/tastings/{tasting['id']}",
+            json={
+                "request_id": f"01990000-0000-7000-8000-00000000e00{day}",
+                "expected_updated_at": tasting["updated_at"],
+            },
+        )
+        removed_ids.append(tasting["id"])
+
+    seen: list[str] = []
+    cursor = None
+    for _ in range(5):
+        params = {"limit": 2} | ({"cursor": cursor} if cursor else {})
+        page = api_client.get(f"{prefix}/tastings/deleted", params=params).json()
+        seen += [item["id"] for item in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+
+    # 최신 삭제순, 겹치거나 빠지는 기록 없이 전부.
+    assert seen == list(reversed(removed_ids))
+    bad = api_client.get(f"{prefix}/tastings/deleted", params={"cursor": "not-a-cursor"})
+    assert bad.status_code == 422
 
 
 def test_purchase_delete_locks_purchase_before_its_bottles(

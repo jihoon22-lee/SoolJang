@@ -5,7 +5,7 @@
  * 다시 찾을 수 있게 서버가 복구 가능하다고 판단한 삭제 기록만 보여 준다(잔량은 바꾸지 않는다).
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, tastingsApi } from "@/api/client";
 import type { DeletedTasting } from "@/api/types";
@@ -23,9 +23,12 @@ export function DeletedTastings({ online }: { online: boolean }) {
   const [requests, setRequests] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const deleted = useQuery({
+  // 한 쪽보다 많이 지웠어도 30일 안의 기록은 "더 보기"로 모두 찾아 복구할 수 있어야 한다.
+  const deleted = useInfiniteQuery({
     queryKey: ["tastings", "deleted"],
-    queryFn: ({ signal }) => tastingsApi.deleted(signal),
+    queryFn: ({ pageParam, signal }) => tastingsApi.deleted(pageParam, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: online,
   });
 
@@ -70,7 +73,7 @@ export function DeletedTastings({ online }: { online: boolean }) {
     }
   }
 
-  const items = deleted.data ?? [];
+  const items = deleted.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <section className="card" aria-labelledby="deleted-tastings-heading">
       <h2 id="deleted-tastings-heading">최근 삭제한 시음</h2>
@@ -112,6 +115,18 @@ export function DeletedTastings({ online }: { online: boolean }) {
             </li>
           ))}
         </ul>
+      ) : null}
+      {deleted.isFetchNextPageError ? (
+        <p role="alert">이전 삭제 기록을 더 불러오지 못했습니다. 이미 읽은 기록은 그대로입니다.</p>
+      ) : null}
+      {online && deleted.hasNextPage ? (
+        <button
+          type="button"
+          disabled={deleted.isFetching}
+          onClick={() => void deleted.fetchNextPage({ cancelRefetch: false })}
+        >
+          {deleted.isFetchingNextPage ? "이전 삭제 기록 불러오는 중…" : "이전 삭제 기록 더 보기"}
+        </button>
       ) : null}
     </section>
   );

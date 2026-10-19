@@ -21,6 +21,7 @@ from sooljang.api.schemas.corrections import (
     ContextualTasting,
     ContextualTastingPage,
     DeletedTasting,
+    DeletedTastingPage,
     TastingCorrection,
 )
 from sooljang.api.schemas.tasting import (
@@ -482,18 +483,35 @@ async def timeline_page(
 
 
 @tastings_router.get(
-    "/deleted", response_model=list[DeletedTasting], summary="최근 삭제한 시음(복구 가능)"
+    "/deleted", response_model=DeletedTastingPage, summary="최근 삭제한 시음(복구 가능)"
 )
 async def deleted_tastings(
     session: SessionDep,
     user_id: UserDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> list[DeletedTasting]:
-    """30일 안에 지운 시음 중 복구할 수 있는 것. 복구는 `POST /tastings/{id}:restore`."""
-    return [
-        DeletedTasting.model_validate(row)
-        for row in await recently_deleted_tastings(session, user_id, limit=limit)
-    ]
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+) -> DeletedTastingPage:
+    """30일 안에 지운 시음 중 복구할 수 있는 것. 복구는 `POST /tastings/{id}:restore`.
+
+    한 쪽에 다 담지 못하면 `next_cursor` 로 이어 읽는다. 오래된 기록도 복구할 수 있어야 한다.
+    """
+    before = None
+    if cursor:
+        decoded = Cursor.decode(cursor)
+        try:
+            if not isinstance(decoded.sort_value, str):
+                raise ValueError("시각이 아닙니다")
+            before = (datetime.datetime.fromisoformat(decoded.sort_value), decoded.id)
+        except ValueError as error:
+            raise ValidationFailedError("삭제 기록 cursor의 시각을 해석할 수 없습니다") from error
+    rows = await recently_deleted_tastings(session, user_id, limit=limit + 1, before=before)
+    page = build_page(
+        rows, limit=limit, sort_value_of=lambda row: row["deleted_at"], id_of=lambda row: row["id"]
+    )
+    return DeletedTastingPage(
+        items=[DeletedTasting.model_validate(row) for row in page.items],
+        next_cursor=page.next_cursor,
+    )
 
 
 @tastings_router.get("/{tasting_id}", response_model=ContextualTasting)

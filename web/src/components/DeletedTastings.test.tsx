@@ -62,7 +62,9 @@ function view(online = true) {
 }
 
 it("최근 삭제한 시음을 보여 주고 삭제 시점 버전으로 복구한다", async () => {
-  vi.spyOn(tastingsApi, "deleted").mockResolvedValueOnce([deleted]).mockResolvedValue([]);
+  vi.spyOn(tastingsApi, "deleted")
+    .mockResolvedValueOnce({ items: [deleted], next_cursor: null })
+    .mockResolvedValue({ items: [], next_cursor: null });
   const restore = vi.spyOn(tastingsApi, "restore").mockResolvedValue({
     id: "t-deleted",
     updated_at: "2026-10-03T00:00:00Z",
@@ -85,7 +87,7 @@ it("최근 삭제한 시음을 보여 주고 삭제 시점 버전으로 복구�
 });
 
 it("일시 실패한 복구를 다시 누르면 같은 요청 id로 보내 중복 반영을 막는다", async () => {
-  vi.spyOn(tastingsApi, "deleted").mockResolvedValue([deleted]);
+  vi.spyOn(tastingsApi, "deleted").mockResolvedValue({ items: [deleted], next_cursor: null });
   const restore = vi
     .spyOn(tastingsApi, "restore")
     .mockRejectedValueOnce(new Error("네트워크 오류"))
@@ -102,7 +104,7 @@ it("일시 실패한 복구를 다시 누르면 같은 요청 id로 보내 중�
 });
 
 it("버전 충돌이면 오류를 알리고 다음 복구는 새 요청으로 보낸다", async () => {
-  vi.spyOn(tastingsApi, "deleted").mockResolvedValue([deleted]);
+  vi.spyOn(tastingsApi, "deleted").mockResolvedValue({ items: [deleted], next_cursor: null });
   const restore = vi
     .spyOn(tastingsApi, "restore")
     .mockRejectedValueOnce(new ApiError(409, "시음 기록이 변경되었습니다"))
@@ -125,7 +127,9 @@ it("복구에 성공한 기록을 다시 지웠다 복구하면 새 요청 id로
     deleted_at: "2026-10-04T00:00:00Z",
   };
   // 복구 뒤 목록을 다시 부르면 그 사이 다시 지운 같은 기록(새 버전)이 보인다.
-  vi.spyOn(tastingsApi, "deleted").mockResolvedValueOnce([deleted]).mockResolvedValue([again]);
+  vi.spyOn(tastingsApi, "deleted")
+    .mockResolvedValueOnce({ items: [deleted], next_cursor: null })
+    .mockResolvedValue({ items: [again], next_cursor: null });
   const restore = vi
     .spyOn(tastingsApi, "restore")
     .mockResolvedValue({ id: "t-deleted", updated_at: "2026-10-03T00:00:00Z", deleted_at: null });
@@ -148,4 +152,25 @@ it("오프라인이면 목록을 부르지 않고 온라인에서 확인하라�
 
   expect(screen.getByText("온라인에서 확인할 수 있습니다.")).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
+});
+
+it("한 쪽보다 많이 지운 기록은 더 보기로 이어 불러와 오래된 기록도 복구할 수 있다", async () => {
+  const older = { ...deleted, id: "t-older", tasted_on: "2026-09-01" };
+  const list = vi
+    .spyOn(tastingsApi, "deleted")
+    .mockImplementation(async (cursor) =>
+      cursor === "page-2"
+        ? { items: [older], next_cursor: null }
+        : { items: [deleted], next_cursor: "page-2" },
+    );
+  view();
+
+  await screen.findByText(/2026-10-01 마심/);
+  expect(screen.queryByText(/2026-09-01 마심/)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "이전 삭제 기록 더 보기" }));
+
+  expect(await screen.findByText(/2026-09-01 마심/)).toBeInTheDocument();
+  expect(list).toHaveBeenLastCalledWith("page-2", expect.anything());
+  expect(screen.getAllByRole("button", { name: "복구" })).toHaveLength(2);
+  expect(screen.queryByRole("button", { name: "이전 삭제 기록 더 보기" })).toBeNull();
 });

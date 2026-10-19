@@ -53,6 +53,13 @@ class ContextualTastingPage(BaseModel):
     next_cursor: str | None = None
 
 
+class DeletedTastingPage(BaseModel):
+    """최근 삭제한 시음 한 쪽. `next_cursor` 로 30일 안의 나머지 기록을 이어 읽는다."""
+
+    items: list[DeletedTasting]
+    next_cursor: str | None = None
+
+
 class BottleCorrectionContext(BaseModel):
     context: ProductSkuContext
     purchase: PurchaseContext

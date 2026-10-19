@@ -460,6 +460,11 @@ export interface DeletedTasting extends ContextualTasting {
   deleted_at: string;
 }
 
+export interface DeletedTastingPage {
+  items: DeletedTasting[];
+  next_cursor: string | null;
+}
+
 export interface ContextualTastingPage {
   items: ContextualTasting[];
   next_cursor: string | null;

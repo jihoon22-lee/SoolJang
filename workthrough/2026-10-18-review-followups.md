@@ -228,4 +228,10 @@ Codex 리뷰(428a0b6 기준) 3건을 재현해 반영했다.
    409가 났다. 성공·4xx처럼 결과가 확정되면 버리고, 연결 오류·5xx에서만 같은 id로 재시도한다.
 - RED→GREEN: `test_record_integrity.py` 잠금 순서 1건, `test_import_plan.py`·`test_legacy_import.py`
   미리보기 기대 보강 2건, `DeletedTastings.test.tsx` 1건, `ImportPage.test.tsx` 표시 1건.
+- 두 번째 리뷰(39c37ef 기준) 1건: **삭제 시음 목록 쪽 나눔(P2).** 목록이 최신 50건(최대 100)에서 잘려 30일 안에
+  그보다 많이 지우면 오래된 기록은 복구할 길이 없었다. 응답을 `{items, next_cursor}`(삭제 시각·id keyset)로
+  바꾸고 화면에 "이전 삭제 기록 더 보기"를 둔다. 아직 배포 전 API라 이전 형식 호환은 두지 않는다.
+  RED→GREEN: API 5건 쪽 넘김(겹침·누락 없음, 잘못된 cursor 422), `DeletedTastings.test.tsx` 더 보기 1건(수정 전
+  실패). 기록 무결성 API 10건, DeletedTastings 6건 통과.
+  main(`236bf15`) 위에서 `npm --prefix web run check` 통과(Vitest 1,313건, branch 83.11%), `ruff`·`ty` 통과.
 

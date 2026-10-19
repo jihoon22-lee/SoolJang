@@ -4,7 +4,7 @@ import datetime
 import uuid
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import raiseload
 
@@ -202,12 +202,17 @@ RECENTLY_DELETED_DAYS = 30
 
 
 async def recently_deleted_tastings(
-    session: AsyncSession, user_id: uuid.UUID, *, limit: int = 50
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    limit: int = 50,
+    before: tuple[datetime.datetime, uuid.UUID] | None = None,
 ) -> list[dict[str, Any]]:
     """최근 30일 안에 지운 시음 중 지금 복구할 수 있는 것만 최신 삭제순으로 돌려준다.
 
     복구는 연결된 제품·규격·병이 살아 있어야 가능하다(`tasting_lifecycle`). 복구할 수 없는
-    기록을 목록에 보이면 버튼이 매번 실패하므로 같은 조건으로 거른다.
+    기록을 목록에 보이면 버튼이 매번 실패하므로 같은 조건으로 거른다. `before`(삭제 시각, id)
+    다음 기록부터 읽어 30일 안의 기록을 모두 페이지로 넘겨 볼 수 있게 한다.
     """
     since = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=RECENTLY_DELETED_DAYS)
     rows = (
@@ -233,6 +238,14 @@ async def recently_deleted_tastings(
                         live_bottles_query(user_id).with_only_columns(Bottle.id)
                     ),
                 ),
+            )
+            .where(
+                true()
+                if before is None
+                else or_(
+                    TastingSession.deleted_at < before[0],
+                    and_(TastingSession.deleted_at == before[0], TastingSession.id < before[1]),
+                )
             )
             .order_by(TastingSession.deleted_at.desc(), TastingSession.id.desc())
             .limit(limit)

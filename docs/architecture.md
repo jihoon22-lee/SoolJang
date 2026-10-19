@@ -641,7 +641,7 @@ UTC `timestamptz`다.
 | tastings | `POST /tastings/{tasting_id}:correct` | 기록만 정정 또는 양쪽 병 최종 상태 명시 |
 | tastings | `DELETE /tastings/{tasting_id}` | `request_id`·`expected_updated_at`을 검증한 기록 삭제. 200에 최신 버전 반환 |
 | tastings | `POST /tastings/{tasting_id}:restore` | 같은 ID·첨부·내용 복구, 현재 잔량은 그대로 |
-| tastings | `GET /tastings/deleted` | 최근 30일 삭제 시음 중 제품·규격·병이 살아 있어 복구 가능한 기록(최신 삭제순) |
+| tastings | `GET /tastings/deleted` | 최근 30일 삭제 시음 중 제품·규격·병이 살아 있어 복구 가능한 기록(최신 삭제순). `{items, next_cursor}` 쪽 단위(`limit` 기본 50·최대 100, `cursor`=삭제 시각·id) |
 | vendors | `GET /vendors` | 구매처 목록 |
 | vendors | `POST /vendors` | 구매처 등록 |
 | vendors | `DELETE /vendors/{vendor_id}` | 구매처 삭제 |
