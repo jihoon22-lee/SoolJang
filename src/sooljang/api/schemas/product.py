@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from sooljang.infrastructure.database.models import BarcodeType, BottleStatus, VendorKind
 
-# 구매 금액·환율 열(Numeric(14, 2)·Numeric(14, 6))에 담을 수 있는 범위. 넘는 값은 저장 오류(500)
-# 대신 입력 오류로 끝낸다.
-_MAX_AMOUNT = Decimal(10) ** 12
-_MAX_FX_RATE = Decimal(10) ** 8
+# 구매 금액·환율 열(Numeric(14, 2)·Numeric(14, 6))에 담을 수 있는 범위. 저장 자릿수로 반올림해도
+# 넘지 않는 값만 받아, 넘는 값은 저장 오류(500) 대신 입력 오류로 끝낸다.
+_MAX_AMOUNT = Decimal("999999999999.995")
+_MAX_FX_RATE = Decimal("99999999.9999995")
 
 SearchAliases = Annotated[
     list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]],
@@ -322,8 +322,8 @@ class PurchaseSplitPart(BaseModel):
     quantity: int = Field(gt=0)
     vendor_id: uuid.UUID | None = None
     purchased_on: datetime.date | None = None
-    unit_list_price: Decimal | None = Field(default=None, ge=0)
-    unit_paid_price: Decimal | None = Field(default=None, ge=0)
+    unit_list_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
+    unit_paid_price: Decimal | None = Field(default=None, ge=0, lt=_MAX_AMOUNT)
 
 
 class PurchaseSplit(BaseModel):

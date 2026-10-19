@@ -278,7 +278,15 @@ def test_foreign_purchase_without_won_price_stores_converted_price(
 
 
 @pytest.mark.parametrize(
-    ("foreign", "rate"), [("1e20", "1e10"), ("1e999999", "1e999999"), ("9999999999", "1000")]
+    ("foreign", "rate"),
+    [
+        ("1e20", "1e10"),
+        ("1e999999", "1e999999"),
+        ("9999999999", "1000"),
+        # 저장 자릿수로 반올림하면 열 범위를 넘는 값.
+        ("999999999999.999", "1"),
+        ("1", "99999999.9999999"),
+    ],
 )
 def test_foreign_conversion_too_large_to_store_is_rejected(
     api_client: TestClient, prefix: str, foreign: str, rate: str
@@ -295,6 +303,19 @@ def test_foreign_conversion_too_large_to_store_is_rejected(
             "foreign_unit_price": foreign,
             "fx_rate": rate,
         },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("price", ["999999999999.999", "1e13"])
+def test_purchase_price_beyond_column_range_is_rejected(
+    api_client: TestClient, prefix: str, price: str
+) -> None:
+    _, sku_id = _product_with_sku(api_client, prefix)
+
+    response = api_client.post(
+        f"{prefix}/purchases", json={"sku_id": sku_id, "quantity": 1, "unit_paid_price": price}
     )
 
     assert response.status_code == 422
@@ -404,6 +425,20 @@ def test_split_quantity_mismatch_is_rejected(api_client: TestClient, prefix: str
     assert response.status_code == 422
     body = response.json()
     assert "병수 합계" in body["detail"]
+
+
+def test_split_part_price_beyond_column_range_is_rejected(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, sku_id = _product_with_sku(api_client, prefix)
+    purchase = _post(api_client, f"{prefix}/purchases", {"sku_id": sku_id, "quantity": 2})
+
+    response = api_client.post(
+        f"{prefix}/purchases/{purchase['id']}:split",
+        json={"parts": [{"quantity": 1, "unit_paid_price": "1e13"}, {"quantity": 1}]},
+    )
+
+    assert response.status_code == 422
 
 
 def test_split_requires_at_least_two_parts(api_client: TestClient, prefix: str) -> None:
