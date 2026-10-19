@@ -489,12 +489,18 @@ Codex 자동 리뷰가 사용 한도로 멈춰(R5 #177 마지막 커밋부터 �
    구매 생성·수정의 금액은 10^12, 환율은 10^8 미만만 받고 환산 중 Decimal 오류와 범위 초과 환산값은 422다.
 - RED→GREEN: `StoreModeInterests` 묶음·조건 1건·미래 저장본 1건, `InterestsPage` 고정 제품 관측 1건,
   `ProductDetail` 정확 환산 1건, API 거대 환산 3건(수정 전 모두 실패: 화면 문구·267원·500).
+- 같은 리뷰어의 수정 재확인: 다섯 수정이 맞다고 확인했고 P3 3건을 더 받아 고쳤다.
+  1. 제품 키 없이 판매 항목 키로 고정한 출처는 서버 감시 판정(`price_watch.py`)처럼 `external_key ==
+     offer_key`로 같은 제품으로 본다(이전에는 "고정한 출처의 관측 없음").
+  2. 매장 목표가에서 모르는 판매 조건을 빼고 적으면 일반가처럼 읽혀 "일부 조건 미확인"을 붙인다.
+  3. 999999999999.999처럼 상한 미만이지만 저장 자릿수로 반올림하면 열 범위를 넘는 금액·환율과, 상한이 없던
+     구매 분할 조각 금액도 422로 끝낸다.
+  - RED→GREEN: `InterestsPage` 키 고정 1건, `StoreModeInterests` 모르는 조건 1건, API 반올림 경계 3건·분할 1건.
 
 ### 전체 검사와 실브라우저
 
-- 독립 리뷰 반영 뒤 `sooljang_test` 단독 전체 pytest 1,783 passed / 30 skipped, branch 92.39%, `ruff`·`ty`·
-  secret scan 통과. R5 병합(main `a72f234`) 위로 다시 쌓은 뒤 `npm --prefix web run check` 통과(Vitest
-  1,384건, branch 83.38%). R5의 마지막 커밋(`28a1905`)은 웹만 바꿔 pytest는 다시 돌리지 않았다.
+- 독립 리뷰·재확인 반영 뒤(main `a72f234` 위) `sooljang_test` 단독 전체 pytest 1,788 passed / 30 skipped,
+  branch 92.39%, `ruff`·`ty`·secret scan 통과. `npm --prefix web run check` 통과(Vitest 1,384건, branch 83.32%).
 - 앞선 재정렬 때 pytest와 함께 돌린 웹 검사에서 상세 제목 테스트가 제품 조회 effect보다 먼저 제목을 읽어
   실패했다(단독 3회 통과). 제목이 바뀔 때까지 기다리게 고쳤다. 동작 코드는 바꾸지 않았다.
 - 실브라우저(Playwright Chromium, Vite 개발 서버 + 격리 API 8210, 빈 격리 DB `sooljang_browser_r6`에
