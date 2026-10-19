@@ -6,6 +6,7 @@ import { DiscoveryPanel } from "@/components/DiscoveryPanel";
 import { InterestEditor } from "@/components/InterestEditor";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { publicLink } from "@/discovery/useDiscovery";
+import { todayLocal } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { databaseIdentity } from "@/sync/db";
@@ -24,6 +25,9 @@ function stateOf(row: Interest) {
         : "active";
 }
 const states = { active: "관심 중", archived: "보관", purchased: "구매 완료", deleted: "삭제됨" };
+/** 제품 검색 별칭 상한(`schemas/product.py::SearchAliases`). */
+const PRODUCT_ALIAS_LIMIT = 20;
+
 export function InterestsPage({
   onSelectProduct,
 }: {
@@ -426,7 +430,8 @@ function InterestConversionForm({
     vintage: String(interest.identity.vintage ?? ""),
     quantity: "1",
     vendorId: "",
-    date: "",
+    // 일반 구매 등록과 같이 오늘로 시작한다. 공란이면 기간 통계·첫 시음 간격에서 빠진다.
+    date: todayLocal(),
     paid: "",
     list: "",
   });
@@ -476,6 +481,9 @@ function InterestConversionForm({
           name_en: interest.identity.name_en ?? null,
           producer: interest.identity.producer ?? null,
           age_years: interest.identity.age_years ?? null,
+          // 관심에서 확인한 별칭을 옮겨야 전환 직후에도 같은 별칭으로 찾는다. 관심은 30개, 제품은
+          // 20개까지라 서버 대체값과 같이 앞의 20개만 보낸다(넘기면 422로 구매가 막힌다).
+          search_aliases: (interest.identity.search_aliases ?? []).slice(0, PRODUCT_ALIAS_LIMIT),
         };
       const result = await interestsApi.purchase(interest.id, input);
       return { result, snapshot };

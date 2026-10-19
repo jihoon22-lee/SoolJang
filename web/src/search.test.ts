@@ -4,6 +4,7 @@ import {
   extractChosung,
   matchesQuery,
   normalizeNameForMatching,
+  normalizeSearchText,
   rankByQuery,
 } from "@/search";
 
@@ -114,4 +115,34 @@ it.each([
   ["Kahlúa", "Kahlua", true],
 ])("원문 부분검색과 비Latin 결합문자 보존: %s / %s", (name, query, expected) => {
   expect(matchesQuery(name as string, query as string)).toBe(expected);
+});
+
+// 서버 `tests/domain/test_search.py`의 같은 이름 테스트와 같은 표다(D244 동일 정규화).
+const LITER_PARITY: [string, string][] = [
+  ["1.1l", "1100ml"],
+  ["0.75L", "750ml"],
+  ["1.2345l", "1234 5ml"],
+  ["0.7l병", "700ml병"],
+  ["1 liter", "1 liter"],
+  // 단위 뒤에 숫자·밑줄이 이어지면 판본 표기다(용량으로 바꾸지 않는다).
+  ["batch 1l2", "batch 1l2"],
+  ["cask_1l_a", "cask 1l a"],
+];
+
+it.each(
+  LITER_PARITY,
+)("리터 %s는 부동소수 오차 없이 서버와 같은 %s로 정규화한다", (raw, normalized) => {
+  expect(normalizeSearchText(raw)).toBe(normalized);
+});
+
+it.each([
+  ["합성 진 0.7L", "0.7", true],
+  ["합성 진 0.7L", "700ml", true],
+  ["합성 위스키 120", "12", false],
+  // 원문 소수의 조각은 숫자로 보지 않는다(700ml에 "7"·"0"이 걸리지 않게).
+  ["합성 진 0.7L", "7", false],
+  ["합성 진 0.7L", "0", false],
+  ["합성 몰트 43.5%", "43", true],
+] as const)("이름 원문 소수 %s를 %s로 찾되 숫자는 통째로 비교한다", (name, query, match) => {
+  expect(matchesQuery(name, query)).toBe(match);
 });

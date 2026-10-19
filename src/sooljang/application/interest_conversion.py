@@ -73,6 +73,11 @@ async def convert_interest(
         fields = dict(product_fields)
         volume_ml = fields.pop("volume_ml")
         producer = fields.pop("producer")
+        if not fields.get("search_aliases"):
+            # 관심에서 확인한 별칭을 제품에 옮겨야 전환 직후에도 같은 별칭으로 찾을 수 있다.
+            # 관심은 30개, 제품은 20개까지 받는다(`SearchAliases`).
+            aliases = (interest.identity or {}).get("search_aliases") or []
+            fields["search_aliases"] = [str(alias) for alias in aliases][:20]
         category_id = fields.get("category_id")
         if category_id:
             await owned(session, Category, user_id, category_id)

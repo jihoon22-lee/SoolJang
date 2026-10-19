@@ -6,6 +6,7 @@ import {
   clearFormDraft,
   clearSubmittedDraft,
   finishSubmission,
+  migrateFormDrafts,
   settleFailedSubmission,
   submissionRequestId,
   useDraftState,
@@ -65,6 +66,86 @@ it("이전 브라우저 세션의 입력은 새 탭에서 명시적으로 복원
   expect(source).toBe("old-session");
   act(() => restoreFormDraft("product:create", source ?? ""));
   expect(current.result.current[0].name).toBe("이전 세션의 입력");
+  // 한 번 불러온 초안은 다시 권하지 않는다. 다시 뜨면 저장한 뒤 같은 기록을 또 등록할 수 있다.
+  expect(recoverableDraft("product:create")).toBeNull();
+});
+
+it("열려 있는 다른 탭의 초안을 불러와도 그 탭의 초안은 지우지 않고, 그 탭이 고치면 다시 권한다", async () => {
+  const { recoverableDraft, restoreFormDraft } = await import("@/sync/drafts");
+  sessionStorage.setItem("sooljang-draft-tab", "live-tab");
+  const live = renderHook(() => useDraftState("product:create", { name: "" }));
+  act(() => live.result.current[1]({ name: "다른 탭에서 쓰는 중" }));
+  sessionStorage.setItem("sooljang-draft-tab", "this-tab");
+  const current = renderHook(() => useDraftState("product:create", { name: "" }));
+  const source = "sooljang-draft-v1:draft-owner:live-tab:product:create";
+
+  act(() => restoreFormDraft("product:create", recoverableDraft("product:create") ?? ""));
+
+  expect(current.result.current[0].name).toBe("다른 탭에서 쓰는 중");
+  expect(JSON.parse(localStorage.getItem(source) ?? "null")?.value).toEqual({
+    name: "다른 탭에서 쓰는 중",
+  });
+  expect(recoverableDraft("product:create")).toBeNull();
+  const stored = JSON.parse(localStorage.getItem(source) ?? "null");
+  localStorage.setItem(
+    source,
+    JSON.stringify({ ...stored, value: { name: "이어서 고침" }, updatedAt: stored.updatedAt + 1 }),
+  );
+  expect(recoverableDraft("product:create")).toBe("live-tab");
+});
+
+it("이미 불러온 버전은 복원 요청이 되풀이돼도 이 탭에서 고친 입력을 덮지 않는다", async () => {
+  const { restoreFormDraft } = await import("@/sync/drafts");
+  const source = "sooljang-draft-v1:draft-owner:other-tab:product:create";
+  localStorage.setItem(
+    source,
+    JSON.stringify({ value: { name: "다른 탭 입력" }, updatedAt: 1, revision: "r1" }),
+  );
+  sessionStorage.setItem("sooljang-draft-tab", "this-tab");
+  const current = renderHook(() => useDraftState("product:create", { name: "" }));
+  act(() => restoreFormDraft("product:create", "other-tab"));
+  act(() => current.result.current[1]({ name: "이 탭에서 고침" }));
+
+  act(() => restoreFormDraft("product:create", "other-tab"));
+
+  expect(current.result.current[0].name).toBe("이 탭에서 고침");
+  localStorage.setItem(
+    source,
+    JSON.stringify({ value: { name: "다른 탭이 다시 고침" }, updatedAt: 2, revision: "r2" }),
+  );
+  act(() => restoreFormDraft("product:create", "other-tab"));
+  expect(current.result.current[0].name).toBe("다른 탭이 다시 고침");
+});
+
+it("30일 넘게 손대지 않은 다른 탭 초안만 정리한다", async () => {
+  const { pruneStaleDrafts, STALE_DRAFT_MS } = await import("@/sync/drafts");
+  const now = Date.now();
+  const put = (tab: string, at: number) =>
+    localStorage.setItem(
+      `sooljang-draft-v1:draft-owner:${tab}:product:create`,
+      JSON.stringify({ value: { name: tab }, updatedAt: at, revision: tab }),
+    );
+  put("stale-tab", now - STALE_DRAFT_MS - 1);
+  put("recent-tab", now - 1000);
+  put("current-tab", now - STALE_DRAFT_MS - 1);
+  localStorage.setItem("sooljang-draft-v1:draft-owner:broken-tab:product:create", "{");
+  localStorage.setItem("sooljang-draft-restored-v1:draft-owner:stale-tab:product:create", "1");
+  localStorage.setItem("sooljang-draft-restored-v1:draft-owner:recent-tab:product:create", "1");
+  localStorage.setItem("sooljang-draft-restored-v1:draft-owner:gone-tab:product:create", "1");
+  sessionStorage.setItem("sooljang-draft-tab", "current-tab");
+
+  pruneStaleDrafts(now);
+
+  const keys = Object.keys(localStorage).join();
+  expect(keys).not.toContain("stale-tab");
+  expect(keys).toContain("recent-tab");
+  expect(keys).toContain("current-tab");
+  expect(keys).toContain("broken-tab");
+  expect(keys).not.toContain("gone-tab");
+  // 불러옴 표시는 원본 초안과 함께 정리된다.
+  expect(
+    localStorage.getItem("sooljang-draft-restored-v1:draft-owner:recent-tab:product:create"),
+  ).toBe("1");
 });
 
 it("같은 값을 다시 작성해도 이전 제출 버전으로는 새 초안을 지우지 않는다", () => {
@@ -135,4 +216,39 @@ it("다른 계정의 요청 식별자는 이어받지 않는다", async () => {
   await activateDatabase("other-owner");
 
   expect(submissionRequestId("product:create")).not.toBe(mine);
+});
+
+it("이전 형식 키의 초안을 새 키로 옮기고 새 키에 이미 있는 초안은 덮지 않는다", async () => {
+  const prefix = "sooljang-draft-v1:draft-owner:";
+  const legacy = (tab: string, hash: string) => `${prefix}${tab}:product:edit:${hash}`;
+  const draft = (name: string) => JSON.stringify({ value: { name }, updatedAt: 1 });
+  localStorage.setItem(legacy("tab-a", "#products/p1?bottle=b1"), draft("고치던 이름"));
+  localStorage.setItem(legacy("tab-b", "#products/p1"), draft("다른 탭 이전 초안"));
+  localStorage.setItem(`${prefix}tab-b:product:edit:p1`, draft("새 키 초안"));
+  localStorage.setItem(legacy("tab-a", "#products/p10"), draft("다른 제품"));
+  const isLegacy = (form: string) =>
+    form === "product:edit:#products/p1" || form.startsWith("product:edit:#products/p1?");
+
+  migrateFormDrafts(isLegacy, "product:edit:p1");
+
+  expect(localStorage.getItem(`${prefix}tab-a:product:edit:p1`)).toBe(draft("고치던 이름"));
+  expect(localStorage.getItem(legacy("tab-a", "#products/p1?bottle=b1"))).toBeNull();
+  expect(localStorage.getItem(`${prefix}tab-b:product:edit:p1`)).toBe(draft("새 키 초안"));
+  expect(localStorage.getItem(legacy("tab-b", "#products/p1"))).toBe(draft("다른 탭 이전 초안"));
+  expect(localStorage.getItem(legacy("tab-a", "#products/p10"))).toBe(draft("다른 제품"));
+});
+
+it("한 탭에 이전 형식 초안이 여럿이면 가장 최근에 고친 초안을 옮긴다", () => {
+  const prefix = "sooljang-draft-v1:draft-owner:";
+  const legacy = (hash: string) => `${prefix}tab-a:product:edit:${hash}`;
+  const draft = (name: string, updatedAt: number) => JSON.stringify({ value: { name }, updatedAt });
+  localStorage.setItem(legacy("#products/p1"), draft("먼저 쓴 초안", 1));
+  localStorage.setItem(legacy("#products/p1?bottle=b1"), draft("나중에 고친 초안", 2));
+  const isLegacy = (form: string) =>
+    form === "product:edit:#products/p1" || form.startsWith("product:edit:#products/p1?");
+
+  migrateFormDrafts(isLegacy, "product:edit:p1");
+
+  expect(localStorage.getItem(`${prefix}tab-a:product:edit:p1`)).toBe(draft("나중에 고친 초안", 2));
+  expect(localStorage.getItem(legacy("#products/p1?bottle=b1"))).toBeNull();
 });

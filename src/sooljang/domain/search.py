@@ -35,9 +35,19 @@ def normalize_search_text(value: str) -> str:
     value = "".join(decomposed)
     value = unicodedata.normalize("NFC", value)
     value = re.sub(r"(\d+)\s*(?:years?\s*old|years?|yo|yr|y|년)(?![a-z])", r"\1", value)
-    value = re.sub(r"(\d+(?:\.\d+)?)\s*l\b", lambda m: f"{float(m[1]) * 1000:g}ml", value)
+    # `0.7l병`처럼 한글이 붙어도 바꾸되, `batch 1l2` 같은 판본 표기(뒤에 숫자·밑줄)는 그대로 둔다.
+    value = re.sub(r"(\d+(?:\.\d+)?)\s*l(?![a-z0-9_])", lambda m: f"{_liters_to_ml(m[1])}ml", value)
     value = re.sub(r"[^\w\s]", " ", value).replace("_", " ")
     return " ".join(value.split())
+
+
+def _liters_to_ml(liters: str) -> str:
+    """ "1.1" → "1100". 웹 `search.ts::litersToMl`과 같은 문자열 이동 규칙이다(부동소수 없음)."""
+    whole, _, fraction = liters.partition(".")
+    padded = fraction.ljust(3, "0")
+    integer = (whole + padded[:3]).lstrip("0") or "0"
+    rest = padded[3:].rstrip("0")
+    return f"{integer}.{rest}" if rest else integer
 
 
 def _alias_pattern(alias: str) -> re.Pattern[str]:
@@ -79,7 +89,15 @@ def matches_query(name: str, query: str) -> bool:
                 values.extend(canonical.replace(key, str(alias)) for alias in entry["aliases"])
         return any(query.strip() in _chosung(value) for value in values)
     haystack, needle = _canonical(name), _canonical(query)
-    if not set(re.findall(r"\d+", needle)).issubset(re.findall(r"\d+", haystack)):
+    # 질의의 숫자는 정규화한 이름의 숫자와 통째로 맞아야 한다. 이름 원문의 소수("… 0.7L"의 "0.7")도
+    # 인정하되 소수 전체로만 본다 — "0"·"7" 조각으로 나누면 "7"이 700ml에 걸린다.
+    haystack_numbers = set(re.findall(r"\d+", haystack))
+    raw_numbers = set(re.findall(r"\d+(?:\.\d+)?", name.lower())) | haystack_numbers
+    if not (
+        set(re.findall(r"\d+", needle)) <= haystack_numbers
+        # 정규화는 "0.7"을 "0 7"로 나누므로 소수는 질의 원문에서 읽는다.
+        or set(re.findall(r"\d+(?:\.\d+)?", query.lower())) <= raw_numbers
+    ):
         return False
     return query.strip().lower() in name.lower() or needle.replace(" ", "") in haystack.replace(
         " ", ""

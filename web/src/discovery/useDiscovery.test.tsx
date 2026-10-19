@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DiscoveryDocument, discoveryApi, type SearchResponse } from "@/api/discovery";
-import { mergeDocuments, publicLink, useDiscovery } from "@/discovery/useDiscovery";
+import { mergeDocuments, publicLink, queryLanguage, useDiscovery } from "@/discovery/useDiscovery";
 import * as db from "@/sync/db";
 
 function document(url: string, provider = "one"): DiscoveryDocument {
@@ -253,4 +253,18 @@ it("동일 URL의 여러 부분 근거를 합쳐도 병합 순서가 내용과 �
     rows.reduce((docs, doc) => mergeDocuments(docs, [doc]), [] as DiscoveryDocument[]),
   );
   expect(runs.every((docs) => JSON.stringify(docs) === JSON.stringify(runs[0]))).toBe(true);
+});
+
+describe("queryLanguage", () => {
+  it.each([
+    ["진 700ml", "ko"],
+    ["글렌피딕 12y 700ml", "ko"],
+    ["Glenfiddich 12 years 700ml", "en"],
+    ["진 12 years old 700ml", "ko"],
+    ["Glenfiddich 12 years old", "en"],
+    ["Hendrick's Gin 1l", "en"],
+    ["발렌타인", "ko"],
+  ] as const)("%s는 단위를 빼고 %s로 본다", (query, language) => {
+    expect(queryLanguage(query)).toBe(language);
+  });
 });

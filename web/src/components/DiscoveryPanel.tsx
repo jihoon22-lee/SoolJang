@@ -220,6 +220,8 @@ export function DiscoveryPanel({
     name: string,
     url: string,
     fields?: DiscoveryDocument["applicable_fields"],
+    /** 새 관심에서 후보를 고정한 출처. 다른 출처의 고정을 더할 때는 앞서 고른 고정·식별값을 지우지 않는다. */
+    pinSource?: string,
   ) => {
     const rawVolume = name.match(/(\d+(?:\.\d+)?)\s*(ml|cl|l)\b/i);
     const volume = rawVolume
@@ -237,22 +239,36 @@ export function DiscoveryPanel({
         ...(fields?.vintage != null ? { vintage: Number(fields.vintage) } : {}),
         ...(fields?.age_years != null ? { age_years: String(fields.age_years) } : {}),
       };
-    setTarget({
-      identity: selected,
-      references: [url],
-      confirmed: false,
-      ...(!interest && !productId ? { matches: {} } : {}),
+    setTarget((old) => {
+      if (!pinSource || !old)
+        return {
+          identity: selected,
+          references: [url],
+          confirmed: false,
+          ...(!interest && !productId ? { matches: {} } : {}),
+          ...(pinSource ? { identitySource: pinSource } : {}),
+        };
+      const references = old.references.includes(url) ? old.references : [...old.references, url];
+      // 다른 출처를 더하면 처음 정한 식별값을 지킨다. 식별값을 정한 출처에서 후보를 바꾸면 이전
+      // 후보의 이름·용량이 새 후보의 고정과 함께 저장되지 않게 식별값도 바꾼다.
+      return old.identitySource !== undefined && old.identitySource !== pinSource
+        ? { ...old, references, confirmed: false }
+        : { ...old, identity: selected, identitySource: pinSource, references, confirmed: false };
     });
     setSaved(null);
     save.reset();
     setForm((old) => ({ ...old, requestId: "" }));
-    if (!interest && !productId) setMatches({});
+    if (!interest && !productId && !pinSource) setMatches({});
   };
   const submit = () => {
     setSaved(null);
     setCompare([]);
     setTarget(null);
-    void run(identity(), selectedJobs, currentMatches, productId, interest?.id);
+    // 새 관심은 다시 검색하면 선택을 처음부터 한다. 앞 검색의 고정이 남으면 이번 결과에서 고르지
+    // 않은 출처의 고정이 새 선택과 함께 저장됐다.
+    const fresh = !interest && !productId;
+    if (fresh) setMatches({});
+    void run(identity(), selectedJobs, fresh ? {} : currentMatches, productId, interest?.id);
   };
   return (
     <section className="discovery-panel" aria-label="술 탐색">
@@ -717,6 +733,8 @@ export function DiscoveryPanel({
                           result.source_url === candidate.url
                             ? result.applicable_fields
                             : undefined,
+                          // 새 관심에서만 출처별 고정을 모은다. 기존 관심·제품은 고정 상태를 따로 둔다.
+                          !interest && !productId ? result.source_id : undefined,
                         );
                         setMatches((old) => ({
                           ...old,
@@ -732,7 +750,14 @@ export function DiscoveryPanel({
                             old
                               ? {
                                   ...old,
+                                  // 같은 출처에서 후보를 바꾸면 이전 후보 링크는 근거에서 뺀다.
+                                  references: old.references.filter(
+                                    (url) =>
+                                      url === candidate.url ||
+                                      url !== old.matches?.[result.source_id]?.external_url,
+                                  ),
                                   matches: {
+                                    ...old.matches,
                                     [result.source_id]: {
                                       external_url: candidate.url,
                                       external_name: candidate.name,

@@ -41,6 +41,7 @@ export interface InterestPurchase {
     name_en?: string | null;
     producer?: string | null;
     age_years?: string | null;
+    search_aliases?: string[];
   };
   vendor_id: string | null;
   purchased_on: string | null;

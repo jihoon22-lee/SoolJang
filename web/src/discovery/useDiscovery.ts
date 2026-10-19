@@ -121,6 +121,20 @@ export function publicLink(value: string): string | undefined {
     return undefined;
   }
 }
+/**
+ * 검색 질의 언어. 용량·도수·숙성 같은 단위 문자는 언어 신호가 아니다 — 세면 "진 700ml"가
+ * 영어(ml 두 글자 > 진 한 글자)로 분류돼 국문 채널에 영어 검색을 보냈다.
+ */
+export function queryLanguage(query: string): "ko" | "en" {
+  const letters = query.replace(
+    /\d+(?:\.\d+)?\s*(?:ml|cl|l|%|years?(?:\s+old)?|yo|yr|y|년|도)(?![a-z])/gi,
+    " ",
+  );
+  const korean = letters.match(/[가-힣]/g)?.length ?? 0;
+  const latin = letters.match(/[a-z]/gi)?.length ?? 0;
+  return korean > latin ? "ko" : "en";
+}
+
 export function useDiscovery() {
   const [state, setState] = useState<RunState>(empty);
   const generation = useRef(0);
@@ -193,9 +207,7 @@ export function useDiscovery() {
               job.id,
               job.query,
               abort.signal,
-              (job.query.match(/[가-힣]/g)?.length ?? 0) > (job.query.match(/[a-z]/gi)?.length ?? 0)
-                ? "ko"
-                : "en",
+              queryLanguage(job.query),
             );
             if (!current()) return;
             setState((old) => ({

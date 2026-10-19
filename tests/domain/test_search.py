@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from sooljang.domain.search import expand_search_queries, matches_query
+from sooljang.domain.search import expand_search_queries, matches_query, normalize_search_text
 
 CASES = json.loads((Path(__file__).parents[1] / "fixtures/search_cases.json").read_text())["cases"]
 
@@ -48,3 +48,39 @@ def test_reverse_expansion_keeps_original_units_and_edition() -> None:
 )
 def test_partial_original_and_non_latin_marks(name: str, query: str, expected: bool) -> None:
     assert matches_query(name, query) is expected
+
+
+# 웹 `search.test.ts`의 같은 이름 테스트와 같은 표다(D244 동일 정규화).
+LITER_PARITY = [
+    ("1.1l", "1100ml"),
+    ("0.75L", "750ml"),
+    ("1.2345l", "1234 5ml"),
+    ("0.7l병", "700ml병"),
+    ("1 liter", "1 liter"),
+    # 단위 뒤에 숫자·밑줄이 이어지면 판본 표기다(용량으로 바꾸지 않는다).
+    ("batch 1l2", "batch 1l2"),
+    ("cask_1l_a", "cask 1l a"),
+]
+
+
+@pytest.mark.parametrize(("raw", "normalized"), LITER_PARITY)
+def test_liters_normalize_without_float_error_like_web(raw: str, normalized: str) -> None:
+    assert normalize_search_text(raw) == normalized
+
+
+@pytest.mark.parametrize(
+    ("name", "query", "match"),
+    [
+        ("합성 진 0.7L", "0.7", True),
+        ("합성 진 0.7L", "700ml", True),
+        ("합성 위스키 120", "12", False),
+        # 원문 소수의 조각은 숫자로 보지 않는다(700ml에 "7"·"0"이 걸리지 않게). 웹과 같은 표.
+        ("합성 진 0.7L", "7", False),
+        ("합성 진 0.7L", "0", False),
+        ("합성 몰트 43.5%", "43", True),
+    ],
+)
+def test_raw_decimal_in_name_is_searchable_but_numbers_stay_whole(
+    name: str, query: str, match: bool
+) -> None:
+    assert matches_query(name, query) is match

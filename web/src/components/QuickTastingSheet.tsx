@@ -247,6 +247,8 @@ export function QuickTastingSheet({
                 onClick={() => {
                   setRecorded(null);
                   setCarry(null);
+                  // 새 기록은 빈 폼이다. 앞서 불러온 다른 탭 입력을 다시 가져오지 않는다.
+                  setRestoreSource(null);
                   setSelection({ ...selection });
                 }}
               >

@@ -52,13 +52,14 @@ def watch_criteria(watch: PriceWatch) -> WatchCriteria:
 
 
 async def owned_interest(
-    session: AsyncSession, *, user_id: uuid.UUID, interest_id: uuid.UUID
+    session: AsyncSession, *, user_id: uuid.UUID, interest_id: uuid.UUID, lock: bool = False
 ) -> Interest:
-    interest = await session.scalar(
-        select(Interest).where(
-            Interest.id == interest_id, Interest.user_id == user_id, Interest.deleted_at.is_(None)
-        )
+    query = select(Interest).where(
+        Interest.id == interest_id, Interest.user_id == user_id, Interest.deleted_at.is_(None)
     )
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    interest = await session.scalar(query)
     if interest is None:
         raise NotFoundError("관심 대상을 찾을 수 없습니다")
     return interest
@@ -152,7 +153,9 @@ async def create_watch(
     await session.execute(
         text("SELECT pg_advisory_xact_lock(757170129, :owner)"), {"owner": user_id.int & 0x7FFFFFFF}
     )
-    interest = await owned_interest(session, user_id=user_id, interest_id=interest_id)
+    # 보관·삭제는 관심 행을 잠근 채 기존 감시를 멈춘다. 잠그지 않고 읽으면 그 사이 만든 감시가
+    # 멈춤 대상에서 빠져, 나중에 복원할 때 확인 없이 다시 돈다(D243).
+    interest = await owned_interest(session, user_id=user_id, interest_id=interest_id, lock=True)
     if interest.archived_at is not None:
         raise ConflictError("보관한 관심 대상은 먼저 다시 사용하도록 바꾸세요")
     count = await session.scalar(

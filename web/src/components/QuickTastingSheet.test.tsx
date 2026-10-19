@@ -228,6 +228,25 @@ it("다른 탭의 초안은 자동 섞지 않고 명시적 복원으로 병과 �
   expect(screen.getByText(/#9.*오래된 매장/)).toBeInTheDocument();
 });
 
+it("다른 탭에서 불러와 저장한 입력은 같은 병에 새 기록을 열어도 다시 채우지 않는다", async () => {
+  sessionStorage.setItem("sooljang-draft-tab", "first-tab");
+  const first = renderWithQuery(<Harness />);
+  await chooseLarge();
+  await userEvent.type(screen.getByLabelText("시음 메모"), "첫 탭의 잔");
+  await userEvent.click(screen.getByRole("button", { name: "30ml" }));
+  first.unmount();
+  sessionStorage.setItem("sooljang-draft-tab", "second-tab");
+  renderWithQuery(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "이전 입력 불러오기" }));
+  await waitFor(() => expect(screen.getByLabelText("시음 메모")).toHaveValue("첫 탭의 잔"));
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await userEvent.click(await screen.findByRole("button", { name: "같은 병에 새 기록" }));
+
+  expect(screen.getByLabelText("시음 메모")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "30ml" })).toHaveAttribute("aria-pressed", "false");
+  expect(await db.tasting_session.count()).toBe(1);
+});
+
 it("다른 병에 이미 입력이 있으면 덮어쓰지 않고 각 병의 초안을 유지한다", async () => {
   renderWithQuery(<Harness />);
   await chooseLarge();

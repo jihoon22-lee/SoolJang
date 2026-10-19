@@ -314,3 +314,22 @@ it("확인한 검색 별칭을 입력하고 20개를 초과한 입력은 저장 
     expect.objectContaining({ nameEn: "The GlenAllachie", searchAliases: "글렌알라키,내 셰리" }),
   );
 });
+
+it("수정 초안은 URL 해시가 아니라 제품 id로 저장해 상세 안 이동 뒤에도 같은 키로 정리된다", async () => {
+  const { activateDatabase, lockDatabase } = await import("@/sync/db");
+  const { clearFormDraft } = await import("@/sync/drafts");
+  await activateDatabase("form-owner");
+  window.location.hash = "#products/p1?tasting=t1";
+  setup({ mode: "edit", draftKey: "product:edit:p1", initialValues: { name: "원래 이름" } });
+
+  await userEvent.type(screen.getByLabelText("이름 *"), " 수정");
+  window.location.hash = "#products/p1?bottle=b1";
+
+  const keys = Object.keys(window.localStorage);
+  expect(keys.some((key) => key.endsWith(":product:edit:p1"))).toBe(true);
+  expect(keys.some((key) => key.includes("#products"))).toBe(false);
+  clearFormDraft("product:edit:p1");
+  expect(Object.keys(window.localStorage).some((key) => key.includes("product:edit"))).toBe(false);
+  lockDatabase();
+  window.location.hash = "";
+});

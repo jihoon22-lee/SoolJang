@@ -152,3 +152,29 @@ def test_two_sessions_convert_one_interest_into_one_purchase(
     assert first_response.status_code == second_response.status_code == 201
     assert first_response.json() == second_response.json()
     assert len(api_client.get(f"{prefix}/purchases").json()) == 1
+
+
+@pytest.mark.parametrize("sent", [None, ["발베니 더블우드"]])
+def test_new_product_conversion_keeps_search_aliases(
+    api_client: TestClient, prefix: str, sent: list[str] | None
+) -> None:
+    row = api_client.post(
+        f"{prefix}/interests",
+        json={"identity": {"name": "The Balvenie DoubleWood", "search_aliases": ["발베니"]}},
+    ).json()
+    new_product: dict[str, Any] = {"name": "The Balvenie DoubleWood", "volume_ml": 700}
+    if sent is not None:
+        new_product["search_aliases"] = sent
+    response = api_client.post(
+        f"{prefix}/interests/{row['id']}/purchase",
+        json={
+            "expected_updated_at": row["updated_at"],
+            "confirmed_identity": True,
+            "new_product": new_product,
+            "quantity": 1,
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    product = api_client.get(f"{prefix}/products/{response.json()['product_id']}").json()
+    assert product["search_aliases"] == (sent or ["발베니"])
