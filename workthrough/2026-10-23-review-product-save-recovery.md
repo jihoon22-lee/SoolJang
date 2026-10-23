@@ -85,5 +85,33 @@ F2의 공통 hook에서 보완했다. 오프라인에서 사진이 있는 등록
 - 최종 관련 7파일 100개(핵심 90개·오프라인/세션 10개), lint·typecheck·build·diff check 통과.
   lint의 기존 경고 18개는 실패가 아니며 이번 보완에서 늘지 않았다.
 - 루트가 최종 조건과 초기 거절·확정 거절·결과 미확정의 경계를 다시 검토했다.
-- 새 UI를 추가하지 않았으며 사진 재선택 안내 문구만 맞췄다. 이 보완의 DB·실브라우저 재실행은
-  하지 않았다. 위 실제 브라우저 10개 결과와 이번 hook 회귀의 검증 범위를 구분한다.
+- 새 UI를 추가하지 않았으며 사진 재선택 안내 문구만 맞췄다. hook 회귀 뒤 아래 최종 수용에서
+  실제 API의 첫 422와 오프라인 라벨 거절도 브라우저로 확인했다.
+
+## 최종 매장 모드·라벨 실브라우저 수용
+
+버전 PR의 `b78f442`(1.11.1)을 production build로 확인했다. 이 트리는 최종 태그의 merge commit
+`9d55639`와 파일 내용이 모두 같다. Chromium 151, 390×844, 새 합성 계정과 별도 격리 DB를 사용했다.
+
+1. 매장 검색 → 새 등록에서 제품·구매를 각각 실제 commit한 뒤 응답을 잃게 했다. 두 저장 단계 모두
+   입력·검색 복귀·취소·Esc가 잠겼다. 오프라인 재시도로 outbox가 늘지 않았고, 온라인에서 같은 제품·
+   구매 요청 키로 재개했다. 최종 서버와 IndexedDB 모두 제품 1개·구매 1건·병 1개·outbox 0건이었다.
+2. OCR 사진이 있는 첫 등록을 오프라인에서 거절한 뒤 폼을 닫고 다른 제품을 등록했다. 거절한 제품은
+   0개, 새 제품은 1개였고 이전 사진의 첨부 요청·저장 첨부는 0개였다.
+3. 최초 제품 요청이 실제 API에서 422로 거절된 뒤 사진 없는 오프라인 재시도를 수행했다. 요청 키만
+   남은 거절은 복구 상태·outbox를 만들지 않았다. 이후 같은 키로 수정한 새 입력을 등록했으며 이전
+   사진의 첨부는 0개였다.
+
+3개 모두 통과해 제품 목록의 기존 10개와 함께 양쪽 실제 과업을 수용했다. page error는 0개이며
+OCR 추출만 합성 응답을 사용했다. 외부 폰트 요청도 차단했다. 실제 카메라·물리 기기·외부 LLM은
+미실행이다. 검증 후 preview·브라우저·API·해당 합성 DB와 일회성 자격증명을 정리했다.
+
+- [최종 3개 결과](assets/2026-10-23-review-product-save-recovery/final/results.json)
+- [매장 등록 대기](assets/2026-10-23-review-product-save-recovery/final/01-store-product-pending.png)
+- [매장 구매 복구](assets/2026-10-23-review-product-save-recovery/final/02-store-purchase-recovery.png)
+- [매장 완료 요약](assets/2026-10-23-review-product-save-recovery/final/03-store-completed-summary.png)
+- [오프라인 사진 거절](assets/2026-10-23-review-product-save-recovery/final/04-offline-label-rejected.png)
+- [최초 422 뒤 재시도](assets/2026-10-23-review-product-save-recovery/final/05-first-422-then-offline-key-only.png)
+
+최종 버전 PR과 Release CI의 전체 웹 1,453개가 통과했다. PR #185는 `990328e`로 병합했으며
+태그·이미지·최종 정리는 [v1.11.1 기록](2026-10-23-v1111-release.md)에 연결한다.

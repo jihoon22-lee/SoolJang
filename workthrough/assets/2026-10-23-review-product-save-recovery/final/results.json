@@ -1,0 +1,74 @@
+{
+  "sourceSha": "b78f4425c0677eabe3d88f6d6b8169d28dad25e0",
+  "applicationVersion": "1.11.1",
+  "api": "127.0.0.1:8212",
+  "database": "sooljang_review_browser_final_20261023",
+  "prefix": "F2-FINAL-1792756798445",
+  "browser": "151.0.7922.34",
+  "viewport": "390x844",
+  "results": [
+    {
+      "name": "store_mode_product_and_purchase_commit_response_loss",
+      "api": "real product/purchase/bottle persistence; responses lost after commit",
+      "productPostStatuses": [
+        201,
+        201
+      ],
+      "purchasePostStatuses": [
+        201,
+        201
+      ],
+      "pendingSearchBackAndCancelBlockedAtBothStages": true,
+      "sameProductKey": true,
+      "samePurchaseKey": true,
+      "productOfflineOutbox": 0,
+      "purchaseOfflineOutbox": 0,
+      "server": {
+        "products": 1,
+        "purchases": 1,
+        "bottles": 1
+      },
+      "local": {
+        "products": 1,
+        "purchases": 1,
+        "bottles": 1,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "offline_ocr_label_rejection_does_not_attach_to_next_product",
+      "ocr": "synthetic extraction route only",
+      "productApi": "real",
+      "firstAttemptProductPosts": 0,
+      "rejectedRecoveryRecord": false,
+      "firstProductCount": 0,
+      "nextProductCount": 1,
+      "nextProductAttachments": 0,
+      "attachmentPostCount": 0,
+      "offlineOutbox": 0
+    },
+    {
+      "name": "first_real_422_and_key_only_offline_rejection_do_not_restore_old_label",
+      "ocr": "synthetic extraction route only",
+      "firstProductApiStatus": 422,
+      "firstProductCount": 0,
+      "keyOnlyOfflineRecoveryRecord": false,
+      "keyOnlyOfflineOutbox": 0,
+      "sameRequestKeyAfterCorrection": true,
+      "nextProductCount": 1,
+      "nextProductAttachments": 0,
+      "attachmentPostCount": 0
+    }
+  ],
+  "pageErrors": [],
+  "blockedExternal": [
+    "https://fonts.googleapis.com"
+  ],
+  "verificationCount": 3,
+  "notRun": [
+    "external source/LLM live connections",
+    "full automated suite",
+    "database reset",
+    "physical camera/device"
+  ]
+}
