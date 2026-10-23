@@ -5,14 +5,26 @@ import { setLastVendorName } from "@/lastVendor";
 import { normalizeNameForMatching } from "@/search";
 import { db, type SoolJangDB } from "@/sync/db";
 import {
-  clearFormDraft,
+  captureFormDraft,
+  clearSubmittedDraft,
   finishSubmission,
-  settleFailedSubmission,
+  pendingSubmissionRequestId,
   submissionRequestId,
 } from "@/sync/drafts";
 import { validNumericInput } from "@/sync/inputContract";
 import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
+import {
+  beginProductCreation,
+  clearRejectedProductCreation,
+  creationLabel,
+  finishProductCreation,
+  type ProductCreationProgress,
+  productCreationPending,
+  readProductCreationProgress,
+  saveProductCreationProgress,
+  useProductCreationProgress,
+} from "@/sync/useCreateProductProgress";
 import { useSessionMutation } from "@/sync/useSessionMutation";
 import { newId } from "@/sync/uuid7";
 import { captureWriteSession, type WriteSession } from "@/sync/writeSession";
@@ -22,13 +34,9 @@ export interface CreateProductInput {
   /** 라벨 OCR(Task 17) 원본 사진. 온라인일 때만 첨부된다. `ProductsPage` 의 등록 폼만 쓴다 —
    * 매장 모드(Task 22 PR10)는 사진 촬영 흐름이 없어 생략한다. */
   labelFile?: File | null;
-  /** 이전 시도에서 이미 서버에 만들어진 제품. 호출자가 `PartialProductCreationError` 를
-   * 받은 뒤 같은 폼으로 재시도할 때 넘긴다 — `POST /products` 는 멱등키가 없어서, 이 값이
-   * 없으면 재시도마다 새 제품이 또 생긴다(B7). */
+  /** 이전 호출자와의 호환 입력. 새 폼 인스턴스는 보관한 성공 단계를 자동으로 이어 쓴다. */
   existingProduct?: Product | null;
-  /** `existingProduct` 재시도 시, 구매 건까지는 이미 성공했는지. `purchasesApi.create` 도
-   * 멱등키가 없어 이 값이 없으면 구매(와 그만큼의 병)가 중복 생성된다. 첨부는 `sha256` +
-   * 소유 대상으로 서버가 중복 제거하므로(B1) 별도 추적이 필요 없다. */
+  /** 이전 시도에서 구매까지 성공했는지. 새 호출자는 보관한 단계에서 읽는다. */
   purchaseAlreadyCreated?: boolean;
 }
 
@@ -55,146 +63,341 @@ export class PartialProductCreationError extends Error {
  */
 export function useCreateProduct() {
   const { state, triggerSync } = useSyncStatus();
+  const { progress, pending } = useProductCreationProgress();
   const offline = state === "offline";
 
-  return useSessionMutation({
-    mutationFn: async (
-      { values, labelFile, existingProduct, purchaseAlreadyCreated }: CreateProductInput,
-      session,
-    ) => {
-      for (const [field, value] of [
-        ["quantity", values.quantity],
-        ["volume_ml", values.volumeMl],
-        ["abv", values.abv],
-        ["price", values.unitListPrice],
-        ["price", values.unitPaidPrice],
-        ["personal_rating", values.personalRating],
-      ] as const) {
-        if (value && !validNumericInput(field, value))
-          throw new Error("입력한 수치가 허용 범위를 벗어났습니다");
-      }
-      if (values.quantity && !values.volumeMl)
-        throw new Error("구매 정보를 입력하려면 용량이 필요합니다");
-      const owner = session.userId;
-      const checkSession = session.assertCurrent;
-      if (!offline) {
-        // 응답을 잃은 재전송이 중복 제품·구매를 만들지 않게, 결과를 확인할 때까지 단계마다 같은
-        // 키를 쓴다. 구매 키는 제품 id(제품 키에서 정해짐) 아래에 두어 새로고침 뒤 재시도도 같은
-        // 구매로 돌아오고 다른 제품의 구매와 섞이지 않는다. 두 키 모두 전체가 끝난 뒤 버린다.
-        const productPayload = {
-          name: values.name.trim(),
-          name_en: values.nameEn?.trim() || null,
-          search_aliases: (values.searchAliases ?? "")
-            .split(",")
-            .map((v) => v.trim())
-            .filter(Boolean),
-          category_id: values.categoryId || null,
-          abv: values.abv || null,
-          vintage: values.vintage ? Number(values.vintage) : null,
-          age_years: values.ageYears || null,
-          producer_name: values.producerName?.trim() || null,
-          personal_rating: values.personalRating || null,
-          note: values.note || null,
-          variety_names: splitVarieties(values.varietyNames),
-          skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
-        };
-        const productForm = "product:create:product";
-        const productRequestId = submissionRequestId(productForm);
-        checkSession();
-        // 오프라인 outbox 는 아직 품종(product_variety)을 지원하지 않으므로, 온라인일
-        // 때는 이 경로를 그대로 유지해 품종 입력을 지원한다.
-        //
-        // `existingProduct` 가 있으면 이전 시도에서 이미 만든 제품을 재사용한다 —
-        // `POST /products` 는 멱등키가 없어서, 구매/첨부 단계 실패 뒤 재시도할 때마다
-        // 다시 부르면 중복 제품이 생긴다(B7).
-        const product =
-          existingProduct ??
-          (await productsApi
-            .create({ ...productPayload, request_id: productRequestId })
-            .catch((error: unknown) => {
-              settleFailedSubmission(
-                productForm,
-                productRequestId,
-                error instanceof ApiError ? error.status : undefined,
-              );
-              throw error;
-            }));
-        const purchaseForm = `product:create:purchase:${product.id}`;
-
-        checkSession();
-        if (!existingProduct) {
-          // 서버 응답을 로컬 미러에 낙관적으로 반영한다. 아래 구매·첨부 호출이 실패해도
-          // 제품 자체는 이미 서버에 만들어졌으므로, 미러링을 여기서 바로 해 둬야 그 실패가
-          // "서버엔 있는데 로컬 미러엔 없는" 고아 제품을 만들지 않는다 — 델타 풀
-          // (triggerSync)로 내려오기 전까지 `getProduct()` 가 null 을 돌려줘 매장 모드
-          // (Task 22 PR10)처럼 등록 직후 그 제품 화면으로 바로 넘어가는 흐름에서
-          // "제품을 찾을 수 없습니다" 가 보이고, 재시도 시 중복 생성으로 이어질 수 있다.
-          // 구매·병 행까지는 여기서 만들지 않는다(서버가 만드는 병 id 를 알 수 없다) —
-          // 그 부분은 곧 sync 가 채운다.
-          await mirrorProductOptimistically(product, owner);
-          checkSession();
-          triggerSync();
+  const mutation = useSessionMutation({
+    mutationFn: async (input: CreateProductInput, session) => {
+      const previous = readProductCreationProgress();
+      if (previous?.completedId)
+        throw new Error("이미 등록한 술입니다. 보관한 입력은 등록한 술에서 확인하세요");
+      if (previous?.productConflict)
+        throw new Error(
+          "앞선 등록 요청이 충돌했습니다. 술 목록을 확인한 뒤 요청을 중단하고 새로 작성하세요",
+        );
+      const end = beginProductCreation(session);
+      const draft = captureFormDraft("product:create");
+      const { values } = input;
+      const label = creationLabel(input.labelFile, previous?.labelPending ?? false);
+      const current: ProductCreationProgress = {
+        version: 1,
+        onlineAttempted: previous?.onlineAttempted ?? false,
+        product: input.existingProduct ?? previous?.product ?? null,
+        productRequest: previous?.productRequest ?? null,
+        productConflict: false,
+        purchaseRequest: previous?.purchaseRequest ?? null,
+        purchaseCreated: input.purchaseAlreadyCreated ?? previous?.purchaseCreated ?? false,
+        labelPending: Boolean(label) || (previous?.labelPending ?? false),
+        completedId: null,
+        draftCleared: false,
+        error: null,
+        values: { ...values },
+      };
+      const draftMatchesInput = draftContainsValues(draft, values);
+      let remembered = false;
+      const remember = () => {
+        session.assertCurrent();
+        saveProductCreationProgress({ ...current });
+        remembered = true;
+      };
+      try {
+        for (const [field, value] of [
+          ["quantity", values.quantity],
+          ["volume_ml", values.volumeMl],
+          ["abv", values.abv],
+          ["price", values.unitListPrice],
+          ["price", values.unitPaidPrice],
+          ["personal_rating", values.personalRating],
+        ] as const) {
+          if (value && !validNumericInput(field, value))
+            throw new Error("입력한 수치가 허용 범위를 벗어났습니다");
         }
-
-        const quantity = parseQuantity(values.quantity);
-        const skuId = product.skus[0]?.id;
-        let purchaseCreated = purchaseAlreadyCreated ?? false;
-        try {
-          if (!purchaseCreated && quantity > 0 && skuId) {
-            const vendorId = values.vendorName.trim()
-              ? await resolveVendorId(values.vendorName.trim(), session)
-              : null;
-            checkSession();
-            const purchasePayload = {
-              sku_id: skuId,
-              quantity,
-              vendor_id: vendorId,
-              purchased_on: values.purchasedOn || null,
-              unit_list_price: values.unitListPrice || null,
-              unit_paid_price: values.unitPaidPrice || null,
-            };
-            const purchaseRequestId = submissionRequestId(purchaseForm);
-            await purchasesApi
-              .create({ ...purchasePayload, request_id: purchaseRequestId })
-              .catch((error: unknown) => {
-                settleFailedSubmission(
-                  purchaseForm,
-                  purchaseRequestId,
-                  error instanceof ApiError ? error.status : undefined,
-                );
-                throw error;
-              });
-            purchaseCreated = true;
-          }
-          checkSession();
-          if (labelFile) {
-            // `attachmentsApi.create` 는 (user_id, sha256, kind, 소유 대상) 으로 서버가
-            // 중복 제거하므로(B1) 재시도로 같은 파일을 다시 보내도 새 첨부가 안 생긴다 —
-            // 구매와 달리 별도 추적이 필요 없다.
-            await attachmentsApi.create(labelFile, { kind: "label", product_id: product.id });
-          }
-        } catch (cause) {
-          checkSession();
-          const message = cause instanceof Error ? cause.message : String(cause);
+        if (values.quantity && !values.volumeMl)
+          throw new Error("구매 정보를 입력하려면 용량이 필요합니다");
+        if (
+          previous?.productRequest &&
+          !previous.product &&
+          JSON.stringify(productPayload(previous.values)) !== JSON.stringify(productPayload(values))
+        )
+          throw new Error(
+            "앞서 보낸 제품 결과가 미확정입니다. 보낸 입력으로 결과를 확인한 뒤 등록한 술에서 수정하세요",
+          );
+        if (
+          previous?.purchaseRequest &&
+          !previous.purchaseCreated &&
+          JSON.stringify(purchaseFields(previous.values)) !== JSON.stringify(purchaseFields(values))
+        )
           throw new PartialProductCreationError(
-            `"${values.name.trim()}" 제품은 이미 등록됐습니다. 나머지 항목 저장에 실패했습니다: ${message}`,
-            product,
-            purchaseCreated,
+            "앞서 보낸 구매 결과가 미확정입니다. 보낸 입력으로 결과를 확인한 뒤 구매 이력에서 수정하세요",
+            previous.product as Product,
+            false,
+          );
+        if (
+          previous?.product &&
+          (JSON.stringify(productPayload(previous.values)) !==
+            JSON.stringify(productPayload(values)) ||
+            (previous.purchaseCreated &&
+              JSON.stringify(purchaseFields(previous.values)) !==
+                JSON.stringify(purchaseFields(values))))
+        )
+          throw new PartialProductCreationError(
+            "이미 등록한 정보가 입력과 다릅니다. 보관한 입력을 확인하고 등록한 술에서 수정하세요",
+            previous.product,
+            previous.purchaseCreated,
+          );
+        if (
+          previous?.product &&
+          !previous.purchaseCreated &&
+          !values.quantity.trim() &&
+          pendingSubmissionRequestId(`product:create:purchase:${previous.product.id}`)
+        )
+          throw new PartialProductCreationError(
+            "앞서 보낸 구매 결과가 미확정입니다. 원래 구매 입력으로 다시 확인하거나 남은 입력 지우기를 선택하세요",
+            previous.product,
+            false,
+          );
+        const productForm = "product:create:product";
+        // 남아 있는 요청 키나 오프라인 거절에서 파생된 표시는 전송의 증거가 아니다.
+        const hasOnlineSubmission = Boolean(
+          current.product || current.productRequest || current.purchaseRequest,
+        );
+        if (offline && current.labelPending && !hasOnlineSubmission) {
+          session.assertCurrent();
+          clearRejectedProductCreation();
+          throw new Error(
+            "라벨 사진이 있는 등록은 온라인에서 저장하세요. 폼을 닫으면 사진을 다시 선택해야 합니다",
           );
         }
-        // 전부 끝난 뒤에 버린다. 그 전 실패의 재시도는 같은 제품·구매로 돌아와야 한다.
-        finishSubmission(purchaseForm);
-        finishSubmission(productForm, productRequestId);
-        return product.id;
+        if (
+          offline &&
+          (hasOnlineSubmission ||
+            current.onlineAttempted ||
+            pendingSubmissionRequestId(productForm))
+        ) {
+          if (hasOnlineSubmission) {
+            current.onlineAttempted = true;
+            remember();
+          } else {
+            session.assertCurrent();
+            clearRejectedProductCreation();
+          }
+          const message =
+            "앞서 보낸 등록은 온라인에서 이어서 확인하세요. 입력과 저장된 단계는 보존했습니다";
+          if (current.product)
+            throw new PartialProductCreationError(
+              message,
+              current.product,
+              current.purchaseCreated,
+            );
+          throw new Error(message);
+        }
+        current.onlineAttempted = !offline;
+        remember();
+        let productId: string;
+        if (!offline) {
+          // 두 요청 키는 전체 등록이 끝날 때까지 유지한다. 폼을 다시 열거나 새로고침해도
+          // 이미 성공한 제품·구매 단계는 recovery 기록과 서버 멱등 응답으로 이어간다.
+          const productRequestId =
+            current.productRequest?.request_id ?? submissionRequestId(productForm);
+          let product = current.product;
+          if (!product) {
+            const wasUncertain = Boolean(previous?.productRequest);
+            current.productRequest ??= { ...productPayload(values), request_id: productRequestId };
+            remember();
+            product = await productsApi.create(current.productRequest).catch((error: unknown) => {
+              session.assertCurrent();
+              // 첫 전송의 확정 422는 복구 상태와 임시 사진만 정리한다. 응답을 잃은 뒤의
+              // 422는 원래 payload를 보존하고, 409는 자동 재전송 대신 명시적 중단을 기다린다.
+              if (!wasUncertain && error instanceof ApiError && error.status === 422) {
+                remembered = false;
+                clearRejectedProductCreation();
+              }
+              if (error instanceof ApiError && error.status === 409) current.productConflict = true;
+              throw error;
+            });
+            session.assertCurrent();
+            current.product = product;
+            remember();
+            await mirrorProductOptimistically(product, session.userId);
+            session.assertCurrent();
+            triggerSync();
+          } else if (!(await session.store.product.get(product.id))) {
+            session.assertCurrent();
+            await mirrorProductOptimistically(product, session.userId);
+          }
+          session.assertCurrent();
+          const purchaseForm = `product:create:purchase:${product.id}`;
+          try {
+            const quantity = parseQuantity(values.quantity);
+            if (!current.purchaseCreated && quantity > 0) {
+              const wasUncertain = Boolean(previous?.purchaseRequest);
+              if (!current.purchaseRequest) {
+                // 응답을 잃고 다시 받은 제품에는 다른 탭이 추가·수정한 규격이 있을 수 있다.
+                // 원래 용량이 하나로 정해질 때만 구매를 만들며 미확정 구매는 저장한 SKU를 쓴다.
+                const matches = product.skus.filter(
+                  (sku) => sku.volume_ml === Number(values.volumeMl),
+                );
+                const sku = matches.length === 1 ? matches[0] : undefined;
+                if (!sku)
+                  throw new Error(
+                    "입력한 용량의 규격을 확인할 수 없습니다. 등록한 술에서 규격과 구매를 확인하세요",
+                  );
+                const vendorId = values.vendorName.trim()
+                  ? await resolveVendorId(values.vendorName.trim(), session)
+                  : null;
+                session.assertCurrent();
+                current.purchaseRequest = {
+                  sku_id: sku.id,
+                  quantity,
+                  vendor_id: vendorId,
+                  purchased_on: values.purchasedOn || null,
+                  unit_list_price: values.unitListPrice || null,
+                  unit_paid_price: values.unitPaidPrice || null,
+                  request_id: submissionRequestId(purchaseForm),
+                };
+              }
+              remember();
+              await purchasesApi.create(current.purchaseRequest).catch((error: unknown) => {
+                session.assertCurrent();
+                if (!wasUncertain && error instanceof ApiError && error.status === 422)
+                  current.purchaseRequest = null;
+                throw error;
+              });
+              session.assertCurrent();
+              current.purchaseCreated = true;
+              remember();
+            }
+            if (current.labelPending) {
+              if (!label)
+                throw new Error(
+                  "라벨 사진을 다시 선택한 뒤 이어서 저장하세요. 제품과 구매는 다시 만들지 않습니다",
+                );
+              await attachmentsApi.create(label, { kind: "label", product_id: product.id });
+              session.assertCurrent();
+              current.labelPending = false;
+              remember();
+            }
+          } catch (cause) {
+            session.assertCurrent();
+            const message = cause instanceof Error ? cause.message : String(cause);
+            throw new PartialProductCreationError(
+              `"${product.name}" 제품은 이미 등록됐습니다. 나머지 항목 저장에 실패했습니다: ${message}`,
+              product,
+              current.purchaseCreated,
+            );
+          }
+          session.assertCurrent();
+          finishSubmission(purchaseForm);
+          finishSubmission(productForm, productRequestId);
+          productId = product.id;
+        } else {
+          productId = await createProductOffline(values, session.userId);
+        }
+        session.assertCurrent();
+        current.completedId = productId;
+        current.draftCleared = draftMatchesInput && clearSubmittedDraft(draft);
+        remember();
+        if (values.vendorName.trim()) setLastVendorName(values.vendorName);
+        triggerSync();
+        return productId;
+      } catch (cause) {
+        if (session.isCurrent() && remembered) {
+          current.error = cause instanceof Error ? cause.message : "등록을 저장하지 못했습니다";
+          remember();
+        }
+        throw cause;
+      } finally {
+        end();
       }
-
-      return await createProductOffline(values, owner);
-    },
-    onSuccess: (_result, { values }) => {
-      clearFormDraft("product:create");
-      if (values.vendorName.trim()) setLastVendorName(values.vendorName);
     },
   });
+  return {
+    ...mutation,
+    progress,
+    isPending: pending || mutation.isPending,
+    error: mutation.error ?? (progress?.error ? new Error(progress.error) : null),
+    reset() {
+      if (productCreationPending()) return;
+      mutation.reset();
+      finishProductCreation();
+    },
+    discardCompleted(draft: ReturnType<typeof captureFormDraft>): boolean {
+      const current = readProductCreationProgress();
+      const productId = current?.completedId ?? current?.product?.id;
+      if (
+        productCreationPending() ||
+        !current ||
+        (!productId && !current.productConflict) ||
+        !clearSubmittedDraft(draft)
+      )
+        return false;
+      // 사용자가 이미 만들어진 술을 확인한 뒤 남은 입력을 명시적으로 포기하는 경우다.
+      // 서버 기록은 삭제하지 않는다. ID가 없어도 확정 409는 명시적으로 중단할 수 있지만,
+      // 네트워크 오류·5xx처럼 결과가 미확정인 요청은 계속 보존한다.
+      finishSubmission("product:create:product");
+      if (productId) finishSubmission(`product:create:purchase:${productId}`);
+      saveProductCreationProgress({
+        ...current,
+        completedId: productId ?? null,
+        draftCleared: true,
+      });
+      const finished = finishProductCreation(true);
+      if (finished) mutation.reset();
+      return finished;
+    },
+  };
+}
+
+/** 원래 전송을 재확인할 때 이후에 보관한 다른 입력을 성공한 초안으로 지우지 않는다. */
+function draftContainsValues(
+  draft: ReturnType<typeof captureFormDraft>,
+  values: ProductFormValues,
+): boolean {
+  if (draft.entries.length === 0) return true;
+  if (draft.entries.length !== 1 || draft.entries[0]?.[0] !== draft.prefix) return false;
+  try {
+    const stored: unknown = JSON.parse(draft.entries[0]?.[1] ?? "null")?.value;
+    return (
+      stored !== null &&
+      typeof stored === "object" &&
+      !Array.isArray(stored) &&
+      Object.entries(stored).every(
+        ([key, value]) => value === values[key as keyof ProductFormValues],
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function purchaseFields(values: ProductFormValues) {
+  return [
+    values.quantity,
+    values.vendorName,
+    values.purchasedOn,
+    values.unitListPrice,
+    values.unitPaidPrice,
+  ];
+}
+
+function productPayload(values: ProductFormValues) {
+  return {
+    name: values.name.trim(),
+    name_en: values.nameEn?.trim() || null,
+    search_aliases: (values.searchAliases ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    category_id: values.categoryId || null,
+    abv: values.abv || null,
+    vintage: values.vintage ? Number(values.vintage) : null,
+    age_years: values.ageYears || null,
+    producer_name: values.producerName?.trim() || null,
+    personal_rating: values.personalRating || null,
+    note: values.note || null,
+    variety_names: splitVarieties(values.varietyNames),
+    skus: values.volumeMl ? [{ volume_ml: Number(values.volumeMl) }] : [],
+  };
 }
 
 /** 온라인 생성 응답을 로컬 미러(`db.product`/`db.sku`)에 낙관적으로 반영한다. */

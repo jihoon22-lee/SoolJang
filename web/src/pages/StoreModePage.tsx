@@ -1,7 +1,8 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Purchase } from "@/api/types";
 import { BarcodeScanPanel } from "@/components/BarcodeScanPanel";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
 import { type ExistingProductCandidate, ProductForm } from "@/components/ProductForm";
 import { productEdition } from "@/components/productDisplay";
@@ -10,6 +11,7 @@ import { StoreModeInterests } from "@/components/StoreModeInterests";
 import { formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
+import { captureFormDraft } from "@/sync/drafts";
 import {
   getCategoryTree,
   getProduct,
@@ -18,7 +20,9 @@ import {
   getVendors,
 } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
-import { PartialProductCreationError, useCreateProduct } from "@/sync/useCreateProduct";
+import { useCreateProduct } from "@/sync/useCreateProduct";
+import { finishProductCreation, productCreationPending } from "@/sync/useCreateProductProgress";
+import { captureWriteSession } from "@/sync/writeSession";
 
 //: 검색창 아래 보여줄 후보 수. 매장에서 화면을 크게 스크롤하지 않아도 훑을 수 있는 정도.
 const MAX_RESULTS = 8;
@@ -173,33 +177,57 @@ function StoreModeRegister({
 }) {
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const createProduct = useCreateProduct();
+  const confirm = useConfirm();
+  const [labelFile, setLabelFile] = useState<File | null>(null);
+  const [formInstance, setFormInstance] = useState(0);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  const completedId = createProduct.progress?.completedId;
+  const draftCleared = createProduct.progress?.draftCleared;
+  const creationPending = createProduct.isPending;
+  useEffect(() => {
+    if (!creationPending && completedId && draftCleared && finishProductCreation())
+      onDoneRef.current(completedId);
+  }, [completedId, draftCleared, creationPending]);
+  const cancel = () => {
+    if (!productCreationPending()) onCancel();
+  };
+  async function discardCompleted() {
+    const session = captureWriteSession();
+    const draft = captureFormDraft("product:create");
+    const conflict = createProduct.progress?.productConflict;
+    if (
+      !(await confirm({
+        title: conflict ? "등록 요청 중단" : "보관 입력 지우기",
+        message: conflict
+          ? "기존에 저장된 술이 있을 수 있으니 술 목록을 먼저 확인하세요. 서버 기록은 삭제하지 않습니다. 현재 요청과 입력만 지우고 새로 작성할까요?"
+          : "이미 저장한 술과 구매는 유지됩니다. 남아 있는 입력만 지우고 새 술을 작성할까요?",
+        confirmLabel: conflict ? "요청 중단하고 새로 작성" : "입력 지우고 새로 작성",
+        danger: true,
+      }))
+    )
+      return;
+    if (!session.isCurrent() || !createProduct.discardCompleted(draft)) return;
+    setLabelFile(null);
+    setFormInstance((instance) => instance + 1);
+  }
 
   return (
     <div>
-      <button type="button" className="mb-3" onClick={onCancel}>
+      <button type="button" className="mb-3" onClick={cancel} disabled={createProduct.isPending}>
         ← 검색으로
       </button>
       <ProductForm
+        key={formInstance}
         categories={categoryTree?.items ?? []}
         submitting={createProduct.isPending}
         error={createProduct.error}
-        onSubmit={(values) => {
-          // 직전 시도가 "제품은 만들어졌는데 나머지가 실패" 였다면(B7), 그 제품과
-          // 진행 상태를 그대로 넘겨 재시도가 중복 생성을 하지 않게 한다.
-          const priorError = createProduct.error;
-          const retry =
-            priorError instanceof PartialProductCreationError
-              ? {
-                  existingProduct: priorError.product,
-                  purchaseAlreadyCreated: priorError.purchaseCreated,
-                }
-              : {};
-          createProduct.mutate(
-            { values, ...retry },
-            { onSuccess: (productId) => onDone(productId) },
-          );
-        }}
-        onCancel={onCancel}
+        creation={createProduct.progress}
+        onLabelFile={setLabelFile}
+        onOpenCreated={onDone}
+        onDiscardCompleted={() => void discardCompleted()}
+        onSubmit={(values) => createProduct.mutate({ values, labelFile })}
+        onCancel={cancel}
         initialValues={{ name: initialName }}
         existingProducts={existingProducts}
         onSelectExisting={onDone}

@@ -333,3 +333,11 @@ it("수정 초안은 URL 해시가 아니라 제품 id로 저장해 상세 안 �
   lockDatabase();
   window.location.hash = "";
 });
+
+it("저장 중에는 제품 정보와 구매 입력을 바꾸지 못한다", async () => {
+  setup({ submitting: true, initialValues: { name: "저장 중인 제품", note: "제출한 메모" } });
+  for (const label of ["이름 *", "메모", "용량 (ml)", "병수"])
+    expect(screen.getByLabelText(label)).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("메모"), " 추가 입력");
+  expect(screen.getByLabelText("메모")).toHaveValue("제출한 메모");
+});

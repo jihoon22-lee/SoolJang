@@ -9,6 +9,7 @@ import type { ProductContext } from "@/router";
 import { normalizeNameForMatching, rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { useDraftState } from "@/sync/drafts";
+import type { ProductCreationProgress } from "@/sync/useCreateProductProgress";
 
 //: 자동완성이 한 번에 보여줄 후보 수. 405종 목록에서도 스크롤 없이 훑을 수 있는 정도.
 const MAX_SUGGESTIONS = 8;
@@ -95,6 +96,10 @@ interface ProductFormProps {
   /** 수정 초안 키. 제품 id로 고정한다 — URL 해시는 상세 안에서 시음·병을 고르면 바뀌어 저장 후
    * 다른 키를 지우고 이전 초안이 남았다. */
   draftKey?: string | undefined;
+  creation?: ProductCreationProgress | null | undefined;
+  onOpenCreated?: ((productId: string) => void) | undefined;
+  onDiscardCompleted?: (() => void) | undefined;
+  onLabelFile?: ((file: File) => void) | undefined;
 }
 
 /**
@@ -119,6 +124,10 @@ export function ProductForm({
   onSelectExisting,
   vendorNames = [],
   draftKey,
+  creation,
+  onOpenCreated,
+  onDiscardCompleted,
+  onLabelFile,
 }: ProductFormProps) {
   const formKey = mode === "create" ? "product:create" : (draftKey ?? "product:edit");
   const [values, setValues] = useDraftState<ProductFormValues>(formKey, {
@@ -126,6 +135,7 @@ export function ProductForm({
     purchasedOn: todayLocal(),
     vendorName: getLastVendorName(),
     ...initialValues,
+    ...creation?.values,
   });
   const [localError, setLocalError] = useState<string | null>(null);
   /** 로컬 검증에 걸린 칸. 그 칸에 `aria-invalid` 와 칸 아래 오류 문구를 붙이고 초점을 옮긴다. */
@@ -134,6 +144,10 @@ export function ProductForm({
   const apiError = error instanceof ApiError ? error : null;
   // outbox 경로는 일반 Error 를 던진다(서버 왕복 없이 로컬에서 바로 검증하는 경우).
   const genericError = !apiError && error instanceof Error ? error.message : null;
+  const productUncertain = Boolean(
+    creation?.productRequest && !creation.product && !creation.productConflict,
+  );
+  const purchaseUncertain = Boolean(creation?.purchaseRequest && !creation.purchaseCreated);
   const set = (patch: Partial<ProductFormValues>) => setValues((prev) => ({ ...prev, ...patch }));
 
   const nameSuggestions = useMemo(
@@ -183,6 +197,7 @@ export function ProductForm({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (submitting || creation?.completedId || creation?.productConflict) return;
     if (!values.name.trim()) {
       fail("form-name", "이름을 입력하세요");
       return;
@@ -226,7 +241,6 @@ export function ProductForm({
       // 톤에 안 맞는 UI 가 튀어나온다. 검증은 전부 `handleSubmit` 의 `.alert` 로 통일한다.
       noValidate
     >
-      <DraftRecoveryButton form={formKey} />
       <h2 id="product-form-heading">{mode === "edit" ? "정보 수정" : "새 술 등록"}</h2>
 
       {(localError || apiError || genericError) && (
@@ -235,281 +249,377 @@ export function ProductForm({
         </p>
       )}
 
-      <div className="field">
-        <label htmlFor="form-name">이름 *</label>
-        <AutocompleteInput
-          id="form-name"
-          required
-          value={values.name}
-          onChange={(name) => set({ name })}
-          suggestions={nameSuggestions}
-          aria-required="true"
-          {...errorProps("form-name", "name")}
-        />
-        {errorText("form-name", "name")}
-        {duplicateProducts.length > 0 ? (
-          <div className="notice">
-            <p>
-              이름이 같은 기존 제품이 있습니다. 빈티지·도수·용량을 확인하세요. 다른 판본은 새로
-              등록할 수 있습니다.
-            </p>
-            <ul className="pick-list" aria-label="기존 제품 후보">
-              {duplicateProducts.map((candidate) => (
-                <li key={candidate.id}>
-                  {onSelectExisting ? (
-                    <button
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => {
-                        const matches =
-                          candidate.skus?.filter(
-                            (sku) => sku.volume_ml === Number(values.volumeMl),
-                          ) ?? [];
-                        const sku = matches.length === 1 ? matches[0] : undefined;
-                        if (sku) onSelectExisting(candidate.id, { skuId: sku.id });
-                        else onSelectExisting(candidate.id);
-                      }}
-                    >
-                      <span>{candidateLabel(candidate)}</span>
-                      <span className="muted">이 제품의 구매 이력으로 이동</span>
-                    </button>
-                  ) : (
-                    <span>{candidateLabel(candidate)}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="field">
-        <label htmlFor="form-category">주종</label>
-        <select
-          id="form-category"
-          value={values.categoryId}
-          onChange={(event) => set({ categoryId: event.target.value })}
-        >
-          <option value="">선택 안 함</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {formatCategoryPath(category.path)}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor="form-abv">도수 (%)</label>
-          <input
-            id="form-abv"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            max={100}
-            step="0.1"
-            value={values.abv}
-            onChange={(event) => set({ abv: event.target.value })}
-          />
-        </div>
-        {mode === "create" && (
-          <div className="field">
-            <label htmlFor="form-volume">용량 (ml)</label>
-            <input
-              id="form-volume"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={100_000}
-              step={1}
-              value={values.volumeMl}
-              onChange={(event) => set({ volumeMl: event.target.value })}
-              {...errorProps("form-volume")}
-            />
-            {errorText("form-volume")}
-          </div>
-        )}
-      </div>
-
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor="form-vintage">빈티지</label>
-          <input
-            id="form-vintage"
-            type="number"
-            inputMode="numeric"
-            min={1800}
-            max={2200}
-            value={values.vintage}
-            onChange={(event) => set({ vintage: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="form-rating">내 평점 (0.5~6)</label>
-          <input
-            id="form-rating"
-            type="number"
-            inputMode="decimal"
-            min={0.5}
-            max={6}
-            step="0.5"
-            value={values.personalRating}
-            onChange={(event) => set({ personalRating: event.target.value })}
-            {...errorProps("form-rating", "personal_rating")}
-          />
-          {errorText("form-rating", "personal_rating")}
-        </div>
-      </div>
-
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor="form-producer">생산자</label>
-          <input
-            id="form-producer"
-            value={values.producerName}
-            placeholder="예: 글렌피딕"
-            onChange={(event) => set({ producerName: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="form-age-years">숙성 연수</label>
-          <input
-            id="form-age-years"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="0.1"
-            value={values.ageYears}
-            onChange={(event) => set({ ageYears: event.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="field">
-        <label htmlFor="form-varieties">품종·스타일 (쉼표로 구분)</label>
-        <input
-          id="form-varieties"
-          value={values.varietyNames}
-          placeholder="예: Cabernet Sauvignon, Merlot"
-          onChange={(event) => set({ varietyNames: event.target.value })}
-        />
-      </div>
-
-      <div className="field">
-        <label>
-          원어명
-          <input
-            value={values.nameEn ?? ""}
-            maxLength={300}
-            onChange={(event) => set({ nameEn: event.target.value })}
-          />
-        </label>
-        <label>
-          검색 별칭
-          <input
-            id="form-search-aliases"
-            {...errorProps("form-search-aliases", "search_aliases")}
-            value={values.searchAliases ?? ""}
-            onChange={(event) => set({ searchAliases: event.target.value })}
-            placeholder="확인한 한글 이름, 다른 표기 (쉼표로 구분)"
-          />
-          {errorText("form-search-aliases", "search_aliases")}
-          <span className="muted text-sm">
-            검색에만 사용하며 제품 이름이나 판본은 바뀌지 않습니다.
-          </span>
-        </label>
-        <label htmlFor="form-note">메모</label>
-        <textarea
-          id="form-note"
-          rows={2}
-          value={values.note}
-          onChange={(event) => set({ note: event.target.value })}
-        />
-      </div>
-
-      {mode === "create" && (
-        <fieldset className="fieldset-bordered">
-          <legend>구매 정보 (선택)</legend>
-          <p className="muted text-sm mt-0">
-            병수를 입력하면 구매 건과 병 기록을 함께 만듭니다. 같은 술을 나중에 다른 곳에서 사면
-            구매 건을 따로 추가할 수 있습니다.
+      {creation?.productConflict ? (
+        <div className="notice">
+          <p>
+            이 등록 요청은 더 진행할 수 없습니다. 기존에 저장된 술이 있을 수 있으니 술 목록을 먼저
+            확인하세요. 요청과 입력은 중단을 확인할 때까지 보관합니다.
           </p>
+          <button type="button" disabled={submitting} onClick={onCancel}>
+            입력 닫고 술 확인
+          </button>
+          {onDiscardCompleted ? (
+            <button type="button" disabled={submitting} onClick={onDiscardCompleted}>
+              등록 요청 중단하고 새로 작성
+            </button>
+          ) : null}
+        </div>
+      ) : (productUncertain || purchaseUncertain) && creation ? (
+        <div className="notice">
+          <p>
+            앞서 보낸 {productUncertain ? "제품" : "구매"}의 저장 결과를 아직 확인하지 못했습니다.
+            처음 보낸 입력으로 이어서 저장합니다. 이후 바뀐 초안은 보관합니다.
+          </p>
+          <button type="button" disabled={submitting} onClick={() => onSubmit(creation.values)}>
+            처음 입력으로 이어서 저장
+          </button>
+        </div>
+      ) : null}
+
+      {creation?.completedId ? (
+        <div className="notice">
+          <p>
+            이 술은 이미 등록됐습니다. 이후 바뀐 입력은 이 제품에 연결해 보관했습니다. 등록한 술에서
+            변경 내용을 확인하세요.
+          </p>
+          {onOpenCreated ? (
+            <button type="button" onClick={() => onOpenCreated(creation.completedId as string)}>
+              등록한 술 열기
+            </button>
+          ) : null}
+          {onDiscardCompleted ? (
+            <button type="button" onClick={onDiscardCompleted}>
+              보관 입력 지우고 새로 작성
+            </button>
+          ) : null}
+        </div>
+      ) : creation?.product ? (
+        <div className="notice">
+          <p>
+            제품 정보{creation.purchaseCreated ? "와 구매 기록은" : "는"} 저장됐습니다. 남은 항목만
+            이어서 저장합니다.
+          </p>
+          {onOpenCreated ? (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => onOpenCreated(creation.product?.id as string)}
+            >
+              등록한 술 열기
+            </button>
+          ) : null}
+          {onDiscardCompleted ? (
+            <button type="button" disabled={submitting} onClick={onDiscardCompleted}>
+              남은 입력 지우고 새로 작성
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <fieldset
+        disabled={submitting || Boolean(creation?.completedId) || creation?.productConflict}
+        style={{ border: 0, padding: 0, margin: 0 }}
+      >
+        <fieldset
+          disabled={Boolean(creation?.product) || productUncertain}
+          style={{ border: 0, padding: 0, margin: 0 }}
+        >
+          <DraftRecoveryButton form={formKey} />
+
+          <div className="field">
+            <label htmlFor="form-name">이름 *</label>
+            <AutocompleteInput
+              id="form-name"
+              required
+              value={values.name}
+              onChange={(name) => set({ name })}
+              suggestions={nameSuggestions}
+              aria-required="true"
+              {...errorProps("form-name", "name")}
+            />
+            {errorText("form-name", "name")}
+            {duplicateProducts.length > 0 ? (
+              <div className="notice">
+                <p>
+                  이름이 같은 기존 제품이 있습니다. 빈티지·도수·용량을 확인하세요. 다른 판본은 새로
+                  등록할 수 있습니다.
+                </p>
+                <ul className="pick-list" aria-label="기존 제품 후보">
+                  {duplicateProducts.map((candidate) => (
+                    <li key={candidate.id}>
+                      {onSelectExisting ? (
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          onClick={() => {
+                            const matches =
+                              candidate.skus?.filter(
+                                (sku) => sku.volume_ml === Number(values.volumeMl),
+                              ) ?? [];
+                            const sku = matches.length === 1 ? matches[0] : undefined;
+                            if (sku) onSelectExisting(candidate.id, { skuId: sku.id });
+                            else onSelectExisting(candidate.id);
+                          }}
+                        >
+                          <span>{candidateLabel(candidate)}</span>
+                          <span className="muted">이 제품의 구매 이력으로 이동</span>
+                        </button>
+                      ) : (
+                        <span>{candidateLabel(candidate)}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="field">
+            <label htmlFor="form-category">주종</label>
+            <select
+              id="form-category"
+              value={values.categoryId}
+              onChange={(event) => set({ categoryId: event.target.value })}
+            >
+              <option value="">선택 안 함</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {formatCategoryPath(category.path)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="field-row">
             <div className="field">
-              <label htmlFor="form-quantity">병수</label>
+              <label htmlFor="form-abv">도수 (%)</label>
               <input
-                id="form-quantity"
+                id="form-abv"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                step="0.1"
+                value={values.abv}
+                onChange={(event) => set({ abv: event.target.value })}
+              />
+            </div>
+            {mode === "create" && (
+              <div className="field">
+                <label htmlFor="form-volume">용량 (ml)</label>
+                <input
+                  id="form-volume"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={100_000}
+                  step={1}
+                  value={values.volumeMl}
+                  onChange={(event) => set({ volumeMl: event.target.value })}
+                  {...errorProps("form-volume")}
+                />
+                {errorText("form-volume")}
+              </div>
+            )}
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="form-vintage">빈티지</label>
+              <input
+                id="form-vintage"
                 type="number"
                 inputMode="numeric"
-                min={1}
-                max={1000}
-                step={1}
-                value={values.quantity}
-                onChange={(event) => set({ quantity: event.target.value })}
-                {...errorProps("form-quantity")}
+                min={1800}
+                max={2200}
+                value={values.vintage}
+                onChange={(event) => set({ vintage: event.target.value })}
               />
-              {errorText("form-quantity")}
             </div>
             <div className="field">
-              <label htmlFor="form-purchased-on">구매일</label>
+              <label htmlFor="form-rating">내 평점 (0.5~6)</label>
               <input
-                id="form-purchased-on"
-                type="date"
-                value={values.purchasedOn}
-                onChange={(event) => set({ purchasedOn: event.target.value })}
+                id="form-rating"
+                type="number"
+                inputMode="decimal"
+                min={0.5}
+                max={6}
+                step="0.5"
+                value={values.personalRating}
+                onChange={(event) => set({ personalRating: event.target.value })}
+                {...errorProps("form-rating", "personal_rating")}
               />
+              {errorText("form-rating", "personal_rating")}
             </div>
           </div>
+
           <div className="field-row">
             <div className="field">
-              <label htmlFor="form-list-price">병당 정가 (원)</label>
+              <label htmlFor="form-producer">생산자</label>
               <input
-                id="form-list-price"
-                type="number"
-                inputMode="decimal"
-                step="any"
-                min={0}
-                placeholder="0"
-                value={values.unitListPrice}
-                onChange={(event) => set({ unitListPrice: event.target.value })}
+                id="form-producer"
+                value={values.producerName}
+                placeholder="예: 글렌피딕"
+                onChange={(event) => set({ producerName: event.target.value })}
               />
             </div>
             <div className="field">
-              <label htmlFor="form-paid-price">병당 실구매가 (원)</label>
+              <label htmlFor="form-age-years">숙성 연수</label>
               <input
-                id="form-paid-price"
+                id="form-age-years"
                 type="number"
                 inputMode="decimal"
-                step="any"
                 min={0}
-                placeholder="0"
-                value={values.unitPaidPrice}
-                onChange={(event) => set({ unitPaidPrice: event.target.value })}
+                step="0.1"
+                value={values.ageYears}
+                onChange={(event) => set({ ageYears: event.target.value })}
               />
             </div>
           </div>
+
           <div className="field">
-            <label htmlFor="form-vendor">구매처</label>
-            <AutocompleteInput
-              id="form-vendor"
-              value={values.vendorName}
-              placeholder="없으면 비워 두세요"
-              onChange={(vendorName) => set({ vendorName })}
-              suggestions={vendorSuggestions}
+            <label htmlFor="form-varieties">품종·스타일 (쉼표로 구분)</label>
+            <input
+              id="form-varieties"
+              value={values.varietyNames}
+              placeholder="예: Cabernet Sauvignon, Merlot"
+              onChange={(event) => set({ varietyNames: event.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label>
+              원어명
+              <input
+                value={values.nameEn ?? ""}
+                maxLength={300}
+                onChange={(event) => set({ nameEn: event.target.value })}
+              />
+            </label>
+            <label>
+              검색 별칭
+              <input
+                id="form-search-aliases"
+                {...errorProps("form-search-aliases", "search_aliases")}
+                value={values.searchAliases ?? ""}
+                onChange={(event) => set({ searchAliases: event.target.value })}
+                placeholder="확인한 한글 이름, 다른 표기 (쉼표로 구분)"
+              />
+              {errorText("form-search-aliases", "search_aliases")}
+              <span className="muted text-sm">
+                검색에만 사용하며 제품 이름이나 판본은 바뀌지 않습니다.
+              </span>
+            </label>
+            <label htmlFor="form-note">메모</label>
+            <textarea
+              id="form-note"
+              rows={2}
+              value={values.note}
+              onChange={(event) => set({ note: event.target.value })}
             />
           </div>
         </fieldset>
-      )}
+        {mode === "create" && (
+          <fieldset
+            className="fieldset-bordered"
+            disabled={creation?.purchaseCreated || purchaseUncertain}
+          >
+            <legend>구매 정보 (선택)</legend>
+            <p className="muted text-sm mt-0">
+              병수를 입력하면 구매 건과 병 기록을 함께 만듭니다. 같은 술을 나중에 다른 곳에서 사면
+              구매 건을 따로 추가할 수 있습니다.
+            </p>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="form-quantity">병수</label>
+                <input
+                  id="form-quantity"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={1000}
+                  step={1}
+                  value={values.quantity}
+                  onChange={(event) => set({ quantity: event.target.value })}
+                  {...errorProps("form-quantity")}
+                />
+                {errorText("form-quantity")}
+              </div>
+              <div className="field">
+                <label htmlFor="form-purchased-on">구매일</label>
+                <input
+                  id="form-purchased-on"
+                  type="date"
+                  value={values.purchasedOn}
+                  onChange={(event) => set({ purchasedOn: event.target.value })}
+                />
+              </div>
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="form-list-price">병당 정가 (원)</label>
+                <input
+                  id="form-list-price"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  placeholder="0"
+                  value={values.unitListPrice}
+                  onChange={(event) => set({ unitListPrice: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="form-paid-price">병당 실구매가 (원)</label>
+                <input
+                  id="form-paid-price"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  placeholder="0"
+                  value={values.unitPaidPrice}
+                  onChange={(event) => set({ unitPaidPrice: event.target.value })}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="form-vendor">구매처</label>
+              <AutocompleteInput
+                id="form-vendor"
+                value={values.vendorName}
+                placeholder="없으면 비워 두세요"
+                onChange={(vendorName) => set({ vendorName })}
+                suggestions={vendorSuggestions}
+              />
+            </div>
+          </fieldset>
+        )}
 
-      <div className="button-row mt-3">
-        <button type="submit" className="primary" disabled={submitting}>
-          {submitting ? "저장 중…" : mode === "edit" ? "저장" : "등록"}
-        </button>
-        <button type="button" onClick={onCancel} disabled={submitting}>
-          취소
-        </button>
-      </div>
+        {creation?.labelPending && onLabelFile ? (
+          <label>
+            저장할 라벨 사진 다시 선택
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onLabelFile(file);
+              }}
+            />
+            <span className="muted text-sm">사진은 새로고침 뒤 다시 선택해야 합니다.</span>
+          </label>
+        ) : null}
+
+        <div className="button-row mt-3">
+          <button type="submit" className="primary" disabled={submitting}>
+            {submitting ? "저장 중…" : mode === "edit" ? "저장" : "등록"}
+          </button>
+          <button type="button" onClick={onCancel} disabled={submitting}>
+            취소
+          </button>
+        </div>
+      </fieldset>
     </form>
   );
 }
