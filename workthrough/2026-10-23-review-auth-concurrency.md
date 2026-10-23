@@ -63,3 +63,12 @@ Dexie가 일치했다. 실제 브라우저는 같은 계정의 새 세션이며,
 
 외부 실연결·운영 데이터 쓰기·실기기 PWA는 미실행이다. Web Locks 미지원 환경은 현재 탭의
 대기열로 처리하며, 여기의 실제 다중 탭 수용은 Web Locks를 지원하는 Chromium 환경이다.
+
+## PR CI와 최종 통합
+
+- [PR #186 최초 Quality CI](https://github.com/jihoon22-lee/SoolJang/actions/runs/39944014886)는
+  Python 1,854개 통과·31 opt-in 제외(coverage 92.53%), 웹 1,438개 통과(branch 83.66%)였다.
+  migration 왕복·컨테이너 빌드·npm/pip 감사와 별도 CodeQL도 모두 통과했다.
+- F2 #185의 확정 409 명시 중단 보완을 통합했다. 제품 복구의 추가 회귀·실제 API 브라우저 결과는
+  [F2 기록](2026-10-23-review-product-save-recovery.md)에 있으며, 이 변경 이후 최종 head의 필수 CI를
+  확인한 뒤 병합한다. 인증 동작 코드는 최초 CI와 같다.
