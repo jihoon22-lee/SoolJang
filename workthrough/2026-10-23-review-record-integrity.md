@@ -43,3 +43,18 @@
 수정 전 10건 실패는 실제 격리 DB API 재현이다. `--no-cov` 관련 테스트를 전체 커버리지 수용으로
 해석하지 않는다. 운영 DB·개인 기록은 사용하지 않으며 실제 운영 데이터 자동 복구는 하지 않는다.
 PR·CI·병합은 로컬 수용과 별개이며 최종 릴리스 기록에 실제 결과를 연결한다.
+
+## 제출 중 발견한 도구 보안 패치
+
+PR #182의 첫 CI는 웹 테스트·build·migration·컨테이너 검사를 통과했지만 npm 보안 감사가
+실패했다. 기존 개발 도구 Vite 7.3.6과 Vitest 4.1.11에 공개된 advisory가 원인이었다.
+[Vite의 7.3.7 수정 공지](https://github.com/vitejs/vite/security/advisories/GHSA-rq7h-c2jc-7f22)와
+[Vitest의 4.1.12 수정 공지](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8)를
+확인하고 Vite 7.3.7, Vitest 및 coverage-v8 4.1.12로만 고정 버전을 올렸다. 런타임 의존성은
+유지하며 lockfile의 해당 도구 패키지만 갱신했다. 필수 CI를 복구하는 선행 변경이라 F1 안의
+별도 `build(web)` 커밋으로 보존한다.
+
+새 lockfile로 `npm ci --prefix web`, `npm --prefix web audit --audit-level=high`(취약점 0),
+`npm --prefix web run check`(1,384 통과, branch 83.36%, build 포함)를 다시 통과했다.
+작성자 이메일의 GitHub 비공개 보호를 위해 미게시 커밋 metadata를 noreply 주소로 바꿨으며
+브라우저 결과의 source는 같은 코드의 최종 커밋 `436e0f7`로 연결한다.
