@@ -185,6 +185,8 @@ async def finish_bottle(
         raise BottleTransitionError(
             f"이미 내보낸 병은 소진할 수 없습니다 (현재 상태: {bottle.status})"
         )
+    if bottle.status == BottleStatus.FINISHED:
+        raise BottleTransitionError("이미 소진한 병의 소진일은 다시 기록할 수 없습니다")
 
     before = _state(bottle)
     when = finished_on or local_today()
@@ -219,6 +221,8 @@ async def hand_over_bottle(
         raise BottleTransitionError("증여 또는 판매 상태만 지정할 수 있습니다")
     if bottle.status == BottleStatus.FINISHED:
         raise BottleTransitionError("이미 소진한 병은 넘길 수 없습니다")
+    if bottle.status in {BottleStatus.GIFTED, BottleStatus.SOLD}:
+        raise BottleTransitionError("이미 내보낸 병의 처분 상태는 다시 기록할 수 없습니다")
 
     when = on or local_today()
     if bottle.opened_on is not None and when < bottle.opened_on:
