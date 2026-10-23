@@ -216,7 +216,7 @@ it("제품 응답 유실 뒤 이름을 고쳐도 새 요청으로 풀리지 않�
   expect(createProduct.mock.calls[1]?.[0]).toEqual(createProduct.mock.calls[0]?.[0]);
 });
 
-it("제품의 409 응답도 원래 요청을 유지한다", async () => {
+it("제품의 확정 409는 요청을 보존한 충돌로 남고 같은 요청을 반복 전송하지 않는다", async () => {
   const createProduct = vi
     .spyOn(productsApi, "create")
     .mockRejectedValueOnce(new ApiError(409, "이미 저장됐습니다"))
@@ -224,8 +224,79 @@ it("제품의 409 응답도 원래 요청을 유지한다", async () => {
   const hook = renderHook(useCreateProduct, { wrapper });
   const values = { ...purchaseValues, quantity: "" };
   await expect(submit(hook.result, { values })).rejects.toThrow();
+  expect(hook.result.current.progress?.productConflict).toBe(true);
+  expect(hook.result.current.progress?.productRequest?.request_id).toBe(
+    createProduct.mock.calls[0]?.[0].request_id,
+  );
+  await expect(submit(hook.result, { values })).rejects.toThrow("충돌");
+  expect(createProduct).toHaveBeenCalledOnce();
+});
+
+it("ID를 모르는 확정 제품 충돌도 명시적으로 중단한 뒤에만 새 요청으로 작성한다", async () => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new ApiError(409, "앞선 등록 내역을 확인할 수 없습니다"))
+    .mockResolvedValue(created);
+  const remove = vi.spyOn(productsApi, "remove");
+  const values = { ...purchaseValues, quantity: "" };
+  const key = "sooljang-draft-v1:online-create-owner:creation-test-tab:product:create";
+  localStorage.setItem(key, JSON.stringify({ value: values, revision: "conflict-draft" }));
+  const first = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(first.result, { values })).rejects.toThrow();
+  first.unmount();
+  const reopened = renderHook(useCreateProduct, { wrapper });
+  expect(reopened.result.current.progress?.product).toBeNull();
+  act(() => {
+    expect(reopened.result.current.discardCompleted(captureFormDraft("product:create"))).toBe(true);
+  });
+  expect(reopened.result.current.progress).toBeNull();
+  expect(localStorage.getItem(key)).toBeNull();
+  expect(remove).not.toHaveBeenCalled();
+  await submit(reopened.result, { values: { ...values, name: "목록 확인 후 의도한 새 술" } });
+  expect(create.mock.calls[1]?.[0].request_id).not.toBe(create.mock.calls[0]?.[0].request_id);
+});
+
+it("충돌 중단 확인 뒤 바뀐 초안이나 재로그인 세대의 입력은 지우지 않는다", async () => {
+  vi.spyOn(productsApi, "create").mockRejectedValue(new ApiError(409, "확정 충돌"));
+  const values = { ...purchaseValues, quantity: "" };
+  const key = "sooljang-draft-v1:online-create-owner:creation-test-tab:product:create";
+  localStorage.setItem(key, JSON.stringify({ value: values, revision: "initial" }));
+  const hook = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(hook.result, { values })).rejects.toThrow();
+  const beforeEdit = captureFormDraft("product:create");
+  localStorage.setItem(key, JSON.stringify({ value: values, revision: "newer" }));
+  expect(hook.result.current.discardCompleted(beforeEdit)).toBe(false);
+  const beforeLogin = captureFormDraft("product:create");
+  lockDatabase();
+  await activateDatabase("online-create-owner");
+  expect(hook.result.current.discardCompleted(beforeLogin)).toBe(false);
+  expect(localStorage.getItem(key)).not.toBeNull();
+  act(() => {
+    expect(hook.result.current.discardCompleted(captureFormDraft("product:create"))).toBe(true);
+  });
+});
+
+it.each([
+  new TypeError("응답 유실"),
+  new ApiError(503, "일시 장애"),
+])("제품 미확정 오류 %s는 충돌 중단으로 해제할 수 없고 같은 요청으로만 재확인한다", async (error) => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(error)
+    .mockResolvedValue(created);
+  const hook = renderHook(useCreateProduct, { wrapper });
+  const values = { ...purchaseValues, quantity: "" };
+  await expect(submit(hook.result, { values })).rejects.toThrow();
+  expect(hook.result.current.progress?.productConflict).not.toBe(true);
+  expect(hook.result.current.discardCompleted(captureFormDraft("product:create"))).toBe(false);
+  connection.state = "offline";
+  hook.rerender();
+  await expect(submit(hook.result, { values })).rejects.toThrow("온라인");
+  expect(await db.outbox.count()).toBe(0);
+  connection.state = "idle";
+  hook.rerender();
   await submit(hook.result, { values });
-  expect(createProduct.mock.calls[1]?.[0]).toEqual(createProduct.mock.calls[0]?.[0]);
+  expect(create.mock.calls[1]?.[0].request_id).toBe(create.mock.calls[0]?.[0].request_id);
 });
 
 it("앞서 응답을 잃은 요청은 뒤의 422에도 원래 입력으로 묶어 둔다", async () => {

@@ -397,11 +397,14 @@ export function ProductsPage({
   async function discardCompletedCreation() {
     const session = captureWriteSession();
     const draft = captureFormDraft("product:create");
+    const conflict = createProduct.progress?.productConflict;
     if (
       !(await confirm({
-        title: "보관 입력 지우기",
-        message: "이미 저장한 술과 구매는 유지됩니다. 남아 있는 입력만 지우고 새 술을 작성할까요?",
-        confirmLabel: "입력 지우고 새로 작성",
+        title: conflict ? "등록 요청 중단" : "보관 입력 지우기",
+        message: conflict
+          ? "기존에 저장된 술이 있을 수 있으니 술 목록을 먼저 확인하세요. 서버 기록은 삭제하지 않습니다. 현재 요청과 입력만 지우고 새로 작성할까요?"
+          : "이미 저장한 술과 구매는 유지됩니다. 남아 있는 입력만 지우고 새 술을 작성할까요?",
+        confirmLabel: conflict ? "요청 중단하고 새로 작성" : "입력 지우고 새로 작성",
         danger: true,
       }))
     )

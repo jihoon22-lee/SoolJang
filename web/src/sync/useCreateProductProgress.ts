@@ -20,6 +20,8 @@ export interface ProductCreationProgress {
   product: Product | null;
   /** 실제로 보낸 내용. 응답이 미확정인 동안 payload와 키를 함께 유지한다. */
   productRequest?: ProductCreateInput | null;
+  /** 서버가 409로 확정한 요청 충돌. ID를 몰라도 명시적으로 중단할 수 있다. */
+  productConflict?: boolean;
   purchaseRequest?: PurchaseCreateInput | null;
   purchaseCreated: boolean;
   labelPending: boolean;
@@ -39,6 +41,7 @@ function decode(snapshot: string | null): ProductCreationProgress | null {
       typeof value.purchaseCreated !== "boolean" ||
       typeof value.labelPending !== "boolean" ||
       typeof value.draftCleared !== "boolean" ||
+      (value.productConflict !== undefined && typeof value.productConflict !== "boolean") ||
       (value.completedId !== null && typeof value.completedId !== "string") ||
       (value.error !== null && typeof value.error !== "string") ||
       !value.values ||
@@ -95,12 +98,12 @@ export function creationLabel(file: File | null | undefined, restore: boolean): 
   return file ?? labels.get(key) ?? null;
 }
 
-/** 정상 완료를 닫는다. 남은 새 입력은 명시적으로 확인할 때까지 보존한다. */
-export function finishProductCreation(): boolean {
+/** 정상 완료를 닫는다. 확정 충돌의 중단은 별도 사용자 확인을 마친 호출만 허용한다. */
+export function finishProductCreation(confirmedConflict = false): boolean {
   const progress = readProductCreationProgress();
   if (
     productCreationPending() ||
-    !progress?.completedId ||
+    !(progress?.completedId || (confirmedConflict && progress?.productConflict)) ||
     !progress.draftCleared ||
     captureFormDraft("product:create").entries.length > 0
   )

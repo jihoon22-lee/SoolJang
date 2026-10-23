@@ -70,6 +70,10 @@ export function useCreateProduct() {
       const previous = readProductCreationProgress();
       if (previous?.completedId)
         throw new Error("이미 등록한 술입니다. 보관한 입력은 등록한 술에서 확인하세요");
+      if (previous?.productConflict)
+        throw new Error(
+          "앞선 등록 요청이 충돌했습니다. 술 목록을 확인한 뒤 요청을 중단하고 새로 작성하세요",
+        );
       const end = beginProductCreation(session);
       const draft = captureFormDraft("product:create");
       const { values } = input;
@@ -79,6 +83,7 @@ export function useCreateProduct() {
         onlineAttempted: previous?.onlineAttempted ?? false,
         product: input.existingProduct ?? previous?.product ?? null,
         productRequest: previous?.productRequest ?? null,
+        productConflict: false,
         purchaseRequest: previous?.purchaseRequest ?? null,
         purchaseCreated: input.purchaseAlreadyCreated ?? previous?.purchaseCreated ?? false,
         labelPending: Boolean(label) || (previous?.labelPending ?? false),
@@ -190,6 +195,7 @@ export function useCreateProduct() {
               // 409를 받았다면 키를 풀지 않고 원래 payload로 계속 결과를 확인한다.
               if (!wasUncertain && error instanceof ApiError && error.status === 422)
                 current.productRequest = null;
+              if (error instanceof ApiError && error.status === 409) current.productConflict = true;
               throw error;
             });
             session.assertCurrent();
@@ -301,14 +307,24 @@ export function useCreateProduct() {
     discardCompleted(draft: ReturnType<typeof captureFormDraft>): boolean {
       const current = readProductCreationProgress();
       const productId = current?.completedId ?? current?.product?.id;
-      if (productCreationPending() || !current || !productId || !clearSubmittedDraft(draft))
+      if (
+        productCreationPending() ||
+        !current ||
+        (!productId && !current.productConflict) ||
+        !clearSubmittedDraft(draft)
+      )
         return false;
       // 사용자가 이미 만들어진 술을 확인한 뒤 남은 입력을 명시적으로 포기하는 경우다.
-      // 서버의 제품·구매·첨부는 삭제하지 않는다. 미확정 제품(아직 ID를 모름)은 포기하지 않는다.
+      // 서버 기록은 삭제하지 않는다. ID가 없어도 확정 409는 명시적으로 중단할 수 있지만,
+      // 네트워크 오류·5xx처럼 결과가 미확정인 요청은 계속 보존한다.
       finishSubmission("product:create:product");
-      finishSubmission(`product:create:purchase:${productId}`);
-      saveProductCreationProgress({ ...current, completedId: productId, draftCleared: true });
-      const finished = finishProductCreation();
+      if (productId) finishSubmission(`product:create:purchase:${productId}`);
+      saveProductCreationProgress({
+        ...current,
+        completedId: productId ?? null,
+        draftCleared: true,
+      });
+      const finished = finishProductCreation(true);
       if (finished) mutation.reset();
       return finished;
     },
