@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import ConflictError, ValidationFailedError
 from sooljang.application.collection_inventory import owned, owned_many
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.base import EntityMixin
 from sooljang.infrastructure.database.models import (
     Bottle,
@@ -43,6 +44,8 @@ async def snapshot(
     ids: list[uuid.UUID],
     target_id: uuid.UUID | None,
 ) -> dict[str, Any]:
+    if kind == "product_category":
+        await lock_user_writes(session, user_id)
     models = {
         "vendor_merge": Vendor,
         "product_category": Product,
@@ -153,6 +156,17 @@ async def preview_cleanup(
 async def confirm_cleanup(
     session: AsyncSession, user_id: uuid.UUID, preview_id: uuid.UUID
 ) -> CleanupPreview:
+    # 주종 배정은 preview/제품 행을 잠그기 전에 계층 변경과 순서를 정한다.
+    # 다른 정리 종류의 기존 Location·Vendor 잠금 순서는 유지한다.
+    kind = await session.scalar(
+        select(CleanupPreview.kind).where(
+            CleanupPreview.id == preview_id,
+            CleanupPreview.user_id == user_id,
+            CleanupPreview.deleted_at.is_(None),
+        )
+    )
+    if kind == "product_category":
+        await lock_user_writes(session, user_id)
     preview = await owned(session, CleanupPreview, user_id, preview_id)
     if preview.confirmed_at is not None:
         return preview

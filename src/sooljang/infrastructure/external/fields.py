@@ -18,7 +18,7 @@
 import math
 import re
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from typing import Any
 
 #: 표준 필드 키. adapter_spec 작성자가 이 이름으로 값을 내보내면 비교 뷰에 잡힌다.
@@ -61,11 +61,23 @@ class NormalizedFields:
 
     @property
     def rating_normalized(self) -> Decimal | None:
-        """평점을 5점 만점으로 환산한다. 척도를 모르면 계산하지 않는다."""
-        if self.rating is None or self.rating_scale is None or self.rating_scale <= 0:
+        """원척도에서 유효한 평점만 환산한다. 잘못된 외부 값은 누락으로 남긴다."""
+        if self.rating is None or self.rating_scale is None:
             return None
-        value = Decimal(str(self.rating)) * _RATING_TARGET_SCALE / Decimal(str(self.rating_scale))
-        return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+        try:
+            rating, scale = Decimal(str(self.rating)), Decimal(str(self.rating_scale))
+            if (
+                not rating.is_finite()
+                or not scale.is_finite()
+                or scale <= 0
+                or not 0 <= rating <= scale
+            ):
+                return None
+            # 먼저 비율로 줄여 정상적인 큰 원척도도 중간 곱셈 overflow 없이 환산한다.
+            value = rating / scale * _RATING_TARGET_SCALE
+            return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+        except DecimalException, ValueError:
+            return None
 
     @property
     def price_per_100ml(self) -> Decimal | None:
