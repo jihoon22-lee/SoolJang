@@ -1,7 +1,10 @@
 """표준 필드 스키마 표 기반 테스트(Task 34 PR3). 네트워크 불필요."""
 
 import json
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -143,3 +146,77 @@ def test_large_but_plausible_price_still_computes_per_100ml() -> None:
     normalized = split_fields({"price_krw": 10**12, "volume_ml": 750})
 
     assert normalized.price_per_100ml == Decimal("133333333333.33")
+
+
+@pytest.mark.parametrize(
+    "rating,scale",
+    [
+        (1e300, 5),
+        (4, 1e-300),
+        (-1, 5),
+        (6, 5),
+        (4, 0),
+        (4, -5),
+        (float("nan"), 5),
+        (float("inf"), 5),
+        (4, float("inf")),
+        (4, float("nan")),
+    ],
+)
+def test_invalid_source_rating_has_no_normalized_value(rating: float, scale: float) -> None:
+    # 직접 만든 값과 이전 캐시의 fields를 다시 분류한 값 모두 같은 규칙을 지킨다.
+    direct = NormalizedFields(rating=rating, rating_scale=scale)
+    assert direct.rating_normalized is None
+    normalized = split_fields({"rating": rating, "rating_scale": scale})
+    assert normalized.rating_normalized is None
+
+
+@pytest.mark.parametrize(
+    "rating,scale,expected",
+    [(0, 5, "0.00"), (87, 100, "4.35"), (5, 5, "5.00"), (1e300, 1e300, "5.00")],
+)
+def test_valid_source_rating_keeps_zero_and_original_scale(
+    rating: float, scale: float, expected: str
+) -> None:
+    normalized = split_fields({"rating": rating, "rating_scale": scale})
+    assert normalized.rating == rating
+    assert normalized.rating_scale == scale
+    assert normalized.rating_normalized == Decimal(expected)
+
+
+@pytest.mark.parametrize("rating", [True, False])
+def test_boolean_is_not_a_rating_even_when_constructed_directly(rating: bool) -> None:
+    assert NormalizedFields(rating=rating, rating_scale=5).rating_normalized is None
+
+
+@pytest.mark.parametrize("cached", [True, False])
+async def test_discovery_serializes_valid_sources_beside_an_invalid_rating(cached: bool) -> None:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from sooljang.api.routes.discovery import _outputs
+    from sooljang.application.external_sources import SourceLookupResult
+
+    results = []
+    for name, rating, scale in [("깨진 척도", 1e300, 5), ("정상 척도", 87, 100)]:
+        fields = {"rating": rating, "rating_scale": scale}
+        results.append(
+            SourceLookupResult(
+                source_id=uuid.uuid4(),
+                source_name=name,
+                cached=cached,
+                source_url="https://example.com/product",
+                fields=fields,
+                raw_excerpt=None,
+                degraded=False,
+                warning=None,
+                fetched_at=datetime.now(UTC),
+                normalized=split_fields(fields),
+            )
+        )
+    outputs = await _outputs(results, AsyncMock(spec=AsyncSession), uuid.uuid4(), "")
+    assert len(outputs) == 2
+    assert outputs[0]["normalized"]["rating_normalized"] is None
+    assert outputs[0]["fields"] == {"rating": 1e300, "rating_scale": 5}
+    assert outputs[1]["normalized"]["rating_normalized"] == "4.35"
+    assert all(row["cached"] is cached for row in outputs)
+    json.dumps(outputs, allow_nan=False)

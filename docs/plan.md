@@ -11,13 +11,13 @@
 |---|---|
 | 최종 갱신 | 2026-10-23 — 5단계 코드 리뷰 후속 F1~F5 착수 |
 | 목표 | 구매·시음 연결, 온라인/오프라인 등록, 주종 계층과 인증 동시성을 보호하고 외부 평점 오류를 격리 |
-| 브랜치·기준 | `feature/review-category-concurrency`, 착수 main `8f21ba9`(PR #181). F1 PR #182를 선행 통합 |
+| 브랜치·기준 | `feature/review-external-rating-bounds`, 착수 main `8f21ba9`(PR #181). F1 #182·F3 #183 선행 통합 |
 | 버전·운영 | 패키지 1.11.0 / schema 0021. 수정 수용 뒤 PATCH 릴리스 예정. 운영 기록은 v1.11.0 / `605f299`(2026-10-20 전환) |
 | 승인 | 2026-10-23 사용자: 계획의 모든 구현·검증 후 Push·PR·Release까지 자율 진행하고 작업 산출물 정리·보고 |
-| 진행 | F1 PR #182 CI(Vite/Vitest 보안 패치 포함), F3 실제 DB 경합 10개·전체 Python 및 migration 보완 수용. F2·F4·F5 검증 중 |
+| 진행 | F1 #182·F3 #183 CI, F5 평점 회귀·전체 Python 및 timeout 보완 수용. F2·F4 최종 검증 중 |
 | 다음 작업 | F1~F5 수용·독립 리뷰·필수 CI 후 merge commit으로 통합, 버전 PR·백업/격리 복원·태그·Release 검증 |
 | 이연 유지 | 국내 가격 출처 수용 #142, 실기기 푸시 #143. 이번 리뷰 후속으로 완료 처리하지 않음. 리뷰 후속의 이연: 탭 수명 동안 유지되는 생성 요청 키(R1), 구매 수정·오프라인 동기화의 외화 정합성 검증과 수정 폼 외화 입력, 오류 표시 공용화(`errorProps`)·StatusViews 재시도 정리(R6) |
-| 증거 | [F1 기록 무결성](../workthrough/2026-10-23-review-record-integrity.md), [F3 주종 동시성](../workthrough/2026-10-23-review-category-concurrency.md). 이전 수용은 [R1~R6](../workthrough/2026-10-18-review-followups.md), 운영 기준은 [v1.11.0](../workthrough/2026-10-20-v1110-release.md) |
+| 증거 | [F1 기록 무결성](../workthrough/2026-10-23-review-record-integrity.md), [F3 주종 동시성](../workthrough/2026-10-23-review-category-concurrency.md), [F5 외부 평점](../workthrough/2026-10-23-review-external-rating-bounds.md). 이전 수용은 [R1~R6](../workthrough/2026-10-18-review-followups.md), 운영 기준은 [v1.11.0](../workthrough/2026-10-20-v1110-release.md) |
 
 ## 2. 작업 묶음
 
@@ -34,7 +34,7 @@ main `8f21ba9`의 5단계 교차 검토에서 확인한 8건을 사용자 흐름
 | F2 제품 저장 복구 | ② 부분 성공/응답 미확정 뒤 오프라인 중복 방지, ④ 제출 이후 초안 보호 | QS03·QS17·QS19 | 별도 작업 트리에서 구현 중 |
 | F3 주종 동시성 | ③ 계층 이동·생성·삭제·병합·주종 배정의 공통 잠금과 최신 재조회 | QS07·QS17 | 실제 DB 경합·회귀·독립 검토 수용, PR·CI 준비 |
 | F4 인증 요청 안정성 | ⑥ 인증 세대별 응답 처리, ⑦ 활동 시각 갱신을 업무 트랜잭션에서 분리 | QS03·QS17·QS19 | F1·F3 수용 뒤 통합 |
-| F5 외부 평점 검증 | ⑧ 원평점·척도의 유효성 검사와 안전한 정규화 | D251·QS13·QS18 | 대기, 독립 진행 가능 |
+| F5 외부 평점 검증 | ⑧ 원평점·척도의 유효성 검사와 안전한 정규화 | D251·QS13·QS18 | 회귀·전체 Python 및 timeout 보완·독립 검토 수용, PR·CI 준비 |
 
 각 PR에 `docs/plan.md`와 해당 `workthrough/` 한 건을 갱신한다. 격리 PostgreSQL의
 경합 검증은 동일 쿠키와 별도 로그인 세션을 구분한다. F4가 기존 인증 행 잠금의 우연한
