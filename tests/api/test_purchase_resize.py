@@ -88,6 +88,7 @@ def test_concurrent_quantity_updates_recheck_current_purchase_before_adding_bott
     first_locked, release_first, second_started, second_read = (threading.Event() for _ in range(4))
     original_resize = purchases._resize_bottles
     original_owned = purchases.owned
+    original_gate = purchases.lock_user_writes
 
     async def hold_first_resize(*args: Any, **kwargs: Any) -> None:
         if args[3] == 4:
@@ -97,15 +98,19 @@ def test_concurrent_quantity_updates_recheck_current_purchase_before_adding_bott
 
     async def observe_purchase_read(*args: Any, **kwargs: Any) -> Any:
         second = args[1] is Purchase and first_locked.is_set()
-        if second:
-            second_started.set()
         row = await original_owned(*args, **kwargs)
         if second:
             second_read.set()
         return row
 
+    async def observe_write_gate(*args: Any, **kwargs: Any) -> None:
+        if first_locked.is_set():
+            second_started.set()
+        await original_gate(*args, **kwargs)
+
     monkeypatch.setattr(purchases, "_resize_bottles", hold_first_resize)
     monkeypatch.setattr(purchases, "owned", observe_purchase_read)
+    monkeypatch.setattr(purchases, "lock_user_writes", observe_write_gate)
     with ThreadPoolExecutor(max_workers=2) as executor:
         first = executor.submit(api_client.patch, path, json={"quantity": 4}, headers=first_headers)
         try:

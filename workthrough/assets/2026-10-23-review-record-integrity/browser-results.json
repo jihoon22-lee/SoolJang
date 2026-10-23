@@ -1,0 +1,10 @@
+{
+  "source": "f55fac5",
+  "browser": "151.0.7922.34",
+  "viewport": "390x844",
+  "actual_api": true,
+  "scenario": "UI 생성 2병 → API로 시음 연결 정정 → UI 수량 축소 409 → 병 2개와 시음 연결 보존",
+  "remaining_bottles": 2,
+  "tasting_read_status": 200,
+  "passed": true
+}
