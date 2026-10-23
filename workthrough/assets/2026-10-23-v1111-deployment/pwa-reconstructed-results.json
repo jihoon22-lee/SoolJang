@@ -1,0 +1,736 @@
+{
+  "origin": "https://main.tail30f401.ts.net:8080",
+  "startedAt": "2026-10-23T13:18:32.259Z",
+  "oldRelease": "v1.11.0",
+  "oldSourceSha": "605f299ec1203c93eb7f2d19bf8323a6637e23d1",
+  "newRelease": "v1.11.1",
+  "newSourceSha": "9d55639429fdf6cf36e4a1fddf8cdeaf66a894a4",
+  "verification": "reconstructed-old-static-to-live-new-production",
+  "initialStaticFixture": true,
+  "fixtureSource": "root-extracted immutable v1.11.0 web image",
+  "liveOldProfileTransitionCompleted": false,
+  "browserVersion": "151.0.7922.34",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "allowedApiPaths": [
+    "/api/v1/auth/me",
+    "/api/v1/auth/setup"
+  ],
+  "apiResponses": [
+    {
+      "phase": "reconstructed-before",
+      "path": "/api/v1/auth/me",
+      "status": 401,
+      "method": "GET"
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/api/v1/auth/setup",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/api/v1/auth/me",
+      "status": 401,
+      "method": "GET"
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/api/v1/auth/setup",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "phase": "after-origin-tabs-closed",
+      "path": "/api/v1/auth/me",
+      "status": 401,
+      "method": "GET"
+    },
+    {
+      "phase": "after-origin-tabs-closed",
+      "path": "/api/v1/auth/setup",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "blockedRequests": [],
+  "consoleErrors": [
+    {
+      "phase": "reconstructed-before",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://main.tail30f401.ts.net:8080/api/v1/auth/me",
+        "lineNumber": 0
+      }
+    },
+    {
+      "phase": "reconstructed-before",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://main.tail30f401.ts.net:8080/api/v1/auth/me",
+        "lineNumber": 0
+      }
+    },
+    {
+      "phase": "after-origin-tabs-closed",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://main.tail30f401.ts.net:8080/api/v1/auth/me",
+        "lineNumber": 0
+      }
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": [],
+  "cspViolations": [],
+  "phases": {
+    "before": {
+      "url": "https://main.tail30f401.ts.net:8080/",
+      "title": "홈 · 술장",
+      "heading": "술장 로그인",
+      "scripts": [
+        "https://main.tail30f401.ts.net:8080/assets/index-C3GqxHrD.js"
+      ],
+      "controller": {
+        "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+        "state": "activated"
+      },
+      "registrations": [
+        {
+          "scope": "https://main.tail30f401.ts.net:8080/",
+          "active": {
+            "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+            "state": "activated"
+          },
+          "waiting": null,
+          "installing": null
+        }
+      ],
+      "cacheEntries": [
+        {
+          "name": "workbox-precache-v2-https://main.tail30f401.ts.net:8080/",
+          "entries": [
+            "https://main.tail30f401.ts.net:8080/apple-touch-icon.png?__WB_REVISION__=a5cb6c1eac42c98f4873b75bdafcfd97",
+            "https://main.tail30f401.ts.net:8080/assets/CategoriesPage-B5-fSTTM.js",
+            "https://main.tail30f401.ts.net:8080/assets/CleanupConfirmation-DnEwCHos.js",
+            "https://main.tail30f401.ts.net:8080/assets/CollectionQualityPage-DG4hCadu.js",
+            "https://main.tail30f401.ts.net:8080/assets/DiscoverPage-DL26zrlO.js",
+            "https://main.tail30f401.ts.net:8080/assets/ImportPage-CZSUp7Hu.js",
+            "https://main.tail30f401.ts.net:8080/assets/InventoryPage-Dw1TUvsU.js",
+            "https://main.tail30f401.ts.net:8080/assets/PriceWatchPage-B7eUi7Fx.js",
+            "https://main.tail30f401.ts.net:8080/assets/SettingsPage-BmkM4B78.js",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-B3tzj1cF.css",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-dP6B8E4F.js",
+            "https://main.tail30f401.ts.net:8080/assets/VendorsPage-CoDWpz82.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-0FWXPXmW.css",
+            "https://main.tail30f401.ts.net:8080/assets/index-BFQl3lLt.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-C3GqxHrD.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-CkKGVUPy.js",
+            "https://main.tail30f401.ts.net:8080/assets/workbox-window.prod.es5-BBnX5xw4.js",
+            "https://main.tail30f401.ts.net:8080/favicon.svg?__WB_REVISION__=4e992ffc0270390f1323770a090e35f7",
+            "https://main.tail30f401.ts.net:8080/icons/icon-192.png?__WB_REVISION__=40ac914d99e8c23c5718819dd380c47a",
+            "https://main.tail30f401.ts.net:8080/icons/icon-512.png?__WB_REVISION__=d77a16a87f4aae14bc88a47469bcf932",
+            "https://main.tail30f401.ts.net:8080/icons/icon-maskable-512.png?__WB_REVISION__=b9f8366aa2b0b5cd04d61164dd957f90",
+            "https://main.tail30f401.ts.net:8080/index.html?__WB_REVISION__=2d4e6d234a1033572afeef3b1ff95f98",
+            "https://main.tail30f401.ts.net:8080/manifest.webmanifest?__WB_REVISION__=2e3f252c5c170d5129763212bfb20281",
+            "https://main.tail30f401.ts.net:8080/price-push.js?__WB_REVISION__=17ccd5c1e090b3f63cc618717d6f398c"
+          ]
+        }
+      ],
+      "cookieVisible": false,
+      "cookieCount": 0,
+      "precacheCount": 24,
+      "entryAsset": "/assets/index-C3GqxHrD.js",
+      "at": "2026-10-23T13:18:34.251Z"
+    },
+    "newWorkerWaiting": {
+      "url": "https://main.tail30f401.ts.net:8080/",
+      "title": "홈 · 술장",
+      "heading": "술장 로그인",
+      "scripts": [
+        "https://main.tail30f401.ts.net:8080/assets/index-C3GqxHrD.js"
+      ],
+      "controller": {
+        "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+        "state": "activated"
+      },
+      "registrations": [
+        {
+          "scope": "https://main.tail30f401.ts.net:8080/",
+          "active": {
+            "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+            "state": "activated"
+          },
+          "waiting": {
+            "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+            "state": "installed"
+          },
+          "installing": null
+        }
+      ],
+      "cacheEntries": [
+        {
+          "name": "workbox-precache-v2-https://main.tail30f401.ts.net:8080/",
+          "entries": [
+            "https://main.tail30f401.ts.net:8080/apple-touch-icon.png?__WB_REVISION__=a5cb6c1eac42c98f4873b75bdafcfd97",
+            "https://main.tail30f401.ts.net:8080/assets/CategoriesPage-7Q46bx-0.js",
+            "https://main.tail30f401.ts.net:8080/assets/CategoriesPage-B5-fSTTM.js",
+            "https://main.tail30f401.ts.net:8080/assets/CleanupConfirmation-CPhpfuch.js",
+            "https://main.tail30f401.ts.net:8080/assets/CleanupConfirmation-DnEwCHos.js",
+            "https://main.tail30f401.ts.net:8080/assets/CollectionQualityPage-DG4hCadu.js",
+            "https://main.tail30f401.ts.net:8080/assets/CollectionQualityPage-DLwg22Xo.js",
+            "https://main.tail30f401.ts.net:8080/assets/DiscoverPage-BsTCGMyF.js",
+            "https://main.tail30f401.ts.net:8080/assets/DiscoverPage-DL26zrlO.js",
+            "https://main.tail30f401.ts.net:8080/assets/ImportPage-CZSUp7Hu.js",
+            "https://main.tail30f401.ts.net:8080/assets/ImportPage-Kq94zLxR.js",
+            "https://main.tail30f401.ts.net:8080/assets/InventoryPage-BcoKfTkc.js",
+            "https://main.tail30f401.ts.net:8080/assets/InventoryPage-Dw1TUvsU.js",
+            "https://main.tail30f401.ts.net:8080/assets/PriceWatchPage-B7eUi7Fx.js",
+            "https://main.tail30f401.ts.net:8080/assets/PriceWatchPage-teRlIR83.js",
+            "https://main.tail30f401.ts.net:8080/assets/SettingsPage-BmkM4B78.js",
+            "https://main.tail30f401.ts.net:8080/assets/SettingsPage-CYrjS3p1.js",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-B3tzj1cF.css",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-CFur0EOc.js",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-dP6B8E4F.js",
+            "https://main.tail30f401.ts.net:8080/assets/VendorsPage-CoDWpz82.js",
+            "https://main.tail30f401.ts.net:8080/assets/VendorsPage-Cqlpz5GQ.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-0FWXPXmW.css",
+            "https://main.tail30f401.ts.net:8080/assets/index-BFQl3lLt.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-C3GqxHrD.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-CkKGVUPy.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-iO6L_k1Q.js",
+            "https://main.tail30f401.ts.net:8080/assets/workbox-window.prod.es5-BBnX5xw4.js",
+            "https://main.tail30f401.ts.net:8080/favicon.svg?__WB_REVISION__=4e992ffc0270390f1323770a090e35f7",
+            "https://main.tail30f401.ts.net:8080/icons/icon-192.png?__WB_REVISION__=40ac914d99e8c23c5718819dd380c47a",
+            "https://main.tail30f401.ts.net:8080/icons/icon-512.png?__WB_REVISION__=d77a16a87f4aae14bc88a47469bcf932",
+            "https://main.tail30f401.ts.net:8080/icons/icon-maskable-512.png?__WB_REVISION__=b9f8366aa2b0b5cd04d61164dd957f90",
+            "https://main.tail30f401.ts.net:8080/index.html?__WB_REVISION__=2d4e6d234a1033572afeef3b1ff95f98",
+            "https://main.tail30f401.ts.net:8080/index.html?__WB_REVISION__=4c7e7f0720e861a9a81f71d2f99a6d58",
+            "https://main.tail30f401.ts.net:8080/manifest.webmanifest?__WB_REVISION__=2e3f252c5c170d5129763212bfb20281",
+            "https://main.tail30f401.ts.net:8080/price-push.js?__WB_REVISION__=17ccd5c1e090b3f63cc618717d6f398c"
+          ]
+        }
+      ],
+      "cookieVisible": false,
+      "cookieCount": 0,
+      "precacheCount": 36,
+      "entryAsset": "/assets/index-C3GqxHrD.js",
+      "at": "2026-10-23T13:18:34.587Z"
+    },
+    "after": {
+      "url": "https://main.tail30f401.ts.net:8080/",
+      "title": "홈 · 술장",
+      "heading": "술장 로그인",
+      "scripts": [
+        "https://main.tail30f401.ts.net:8080/assets/index-iO6L_k1Q.js"
+      ],
+      "controller": {
+        "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+        "state": "activated"
+      },
+      "registrations": [
+        {
+          "scope": "https://main.tail30f401.ts.net:8080/",
+          "active": {
+            "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+            "state": "activated"
+          },
+          "waiting": null,
+          "installing": null
+        }
+      ],
+      "cacheEntries": [
+        {
+          "name": "workbox-precache-v2-https://main.tail30f401.ts.net:8080/",
+          "entries": [
+            "https://main.tail30f401.ts.net:8080/apple-touch-icon.png?__WB_REVISION__=a5cb6c1eac42c98f4873b75bdafcfd97",
+            "https://main.tail30f401.ts.net:8080/assets/CategoriesPage-7Q46bx-0.js",
+            "https://main.tail30f401.ts.net:8080/assets/CleanupConfirmation-CPhpfuch.js",
+            "https://main.tail30f401.ts.net:8080/assets/CollectionQualityPage-DLwg22Xo.js",
+            "https://main.tail30f401.ts.net:8080/assets/DiscoverPage-BsTCGMyF.js",
+            "https://main.tail30f401.ts.net:8080/assets/ImportPage-Kq94zLxR.js",
+            "https://main.tail30f401.ts.net:8080/assets/InventoryPage-BcoKfTkc.js",
+            "https://main.tail30f401.ts.net:8080/assets/PriceWatchPage-teRlIR83.js",
+            "https://main.tail30f401.ts.net:8080/assets/SettingsPage-CYrjS3p1.js",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-B3tzj1cF.css",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-CFur0EOc.js",
+            "https://main.tail30f401.ts.net:8080/assets/VendorsPage-Cqlpz5GQ.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-0FWXPXmW.css",
+            "https://main.tail30f401.ts.net:8080/assets/index-BFQl3lLt.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-CkKGVUPy.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-iO6L_k1Q.js",
+            "https://main.tail30f401.ts.net:8080/assets/workbox-window.prod.es5-BBnX5xw4.js",
+            "https://main.tail30f401.ts.net:8080/favicon.svg?__WB_REVISION__=4e992ffc0270390f1323770a090e35f7",
+            "https://main.tail30f401.ts.net:8080/icons/icon-192.png?__WB_REVISION__=40ac914d99e8c23c5718819dd380c47a",
+            "https://main.tail30f401.ts.net:8080/icons/icon-512.png?__WB_REVISION__=d77a16a87f4aae14bc88a47469bcf932",
+            "https://main.tail30f401.ts.net:8080/icons/icon-maskable-512.png?__WB_REVISION__=b9f8366aa2b0b5cd04d61164dd957f90",
+            "https://main.tail30f401.ts.net:8080/index.html?__WB_REVISION__=4c7e7f0720e861a9a81f71d2f99a6d58",
+            "https://main.tail30f401.ts.net:8080/manifest.webmanifest?__WB_REVISION__=2e3f252c5c170d5129763212bfb20281",
+            "https://main.tail30f401.ts.net:8080/price-push.js?__WB_REVISION__=17ccd5c1e090b3f63cc618717d6f398c"
+          ]
+        }
+      ],
+      "cookieVisible": false,
+      "cookieCount": 0,
+      "precacheCount": 24,
+      "entryAsset": "/assets/index-iO6L_k1Q.js",
+      "at": "2026-10-23T13:18:38.077Z"
+    },
+    "afterLazyImports": {
+      "url": "https://main.tail30f401.ts.net:8080/",
+      "title": "홈 · 술장",
+      "heading": "술장 로그인",
+      "scripts": [
+        "https://main.tail30f401.ts.net:8080/assets/index-iO6L_k1Q.js"
+      ],
+      "controller": {
+        "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+        "state": "activated"
+      },
+      "registrations": [
+        {
+          "scope": "https://main.tail30f401.ts.net:8080/",
+          "active": {
+            "scriptURL": "https://main.tail30f401.ts.net:8080/sw.js",
+            "state": "activated"
+          },
+          "waiting": null,
+          "installing": null
+        }
+      ],
+      "cacheEntries": [
+        {
+          "name": "workbox-precache-v2-https://main.tail30f401.ts.net:8080/",
+          "entries": [
+            "https://main.tail30f401.ts.net:8080/apple-touch-icon.png?__WB_REVISION__=a5cb6c1eac42c98f4873b75bdafcfd97",
+            "https://main.tail30f401.ts.net:8080/assets/CategoriesPage-7Q46bx-0.js",
+            "https://main.tail30f401.ts.net:8080/assets/CleanupConfirmation-CPhpfuch.js",
+            "https://main.tail30f401.ts.net:8080/assets/CollectionQualityPage-DLwg22Xo.js",
+            "https://main.tail30f401.ts.net:8080/assets/DiscoverPage-BsTCGMyF.js",
+            "https://main.tail30f401.ts.net:8080/assets/ImportPage-Kq94zLxR.js",
+            "https://main.tail30f401.ts.net:8080/assets/InventoryPage-BcoKfTkc.js",
+            "https://main.tail30f401.ts.net:8080/assets/PriceWatchPage-teRlIR83.js",
+            "https://main.tail30f401.ts.net:8080/assets/SettingsPage-CYrjS3p1.js",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-B3tzj1cF.css",
+            "https://main.tail30f401.ts.net:8080/assets/StatsPage-CFur0EOc.js",
+            "https://main.tail30f401.ts.net:8080/assets/VendorsPage-Cqlpz5GQ.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-0FWXPXmW.css",
+            "https://main.tail30f401.ts.net:8080/assets/index-BFQl3lLt.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-CkKGVUPy.js",
+            "https://main.tail30f401.ts.net:8080/assets/index-iO6L_k1Q.js",
+            "https://main.tail30f401.ts.net:8080/assets/workbox-window.prod.es5-BBnX5xw4.js",
+            "https://main.tail30f401.ts.net:8080/favicon.svg?__WB_REVISION__=4e992ffc0270390f1323770a090e35f7",
+            "https://main.tail30f401.ts.net:8080/icons/icon-192.png?__WB_REVISION__=40ac914d99e8c23c5718819dd380c47a",
+            "https://main.tail30f401.ts.net:8080/icons/icon-512.png?__WB_REVISION__=d77a16a87f4aae14bc88a47469bcf932",
+            "https://main.tail30f401.ts.net:8080/icons/icon-maskable-512.png?__WB_REVISION__=b9f8366aa2b0b5cd04d61164dd957f90",
+            "https://main.tail30f401.ts.net:8080/index.html?__WB_REVISION__=4c7e7f0720e861a9a81f71d2f99a6d58",
+            "https://main.tail30f401.ts.net:8080/manifest.webmanifest?__WB_REVISION__=2e3f252c5c170d5129763212bfb20281",
+            "https://main.tail30f401.ts.net:8080/price-push.js?__WB_REVISION__=17ccd5c1e090b3f63cc618717d6f398c"
+          ]
+        }
+      ],
+      "cookieVisible": false,
+      "cookieCount": 0,
+      "precacheCount": 24,
+      "entryAsset": "/assets/index-iO6L_k1Q.js",
+      "at": "2026-10-23T13:18:38.133Z"
+    }
+  },
+  "lazyModules": [
+    {
+      "module": "StatsPage",
+      "path": "/assets/StatsPage-CFur0EOc.js",
+      "exports": [
+        "StatsPage"
+      ],
+      "resource": {
+        "name": "https://main.tail30f401.ts.net:8080/assets/StatsPage-CFur0EOc.js",
+        "initiatorType": "script",
+        "duration": 2.300000011920929,
+        "transferSize": 0,
+        "encodedBodySize": 55554,
+        "decodedBodySize": 55554
+      },
+      "network": {
+        "path": "/assets/StatsPage-CFur0EOc.js",
+        "status": 200,
+        "sha256": "ed7d170aa39c03c77370645b40c98209c2d49394aba08ca18a568b66638326d3",
+        "bytes": 55554,
+        "headers": {
+          "content-type": "application/javascript",
+          "cache-control": "max-age=31536000, public, immutable",
+          "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+          "x-frame-options": "DENY",
+          "x-content-type-options": "nosniff",
+          "referrer-policy": "same-origin",
+          "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+        }
+      }
+    },
+    {
+      "module": "ImportPage",
+      "path": "/assets/ImportPage-Kq94zLxR.js",
+      "exports": [
+        "ImportPage"
+      ],
+      "resource": {
+        "name": "https://main.tail30f401.ts.net:8080/assets/ImportPage-Kq94zLxR.js",
+        "initiatorType": "script",
+        "duration": 1.8999999910593033,
+        "transferSize": 0,
+        "encodedBodySize": 6532,
+        "decodedBodySize": 6532
+      },
+      "network": {
+        "path": "/assets/ImportPage-Kq94zLxR.js",
+        "status": 200,
+        "sha256": "1e963eff38f0ab2ef4111d8f5efec140df5e0bbd04c204c4f913dfbaf13cbdba",
+        "bytes": 6532,
+        "headers": {
+          "content-type": "application/javascript",
+          "cache-control": "max-age=31536000, public, immutable",
+          "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+          "x-frame-options": "DENY",
+          "x-content-type-options": "nosniff",
+          "referrer-policy": "same-origin",
+          "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+        }
+      }
+    },
+    {
+      "module": "PriceWatchPage",
+      "path": "/assets/PriceWatchPage-teRlIR83.js",
+      "exports": [
+        "PriceWatchPage"
+      ],
+      "resource": {
+        "name": "https://main.tail30f401.ts.net:8080/assets/PriceWatchPage-teRlIR83.js",
+        "initiatorType": "script",
+        "duration": 1.7000000029802322,
+        "transferSize": 0,
+        "encodedBodySize": 14242,
+        "decodedBodySize": 14242
+      },
+      "network": {
+        "path": "/assets/PriceWatchPage-teRlIR83.js",
+        "status": 200,
+        "sha256": "df3400c4f74e0ddbf323125e1960a386a840753f4c3e8ed7b52e5d36270611d1",
+        "bytes": 14242,
+        "headers": {
+          "content-type": "application/javascript",
+          "cache-control": "max-age=31536000, public, immutable",
+          "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+          "x-frame-options": "DENY",
+          "x-content-type-options": "nosniff",
+          "referrer-policy": "same-origin",
+          "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+        }
+      }
+    }
+  ],
+  "sourceEdits": false,
+  "cacheManuallyCleared": false,
+  "loginPerformed": false,
+  "limitations": [
+    "Authenticated user flows",
+    "Physical mobile/iOS",
+    "External data/LLM integrations",
+    "Other users or long-lived installed PWA clients"
+  ],
+  "fixtureResponses": [
+    {
+      "phase": "reconstructed-before",
+      "path": "/",
+      "sha256": "78701dd357662cf34171f7dff437bcfa16c93e52276afef584371917571a37f5",
+      "serviceWorkerOwned": false
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/index-C3GqxHrD.js",
+      "sha256": "6752a6f6e24e532f47570abbf58bc96348d3fdede252e67c71598213217ecca7",
+      "serviceWorkerOwned": false
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/index-0FWXPXmW.css",
+      "sha256": "3d0b0a04cb52362f08d8c6817bec3fb858e67a1da0b295cd183d0b4351ba10f6",
+      "serviceWorkerOwned": false
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/workbox-window.prod.es5-BBnX5xw4.js",
+      "sha256": "cadd21be4a88598a4dec91a26a025df0a5790ff6baec54a884e401c3f5c95557",
+      "serviceWorkerOwned": false
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/sw.js",
+      "sha256": "d8f8af0c68fee02d360d14e63812ace5dead6446d016971cd963817204012277",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/workbox-2fbc6a65.js",
+      "sha256": "39c2e6ae44c3f29666f6a328b6523bf13a053a1d95c74af8ddea82b1045b0b6e",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/price-push.js",
+      "sha256": "fff8f5c347cc86e87bbd2b040ded25980b66facfbcd0c632e5e45876a475fb31",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/price-push.js",
+      "sha256": "fff8f5c347cc86e87bbd2b040ded25980b66facfbcd0c632e5e45876a475fb31",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/index.html",
+      "sha256": "78701dd357662cf34171f7dff437bcfa16c93e52276afef584371917571a37f5",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/favicon.svg",
+      "sha256": "b579a3c9e1f073457258d67f2cef2c6b9841b6939309b848a9a089a424b2e814",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/apple-touch-icon.png",
+      "sha256": "83399a66e8cdfe998243cf7e21e44bb9ed590a2ee35606f0fbb75fef0bf9a41b",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/icons/icon-maskable-512.png",
+      "sha256": "fbda6e6014881cff54c6717fc3e841fb7a37cd8f6fd8002b2b0414ab462de6ad",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/icons/icon-512.png",
+      "sha256": "eb818f374308433be07c80eaddef3caa3ac65d1bb96375d11bd4b3004a5b2eff",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/icons/icon-192.png",
+      "sha256": "0aebcbf8d8646fb41668f8cd8b6a7a0270987d8ee694ba05f386ec96c45bcca4",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/workbox-window.prod.es5-BBnX5xw4.js",
+      "sha256": "cadd21be4a88598a4dec91a26a025df0a5790ff6baec54a884e401c3f5c95557",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/index-CkKGVUPy.js",
+      "sha256": "cc2e81c6a2bf30b78c7626dbd54559a616064900c41652c774a5de467a6b48ed",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/index-C3GqxHrD.js",
+      "sha256": "6752a6f6e24e532f47570abbf58bc96348d3fdede252e67c71598213217ecca7",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/index-BFQl3lLt.js",
+      "sha256": "10e659dea5e72762867146529ff3d46e9401e9f9bd6f2147ece86c1f1c023991",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/index-0FWXPXmW.css",
+      "sha256": "3d0b0a04cb52362f08d8c6817bec3fb858e67a1da0b295cd183d0b4351ba10f6",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/VendorsPage-CoDWpz82.js",
+      "sha256": "9b1fc67bd0a56757b25ee9d9b9938654724f4d2a8ab47de7ca9d75a54669736d",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/StatsPage-dP6B8E4F.js",
+      "sha256": "cf3734f74f04f1ec9968d11ba21f31a08695eae2520cc2be31c003202c232add",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/StatsPage-B3tzj1cF.css",
+      "sha256": "1132bac9da819263dba516d0341a2ddd14b7712f309f37997cbf94f983baab13",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/SettingsPage-BmkM4B78.js",
+      "sha256": "fb2f9d7cafab203c34aab4c0b0fb64600168ff7625c1d254d980418415047a87",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/PriceWatchPage-B7eUi7Fx.js",
+      "sha256": "34056996b246f8aaaefbfa084669b070a70f3344a7ce1960e115b3feb0d74a79",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/InventoryPage-Dw1TUvsU.js",
+      "sha256": "22fea00f6b7d8685eb175e1920491704b3725d33c1c592baa2f1699f4d3a3de8",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/ImportPage-CZSUp7Hu.js",
+      "sha256": "e5d4838d65a97e282374151497f7ed967afe090757c2e156427d2422c59cd8df",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/DiscoverPage-DL26zrlO.js",
+      "sha256": "dfde9ea52aa5c80e5e63a36c60c18d76c335825d5babc6cac21ada1427bfbb2a",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/CollectionQualityPage-DG4hCadu.js",
+      "sha256": "bdaa00626110efa80aa96a8c518c31d8f34ba4c098ed1c28f0c9914c375c0a55",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/CleanupConfirmation-DnEwCHos.js",
+      "sha256": "32d064a75e77f4d9fc06e89e4e6169cb59b4ae06935199884430cc5a212b5229",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/assets/CategoriesPage-B5-fSTTM.js",
+      "sha256": "89009e4df5cf8aea6f0b497b0a8dbeec6aec1cf519fe8bba34db85fb49c47fcc",
+      "serviceWorkerOwned": true
+    },
+    {
+      "phase": "reconstructed-before",
+      "path": "/manifest.webmanifest",
+      "sha256": "171b12d028f421f855d2538dfad14d0f885f46cd95b5b2667b9d1e292799b805",
+      "serviceWorkerOwned": true
+    }
+  ],
+  "oldBundleResources": [
+    {
+      "path": "/",
+      "source": "immutable-old-image-fixture",
+      "sha256": "78701dd357662cf34171f7dff437bcfa16c93e52276afef584371917571a37f5",
+      "bytes": 1333
+    },
+    {
+      "path": "/sw.js",
+      "source": "immutable-old-image-fixture",
+      "sha256": "d8f8af0c68fee02d360d14e63812ace5dead6446d016971cd963817204012277",
+      "bytes": 2533
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "source": "immutable-old-image-fixture",
+      "sha256": "171b12d028f421f855d2538dfad14d0f885f46cd95b5b2667b9d1e292799b805",
+      "bytes": 470
+    },
+    {
+      "path": "/assets/index-C3GqxHrD.js",
+      "source": "immutable-old-image-fixture",
+      "sha256": "6752a6f6e24e532f47570abbf58bc96348d3fdede252e67c71598213217ecca7",
+      "bytes": 763585
+    }
+  ],
+  "readyAt": "2026-10-23T13:18:34.295Z",
+  "fixtureRoutingDisabledAt": "2026-10-23T13:18:34.295Z",
+  "fixtureResponsesAtSwitch": 31,
+  "deploymentSignalAt": "2026-10-23T13:18:34.295Z",
+  "networkAfter": [
+    {
+      "path": "/",
+      "status": 200,
+      "sha256": "ed1c054c6ab9a59e2f89b4fc639abfdb68b5ee549ef80aa94df0a58f3dcd3e46",
+      "bytes": 1333,
+      "headers": {
+        "content-type": "text/html",
+        "cache-control": "no-cache",
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "same-origin",
+        "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+      },
+      "entryAsset": "/assets/index-iO6L_k1Q.js"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "1eacf23ed678c27756cbe16dab2cc6ba08a8e0bd7217172d95f4186a3b908c0a",
+      "bytes": 2533,
+      "headers": {
+        "content-type": "application/javascript",
+        "cache-control": "no-cache",
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "same-origin",
+        "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+      }
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200,
+      "sha256": "171b12d028f421f855d2538dfad14d0f885f46cd95b5b2667b9d1e292799b805",
+      "bytes": 470,
+      "headers": {
+        "content-type": "application/octet-stream",
+        "cache-control": null,
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "same-origin",
+        "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+      }
+    },
+    {
+      "path": "/assets/index-iO6L_k1Q.js",
+      "status": 200,
+      "sha256": "b6f745bc5e2b2e6671e58dc0ad3721151f932f41fd45b22b9e5215c838699082",
+      "bytes": 776615,
+      "headers": {
+        "content-type": "application/javascript",
+        "cache-control": "max-age=31536000, public, immutable",
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "same-origin",
+        "permissions-policy": "camera=(self), microphone=(), geolocation=()"
+      }
+    }
+  ],
+  "closedOriginTabCount": 1,
+  "fonts": [
+    {
+      "family": "Gowun Batang",
+      "loaded": true
+    }
+  ],
+  "status": "passed",
+  "completedAt": "2026-10-23T13:18:38.158Z",
+  "browserClosed": true,
+  "profileRemoved": true,
+  "cleanedUpAt": "2026-10-23T13:20:53.335Z"
+}
