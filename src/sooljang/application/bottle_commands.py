@@ -4,7 +4,7 @@ import datetime
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import ConflictError
@@ -56,6 +56,24 @@ async def require_no_tasting(session: AsyncSession, bottle: Bottle) -> None:
         raise ConflictError("시음 기록이 있는 병은 개봉을 취소할 수 없습니다")
 
 
+async def bottles_with_active_tastings(
+    session: AsyncSession, bottle_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """호출자가 잠근 병 중 살아 있는 시음이 연결된 ID를 반환한다."""
+    return {
+        bottle_id
+        for bottle_id in await session.scalars(
+            select(TastingSession.bottle_id)
+            .where(
+                TastingSession.bottle_id.in_(bottle_ids),
+                TastingSession.deleted_at.is_(None),
+            )
+            .distinct()
+        )
+        if bottle_id is not None
+    }
+
+
 async def delete_purchase_bottles(
     session: AsyncSession, purchase_id: uuid.UUID, *, now: datetime.datetime
 ) -> None:
@@ -74,15 +92,10 @@ async def delete_purchase_bottles(
     )
     if not bottles:
         return
-    tasted = await session.scalar(
-        select(func.count(func.distinct(TastingSession.bottle_id))).where(
-            TastingSession.bottle_id.in_([bottle.id for bottle in bottles]),
-            TastingSession.deleted_at.is_(None),
-        )
-    )
+    tasted = await bottles_with_active_tastings(session, [bottle.id for bottle in bottles])
     if tasted:
         raise ConflictError(
-            f"시음 기록이 있는 병 {tasted}개가 있어 구매 건을 삭제할 수 없습니다. "
+            f"시음 기록이 있는 병 {len(tasted)}개가 있어 구매 건을 삭제할 수 없습니다. "
             "시음 기록을 먼저 삭제하거나 구매 정보를 수정하세요"
         )
     for bottle in bottles:
