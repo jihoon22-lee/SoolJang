@@ -55,6 +55,6 @@ PR #182의 첫 CI는 웹 테스트·build·migration·컨테이너 검사를 통
 별도 `build(web)` 커밋으로 보존한다.
 
 새 lockfile로 `npm ci --prefix web`, `npm --prefix web audit --audit-level=high`(취약점 0),
-`npm --prefix web run check`(1,384 통과, branch 83.36%, build 포함)를 다시 통과했다.
+`npm --prefix web run check`(1,384 통과, branch 83.35%, build 포함)를 다시 통과했다.
 작성자 이메일의 GitHub 비공개 보호를 위해 미게시 커밋 metadata를 noreply 주소로 바꿨으며
 브라우저 결과의 source는 같은 코드의 최종 커밋 `436e0f7`로 연결한다.
