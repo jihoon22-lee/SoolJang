@@ -1,0 +1,52 @@
+# F2 제품 저장 재개와 초안 보존
+
+- 요구사항: 리뷰 ②·④, QS03·QS17·QS19, D255. 2026-10-23 사용자 승인 범위.
+- 코드 기준: `35efbd4`. F1 #182·F3 #183·F5 #184와 공통 보안 패치를 통합한다.
+- 데이터/권한: schema 0021·API·인증·소유권 유지. 탭·계정별 기존 sessionStorage 요청 키에
+  전송 내용·성공 단계를 보관하며 파일은 메모리에만 둔다. Dexie·outbox를 새로 초기화하지 않는다.
+
+## 변경
+
+온라인에서 제품·구매를 한 번 전송한 등록은 오프라인 새 생성으로 전환하지 않는다. 성공한
+제품과 구매 단계를 건너뛰고 미확정 단계는 같은 payload와 request key로 확인한다. 409나
+재확인의 422가 원래 요청을 잊게 하지 않는다. 첫 요청의 확정 422는 입력 수정을 허용한다.
+미확정 구매의 구매처 ID·SKU도 고정하며, 재조회한 제품에서 첫 SKU를 임의로 고르지 않고 원래
+용량과 하나만 일치할 때 구매를 생성한다. 규격이 사라졌으면 부분 실패와 입력을 유지한다.
+
+저장 중 입력·닫기·복원·재제출을 막고 같은 탭에서 화면을 다시 열어도 진행 상태를 이어 본다.
+성공은 제출한 초안 버전·계정 세대·폼 인스턴스를 확인해 정리한다. 이후 입력은 지우지 않으며,
+이미 만들어진 술에 연결된 입력으로 안내한다. 새 등록으로 복제하려면 남은 입력 폐기를 명시적으로
+확인한다. 새로고침 후 필요한 사진만 다시 선택할 수 있다. 매장 모드와 제품 수정에도 같은 초안
+보존 원칙을 적용했다. 탭 자체를 닫은 뒤 요청 키를 복구하는 기존 이연 범위는 확대하지 않는다.
+
+## 실행 증거
+
+| 검사 | 결과 |
+|---|---|
+| 관련 회귀 | 응답 유실·오프라인·재진입·새 초안·계정 전환을 재현. 추가 미확정 payload 6개와 SKU 4개는 수정 전 실패를 확인 |
+| 마지막 관련 검사 | 생성 hook·폼·draft·재진입 4파일 75개 통과, Biome·typecheck 통과 |
+| 전체 웹 | lint → typecheck → `test:coverage -- --maxWorkers=1` → build 모두 통과. 110파일·1,411개, statements 89.29%·branches 83.45%·functions 86.41%·lines 91.14% |
+| 마지막 변경의 범위 | 위 전체 검사 뒤 SKU 4개 회귀와 최소 수정. 관련 75개로 확인했고 최종 전체 수용은 통합 검사·PR CI에서 확인 |
+| 독립 코드 검토 | 루트 검토에서 미확정 payload 변경→409→새 키 생성 경계를 발견해 보완. 요청·초안·계정·원래 SKU 계약을 다시 확인 |
+| 실제 브라우저 | production build, Chromium 151, 390×844, 실제 격리 API·합성 계정. 아래 7개와 최종 SKU 2개 모두 통과 |
+
+브라우저 시나리오는 제품·구매·첨부 commit 후 응답 유실, offline retry, 폼 재열기·새로고침,
+저장 중 화면 이탈·재진입, 완료 뒤 새 초안 보존/명시 폐기, 지연 PATCH 뒤 새 수정 초안 보존,
+원래 입력 재확인과 새 초안 보존이다. OCR만 합성 route로 대체했으며 외부 유료 호출은 없다.
+서버와 Dexie의 제품·구매·병 개수가 일치하고 추가 outbox·중복 첨부·page error는 없었다.
+
+최종 코드 `35efbd4`의 추가 실제 API 검증에서는 SKU 응답 순서가 `[500, 700]`으로 바뀌어도
+원래 700ml에만 구매/병 각 1개를 연결했다. 원래 SKU를 실제 삭제한 경우에는 구매 0개,
+`completedId=null`, 초안의 700ml·1병과 동일 요청 키를 유지했다. 폼을 닫고 다시 열어도 같다.
+
+- [7개 시나리오 결과](assets/2026-10-23-review-product-save-recovery/results.json)
+- [최종 SKU 2개 결과](assets/2026-10-23-review-product-save-recovery/sku-final-results.json)
+- [오프라인 복구](assets/2026-10-23-review-product-save-recovery/01-purchase-offline-recovery.png)
+- [새 초안 보존](assets/2026-10-23-review-product-save-recovery/03-completed-newer-draft-protected.png)
+- [원래 요청 재확인](assets/2026-10-23-review-product-save-recovery/05-original-retry-preserves-newer-draft.png)
+- [삭제된 SKU의 입력 보존](assets/2026-10-23-review-product-save-recovery/06-sku-removed-recovery-preserved.png)
+
+초기 두 full 웹 검사를 동시에 실행한 때 여러 기존 테스트가 timeout으로 실패했다. 단독 실행으로
+전환해 위 결과를 얻었으며 timeout·coverage 기준은 낮추지 않았다. 개발 StrictMode의 기존 OCR
+panel 문제로 초기 dev 브라우저 시나리오를 완료하지 못한 뒤 production build에서 확인했다.
+운영 데이터 쓰기·외부 실연결·실기기 PWA 수용은 이 묶음에서 하지 않았다.
