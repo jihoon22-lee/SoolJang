@@ -58,3 +58,10 @@ PR #182의 첫 CI는 웹 테스트·build·migration·컨테이너 검사를 통
 `npm --prefix web run check`(1,384 통과, branch 83.35%, build 포함)를 다시 통과했다.
 작성자 이메일의 GitHub 비공개 보호를 위해 미게시 커밋 metadata를 noreply 주소로 바꿨으며
 브라우저 결과의 source는 같은 코드의 최종 커밋 `436e0f7`로 연결한다.
+
+이어 Python CI도 1,809개·coverage 92.44%를 통과했으나, 마지막 pip-audit가
+`certifi 2026.7.22 / PYSEC-2026-4320`을 발견했다. [상위 프로젝트 공지](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2)와
+[2026.10.19 릴리스](https://github.com/certifi/python-certifi/releases/tag/2026.10.19)를 확인하고
+`uv lock --upgrade-package certifi==2026.10.19`로 해당 인증서 묶음만 갱신했다. 추가 소스·키·HTTP
+정책 변경은 없으며 다른 Python 패키지는 그대로다. 새 환경에서 안전한 HTTP·검색 경계 123개,
+TLS trust bundle 로딩, 전체 런타임 의존성 pip-audit(알려진 취약점 없음)를 통과했다.
