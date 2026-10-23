@@ -1,0 +1,24 @@
+{
+  "browser": "151.0.7922.34",
+  "viewport": "390x844",
+  "actual_login_logout_api": true,
+  "injected_failure": "previous request 401 after relogin",
+  "logout_pending_blocks_login": true,
+  "results": [
+    {
+      "kind": "json",
+      "old_response": 401,
+      "new_login_preserved": true,
+      "server_session": 200,
+      "dexie_owner_matches": true
+    },
+    {
+      "kind": "multipart",
+      "old_response": 401,
+      "new_login_preserved": true,
+      "server_session": 200,
+      "dexie_owner_matches": true
+    }
+  ],
+  "passed": true
+}
