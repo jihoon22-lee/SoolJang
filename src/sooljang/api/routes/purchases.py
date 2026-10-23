@@ -27,7 +27,10 @@ from sooljang.api.schemas.product import (
     VendorOut,
     VendorUpdate,
 )
-from sooljang.application.bottle_commands import delete_purchase_bottles
+from sooljang.application.bottle_commands import (
+    bottles_with_active_tastings,
+    delete_purchase_bottles,
+)
 from sooljang.application.collection_cleanup import confirm_cleanup
 from sooljang.application.collection_inventory import owned
 from sooljang.application.corrections import correct_purchase_sku
@@ -368,6 +371,8 @@ async def create_purchase(
 async def update_purchase(
     purchase_id: uuid.UUID, payload: PurchaseUpdate, session: SessionDep, user_id: UserDep
 ) -> PurchaseOut:
+    # 정정·복구·다중 병 outbox와 같은 진입 잠금. 개별 행을 잠그기 전에 얻는다.
+    await lock_user_writes(session, user_id)
     fields = payload.model_dump(exclude_unset=True)
     # 병합/일괄 수정과 같은 Vendor → Purchase 순서로 잠근다.
     if "vendor_id" in fields and fields["vendor_id"] is not None:
@@ -401,14 +406,14 @@ async def _resize_bottles(
 ) -> None:
     """구매 병수를 바꾸고 병 레코드를 맞춘다.
 
-    늘리면 미개봉 병을 뒤 번호로 추가한다. 줄이면 번호가 큰 **미개봉** 병만 지운다 — 이미
-    마시거나 내보낸 병은 시음·이력이 붙어 있어 조용히 지우면 기록을 잃는다.
+    늘리면 미개봉 병을 뒤 번호로 추가한다. 줄이면 번호가 큰 미개봉 병 중 활성 시음이 없는
+    병만 지운다. 시음을 다른 병으로 정정하면 미개봉 병에도 기록이 연결될 수 있다.
     """
     bottles = list(
         await session.scalars(
             select(Bottle)
             .where(Bottle.purchase_id == purchase.id, Bottle.deleted_at.is_(None))
-            .order_by(Bottle.label_no)
+            .order_by(Bottle.id)
             .with_for_update()
         )
     )
@@ -421,12 +426,21 @@ async def _resize_bottles(
         start = (last_label or 0) + 1
         _add_bottles(session, user_id, purchase, count=quantity - len(bottles), start=start)
     elif quantity < len(bottles):
-        removable = [bottle for bottle in reversed(bottles) if bottle.status == "unopened"]
+        tasted = await bottles_with_active_tastings(session, [bottle.id for bottle in bottles])
+        removable = sorted(
+            (
+                bottle
+                for bottle in bottles
+                if bottle.status == BottleStatus.UNOPENED and bottle.id not in tasted
+            ),
+            key=lambda bottle: bottle.label_no,
+            reverse=True,
+        )
         excess = len(bottles) - quantity
         if len(removable) < excess:
             raise ConflictError(
-                f"미개봉 병 {len(removable)}개만 줄일 수 있습니다. "
-                "개봉·소진한 병은 제품 상세에서 상태를 먼저 바꾸세요"
+                f"활성 시음이 없는 미개봉 병 {len(removable)}개만 줄일 수 있습니다. "
+                "시음 연결과 병 상태를 먼저 확인하세요"
             )
         now = datetime.datetime.now(datetime.UTC)
         for bottle in removable[:excess]:
@@ -448,6 +462,7 @@ async def purchase_history(
 )
 async def delete_purchase(purchase_id: uuid.UUID, session: SessionDep, user_id: UserDep) -> None:
     """구매 건과 그에 속한 병을 함께 soft delete 한다. 시음이 붙은 병이 있으면 409다."""
+    await lock_user_writes(session, user_id)
     await _owned_purchase(session, user_id, purchase_id)
     # 병수 수정·동기화 삭제와 같은 구매 → 병 순서로 잠가 두 기기의 요청이 교착하지 않게 한다.
     purchase = await owned(session, Purchase, user_id, purchase_id)

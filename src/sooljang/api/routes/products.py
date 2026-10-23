@@ -305,6 +305,9 @@ async def get_product(product_id: uuid.UUID, session: SessionDep, user_id: UserD
 async def update_product(
     product_id: uuid.UUID, payload: ProductUpdate, session: SessionDep, user_id: UserDep
 ) -> ProductOut:
+    if "category_id" in payload.model_fields_set:
+        # 주종 삭제·병합의 소속 제품 검사와 같은 진입 잠금이다. 제품 행보다 먼저 얻는다.
+        await lock_user_writes(session, user_id)
     product = await load_product(session, user_id=user_id, product_id=product_id, for_update=True)
 
     if payload.category_id is not None:

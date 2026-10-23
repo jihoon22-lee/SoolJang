@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import Select, Text, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import Category, CategorySeed, Product
 from sooljang.infrastructure.legacy.categories import (
     MAX_CATEGORY_DEPTH,
@@ -201,6 +202,7 @@ async def create_category(
     `id` 를 지정하면 그대로 쓴다 — 오프라인에서 클라이언트가 미리 만든 UUIDv7 PK 를
     그대로 반영해야 재동기화 시 같은 레코드로 인식된다(`docs/architecture.md` §5.2).
     """
+    await lock_user_writes(session, user_id)
     if parent_id is not None:
         # 다른 사용자의 주종이나 삭제된 주종 아래에 만들면 트리에서 보이지 않게 된다.
         await _load_owned(session, user_id, parent_id, "상위")
@@ -238,6 +240,9 @@ async def reparent_category(
     자기 자신이나 후손을 부모로 지정하면 순환이 생겨 재귀 CTE 가 무한히 돈다. 반드시
     먼저 막는다. 새 부모도 같은 사용자의 살아 있는 주종이어야 한다.
     """
+    # 서로 다른 행을 옮겨도 같은 계층을 바꾼다. 행별 잠금만으로는 A→B/B→A의
+    # 순환 검사가 둘 다 통과하므로 계층을 읽기 전에 사용자 쓰기 진입을 직렬화한다.
+    await lock_user_writes(session, user_id)
     category = await _load_owned(session, user_id, category_id, "대상")
 
     if new_parent_id is not None:
@@ -268,6 +273,7 @@ async def get_category_seed(session: AsyncSession, *, user_id: uuid.UUID) -> Cat
         .where(CategorySeed.user_id == user_id, CategorySeed.deleted_at.is_(None))
         .order_by(CategorySeed.created_at.desc())
         .limit(1)
+        .execution_options(populate_existing=True)
     )
 
 
@@ -275,6 +281,7 @@ async def save_category_seed(
     session: AsyncSession, *, user_id: uuid.UUID, paths: list[list[str]]
 ) -> CategorySeed:
     """기본 주종 구조를 저장한다. 기존 저장이 있으면 갱신하고, 없으면 새로 만든다."""
+    await lock_user_writes(session, user_id)
     existing = await get_category_seed(session, user_id=user_id)
     if existing is not None:
         existing.paths = paths
@@ -293,6 +300,7 @@ async def save_current_tree_as_seed(session: AsyncSession, *, user_id: uuid.UUID
     부모가 자식보다 먼저 오도록 깊이 오름차순으로 정렬해 둔다 — `seed_default_categories`
     가 이 순서 그대로 upsert 하므로, 자식을 만들 때 부모가 이미 있어야 한다.
     """
+    await lock_user_writes(session, user_id)
     tree = await load_tree(session, user_id)
     paths = sorted({node.path for node in tree}, key=lambda path: (len(path), path))
     return await save_category_seed(session, user_id=user_id, paths=[list(path) for path in paths])
@@ -317,6 +325,7 @@ async def seed_default_categories(session: AsyncSession, *, user_id: uuid.UUID) 
     `_resolve_seed_paths` 가 정한다 — 사용자가 `save_current_tree_as_seed` 로 자기
     구조를 저장해 뒀으면 하드코딩된 전역 기본값 대신 그 구조로 복원한다(Task 28).
     """
+    await lock_user_writes(session, user_id)
     created: list[Category] = []
     by_path: dict[tuple[str, ...], uuid.UUID] = {}
 
@@ -380,12 +389,15 @@ async def reorder_categories(
     """형제 간 표시 순서를 일괄 변경한다. 갱신된 건수를 반환한다."""
     if not order_by_id:
         return 0
+    await lock_user_writes(session, user_id)
     rows = await session.scalars(
-        select(Category).where(
+        select(Category)
+        .where(
             Category.user_id == user_id,
             Category.id.in_(list(order_by_id)),
             Category.deleted_at.is_(None),
         )
+        .execution_options(populate_existing=True)
     )
     updated = 0
     for category in rows:
@@ -406,7 +418,9 @@ async def _child_ids(session: AsyncSession, category_id: uuid.UUID) -> list[uuid
 
 async def _products_in(session: AsyncSession, category_id: uuid.UUID) -> list[Product]:
     rows = await session.scalars(
-        select(Product).where(Product.category_id == category_id, Product.deleted_at.is_(None))
+        select(Product)
+        .where(Product.category_id == category_id, Product.deleted_at.is_(None))
+        .execution_options(populate_existing=True)
     )
     return list(rows)
 
@@ -414,7 +428,12 @@ async def _products_in(session: AsyncSession, category_id: uuid.UUID) -> list[Pr
 async def _load_owned(
     session: AsyncSession, user_id: uuid.UUID, category_id: uuid.UUID, label: str
 ) -> Category:
-    category = await session.get(Category, category_id)
+    # 호출자가 잠금을 기다리기 전에 읽은 ORM 객체를 유지하고 있을 수 있다.
+    category = await session.scalar(
+        select(Category)
+        .where(Category.id == category_id, Category.user_id == user_id)
+        .execution_options(populate_existing=True)
+    )
     if category is None or category.deleted_at is not None or category.user_id != user_id:
         raise CategoryError(f"{label} 카테고리를 찾을 수 없습니다: {category_id}")
     return category
@@ -434,6 +453,7 @@ async def delete_category(
     있으면 기본은 거부하고, 사용자가 처리 방식을 명시해야 삭제된다
     (`docs/architecture.md` §2.3 삭제 정책).
     """
+    await lock_user_writes(session, user_id)
     category = await _load_owned(session, user_id, category_id, "대상")
     if reassign_to == category_id:
         # 자기 자신으로 옮기면 제품이 곧 삭제될 주종을 계속 가리켜 목록·통계에서 사라진다.
@@ -447,7 +467,7 @@ async def delete_category(
                 "promote_children 을 지정하면 상위로 올린 뒤 삭제합니다"
             )
         for child_id in children:
-            child = await session.get(Category, child_id)
+            child = await session.get(Category, child_id, populate_existing=True)
             if child is not None:
                 child.parent_id = category.parent_id
 
@@ -476,6 +496,7 @@ async def merge_categories(
     if source_id == target_id:
         raise CategoryError("자기 자신과 병합할 수 없습니다")
 
+    await lock_user_writes(session, user_id)
     source = await _load_owned(session, user_id, source_id, "원본")
     await _load_owned(session, user_id, target_id, "대상")
 
@@ -494,7 +515,7 @@ async def merge_categories(
             )
 
     for child_id in await _child_ids(session, source_id):
-        child = await session.get(Category, child_id)
+        child = await session.get(Category, child_id, populate_existing=True)
         if child is not None:
             child.parent_id = target_id
 

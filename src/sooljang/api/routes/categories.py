@@ -40,6 +40,7 @@ from sooljang.application.categories import (
     save_current_tree_as_seed,
     seed_default_categories,
 )
+from sooljang.application.write_locks import lock_user_writes
 from sooljang.infrastructure.database.models import Category
 from sooljang.infrastructure.legacy.categories import MAX_CATEGORY_DEPTH
 
@@ -139,7 +140,8 @@ async def create_category_endpoint(
 async def update_category(
     category_id: uuid.UUID, payload: CategoryUpdate, session: SessionDep, user_id: UserDep
 ) -> CategoryNodeOut:
-    category = await session.get(Category, category_id)
+    await lock_user_writes(session, user_id)
+    category = await session.get(Category, category_id, populate_existing=True)
     if category is None or category.deleted_at is not None or category.user_id != user_id:
         raise NotFoundError(f"카테고리를 찾을 수 없습니다: {category_id}")
 
@@ -169,10 +171,6 @@ async def reparent(
     자기 자신이나 후손을 부모로 지정하면 순환이 생겨 거부한다. 이동 후 깊이가 상한을 넘어도
     거부한다.
     """
-    category = await session.get(Category, category_id)
-    if category is None or category.deleted_at is not None or category.user_id != user_id:
-        raise NotFoundError(f"카테고리를 찾을 수 없습니다: {category_id}")
-
     try:
         await reparent_category(
             session,
