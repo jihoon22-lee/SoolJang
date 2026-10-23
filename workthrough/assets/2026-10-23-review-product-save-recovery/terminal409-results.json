@@ -1,0 +1,21 @@
+{
+  "sourceSha": "35b80166b75375ad4e2ee476e57c1c46f23ddf43",
+  "prefix": "F2-409-1792754447818",
+  "browser": "151.0.7922.34",
+  "viewport": "390x844",
+  "scenario": "lost_product_response_then_real_deleted_product_409_and_explicit_abandonment",
+  "responseSource": "unmodified real API",
+  "productPostStatuses": [
+    201,
+    409,
+    201
+  ],
+  "sameKeyForConflict": true,
+  "conflictSurvivesReload": true,
+  "cancelPreservesRequestAndDraft": true,
+  "explicitAbandonmentCreatesNothing": true,
+  "nextUserSubmitHasNewKey": true,
+  "newProductCount": 1,
+  "applicationDeleteRequests": 0,
+  "pageErrors": []
+}

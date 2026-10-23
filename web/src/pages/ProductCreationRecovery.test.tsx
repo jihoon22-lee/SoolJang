@@ -1,7 +1,7 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { productsApi, purchasesApi } from "@/api/client";
+import { ApiError, productsApi, purchasesApi } from "@/api/client";
 import type { Product } from "@/api/types";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
@@ -173,6 +173,48 @@ it("제품 응답 유실 뒤 재진입한 다른 초안은 잠그고 처음 입�
   await screen.findByText(/이 술은 이미 등록됐습니다/);
   expect(localStorage.getItem(key)).toContain("나중에 쓴 초안");
   expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
+});
+
+it.each([
+  "제품 목록",
+  "매장 모드",
+])("%s의 확정 제품 충돌은 안내와 명시 확인 뒤 새 작성으로 돌아간다", async (entry) => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new ApiError(409, "앞선 등록 내역을 확인할 수 없습니다"))
+    .mockResolvedValue(created);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
+  if (entry === "제품 목록") {
+    renderWithQuery(page());
+    await userEvent.click(await screen.findByRole("button", { name: "새 술 등록" }));
+    await userEvent.type(screen.getByLabelText("이름 *"), created.name);
+  } else {
+    renderWithQuery(<StoreModePage onOpenDetail={select} />);
+    await userEvent.type(screen.getByLabelText("이름으로 찾기"), created.name);
+    await userEvent.click(
+      await screen.findByRole("button", { name: `"${created.name}" 새로 등록` }),
+    );
+  }
+  await userEvent.click(screen.getByRole("button", { name: "등록" }));
+  await screen.findByText(/기존에 저장된 술이 있을 수/);
+  expect(screen.getByRole("button", { name: "등록" })).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "처음 입력으로 이어서 저장" }),
+  ).not.toBeInTheDocument();
+  const stop = screen.getByRole("button", { name: "등록 요청 중단하고 새로 작성" });
+  await userEvent.click(stop);
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining("술 목록"));
+  expect(screen.getByLabelText("이름 *")).toHaveValue(created.name);
+  expect(create).toHaveBeenCalledOnce();
+  await userEvent.click(stop);
+  await waitFor(() => expect(screen.getByLabelText("이름 *")).toBeEnabled());
+  expect(screen.queryByText(/기존에 저장된 술이 있을 수/)).not.toBeInTheDocument();
+  expect(create).toHaveBeenCalledOnce();
+  await userEvent.clear(screen.getByLabelText("이름 *"));
+  await userEvent.type(screen.getByLabelText("이름 *"), "목록 확인 후 새 술");
+  await userEvent.click(screen.getByRole("button", { name: "등록" }));
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+  expect(create.mock.calls[1]?.[0].request_id).not.toBe(create.mock.calls[0]?.[0].request_id);
 });
 
 it("매장 모드의 저장 중 검색 복귀는 잠기며 구매 실패 뒤 재열기도 이미 만든 제품을 이어 쓴다", async () => {

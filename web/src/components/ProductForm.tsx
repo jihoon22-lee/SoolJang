@@ -144,7 +144,9 @@ export function ProductForm({
   const apiError = error instanceof ApiError ? error : null;
   // outbox 경로는 일반 Error 를 던진다(서버 왕복 없이 로컬에서 바로 검증하는 경우).
   const genericError = !apiError && error instanceof Error ? error.message : null;
-  const productUncertain = Boolean(creation?.productRequest && !creation.product);
+  const productUncertain = Boolean(
+    creation?.productRequest && !creation.product && !creation.productConflict,
+  );
   const purchaseUncertain = Boolean(creation?.purchaseRequest && !creation.purchaseCreated);
   const set = (patch: Partial<ProductFormValues>) => setValues((prev) => ({ ...prev, ...patch }));
 
@@ -195,7 +197,7 @@ export function ProductForm({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (submitting || creation?.completedId) return;
+    if (submitting || creation?.completedId || creation?.productConflict) return;
     if (!values.name.trim()) {
       fail("form-name", "이름을 입력하세요");
       return;
@@ -247,7 +249,22 @@ export function ProductForm({
         </p>
       )}
 
-      {(productUncertain || purchaseUncertain) && creation ? (
+      {creation?.productConflict ? (
+        <div className="notice">
+          <p>
+            이 등록 요청은 더 진행할 수 없습니다. 기존에 저장된 술이 있을 수 있으니 술 목록을 먼저
+            확인하세요. 요청과 입력은 중단을 확인할 때까지 보관합니다.
+          </p>
+          <button type="button" disabled={submitting} onClick={onCancel}>
+            입력 닫고 술 확인
+          </button>
+          {onDiscardCompleted ? (
+            <button type="button" disabled={submitting} onClick={onDiscardCompleted}>
+              등록 요청 중단하고 새로 작성
+            </button>
+          ) : null}
+        </div>
+      ) : (productUncertain || purchaseUncertain) && creation ? (
         <div className="notice">
           <p>
             앞서 보낸 {productUncertain ? "제품" : "구매"}의 저장 결과를 아직 확인하지 못했습니다.
@@ -300,7 +317,7 @@ export function ProductForm({
       ) : null}
 
       <fieldset
-        disabled={submitting || Boolean(creation?.completedId)}
+        disabled={submitting || Boolean(creation?.completedId) || creation?.productConflict}
         style={{ border: 0, padding: 0, margin: 0 }}
       >
         <fieldset
