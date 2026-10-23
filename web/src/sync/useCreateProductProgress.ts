@@ -98,6 +98,12 @@ export function creationLabel(file: File | null | undefined, restore: boolean): 
   return file ?? labels.get(key) ?? null;
 }
 
+/** 전송 전 거절·첫 확정 검증 실패의 복구만 정리한다. 폼 초안과 생성 요청 키는 유지한다. */
+export function clearRejectedProductCreation(): void {
+  labels.delete(ownerKey());
+  finishSubmission(FORM);
+}
+
 /** 정상 완료를 닫는다. 확정 충돌의 중단은 별도 사용자 확인을 마친 호출만 허용한다. */
 export function finishProductCreation(confirmedConflict = false): boolean {
   const progress = readProductCreationProgress();
