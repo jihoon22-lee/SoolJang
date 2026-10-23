@@ -8,14 +8,19 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 
+import { isCurrentAuthSession } from "@/api/authSession";
 import { ApiError, authApi } from "@/api/client";
 import type { LoginResponse } from "@/api/types";
 
 interface LoginScreenProps {
   onAuthenticated: (result: LoginResponse) => void;
+  blocked?: boolean;
 }
 
-export function LoginScreen({ onAuthenticated }: LoginScreenProps): React.JSX.Element {
+export function LoginScreen({
+  onAuthenticated,
+  blocked = false,
+}: LoginScreenProps): React.JSX.Element {
   const setupStatus = useQuery({
     queryKey: ["auth", "setup-status"],
     queryFn: ({ signal }) => authApi.setupStatus(signal),
@@ -31,15 +36,18 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps): React.JSX.El
   const [localError, setLocalError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (): Promise<LoginResponse> =>
+    mutationFn: () =>
       needsSetup
         ? authApi.setup({ email, password, display_name: displayName })
         : authApi.login({ email, password }),
-    onSuccess: onAuthenticated,
+    onSuccess: ({ result, session }) => {
+      if (isCurrentAuthSession(session)) onAuthenticated(result);
+    },
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    if (blocked || mutation.isPending) return;
     setLocalError(null);
 
     if (needsSetup && password !== passwordConfirm) {
@@ -150,7 +158,8 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps): React.JSX.El
           </p>
         ) : null}
 
-        <button type="submit" className="primary" disabled={mutation.isPending}>
+        {blocked && <output className="auth-hint">이전 로그아웃을 마무리하고 있습니다.</output>}
+        <button type="submit" className="primary" disabled={blocked || mutation.isPending}>
           {mutation.isPending ? "확인 중…" : needsSetup ? "계정 만들고 시작" : "로그인"}
         </button>
       </form>

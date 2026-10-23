@@ -1,4 +1,11 @@
+import {
+  advanceAuthSession,
+  assertCurrentAuthSession,
+  captureAuthSession,
+  withAuthCookieLock,
+} from "@/api/authSession";
 import type { TastingLifecycleInput, TastingLifecycleResult } from "@/api/tastingLifecycle";
+import { forgetLocalSession } from "@/sync/localSession";
 /**
  * 백엔드 API 클라이언트.
  *
@@ -147,11 +154,13 @@ function buildQuery(params: RequestOptions["params"]): string {
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const session = captureAuthSession();
   const { method = "GET", body, params, signal, acceptStatuses = [] } = options;
 
   const csrfToken = readCsrfToken();
   const needsCsrf = method !== "GET" && method !== "HEAD";
 
+  assertCurrentAuthSession(session);
   const response = await fetch(`${API_PREFIX}${path}${buildQuery(params)}`, {
     method,
     ...(options.cache ? { cache: options.cache } : {}),
@@ -166,11 +175,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     ...(signal ? { signal } : {}),
   });
 
+  assertCurrentAuthSession(session);
   if (response.status === 204) {
     return undefined as T;
   }
 
   const payload = await parseJson(response);
+  assertCurrentAuthSession(session);
 
   if (!response.ok && !acceptStatuses.includes(response.status)) {
     const problem = isProblemDetail(payload) ? payload : null;
@@ -187,11 +198,16 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
  * 401 이면 세션 만료를 알린다.
  *
  * 로그인 요청 자체의 401 은 "비밀번호가 틀렸다"는 뜻이므로 세션 만료로 다루면 안 된다.
- * 로그인 화면이 직접 메시지를 보여준다.
+ * 로그인 화면이 직접 메시지를 보여준다. 로그아웃 401도 호출자가 완료로 정리한다.
  */
 function notifyIfUnauthorized(status: number, path: string): void {
   if (status !== 401) return;
-  if (path.startsWith("/auth/login") || path.startsWith("/auth/setup")) return;
+  if (
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/setup") ||
+    path.startsWith("/auth/logout")
+  )
+    return;
   onUnauthorized?.();
 }
 
@@ -355,6 +371,7 @@ async function upload<T>(
   file: File,
   fields: Record<string, string> = {},
 ): Promise<T> {
+  const session = captureAuthSession();
   const form = new FormData();
   form.append("file", file);
   for (const [key, value] of Object.entries(fields)) {
@@ -362,6 +379,7 @@ async function upload<T>(
   }
 
   const csrfToken = readCsrfToken();
+  assertCurrentAuthSession(session);
   const response = await fetch(`${API_PREFIX}${path}`, {
     method: "POST",
     credentials: "same-origin",
@@ -373,6 +391,7 @@ async function upload<T>(
   });
 
   const payload = await response.json().catch(() => null);
+  assertCurrentAuthSession(session);
   if (!response.ok) {
     notifyIfUnauthorized(response.status, path);
     const problem = isProblemDetail(payload) ? payload : null;
@@ -393,21 +412,49 @@ export const importsApi = {
 
 // --- 인증 --------------------------------------------------------------------
 
+function startLoginSession(): void {
+  // Set-Cookie는 JSON 본문보다 먼저 적용된다. 요청 시작부터 다른 탭을 잠근다.
+  advanceAuthSession();
+  try {
+    // 본문 수신이 실패해도 새 쿠키와 예전 오프라인 계정을 함께 사용하지 않는다.
+    forgetLocalSession();
+  } catch {
+    // 로컬 저장소를 사용할 수 없어도 온라인 로그인은 계속한다.
+  }
+}
+
 export const authApi = {
   /** 초기 설정이 필요한지. 로그인 화면이 어떤 폼을 보여줄지 결정한다. */
   setupStatus: (signal?: AbortSignal) =>
     request<SetupStatus>("/auth/setup", signal ? { signal } : {}),
 
   setup: (input: { email: string; password: string; display_name: string }) =>
-    request<LoginResponse>("/auth/setup", { method: "POST", body: input }),
+    withAuthCookieLock(async () => {
+      startLoginSession();
+      const started = captureAuthSession();
+      const result = await request<LoginResponse>("/auth/setup", { method: "POST", body: input });
+      assertCurrentAuthSession(started);
+      // 다음 탭이 cookie lock을 얻기 전에 확정한다. UI callback까지 늦추면 새 쿠키와
+      // 화면의 계정이 서로 달라지는 틈이 생긴다.
+      advanceAuthSession();
+      return { result, session: captureAuthSession() };
+    }),
 
   login: (input: { email: string; password: string }) =>
-    request<LoginResponse>("/auth/login", { method: "POST", body: input }),
+    withAuthCookieLock(async () => {
+      startLoginSession();
+      const started = captureAuthSession();
+      const result = await request<LoginResponse>("/auth/login", { method: "POST", body: input });
+      assertCurrentAuthSession(started);
+      advanceAuthSession();
+      return { result, session: captureAuthSession() };
+    }),
 
-  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  logout: () => withAuthCookieLock(() => request<void>("/auth/logout", { method: "POST" })),
 
   /** 현재 사용자. 401 이면 로그인되지 않은 상태다. */
-  me: (signal?: AbortSignal) => request<User>("/auth/me", signal ? { signal } : {}),
+  me: (signal?: AbortSignal) =>
+    withAuthCookieLock(() => request<User>("/auth/me", signal ? { signal } : {})),
 
   changePassword: (input: { current_password: string; new_password: string }) =>
     request<void>("/auth/password", { method: "POST", body: input }),

@@ -1,6 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  AUTH_SESSION_KEY,
+  advanceAuthSession,
+  assertCurrentAuthSession,
+  captureAuthSession,
+  isCurrentAuthSession,
+  withAuthCookieLock,
+} from "@/api/authSession";
 import { ApiError, authApi, setUnauthorizedHandler } from "@/api/client";
 import type { User } from "@/api/types";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -99,6 +107,7 @@ export function App() {
   const [localOwner, setLocalOwner] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [logoutNotice, setLogoutNotice] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // 메뉴 바깥을 클릭하거나 Esc 를 누르면 닫는다 — 드물게 여는 `SyncStatusBadge` 패널과 달리
   // 이건 자주 여닫는 상시 내비게이션이라 닫는 방법이 트리거 버튼 재클릭뿐이면 불편하다.
@@ -179,8 +188,10 @@ export function App() {
   const session = useQuery({
     queryKey: ["auth", "me"],
     queryFn: async ({ signal }) => {
+      const authSession = captureAuthSession();
       if (!navigator.onLine) {
-        const cached = offlineSession();
+        const cached = await withAuthCookieLock(async () => offlineSession());
+        assertCurrentAuthSession(authSession);
         if (!cached)
           throw new Error("오프라인으로 열 수 있는 계정이 없습니다. 온라인에서 로그인하세요");
         return cached;
@@ -190,14 +201,17 @@ export function App() {
         // 화면으로 넘어가지 않게 로그아웃 상태로 둔다.
         try {
           await authApi.logout();
+          assertCurrentAuthSession(authSession);
           clearPendingLogout();
         } catch (error) {
+          assertCurrentAuthSession(authSession);
           if (!(error instanceof ApiError && error.status === 401)) return null;
           clearPendingLogout();
         }
         return null;
       }
       const user = await authApi.me(signal);
+      assertCurrentAuthSession(authSession);
       rememberLocalSession(user);
       return user;
     },
@@ -207,6 +221,7 @@ export function App() {
   });
 
   const handleUnauthorized = useCallback(() => {
+    advanceAuthSession();
     syncEngine.stop();
     lockDatabase();
     forgetLocalSession();
@@ -246,18 +261,32 @@ export function App() {
   }, [session.data, queryClient]);
 
   useEffect(() => {
+    function lockChangedAccount() {
+      syncEngine.stop();
+      lockDatabase();
+      setLocalOwner(null);
+      void queryClient.cancelQueries();
+      queryClient.setQueryData(["auth", "me"], null);
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
+      advanceAuthSession(false);
+      // 이미 열린 로그인 화면의 공개 안내 조회도 취소됐을 수 있다.
+      void queryClient.invalidateQueries({ queryKey: ["auth", "setup-status"] });
+    }
     function accountChanged(event: StorageEvent) {
-      if (event.key !== LOCAL_SESSION_KEY) return;
-      if (!event.newValue || offlineSession()?.id !== session.data?.id) {
-        syncEngine.stop();
-        lockDatabase();
-        setLocalOwner(null);
-        void queryClient.cancelQueries();
-        queryClient.setQueryData(["auth", "me"], null);
-        queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
+      if (event.key === AUTH_SESSION_KEY) {
+        // 이미 인정한 세대의 지연 이벤트는 현재 로그인까지 취소하지 않는다.
+        if (isCurrentAuthSession(captureAuthSession())) return;
+      } else if (event.key === LOCAL_SESSION_KEY) {
+        const cached = offlineSession();
+        if (cached && cached.id === session.data?.id) return;
+      } else {
+        return;
       }
+      lockChangedAccount();
     }
     window.addEventListener("storage", accountChanged);
+    // 모듈을 읽은 뒤 listener를 등록하기 전에 도착한 인증 전환도 처리한다.
+    if (!isCurrentAuthSession(captureAuthSession())) lockChangedAccount();
     return () => window.removeEventListener("storage", accountChanged);
   }, [queryClient, session.data?.id]);
 
@@ -290,7 +319,9 @@ export function App() {
       <>
         {logoutNotice ? <output className="app-notice">{logoutNotice}</output> : null}
         <LoginScreen
+          blocked={loggingOut}
           onAuthenticated={(result) => {
+            void queryClient.cancelQueries();
             rememberLocalSession(result.user);
             queryClient.setQueryData(["auth", "me"], result.user);
             clearPendingLogout();
@@ -372,15 +403,19 @@ export function App() {
                         className="settings-menu-logout"
                         onClick={() => {
                           setSettingsOpen(false);
+                          setLoggingOut(true);
                           handleUnauthorized();
+                          const authSession = captureAuthSession();
                           void clearBrowserPush().catch(() => undefined);
                           void authApi
                             .logout()
                             .then(() => {
+                              if (!isCurrentAuthSession(authSession)) return;
                               clearPendingLogout();
                               setLogoutNotice(null);
                             })
                             .catch((error: unknown) => {
+                              if (!isCurrentAuthSession(authSession)) return;
                               if (error instanceof ApiError && error.status === 401) return;
                               markPendingLogout();
                               setLogoutNotice(
@@ -388,6 +423,8 @@ export function App() {
                               );
                             })
                             .finally(() => {
+                              setLoggingOut(false);
+                              if (!isCurrentAuthSession(authSession)) return;
                               queryClient.setQueryData(["auth", "me"], null);
                               queryClient.removeQueries({
                                 predicate: (query) => query.queryKey[0] !== "auth",

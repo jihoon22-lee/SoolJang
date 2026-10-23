@@ -271,7 +271,14 @@ async def change_password(
     비밀번호를 바꾸는 이유는 대개 유출 우려다. 기존 세션을 살려 두면 바꾼 의미가 없다.
     현재 세션은 유지해 사용자가 다시 로그인하지 않게 한다.
     """
-    user = await session.get(User, active_session.user_id)
+    # 세션 활동 시각 쓰기에 기대지 않고 현재 암호 확인부터 변경까지 직렬화한다.
+    # 두 탭이 같은 옛 암호로 동시에 성공해 한쪽의 새 암호를 덮지 않게 한다.
+    user = await session.scalar(
+        select(User)
+        .where(User.id == active_session.user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if user is None:
         raise UnauthorizedError("사용자를 찾을 수 없습니다")
     if not verify_password(payload.current_password, user.password_hash):

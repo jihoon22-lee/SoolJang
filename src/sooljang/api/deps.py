@@ -8,11 +8,12 @@
 이 되게 한다.
 """
 
+import datetime
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, Request, status
+from fastapi import BackgroundTasks, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.api.errors import DomainError
@@ -59,7 +60,9 @@ SessionDep = Annotated[AsyncSession, Depends(db_session, scope="function")]
 SettingsDep = Annotated[Settings, Depends(settings_dependency)]
 
 
-async def active_session(request: Request, session: SessionDep) -> Session:
+async def active_session(
+    request: Request, session: SessionDep, background_tasks: BackgroundTasks
+) -> Session:
     """세션 쿠키를 검증해 활성 세션을 반환한다.
 
     쓰기 요청은 CSRF 토큰도 확인한다. `SameSite=Lax` 가 1차 방어이고 double-submit cookie
@@ -71,7 +74,12 @@ async def active_session(request: Request, session: SessionDep) -> Session:
         return cached
 
     from sooljang.api.routes.auth import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
-    from sooljang.application.auth import csrf_tokens_match, resolve_session
+    from sooljang.application.auth import (
+        SESSION_ACTIVITY_INTERVAL,
+        csrf_tokens_match,
+        resolve_session,
+        touch_session_activity,
+    )
 
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
@@ -85,6 +93,20 @@ async def active_session(request: Request, session: SessionDep) -> Session:
         request.cookies.get(CSRF_COOKIE), request.headers.get(CSRF_HEADER)
     ):
         raise CsrfError("CSRF 토큰이 없거나 일치하지 않습니다")
+
+    observed_at = datetime.datetime.now(datetime.UTC)
+    if (
+        record.last_seen_at is None
+        or record.last_seen_at <= observed_at - SESSION_ACTIVITY_INTERVAL
+    ):
+        # function 범위의 db_session이 commit·close한 뒤 실행된다. 요청 중에 세션 행을
+        # 갱신하면 느린 외부 호출 하나가 같은 쿠키의 다른 요청까지 기다리게 한다.
+        background_tasks.add_task(
+            touch_session_activity,
+            session_id=record.id,
+            user_id=record.user_id,
+            observed_at=observed_at,
+        )
 
     request.state.auth_session = record
     return record
