@@ -105,10 +105,50 @@ export function captureFormDraft(form: string) {
 }
 
 const REQUEST_PREFIX = "sooljang-request-v1:";
+/** 같은 탭에서 폼을 다시 열어도 진행 중인 제출을 이어 본다. 파일·비밀은 저장하지 않는다. */
+export const submissionEvents = new EventTarget();
 function requestKey(form: string, userId: string): string {
   // 복제한 탭은 sessionStorage 를 복사해 오지만 탭 id 는 새로 받는다. 탭 id 를 넣어 두 탭의
   // 같은 내용 등록이 한 요청으로 합쳐지지 않게 한다.
   return `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${tabId()}:${form}`;
+}
+
+export function submissionSnapshot(form: string): string | null {
+  const userId = databaseIdentity().userId;
+  if (!userId) return null;
+  try {
+    return sessionStorage.getItem(requestKey(form, userId));
+  } catch {
+    return null;
+  }
+}
+
+export function pendingSubmissionRequestId(form: string): string | null {
+  try {
+    const record: unknown = JSON.parse(submissionSnapshot(form) ?? "null");
+    return record !== null &&
+      typeof record === "object" &&
+      "requestId" in record &&
+      typeof record.requestId === "string"
+      ? record.requestId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 성공한 단계·완료 결과만 기록한다. File은 호출자가 메모리에만 보관한다. */
+export function saveSubmissionProgress(form: string, progress: unknown): void {
+  const userId = databaseIdentity().userId;
+  if (!userId || containsSecret(progress)) throw new Error("등록 진행 상태를 보관할 수 없습니다");
+  const requestId = submissionRequestId(form);
+  try {
+    sessionStorage.setItem(requestKey(form, userId), JSON.stringify({ requestId, progress }));
+  } catch {
+    draftEvents.dispatchEvent(new Event("storage-error"));
+    throw new Error("등록 진행 상태를 보관하지 못했습니다. 저장소를 확인한 뒤 다시 시도하세요");
+  }
+  submissionEvents.dispatchEvent(new Event("change"));
 }
 
 /**
@@ -132,6 +172,7 @@ export function submissionRequestId(form: string): string {
   const requestId = crypto.randomUUID();
   try {
     sessionStorage.setItem(key, JSON.stringify({ requestId }));
+    submissionEvents.dispatchEvent(new Event("change"));
   } catch {
     // 저장할 수 없으면 이번 요청만 멱등하다(재시도는 새 요청).
   }
@@ -155,6 +196,7 @@ export function finishSubmission(form: string, requestId?: string): void {
   } catch {
     sessionStorage.removeItem(key);
   }
+  submissionEvents.dispatchEvent(new Event("change"));
 }
 
 /**

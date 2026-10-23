@@ -27,7 +27,8 @@ import type { ProductContext } from "@/router";
 import { getStockFirstPreference, setStockFirstPreference } from "@/stockFirstPreference";
 import { databaseIdentity, db } from "@/sync/db";
 import {
-  clearFormDraft,
+  captureFormDraft,
+  clearSubmittedDraft,
   finishSubmission,
   migrateFormDrafts,
   settleFailedSubmission,
@@ -48,12 +49,16 @@ import {
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { getLocalTasting } from "@/sync/tastingHistory";
 import {
-  PartialProductCreationError,
   resolveProducerIdOffline,
   resolveVendorId,
   splitVarieties,
   useCreateProduct,
 } from "@/sync/useCreateProduct";
+import {
+  finishProductCreation,
+  productCreationPending,
+  readProductCreationProgress,
+} from "@/sync/useCreateProductProgress";
 import { useSessionMutation } from "@/sync/useSessionMutation";
 import { captureWriteSession } from "@/sync/writeSession";
 
@@ -363,14 +368,48 @@ export function ProductsPage({
   });
 
   const createProduct = useCreateProduct();
+  const latestFormInstance = useRef(formInstance);
+  latestFormInstance.current = formInstance;
+
+  // 저장 중 화면을 나갔다 돌아온 폼도 완료 결과를 받아, 제출했던 값으로 다시 생성하지 않는다.
+  const completedCreation = createProduct.progress?.completedId;
+  const completedDraftCleared = createProduct.progress?.draftCleared;
+  const creationPending = createProduct.isPending;
+  useEffect(() => {
+    if (!creationPending && completedCreation && completedDraftCleared && finishProductCreation()) {
+      setFormOpen(false);
+      setFormPrefill(null);
+      setPendingLabelFile(null);
+      setFormInstance((instance) => instance + 1);
+    }
+  }, [completedCreation, completedDraftCleared, creationPending]);
 
   function closeForm() {
+    if (productCreationPending()) return;
     setFormOpen(false);
     setFormPrefill(null);
     setPendingLabelFile(null);
-    // 실패 후 남은 `PartialProductCreationError` 를 지운다 — 안 지우면 폼을 취소하고
-    // 전혀 다른 제품을 새로 등록할 때도 이전 시도의 제품을 재사용하려 든다(B7).
+    setFormInstance((instance) => instance + 1);
+    // 화면 오류만 닫는다. 부분 성공과 미확정 요청은 재열기에서도 같은 등록을 이어간다.
     createProduct.reset();
+  }
+
+  async function discardCompletedCreation() {
+    const session = captureWriteSession();
+    const draft = captureFormDraft("product:create");
+    if (
+      !(await confirm({
+        title: "보관 입력 지우기",
+        message: "이미 저장한 술과 구매는 유지됩니다. 남아 있는 입력만 지우고 새 술을 작성할까요?",
+        confirmLabel: "입력 지우고 새로 작성",
+        danger: true,
+      }))
+    )
+      return;
+    if (!session.isCurrent() || !createProduct.discardCompleted(draft)) return;
+    setFormPrefill(null);
+    setPendingLabelFile(null);
+    setFormInstance((instance) => instance + 1);
   }
 
   /** 표 헤더 클릭 정렬. `ProductFilterPanel` 의 정렬 드롭다운과 같은 상태를 토글할 뿐,
@@ -566,6 +605,7 @@ export function ProductsPage({
               <LabelOcrPanel
                 categories={categoryTree?.items ?? []}
                 onPrefill={(values, file) => {
+                  if (productCreationPending() || readProductCreationProgress()) return;
                   setFormPrefill(values);
                   setPendingLabelFile(file);
                   setFormInstance((instance) => instance + 1);
@@ -576,17 +616,19 @@ export function ProductsPage({
             <button
               type="button"
               className="primary"
+              disabled={formOpen && createProduct.isPending}
               onClick={() => {
                 if (formOpen) {
                   closeForm();
                 } else {
                   setFormPrefill(null);
                   setPendingLabelFile(null);
+                  setFormInstance((instance) => instance + 1);
                   setFormOpen(true);
                 }
               }}
             >
-              {formOpen ? "폼 닫기" : "새 술 등록"}
+              {formOpen ? "폼 닫기" : createProduct.progress ? "등록 이어서 작성" : "새 술 등록"}
             </button>
             <button
               type="button"
@@ -637,20 +679,27 @@ export function ProductsPage({
             categories={categoryTree?.items ?? []}
             submitting={createProduct.isPending}
             error={createProduct.error}
+            creation={createProduct.progress}
+            onLabelFile={setPendingLabelFile}
+            onOpenCreated={(id) => {
+              closeForm();
+              onSelectProduct(id);
+            }}
+            onDiscardCompleted={() => void discardCompletedCreation()}
             onSubmit={(values) => {
-              // 직전 시도가 "제품은 만들어졌는데 나머지가 실패" 였다면(B7), 그 제품과
-              // 진행 상태를 그대로 넘겨 재시도가 중복 생성을 하지 않게 한다.
-              const priorError = createProduct.error;
-              const retry =
-                priorError instanceof PartialProductCreationError
-                  ? {
-                      existingProduct: priorError.product,
-                      purchaseAlreadyCreated: priorError.purchaseCreated,
-                    }
-                  : {};
+              const instance = formInstance;
               createProduct.mutate(
-                { values, labelFile: pendingLabelFile, ...retry },
-                { onSuccess: closeForm },
+                { values, labelFile: pendingLabelFile },
+                {
+                  onSuccess: () => {
+                    if (
+                      mounted.current &&
+                      latestFormInstance.current === instance &&
+                      readProductCreationProgress()?.draftCleared
+                    )
+                      closeForm();
+                  },
+                },
               );
             }}
             onCancel={closeForm}
@@ -826,6 +875,7 @@ function ProductDetailView({
   const bottles = useLiveQuery(() => getBottlesForProduct(productId), [productId]);
   const categoryTree = useLiveQuery(() => getCategoryTree(), []);
   const [editing, setEditing] = useState(false);
+  const editInstance = useRef(0);
   const productName = product?.name;
   // 탭·방문 기록에서 어떤 술의 상세인지 알 수 있게 제품명을 제목에 넣는다(App 은 상세 제목을
   // 정하지 않는다).
@@ -847,7 +897,16 @@ function ProductDetailView({
   });
 
   const updateProduct = useSessionMutation({
-    mutationFn: async (values: ProductFormValues, session) => {
+    mutationFn: async (
+      {
+        values,
+      }: {
+        values: ProductFormValues;
+        draft: ReturnType<typeof captureFormDraft>;
+        instance: number;
+      },
+      session,
+    ) => {
       const producerName = values.producerName?.trim() || null;
       const fields = {
         name: values.name.trim(),
@@ -903,9 +962,9 @@ function ProductDetailView({
         },
       });
     },
-    onSuccess: () => {
-      clearFormDraft(productEditDraftKey(productId));
-      setEditing(false);
+    onSuccess: (_result, input) => {
+      if (clearSubmittedDraft(input.draft) && editInstance.current === input.instance)
+        setEditing(false);
     },
   });
 
@@ -1071,8 +1130,18 @@ function ProductDetailView({
         categories={categoryTree?.items ?? []}
         submitting={updateProduct.isPending}
         error={updateProduct.error}
-        onSubmit={(values) => updateProduct.mutate(values)}
-        onCancel={() => setEditing(false)}
+        onSubmit={(values) =>
+          updateProduct.mutate({
+            values,
+            draft: captureFormDraft(productEditDraftKey(productId)),
+            instance: editInstance.current,
+          })
+        }
+        onCancel={() => {
+          if (updateProduct.isPending) return;
+          editInstance.current += 1;
+          setEditing(false);
+        }}
         initialValues={valuesFromProduct(product)}
         draftKey={productEditDraftKey(productId)}
       />
@@ -1105,6 +1174,7 @@ function ProductDetailView({
       onBack={onBack}
       onEdit={() => {
         migrateLegacyEditDraft(productId);
+        editInstance.current += 1;
         setEditing(true);
       }}
       onDelete={() => remove.mutate()}

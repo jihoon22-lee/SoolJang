@@ -1,14 +1,18 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { activateDatabase, lockDatabase } from "@/sync/db";
 import {
   captureFormDraft,
   clearFormDraft,
   clearSubmittedDraft,
+  draftEvents,
   finishSubmission,
   migrateFormDrafts,
+  pendingSubmissionRequestId,
+  saveSubmissionProgress,
   settleFailedSubmission,
   submissionRequestId,
+  submissionSnapshot,
   useDraftState,
 } from "@/sync/drafts";
 
@@ -16,6 +20,7 @@ beforeEach(async () => {
   await activateDatabase("draft-owner");
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   localStorage.clear();
   sessionStorage.clear();
   lockDatabase();
@@ -216,6 +221,58 @@ it("다른 계정의 요청 식별자는 이어받지 않는다", async () => {
   await activateDatabase("other-owner");
 
   expect(submissionRequestId("product:create")).not.toBe(mine);
+});
+
+it("등록 진행 기록은 같은 요청과 탭·계정에만 붙고 다른 계정에서 보이지 않는다", async () => {
+  const requestId = submissionRequestId("creation-progress");
+  saveSubmissionProgress("creation-progress", {
+    productId: "saved-product",
+    purchaseCreated: true,
+  });
+  expect(JSON.parse(submissionSnapshot("creation-progress") ?? "null")).toEqual({
+    requestId,
+    progress: { productId: "saved-product", purchaseCreated: true },
+  });
+  expect(pendingSubmissionRequestId("creation-progress")).toBe(requestId);
+  await activateDatabase("another-owner");
+  expect(submissionSnapshot("creation-progress")).toBeNull();
+  expect(pendingSubmissionRequestId("creation-progress")).toBeNull();
+  lockDatabase();
+  expect(() => saveSubmissionProgress("creation-progress", {})).toThrow("보관할 수 없습니다");
+});
+
+it("등록 진행 저장 실패는 이전 기록을 지우지 않고 보관 실패를 알린다", () => {
+  saveSubmissionProgress("creation-progress", { productId: "saved-product" });
+  const saved = submissionSnapshot("creation-progress");
+  const failed = vi.fn();
+  draftEvents.addEventListener("storage-error", failed);
+  const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("저장 공간 부족", "QuotaExceededError");
+  });
+  expect(() => saveSubmissionProgress("creation-progress", { completed: true })).toThrow(
+    "보관하지 못했습니다",
+  );
+  expect(failed).toHaveBeenCalledOnce();
+  set.mockRestore();
+  draftEvents.removeEventListener("storage-error", failed);
+  expect(submissionSnapshot("creation-progress")).toBe(saved);
+});
+
+it("등록 진행에 비밀을 저장하지 않으며 깨진 요청 식별자는 유효한 진행으로 읽지 않는다", () => {
+  expect(() =>
+    saveSubmissionProgress("creation-progress", { nested: { apiKey: "never-store" } }),
+  ).toThrow("보관할 수 없습니다");
+  const id = submissionRequestId("creation-progress");
+  const key = Object.keys(sessionStorage).find((key) =>
+    sessionStorage.getItem(key)?.includes(id),
+  ) as string;
+  sessionStorage.setItem(key, "{");
+  expect(pendingSubmissionRequestId("creation-progress")).toBeNull();
+  const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("읽기 불가");
+  });
+  expect(submissionSnapshot("creation-progress")).toBeNull();
+  get.mockRestore();
 });
 
 it("이전 형식 키의 초안을 새 키로 옮기고 새 키에 이미 있는 초안은 덮지 않는다", async () => {
