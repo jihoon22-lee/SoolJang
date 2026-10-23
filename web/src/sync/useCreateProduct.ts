@@ -191,8 +191,8 @@ export function useCreateProduct() {
             remember();
             product = await productsApi.create(current.productRequest).catch((error: unknown) => {
               session.assertCurrent();
-              // 첫 전송의 422만 저장되지 않았다고 확정할 수 있다. 앞서 응답을 잃었거나
-              // 409를 받았다면 키를 풀지 않고 원래 payload로 계속 결과를 확인한다.
+              // 첫 전송의 422만 입력 수정을 허용한다. 앞서 응답을 잃었다면 422에도 원래
+              // payload를 보존한다. 409는 자동 재전송을 멈추고 명시적 중단을 기다린다.
               if (!wasUncertain && error instanceof ApiError && error.status === 422)
                 current.productRequest = null;
               if (error instanceof ApiError && error.status === 409) current.productConflict = true;
