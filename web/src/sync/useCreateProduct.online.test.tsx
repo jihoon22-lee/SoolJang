@@ -324,8 +324,12 @@ it("첫 제품 요청의 확정 검증 실패는 내용을 고치되 같은 요�
     .mockResolvedValue(created);
   const hook = renderHook(useCreateProduct, { wrapper });
   const values = { ...purchaseValues, quantity: "" };
+  const draftKey = "sooljang-draft-v1:online-create-owner:creation-test-tab:product:create";
+  const draft = JSON.stringify({ value: values, revision: "first-rejection" });
+  localStorage.setItem(draftKey, draft);
   await expect(submit(hook.result, { values })).rejects.toThrow("입력 오류");
-  expect(hook.result.current.progress?.productRequest).toBeNull();
+  expect(hook.result.current.progress).toBeNull();
+  expect(localStorage.getItem(draftKey)).toBe(draft);
   await submit(hook.result, { values: { ...values, name: "고친 제품명" } });
   expect(create.mock.calls[1]?.[0].name).toBe("고친 제품명");
   expect(create.mock.calls[1]?.[0].request_id).toBe(create.mock.calls[0]?.[0].request_id);
@@ -709,8 +713,11 @@ it("구매 결과가 미확정일 때 병수를 비워도 결과를 확인한 �
   expect(purchase.mock.calls[1]?.[0].request_id).toBe(purchase.mock.calls[0]?.[0].request_id);
 });
 
-it("라벨 사진이 있는 새 입력은 오프라인에서 사진을 버리고 등록 완료로 처리하지 않는다", async () => {
+it("첫 오프라인 라벨 거절은 미전송 복구 상태를 만들거나 작성 중 초안을 지우지 않는다", async () => {
   connection.state = "offline";
+  const key = "sooljang-draft-v1:online-create-owner:creation-test-tab:product:create";
+  const draft = JSON.stringify({ value: purchaseValues, revision: "unsent-label" });
+  localStorage.setItem(key, draft);
   const hook = renderHook(useCreateProduct, { wrapper });
   await expect(
     submit(hook.result, {
@@ -719,6 +726,152 @@ it("라벨 사진이 있는 새 입력은 오프라인에서 사진을 버리고
     }),
   ).rejects.toThrow("온라인에서 저장");
   expect(await db.outbox.count()).toBe(0);
-  expect(hook.result.current.progress?.labelPending).toBe(true);
+  expect(hook.result.current.progress).toBeNull();
+  expect(localStorage.getItem(key)).toBe(draft);
   expect(Object.values(sessionStorage).join()).not.toContain("synthetic-file-bytes");
+});
+
+it.each([
+  "offline",
+  "422",
+] as const)("첫 %s 라벨 거절 뒤 폼을 다시 열어 다른 제품을 저장하면 이전 사진은 첨부하지 않는다", async (rejection) => {
+  const create = vi.spyOn(productsApi, "create");
+  if (rejection === "422") create.mockRejectedValueOnce(new ApiError(422, "숙성 연수 오류"));
+  else connection.state = "offline";
+  const nextName = "사진과 무관한 다음 제품";
+  create.mockResolvedValue({ ...created, name: nextName });
+  const attach = vi.spyOn(attachmentsApi, "create").mockResolvedValue({} as never);
+  const values = { ...purchaseValues, quantity: "", ageYears: "-1" };
+  const first = renderHook(useCreateProduct, { wrapper });
+  await expect(
+    submit(first.result, { values, labelFile: new File(["first-label"], "first.png") }),
+  ).rejects.toThrow();
+  first.unmount();
+  connection.state = "idle";
+  const reopened = renderHook(useCreateProduct, { wrapper });
+  await submit(reopened.result, {
+    values: { ...values, name: nextName, ageYears: "12" },
+    labelFile: null,
+  });
+  expect(create.mock.lastCall?.[0].name).toBe(nextName);
+  expect(attach).not.toHaveBeenCalled();
+  if (rejection === "422")
+    expect(create.mock.calls[1]?.[0].request_id).toBe(create.mock.calls[0]?.[0].request_id);
+});
+
+it("첫 422 뒤 오프라인에서 다시 거절돼도 다음 제품에 이전 사진을 복원하지 않는다", async () => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new ApiError(422, "숙성 연수 오류"))
+    .mockResolvedValue(created);
+  const attach = vi.spyOn(attachmentsApi, "create").mockResolvedValue({} as never);
+  const values = { ...purchaseValues, quantity: "", ageYears: "-1" };
+  const label = new File(["not-saved-label"], "not-saved.png");
+  const first = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(first.result, { values, labelFile: label })).rejects.toThrow();
+  connection.state = "offline";
+  first.rerender();
+  await expect(submit(first.result, { values, labelFile: label })).rejects.toThrow("온라인");
+  first.unmount();
+  connection.state = "idle";
+  const reopened = renderHook(useCreateProduct, { wrapper });
+  await submit(reopened.result, {
+    values: { ...values, name: "사진 없는 다음 제품", ageYears: "12" },
+    labelFile: null,
+  });
+  expect(attach).not.toHaveBeenCalled();
+  expect(create.mock.calls[1]?.[0].request_id).toBe(create.mock.calls[0]?.[0].request_id);
+});
+
+it("첫 422 뒤 사진 없는 오프라인 재시도도 전송 상태를 만들지 않는다", async () => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new ApiError(422, "숙성 연수 오류"))
+    .mockResolvedValue(created);
+  const attach = vi.spyOn(attachmentsApi, "create").mockResolvedValue({} as never);
+  const values = { ...purchaseValues, quantity: "", ageYears: "-1" };
+  const first = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(first.result, { values })).rejects.toThrow();
+  connection.state = "offline";
+  first.rerender();
+  await expect(submit(first.result, { values, labelFile: null })).rejects.toThrow("온라인");
+  expect(first.result.current.progress).toBeNull();
+  await expect(
+    submit(first.result, {
+      values,
+      labelFile: new File(["another-unsent-label"], "another.png"),
+    }),
+  ).rejects.toThrow("온라인");
+  expect(await db.outbox.count()).toBe(0);
+  first.unmount();
+  connection.state = "idle";
+  const reopened = renderHook(useCreateProduct, { wrapper });
+  await submit(reopened.result, {
+    values: { ...values, name: "사진 없는 다음 제품", ageYears: "12" },
+    labelFile: null,
+  });
+  expect(attach).not.toHaveBeenCalled();
+  expect(create.mock.calls[1]?.[0].request_id).toBe(create.mock.calls[0]?.[0].request_id);
+});
+
+it.each([
+  "offline",
+  "422",
+] as const)("첫 %s 거절을 같은 폼에서 고쳐 사진을 명시적으로 다시 보내면 그 사진을 저장한다", async (rejection) => {
+  const create = vi.spyOn(productsApi, "create");
+  if (rejection === "422") create.mockRejectedValueOnce(new ApiError(422, "숙성 연수 오류"));
+  else connection.state = "offline";
+  create.mockResolvedValue(created);
+  const attach = vi.spyOn(attachmentsApi, "create").mockResolvedValue({} as never);
+  const values = { ...purchaseValues, quantity: "", ageYears: "-1" };
+  const label = new File(["kept-by-current-form"], "current.png");
+  const hook = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(hook.result, { values, labelFile: label })).rejects.toThrow();
+  connection.state = "idle";
+  hook.rerender();
+  await submit(hook.result, { values: { ...values, ageYears: "12" }, labelFile: label });
+  expect(attach).toHaveBeenCalledExactlyOnceWith(label, { kind: "label", product_id: created.id });
+});
+
+it.each([
+  new TypeError("응답 유실"),
+  new ApiError(503, "일시 장애"),
+])("온라인 제품 요청의 %s 이후 오프라인 거절은 기존 요청과 라벨을 지우지 않는다", async (error) => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(error)
+    .mockResolvedValue(created);
+  const attach = vi.spyOn(attachmentsApi, "create").mockResolvedValue({} as never);
+  const values = { ...purchaseValues, quantity: "" };
+  const label = new File(["uncertain-label"], "uncertain.png");
+  const hook = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(hook.result, { values, labelFile: label })).rejects.toThrow();
+  connection.state = "offline";
+  hook.rerender();
+  await expect(submit(hook.result, { values })).rejects.toThrow("온라인에서 이어서");
+  expect(hook.result.current.progress?.labelPending).toBe(true);
+  expect(await db.outbox.count()).toBe(0);
+  connection.state = "idle";
+  hook.rerender();
+  await submit(hook.result, { values });
+  expect(create.mock.calls[1]?.[0].request_id).toBe(create.mock.calls[0]?.[0].request_id);
+  expect(attach).toHaveBeenCalledExactlyOnceWith(label, { kind: "label", product_id: created.id });
+});
+
+it("응답 유실 뒤 받은 422는 최초 확정 거절처럼 라벨 복구를 지우지 않는다", async () => {
+  const create = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new TypeError("응답 유실"))
+    .mockRejectedValueOnce(new ApiError(422, "나중에 받은 검증 오류"))
+    .mockResolvedValue(created);
+  const attach = vi.spyOn(attachmentsApi, "create").mockResolvedValue({} as never);
+  const values = { ...purchaseValues, quantity: "" };
+  const label = new File(["preserved-label"], "preserved.png");
+  const hook = renderHook(useCreateProduct, { wrapper });
+  await expect(submit(hook.result, { values, labelFile: label })).rejects.toThrow();
+  await expect(submit(hook.result, { values })).rejects.toThrow();
+  expect(hook.result.current.progress?.labelPending).toBe(true);
+  await submit(hook.result, { values });
+  expect(create.mock.calls[2]?.[0]).toEqual(create.mock.calls[0]?.[0]);
+  expect(attach).toHaveBeenCalledExactlyOnceWith(label, { kind: "label", product_id: created.id });
 });

@@ -16,6 +16,7 @@ import { enqueue } from "@/sync/outbox";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import {
   beginProductCreation,
+  clearRejectedProductCreation,
   creationLabel,
   finishProductCreation,
   type ProductCreationProgress,
@@ -156,12 +157,30 @@ export function useCreateProduct() {
             false,
           );
         const productForm = "product:create:product";
+        // 남아 있는 요청 키나 오프라인 거절에서 파생된 표시는 전송의 증거가 아니다.
+        const hasOnlineSubmission = Boolean(
+          current.product || current.productRequest || current.purchaseRequest,
+        );
+        if (offline && current.labelPending && !hasOnlineSubmission) {
+          session.assertCurrent();
+          clearRejectedProductCreation();
+          throw new Error(
+            "라벨 사진이 있는 등록은 온라인에서 저장하세요. 폼을 닫으면 사진을 다시 선택해야 합니다",
+          );
+        }
         if (
           offline &&
-          (current.product || current.onlineAttempted || pendingSubmissionRequestId(productForm))
+          (hasOnlineSubmission ||
+            current.onlineAttempted ||
+            pendingSubmissionRequestId(productForm))
         ) {
-          current.onlineAttempted = true;
-          remember();
+          if (hasOnlineSubmission) {
+            current.onlineAttempted = true;
+            remember();
+          } else {
+            session.assertCurrent();
+            clearRejectedProductCreation();
+          }
           const message =
             "앞서 보낸 등록은 온라인에서 이어서 확인하세요. 입력과 저장된 단계는 보존했습니다";
           if (current.product)
@@ -174,10 +193,6 @@ export function useCreateProduct() {
         }
         current.onlineAttempted = !offline;
         remember();
-        if (offline && current.labelPending)
-          throw new Error(
-            "라벨 사진이 있는 등록은 온라인에서 저장하세요. 입력과 사진은 보관했습니다",
-          );
         let productId: string;
         if (!offline) {
           // 두 요청 키는 전체 등록이 끝날 때까지 유지한다. 폼을 다시 열거나 새로고침해도
@@ -191,10 +206,12 @@ export function useCreateProduct() {
             remember();
             product = await productsApi.create(current.productRequest).catch((error: unknown) => {
               session.assertCurrent();
-              // 첫 전송의 422만 입력 수정을 허용한다. 앞서 응답을 잃었다면 422에도 원래
-              // payload를 보존한다. 409는 자동 재전송을 멈추고 명시적 중단을 기다린다.
-              if (!wasUncertain && error instanceof ApiError && error.status === 422)
-                current.productRequest = null;
+              // 첫 전송의 확정 422는 복구 상태와 임시 사진만 정리한다. 응답을 잃은 뒤의
+              // 422는 원래 payload를 보존하고, 409는 자동 재전송 대신 명시적 중단을 기다린다.
+              if (!wasUncertain && error instanceof ApiError && error.status === 422) {
+                remembered = false;
+                clearRejectedProductCreation();
+              }
               if (error instanceof ApiError && error.status === 409) current.productConflict = true;
               throw error;
             });
