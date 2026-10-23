@@ -1,0 +1,126 @@
+{
+  "target_version": "1.11.1",
+  "revision": "9d55639429fdf6cf36e4a1fddf8cdeaf66a894a4",
+  "started_at": "2026-10-23T13:09:37.277116+00:00",
+  "completed_at": "2026-10-23T13:10:48.241430+00:00",
+  "passed": true,
+  "rollback_used": false,
+  "stages": [
+    {
+      "name": "preflight_complete",
+      "at": "2026-10-23T13:09:37.545998+00:00"
+    },
+    {
+      "name": "writes_stopped",
+      "at": "2026-10-23T13:09:38.262133+00:00"
+    },
+    {
+      "name": "fresh_backup_verified",
+      "at": "2026-10-23T13:10:05.235844+00:00"
+    },
+    {
+      "name": "fresh_backup_restored",
+      "at": "2026-10-23T13:10:05.991810+00:00"
+    },
+    {
+      "name": "restored_cookie_and_data_verified",
+      "at": "2026-10-23T13:10:21.142853+00:00"
+    },
+    {
+      "name": "new_image_readonly_and_preservation_verified",
+      "at": "2026-10-23T13:10:34.514887+00:00"
+    },
+    {
+      "name": "api_ready",
+      "at": "2026-10-23T13:10:40.714011+00:00"
+    },
+    {
+      "name": "web_ready",
+      "at": "2026-10-23T13:10:47.448121+00:00"
+    },
+    {
+      "name": "deployment_verified",
+      "at": "2026-10-23T13:10:48.241441+00:00"
+    }
+  ],
+  "data_verification": {
+    "tables": 44,
+    "restored_checks": 47,
+    "production_readonly_checks": 69,
+    "api_digest_groups": 10,
+    "all_hashes_match": true,
+    "attachments_checked": 0
+  },
+  "http_verification": {
+    "local_and_https": true,
+    "anonymous_products_denied": true,
+    "setup_preserved": true,
+    "security_headers": true,
+    "image_asset_hashes_match": true,
+    "entry_asset": "/assets/index-iO6L_k1Q.js"
+  },
+  "backup_bundle": "sooljang-20261023T130945790952Z-79898355",
+  "backup_schema": [
+    "0021_quality_aliases"
+  ],
+  "backup_upload_files": 0,
+  "containers": {
+    "api": {
+      "id": "f60c957e803f2a4cbd259efe455defb3f6ade1fdb31b203c9f6064a3363a1607",
+      "image": "sha256:43fd4a8d1681d2831aa0d7486762eb332df7ee2aedb582fb8e8f599393583e97",
+      "started_at": "2026-10-23T13:10:34.980471678Z",
+      "restart_count": 0,
+      "state": "running",
+      "health": "healthy",
+      "revision": "9d55639429fdf6cf36e4a1fddf8cdeaf66a894a4",
+      "version": "1.11.1"
+    },
+    "web": {
+      "id": "ad1ec7a7309e3b1e25582dcee442fa9d40ad801bac5209769ac10e53da1ec5e3",
+      "image": "sha256:f015672f75d484a39333f5c829f9e17b469b23dce9cfdd63ddbfc0ec40cbce06",
+      "started_at": "2026-10-23T13:10:41.670144286Z",
+      "restart_count": 0,
+      "state": "running",
+      "health": "healthy",
+      "revision": "9d55639429fdf6cf36e4a1fddf8cdeaf66a894a4",
+      "version": "1.11.1"
+    },
+    "db": {
+      "id": "3a44186161ed851fe77d8efb4d731b1dd47955cc40c1592f2e1d98d397878364",
+      "image": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+      "started_at": "2026-10-22T13:54:15.7415729Z",
+      "restart_count": 0,
+      "state": "running",
+      "health": "healthy",
+      "revision": null,
+      "version": null
+    }
+  },
+  "preservation": {
+    "database_identity_start_and_restarts_unchanged": true,
+    "uploads_mount_unchanged": true,
+    "all_table_hashes_compared_in_utc": true,
+    "production_password_or_session_mutations_by_probe": false
+  },
+  "preflight_recovery_key": {
+    "dpapi_backups_checked": 5,
+    "master_key_matches": true,
+    "plaintext_saved": false
+  },
+  "first_attempt": {
+    "backup_bundle": "sooljang-20261023T130331743676Z-71fd39c6",
+    "switched_images": false,
+    "same_old_api_resumed": true,
+    "reason": "Production UTC and restored Asia/Seoul serialized timestamptz differently; probe connections normalized to UTC before successful retry.",
+    "timezone_only_difference_reproduced_on_tables": 24
+  },
+  "cleanup": {
+    "temporary_databases_removed": 2,
+    "restored_uploads_removed": true,
+    "development_postgresql_stopped": true,
+    "permanent_backups_retained": true,
+    "previous_images_retained": true,
+    "temporary_directory_removed": true,
+    "browser_profiles_removed": true
+  }
+}

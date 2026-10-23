@@ -224,6 +224,10 @@ api는 이전 nginx 뒤에서도 동작하지만(운영 쿠키는 항상 Secure,
 보안 헤더·CSP와 실제 접속 주소 전달은 새 web 이미지에만 있으므로 api 다음 web을 바로 전환한다.
 현재 DB·uploads를 유지하고 자동 downgrade나 덤프 덮어쓰기를 하지 않는다.
 
+v1.11.1도 schema 0021을 유지하며 v1.11.0에서 올릴 때 migration·데이터 이전이 없다.
+전환 실패 시 같은 schema를 확인하고 현재 DB·uploads를 유지한 채 이전 v1.11.0 api/web 이미지로
+복귀할 수 있다. v1.11.0에는 F1~F5에서 수정한 결함이 남으므로 복귀는 서비스 복구에 한정한다.
+
 ### 4.6 생존·준비 상태와 실제 기능 검증
 
 ```bash
@@ -266,13 +270,13 @@ docker compose ps
 
 ### 4.8 현재 배포 기준
 
-2026-10-20 08:26:34 KST에 v1.11.0 / `0021_quality_aliases`를 배포했다. API와 웹은 모두 태그
-커밋 `605f299ec1203c93eb7f2d19bf8323a6637e23d1`이며 이후 문서 커밋과 구분한다. 리뷰 후속
-R1~R6의 백엔드·웹 변경을 담았지만 schema와 의존성은 그대로라 migration을 실행하지 않았다.
+2026-10-23 22:10:34 KST에 v1.11.1 / `0021_quality_aliases`를 배포했다. API와 웹은 모두 태그
+커밋 `9d55639429fdf6cf36e4a1fddf8cdeaf66a894a4`이며 이후 문서 커밋과 구분한다. 리뷰 후속
+F1~F5와 Vite·Vitest·certifi 보안 패치를 담았으며 schema는 그대로라 migration을 실행하지 않았다.
 DB 컨테이너·DB/uploads 볼륨과 기존 모든 테이블·열을 보존했다. 태그 전과 전환 직전 새 백업의 빈
 격리 복원·쿠키 인증·새 코드의 SQL 대 API 대조, 새 이미지의 읽기 전용 조회·전체 해시, 보안
-헤더·CSP, HTTPS와 기존 PWA의 새 웹 파일 전환을 확인했다. 정확한 image digest·시작 시각·검증
-제한은 [v1.11.0 릴리스 기록](../workthrough/2026-10-20-v1110-release.md)에 있다.
+헤더·CSP, HTTPS의 새 PWA와 이전 배포 파일로 재구성한 캐시 전환을 확인했다. 정확한 image digest·시작 시각·검증
+제한은 [v1.11.1 릴리스·배포 기록](../workthrough/2026-10-23-v1111-release.md)에 있다.
 
 ## 5. 접속(Tailscale HTTPS)
 
