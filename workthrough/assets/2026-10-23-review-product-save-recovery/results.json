@@ -1,0 +1,105 @@
+{
+  "prefix": "F2-1792751818227",
+  "results": [
+    {
+      "name": "purchase_commit_response_lost_offline_retry",
+      "offlineOutbox": 0,
+      "sameRequestId": true,
+      "server": {
+        "products": 1,
+        "purchases": 1,
+        "bottles": 1
+      },
+      "local": {
+        "products": 1,
+        "purchases": 1,
+        "bottles": 1,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "product_commit_response_lost_reopen",
+      "sameRequestId": true,
+      "server": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0
+      },
+      "local": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "original_request_recheck_keeps_newer_draft",
+      "sameRequestId": true,
+      "newerDraftPreserved": true,
+      "server": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0
+      },
+      "local": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "attachment_commit_response_lost_reload_resume",
+      "ocr": "synthetic_route",
+      "attachments": 1,
+      "server": {
+        "products": 1,
+        "purchases": 1,
+        "bottles": 1
+      },
+      "local": {
+        "products": 1,
+        "purchases": 1,
+        "bottles": 1,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "pending_form_navigation_and_reopen",
+      "newFormEmpty": true,
+      "server": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0
+      },
+      "local": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "completed_newer_draft_preserved_until_explicit_discard",
+      "draftInjection": "synthetic_localStorage_revision",
+      "newCreateBlocked": true,
+      "server": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0
+      },
+      "local": {
+        "products": 1,
+        "purchases": 0,
+        "bottles": 0,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "late_edit_response_preserves_reopened_form",
+      "newDraftPreserved": true,
+      "serverHasSubmittedNote": true
+    }
+  ],
+  "pageErrors": []
+}

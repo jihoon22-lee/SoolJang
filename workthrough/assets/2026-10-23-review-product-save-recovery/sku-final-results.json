@@ -1,0 +1,49 @@
+{
+  "sourceSha": "35efbd482a93e9cef2ee486af00412284de660ef",
+  "prefix": "F2-SKU-1792753073594",
+  "browser": "151.0.7922.34",
+  "viewport": "390x844",
+  "results": [
+    {
+      "name": "lost_product_response_with_real_reordered_skus",
+      "responseSource": "unmodified real API replay",
+      "responseSkuVolumes": [
+        500,
+        700
+      ],
+      "sameProductRequestId": true,
+      "purchasedVolumeMl": 700,
+      "purchaseCount": 1,
+      "bottleCount": 1,
+      "extra500mlPurchaseCount": 0,
+      "local": {
+        "products": 1,
+        "purchases": 1,
+        "purchaseSkuIds": [
+          "01a16869-017a-77c4-9648-bbb8716e2f5f"
+        ],
+        "bottles": 1,
+        "outbox": 0
+      }
+    },
+    {
+      "name": "lost_product_response_with_original_sku_deleted",
+      "responseSource": "unmodified real API replay",
+      "replaySkuCount": 0,
+      "sameProductRequestId": true,
+      "purchaseCount": 0,
+      "completedId": null,
+      "draftPreserved": true,
+      "reopenedVolumeMl": 700,
+      "reopenedQuantity": 1,
+      "local": {
+        "products": 1,
+        "purchases": 0,
+        "purchaseSkuIds": [],
+        "bottles": 0,
+        "outbox": 0
+      }
+    }
+  ],
+  "pageErrors": []
+}
