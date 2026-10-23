@@ -1,0 +1,11 @@
+{
+  "browser": "151.0.7922.34",
+  "viewport": "390x844",
+  "actual_api": true,
+  "scenario": "두 로그인 화면 중 첫 탭 로그인 → 두 번째 탭 재로그인 응답 지연 → 첫 탭 화면 및 Dexie 잠금 → 새 세 번째 탭 계정 조회 대기 → 두 번째 탭 세션 확정",
+  "first_tab_locked_before_second_response": true,
+  "new_tab_auth_me_waited_for_cookie_lock": true,
+  "new_tab_never_opened_old_account": true,
+  "second_tab_server_and_dexie_owner_match": true,
+  "passed": true
+}

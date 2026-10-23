@@ -12,6 +12,7 @@ import datetime
 import hashlib
 import hmac
 import ipaddress
+import logging
 import secrets
 import threading
 import time
@@ -20,13 +21,18 @@ from dataclasses import dataclass, field
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sooljang.infrastructure.database.models import Session, User, UserRole
+from sooljang.infrastructure.database.session import get_session_factory
 
 #: 세션 유효 기간. 개인 도구라 자주 로그인하게 만들 이유가 없다.
 SESSION_LIFETIME = datetime.timedelta(days=30)
+# 활동 시각은 관찰값이다. 유효 기간·폐기 여부와 분리하고 요청마다 쓰지 않는다.
+SESSION_ACTIVITY_INTERVAL = datetime.timedelta(minutes=5)
+SESSION_ACTIVITY_TIMEOUT_SECONDS = 0.5
 #: 세션 토큰 바이트 수. 32바이트(256비트)면 추측 공격이 무의미하다.
 TOKEN_BYTES = 32
 #: 비밀번호 최소 길이. 개인 도구지만 Tailscale 밖으로 나갈 수 있으므로 하한을 둔다.
@@ -36,6 +42,7 @@ _hasher = PasswordHasher()
 #: 동시에 돌리는 Argon2 확인 수. 확인 하나가 기본 64MiB를 쓰므로 허용된 로그인 시도가 한꺼번에
 #: 몰려도 메모리를 묶음으로 잡지 않게 한다. 기다리는 동안 이벤트 루프는 막지 않는다.
 _VERIFY_SLOTS = threading.BoundedSemaphore(2)
+logger = logging.getLogger(__name__)
 
 
 class AuthError(Exception):
@@ -313,7 +320,7 @@ async def issue_session(
 
 
 async def resolve_session(session: AsyncSession, token: str) -> Session | None:
-    """토큰으로 사용 가능한 세션을 찾는다. 만료·폐기된 세션은 None 이다."""
+    """사용 가능한 세션을 읽는다. 활동 시각 쓰기는 업무 transaction과 분리한다."""
     if not token:
         return None
     record = await session.scalar(
@@ -324,8 +331,42 @@ async def resolve_session(session: AsyncSession, token: str) -> Session | None:
     )
     if record is None or not record.is_usable:
         return None
-    record.last_seen_at = datetime.datetime.now(datetime.UTC)
     return record
+
+
+async def touch_session_activity(
+    *, session_id: uuid.UUID, user_id: uuid.UUID, observed_at: datetime.datetime
+) -> None:
+    """업무 connection을 반환한 뒤 짧은 별도 transaction으로 활동 시각만 갱신한다.
+
+    이미 누군가 세션을 갱신·폐기 중이면 기다리지 않는다. connection 확보도 제한 시간에
+    포함하며, 관찰값을 남기지 못해도 이미 확정한 업무 결과나 인증 상태를 바꾸지 않는다.
+    """
+    try:
+        async with asyncio.timeout(SESSION_ACTIVITY_TIMEOUT_SECONDS):
+            async with get_session_factory().begin() as session:
+                record = await session.scalar(
+                    select(Session)
+                    .where(
+                        Session.id == session_id,
+                        Session.user_id == user_id,
+                        Session.deleted_at.is_(None),
+                        Session.revoked_at.is_(None),
+                        Session.expires_at > datetime.datetime.now(datetime.UTC),
+                        or_(
+                            Session.last_seen_at.is_(None),
+                            Session.last_seen_at <= observed_at - SESSION_ACTIVITY_INTERVAL,
+                        ),
+                    )
+                    .with_for_update(skip_locked=True)
+                )
+                if record is not None:
+                    # 잠근 현재 값보다 충분히 늦은 관찰만 선택하므로 지연 응답이 시각을
+                    # 과거로 되돌리지 않으며 만료·폐기 필드는 변경하지 않는다.
+                    record.last_seen_at = observed_at
+    except (TimeoutError, OSError, SQLAlchemyError) as error:
+        # DB 오류 원문에는 접속 정보가 있을 수 있다. 관찰값 실패는 종류만 남긴다.
+        logger.debug("세션 활동 시각 갱신 생략: %s", type(error).__name__)
 
 
 async def revoke_session(session: AsyncSession, token: str) -> bool:
