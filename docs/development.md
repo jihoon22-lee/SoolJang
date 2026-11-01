@@ -44,8 +44,10 @@ SOOLJANG_API_URL=http://127.0.0.1:8210 npm --prefix web run dev   # → http://l
 
 합성 데이터로 써 볼 때는 `tests/infrastructure/legacy/testdata/sample_sheet.csv`를 "가져오기"
 화면이나 `POST /api/v1/imports/legacy:commit`으로 넣는다. 실제 기록 파일은 opt-in 검증에만
-쓰고 저장소·로그에 남기지 않는다. 개발 DB 계정을 지울 때도 `bash scripts/dev-db.sh psql`
-(격리 DB)만 쓴다.
+쓰고 저장소·로그에 남기지 않는다. 운영 백업의 격리 복원본처럼 실제 기록을 브라우저로 볼 때는
+일회용 브라우저 컨텍스트를 쓰고, 영구 프로필(Playwright MCP의 `~/.cache/ms-playwright-mcp/mcp-chrome-*`
+등)을 썼다면 끝난 뒤 지운다. 영구 프로필에는 HTTP 캐시의 API 응답·로컬 초안·페이지 제목이 남는다.
+개발 DB 계정을 지울 때도 `bash scripts/dev-db.sh psql`(격리 DB)만 쓴다.
 
 카메라(바코드·라벨·병 QR)와 서비스 워커는 secure context가 필요하다. 폰 실기 확인은 운영과
 같은 Tailscale HTTPS 주소(`https://main.tail30f401.ts.net:8080`, [operations.md](operations.md) §5)나
