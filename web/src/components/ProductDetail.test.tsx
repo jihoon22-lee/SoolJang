@@ -1112,7 +1112,7 @@ describe("머리부와 최근 시음(D268)", () => {
     expect(screen.getByText("420ml 남음 · 700ml 1번 병")).toBeInTheDocument();
   });
 
-  it("같은 용량에 번호가 같은 다른 구매의 병이 있으면 머리부에 구매일을 보인다", () => {
+  it("같은 용량에 번호가 같은 다른 구매의 병이 있으면 머리부에 구매일·구매처를 보인다", () => {
     setup({
       bottles: [
         openBottle,
@@ -1122,7 +1122,9 @@ describe("머리부와 최근 시음(D268)", () => {
     });
 
     // 최근 개봉한 pu1의 1번 병이 대상이다. pu2에도 1번 병이 열려 있다.
-    expect(screen.getByText("420ml 남음 · 1번 병 · 구매 2026-03-01")).toBeInTheDocument();
+    expect(
+      screen.getByText("420ml 남음 · 1번 병 · 구매 2026-03-01 · 가상마트"),
+    ).toBeInTheDocument();
   });
 
   it("머리부 시음 평균은 시음 기록 요약과 같은 짝수 반올림을 쓴다", async () => {

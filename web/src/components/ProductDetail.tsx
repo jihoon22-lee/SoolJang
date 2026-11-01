@@ -207,7 +207,7 @@ function bottleVolume(
 
 /**
  * 머리부 병 이름. 병 번호는 구매마다 1부터 다시 매기므로 규격이 둘 이상이면 용량을, 같은 용량에
- * 같은 번호의 다른 마실 병이 있으면 구매일을 덧붙인다(D264).
+ * 같은 번호의 다른 마실 병이 있으면 구매일·구매처를 덧붙인다(D264).
  */
 function pourTargetLabel(
   target: Bottle,
@@ -230,8 +230,11 @@ function pourTargetLabel(
       bottle.label_no === target.label_no &&
       bottleVolume(bottle, purchases, skus) === volume,
   );
-  const purchasedOn = purchases.find((item) => item.id === target.purchase_id)?.purchased_on;
-  const purchase = collides ? ` · ${purchasedOn ? `구매 ${purchasedOn}` : "구매일 미기록"}` : "";
+  // 홈 열린 병과 같은 "구매 날짜 · 구매처"로 구분한다(레거시 구매는 날짜가 없을 수 있다).
+  const bought = purchases.find((item) => item.id === target.purchase_id);
+  const purchase = collides
+    ? ` · 구매 ${formatDate(bought?.purchased_on)} · ${bought?.vendor_name ?? "구매처 미기록"}`
+    : "";
   return `${amount} · ${size}${target.label_no}번 병${purchase}`;
 }
 
