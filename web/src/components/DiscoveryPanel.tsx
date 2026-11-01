@@ -272,10 +272,7 @@ export function DiscoveryPanel({
   };
   return (
     <section className="discovery-panel" aria-label="술 탐색">
-      <p className="muted">
-        검색·전문 소스의 근거를 확인하고 관심 목록에 보관하세요. 관심 저장은 구매·재고를 늘리지
-        않습니다.
-      </p>
+      <p className="muted">마셔 보고 싶은 술을 찾아 근거를 보고 관심 목록에 담으세요.</p>
       {productIdentity && (
         <p className="notice">
           적용·관심 저장 대상: {productIdentity.name} ·{" "}
@@ -376,9 +373,7 @@ export function DiscoveryPanel({
               {job.name} · {job.kind === "search" ? "검색" : "전문 소스"}
             </label>
           ))}
-          <p className="muted text-sm">
-            최대 4개 연결·소스, 일반 검색은 확장 질의를 포함해 외부 요청 8회 이내입니다.
-          </p>
+          <p className="muted text-sm">한 번에 4곳까지 고를 수 있습니다.</p>
           {!jobs.length && <p>활성 연결이 없습니다. 설정에서 연결을 추가하세요.</p>}
           <button
             type="button"
