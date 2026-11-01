@@ -468,7 +468,7 @@ export function App() {
                     onSelectProduct={(id, context) =>
                       navigate({ view: "products", productId: id, ...context })
                     }
-                    onSelectCategory={(id) => navigate({ view: "products", categoryId: id })}
+                    onRecordPurchase={() => navigate({ view: "products", create: true })}
                     onNavigate={(view) => navigate({ view })}
                   />
                 )}
@@ -482,6 +482,7 @@ export function App() {
                     onDeselectProduct={() => navigate({ view: "products" })}
                     initialCategoryId={route.categoryId}
                     initialVendorId={route.vendorId}
+                    initialCreate={route.create}
                     onOpenStoreMode={() => navigate({ view: "scan" })}
                   />
                 )}

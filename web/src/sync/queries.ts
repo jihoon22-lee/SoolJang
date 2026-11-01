@@ -794,7 +794,7 @@ export async function getBottlesForProduct(productId: string): Promise<Bottle[]>
   }));
 }
 
-/** "오늘 마셨어요" 에서 고를 수 있는 병(재고). 개봉 병을 먼저, 최근 개봉 순. */
+/** 빠른 시음("마신 술 기록")에서 고를 수 있는 병(재고). 개봉 병을 먼저, 최근 개봉 순. */
 export interface DrinkableBottle {
   searchNames?: string[];
   categoryId?: string | null;
@@ -1268,13 +1268,7 @@ export async function getStatsDashboard(): Promise<StatsDashboard> {
   };
 }
 
-// --- 홈 대시보드 최근 활동 -----------------------------------------------------
-
-export interface RecentProduct {
-  id: string;
-  name: string;
-  created_at: string;
-}
+// --- 홈 최근 시음 ----------------------------------------------------------
 
 export interface RecentTasting {
   record: ContextualTasting;
@@ -1289,19 +1283,6 @@ export interface RecentTasting {
   productName: string;
   tastedOn: string;
   rating: string | null;
-}
-
-/** 최근 등록된 제품(`created_at` 내림차순). */
-export async function getRecentProducts(limit = 5): Promise<RecentProduct[]> {
-  const products = await db.product.filter((row) => row.deleted_at === null).toArray();
-  return products
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-    .slice(0, limit)
-    .map((row) => ({
-      id: row.id,
-      name: String(row.name),
-      created_at: String(row.created_at),
-    }));
 }
 
 /** 최근 시음(`tasted_on` 내림차순). 제품 이름은 sku→product 로 붙인다. */

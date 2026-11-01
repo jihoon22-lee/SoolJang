@@ -1088,33 +1088,6 @@ button:disabled {
   color: var(--accent-strong);
 }
 
-/* --- 홈 대시보드 ----------------------------------------------------------- */
-
-.activity-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.activity-list li {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  padding: var(--space-xs) 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.home-activity-grid {
-  display: grid;
-  gap: var(--space);
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.home-activity-grid h4 {
-  margin: 0 0 0.3rem;
-}
-
 /* --- 카테고리 트리 --------------------------------------------------------- */
 
 .category-tree {
@@ -2618,19 +2591,45 @@ legend {
 }
 
 .home-page h3 {
-  margin: 0 0 var(--space-sm);
+  margin: 0 0 var(--space-xs);
 }
 
-.metrics-grid--hero {
+/* 두 기록 행동(D265). 같은 폭으로 나란히 두어 한 손으로 고른다. */
+.home-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.home-actions button {
+  min-height: var(--control-h-lg);
+  font-size: var(--text-md);
+}
+
+/* 보유 요약 한 줄. 통계의 큰 지표(.metrics-grid--hero)와 따로 둔다. */
+.home-summary {
+  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-sm) 0;
+  border-block: 1px solid var(--border);
 }
 
-.metrics-grid--hero .metric dd {
-  font-size: var(--text-xl);
+.home-summary > div {
+  min-width: 0;
 }
 
-.home-summary-secondary {
-  margin: var(--space-sm) 0 0;
+.home-summary dt {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.home-summary dd {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .home-notice {
@@ -2642,17 +2641,171 @@ legend {
   color: var(--text);
 }
 
-.home-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
-  gap: var(--space-sm);
+/* 열린 병: 게이지 · 이름과 잔량 · 한 잔. 카드 대신 구분선 목록이다. */
+.home-bottle-list,
+.home-tasting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
 }
 
-.home-shortcuts button {
+.home-bottle-list li {
   display: grid;
-  gap: 2px;
-  justify-items: start;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm) var(--space);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 이름과 잔량 글자 영역 전체가 병 상세로 가는 누름 영역이다(44px 이상). */
+.home-bottle-text {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: var(--control-h-md);
+  align-content: center;
+}
+
+.home-bottle-text .entity-link {
+  justify-self: start;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-bottle-text .entity-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.home-bottle-text .entity-link:focus-visible {
+  outline: none;
+}
+
+.home-bottle-text:has(.entity-link:focus-visible) {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.home-pour {
+  min-width: 4.5rem;
+}
+
+/* 최근 시음: 한 행 전체가 그 기록을 여는 단추다. 고치기·삭제는 기록 화면에 있다(D261). */
+.home-tasting-list li {
+  border-bottom: 1px solid var(--border);
+}
+
+.home-tasting-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--space);
+  width: 100%;
+  min-height: var(--control-h-md);
+  padding: var(--space-xs) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
   text-align: left;
+}
+
+.home-tasting-list button:hover:not(:disabled) {
+  background: var(--bg-raised);
+}
+
+.home-tasting-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-tasting-rating {
+  font-variant-numeric: tabular-nums;
+}
+
+.home-tasting-list .muted {
+  grid-column: 1 / -1;
+}
+
+.home-side {
+  display: grid;
+  gap: var(--space-lg);
+  align-content: start;
+  min-width: 0;
+}
+
+.home-side > .home-more {
+  justify-self: start;
+}
+
+/* 병 잔량 게이지(D262). 정보 요소라 잔량 미기록은 빈 병 대신 빗금으로 둔다(D242). */
+.bottle-gauge {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px 4px 3px 3px;
+  background: var(--bg);
+}
+
+.bottle-gauge-fill {
+  position: absolute;
+  inset: auto 0 0;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.bottle-gauge--unknown {
+  border-style: dashed;
+  background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--border-strong) 3px 4px);
+}
+
+/* 넓은 화면: 열린 병과 최근 시음을 두 칸으로 나눠 행이 화면 끝까지 늘어나지 않게 한다. */
+@media (min-width: 900px) {
+  .home-page {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    column-gap: var(--space-xl);
+    align-items: start;
+  }
+
+  .home-page > .home-actions,
+  .home-page > .home-notice,
+  .home-page > .home-summary-section {
+    grid-column: 1 / -1;
+  }
+
+  .home-actions {
+    grid-template-columns: repeat(2, minmax(10rem, 16rem));
+  }
+}
+
+@media (max-width: 599px) {
+  /* 좁은 화면: 병수 셋을 한 줄에 두고 재고 원가는 아래 한 줄로 읽는다. */
+  .home-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-summary > div:last-child {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    gap: var(--space-sm);
+  }
+
+  .home-summary > div:last-child dd {
+    font-size: var(--text-base);
+  }
 }
 
 .rating-stars {
@@ -3397,13 +3550,6 @@ legend {
 .history-when {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-}
-
-.home-overdue {
-  padding: var(--space-sm) var(--space);
-  border: 1px solid var(--warn);
-  border-radius: var(--radius);
-  background: var(--warn-surface);
 }
 
 /* 제품 전체 지표와 규격별 재고를 같은 목록 안에서 구분한다. */

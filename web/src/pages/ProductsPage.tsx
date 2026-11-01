@@ -81,6 +81,9 @@ interface ProductsPageProps {
   /** 구매처 화면에서 "이 구매처에서 산 술" 로 드릴다운할 때만 준다. `initialCategoryId` 와
    * 같은 마운트 시점 시딩 패턴이다. */
   initialVendorId?: string | undefined;
+  /** 홈 "산 술 기록"으로 들어올 때 등록 폼을 연 채 시작한다. 같은 마운트 시점 시딩 패턴이며
+   * 작성 중이던 등록이 있으면 툴바 단추처럼 그 등록을 이어 연다. */
+  initialCreate?: boolean | undefined;
   /** 매장 모드로 이동한다. 모바일 폭에서만 보이는 진입 버튼에 연결한다(항목 6). */
   onOpenStoreMode: () => void;
 }
@@ -108,6 +111,7 @@ export function ProductsPage({
   onDeselectProduct,
   initialCategoryId,
   initialVendorId,
+  initialCreate,
   onOpenStoreMode,
 }: ProductsPageProps) {
   const toast = useToast();
@@ -219,7 +223,7 @@ export function ProductsPage({
     setStockFirst(next);
     setStockFirstPreference(next);
   }
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(Boolean(initialCreate));
   // 모바일 폭에서 기본 접힘인 필터 항목의 펼침 상태(항목 2). 검색창은 접히지 않는다(D263).
   const [filterExpanded, setFilterExpanded] = useState(false);
   // 라벨 OCR(Task 17)이 채운 값과 원본 사진. 폼이 닫힐 때마다 함께 지운다 — 그러지 않으면
