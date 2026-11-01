@@ -3,7 +3,11 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState } from "react";
 import { tastingsApi } from "@/api/client";
 import type { ContextualTasting, TastingFilters } from "@/api/types";
-import { productEdition, purchaseReference } from "@/components/productDisplay";
+import {
+  type PurchaseIdentity,
+  productEdition,
+  purchaseReference,
+} from "@/components/productDisplay";
 import { TastingRow } from "@/components/TastingRow";
 import { formatVolume } from "@/format";
 import { databaseIdentity } from "@/sync/db";
@@ -23,13 +27,26 @@ export interface ProductTastingHistoryProps {
   onSelectTasting?: ((tasting: ContextualTasting) => void) | undefined;
 }
 
-function contextLabel(item: ContextualTasting, purchaseIds: string[]): string {
+function purchaseIdentity(item: ContextualTasting): PurchaseIdentity | null {
+  return item.purchase
+    ? {
+        id: item.purchase.id,
+        productId: item.context.product_id,
+        volumeMl: item.context.volume_ml,
+        purchasedOn: item.purchase.purchased_on,
+        vendorName: item.purchase.vendor_name,
+      }
+    : null;
+}
+
+function contextLabel(item: ContextualTasting, purchases: readonly PurchaseIdentity[]): string {
+  const identity = purchaseIdentity(item);
   return [
     item.context.product_name,
     productEdition(item.context),
     formatVolume(item.context.volume_ml),
     item.bottle ? `${item.bottle.label_no}번 병` : "병 연결 없음",
-    item.purchase ? purchaseReference(item.purchase.id, purchaseIds) : "구매 연결 없음",
+    identity ? purchaseReference(identity, purchases) : "구매 연결 없음",
     item.purchase?.purchased_on,
     item.purchase?.vendor_name,
   ]
@@ -190,8 +207,13 @@ export function ProductTastingHistory({
         .map((item) => [item.bottle?.id, item]),
     ).values(),
   ];
-  const purchaseIds = [
-    ...new Set(allChoices.flatMap((item) => (item.purchase ? [item.purchase.id] : []))),
+  const purchases = [
+    ...new Map(
+      allChoices.flatMap((item) => {
+        const identity = purchaseIdentity(item);
+        return identity ? [[identity.id, identity] as const] : [];
+      }),
+    ).values(),
   ];
   const shownSummary = offline ? local?.data?.summary : summary.data;
   const selectedRef = useRef<HTMLLIElement>(null);
@@ -242,7 +264,7 @@ export function ProductTastingHistory({
             ) : null}
             {bottleChoices.map((item) => (
               <option key={item.bottle?.id} value={item.bottle?.id}>
-                {contextLabel(item, purchaseIds)}
+                {contextLabel(item, purchases)}
               </option>
             ))}
           </select>
@@ -333,7 +355,7 @@ export function ProductTastingHistory({
               item={item}
               offline={offline}
               disabled={correctionPending}
-              contextLabel={contextLabel(item, purchaseIds)}
+              contextLabel={contextLabel(item, purchases)}
               onCorrect={onCorrect}
               onSelectTasting={onSelectTasting}
               onDeleted={onDeleted}

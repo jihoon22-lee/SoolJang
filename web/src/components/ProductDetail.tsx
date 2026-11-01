@@ -730,7 +730,17 @@ function PurchaseSection({
       (!selectedSkuId || purchase.sku_id === selectedSkuId) &&
       (!matchingPurchaseIds || matchingPurchaseIds.includes(purchase.id)),
   );
-  const purchaseIds = purchases.map((purchase) => purchase.id);
+  const purchaseIdentities = purchases.map((purchase) => ({
+    id: purchase.id,
+    volumeMl:
+      purchase.volume_ml ?? product.skus.find((sku) => sku.id === purchase.sku_id)?.volume_ml,
+    purchasedOn: purchase.purchased_on,
+    vendorName: purchase.vendor_name,
+  }));
+  function referenceOf(purchaseId: string): string | null {
+    const identity = purchaseIdentities.find((purchase) => purchase.id === purchaseId);
+    return identity ? purchaseReference(identity, purchaseIdentities) : null;
+  }
   const hasSelectedPurchase = visiblePurchases.some(
     (purchase) => purchase.id === selectedPurchaseId,
   );
@@ -893,15 +903,23 @@ function PurchaseSection({
                         )}
                       </span>
                       <span className="purchase-context">{productEdition(product)}</span>
-                      <span className="purchase-context" title={purchase.id}>
-                        {purchaseReference(purchase.id, purchaseIds)}
-                      </span>
+                      {referenceOf(purchase.id) ? (
+                        <span className="purchase-context" title={purchase.id}>
+                          {referenceOf(purchase.id)}
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         className="btn-quiet"
                         disabled={busy}
                         onClick={() => onCorrectSku(purchase.id)}
-                        aria-label={`${purchaseReference(purchase.id, purchaseIds)} 규격 정정`}
+                        aria-label={`${[
+                          formatDate(purchase.purchased_on),
+                          purchase.vendor_name ?? "구매처 미기록",
+                          referenceOf(purchase.id),
+                        ]
+                          .filter(Boolean)
+                          .join(" ")} 구매 규격 정정`}
                       >
                         규격 정정
                       </button>

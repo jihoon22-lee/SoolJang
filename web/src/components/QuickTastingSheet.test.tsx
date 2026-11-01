@@ -445,7 +445,7 @@ it("동일 이름·용량의 다른 빈티지를 구분하고 선택한 실제 �
     screen.getByRole("button", { name: /합성 위스키.*2021 빈티지.*700ml.*미개봉 1병/ }),
   );
   expect(screen.getByRole("heading", { name: /2021 빈티지/ })).toBeInTheDocument();
-  expect(await screen.findByText(/700ml.*#1.*구매.*purchase/)).toBeInTheDocument();
+  expect(await screen.findByText(/700ml · #1 · 구매/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "이 병 상세" }));
   expect(onSelectProduct).toHaveBeenCalledWith("edition-product", {
     skuId: "edition-sku",

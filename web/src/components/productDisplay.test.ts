@@ -14,12 +14,36 @@ describe("제품과 구매 식별", () => {
     );
     expect(productEdition({ vintage: null, age_years: null, abv: null })).toBe("");
   });
-  it("같은 UUID 끝자리인 반복 구매에도 서로 다른 참조를 만든다", () => {
+  it("맥락이 같은 구매가 하나뿐이면 내부 참조를 붙이지 않는다", () => {
+    const only = { id: "p1", volumeMl: 700, purchasedOn: "2026-08-04", vendorName: "가상마트" };
+    expect(purchaseReference(only, [only])).toBeNull();
+    // 용량·날짜·구매처 중 하나라도 다르면 사람이 읽는 맥락으로 구분된다.
+    const otherDay = { ...only, id: "p2", purchasedOn: "2026-09-01" };
+    const otherVendor = { ...only, id: "p3", vendorName: "가상면세점" };
+    const otherVolume = { ...only, id: "p4", volumeMl: 375 };
+    const all = [only, otherDay, otherVendor, otherVolume];
+    expect(all.map((purchase) => purchaseReference(purchase, all))).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+  it("맥락이 겹치는 구매끼리만 서로 다른 참조를 만든다", () => {
     const ids = ["00000000-0000-4000-8000-0001abcd1234", "00000000-0000-4000-8000-0002abcd1234"];
-    expect(purchaseReference(ids[0] as string, ids)).not.toBe(
-      purchaseReference(ids[1] as string, ids),
-    );
-    expect(purchaseReference("short", ["short"])).toBe("구매 short");
+    const same = { volumeMl: 700, purchasedOn: null, vendorName: null };
+    const purchases = ids.map((id) => ({ id, ...same }));
+    const first = purchaseReference(purchases[0]!, purchases);
+    const second = purchaseReference(purchases[1]!, purchases);
+    expect(first).toMatch(/^구매 /);
+    expect(first).not.toBe(second);
+    // 다른 제품의 같은 맥락 구매와는 겹치지 않는다(제품 이름이 이미 구분한다).
+    const otherProduct = [
+      { id: "a", productId: "x", ...same },
+      { id: "b", productId: "y", ...same },
+    ];
+    expect(purchaseReference(otherProduct[0]!, otherProduct)).toBeNull();
+    expect(purchaseReference({ id: "short", ...same }, [{ id: "short", ...same }])).toBeNull();
   });
   it("단일 SKU의 구응답만 제품 집계를 재사용한다", () => {
     const metrics = {

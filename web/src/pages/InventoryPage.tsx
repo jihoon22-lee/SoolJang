@@ -21,7 +21,11 @@ import {
 } from "@/api/collection";
 import { BottleQr, BottleQrCamera } from "@/components/BottleQr";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
-import { productEdition, purchaseReference } from "@/components/productDisplay";
+import {
+  type PurchaseIdentity,
+  productEdition,
+  purchaseReference,
+} from "@/components/productDisplay";
 import { useToast } from "@/components/Toast";
 import { downloadCsv } from "@/csvExport";
 import { formatDate, formatVolume, todayLocal } from "@/format";
@@ -1097,6 +1101,16 @@ function ObservationCorrection({
   );
 }
 
+function inventoryPurchase(bottle: InventoryBottle, purchaseId: string): PurchaseIdentity {
+  return {
+    id: purchaseId,
+    productId: bottle.product_id,
+    volumeMl: bottle.volume_ml,
+    purchasedOn: bottle.purchased_on,
+    vendorName: bottle.vendor_name,
+  };
+}
+
 function inventoryBottleLabel(bottle: InventoryBottle, bottles: InventoryBottle[]): string {
   const context = [
     bottle.volume_ml ? formatVolume(bottle.volume_ml) : null,
@@ -1109,8 +1123,10 @@ function inventoryBottleLabel(bottle: InventoryBottle, bottles: InventoryBottle[
     bottle.vendor_name,
     bottle.purchase_id
       ? purchaseReference(
-          bottle.purchase_id,
-          bottles.flatMap((item) => (item.purchase_id ? [item.purchase_id] : [])),
+          inventoryPurchase(bottle, bottle.purchase_id),
+          bottles.flatMap((item) =>
+            item.purchase_id ? [inventoryPurchase(item, item.purchase_id)] : [],
+          ),
         )
       : null,
   ]

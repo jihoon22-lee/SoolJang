@@ -191,7 +191,9 @@ describe("ProductDetail", () => {
     expect(selected).not.toBeNull();
     if (!selected) throw new Error("선택 구매 행 없음");
     expect(selected).toHaveAttribute("aria-current", "true");
-    expect(within(selected).getByText("구매 pu2")).toBeInTheDocument();
+    // 맥락(구매일·구매처)이 다른 구매는 내부 참조 없이 그 맥락으로 구분된다(D264).
+    expect(selected).toHaveTextContent("날짜 미기록");
+    expect(selected).not.toHaveTextContent("구매 pu2");
     await userEvent.click(within(selected).getByRole("button", { name: "구매 기록 수정" }));
     expect(screen.getByRole("form", { name: "구매 건 수정" })).toBeInTheDocument();
     expect(screen.getByLabelText("병수")).toHaveValue(1);
@@ -353,8 +355,8 @@ describe("ProductDetail", () => {
       // 구매가 여러 건이면 어느 구매의 병인지 구매일·구매처를 함께 보인다.
       const labels = screen.getAllByText(/^\d번 병/).map((el) => el.textContent);
       expect(labels).toEqual([
-        "1번 병 · 700ml · 12년 숙성 · 46% · 2026-03-01 · 가상마트 · 구매 pu1",
-        "2번 병 · 700ml · 12년 숙성 · 46% · 2026-03-01 · 가상마트 · 구매 pu1",
+        "1번 병 · 700ml · 12년 숙성 · 46% · 2026-03-01 · 가상마트",
+        "2번 병 · 700ml · 12년 숙성 · 46% · 2026-03-01 · 가상마트",
       ]);
     });
 
@@ -803,8 +805,8 @@ it("선택한 SKU의 구매와 병을 펼치고 전체 제품 지표 및 선택 
     onSelectContext,
   });
   const purchaseTable = screen.getByRole("table", { name: "구매 이력" });
-  expect(purchaseTable).toHaveTextContent("350ml2020 빈티지 · 12년 숙성 · 46%구매 pu2");
-  expect(purchaseTable).not.toHaveTextContent("구매 pu1");
+  expect(purchaseTable).toHaveTextContent("350ml2020 빈티지 · 12년 숙성 · 46%");
+  expect(purchaseTable).not.toHaveTextContent("2026-03-01");
   expect(screen.getByRole("button", { name: /^1번 병/ })).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByText(/전체 용량 구매 평균/)).toBeInTheDocument();
   expect(
@@ -934,11 +936,11 @@ it("선택 조건은 구매와 그 병에만 적용하고 전체 이력으로 �
     offline: true,
   });
   const table = screen.getByRole("table", { name: "구매 이력" });
-  expect(table).toHaveTextContent("구매 pu1");
-  expect(table).not.toHaveTextContent("구매 pu2");
+  expect(table).toHaveTextContent("2026-03-01");
+  expect(table).not.toHaveTextContent("날짜 미기록");
   expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(1);
   await userEvent.click(screen.getByRole("button", { name: "전체 구매 이력" }));
-  expect(table).toHaveTextContent("구매 pu2");
+  expect(table).toHaveTextContent("날짜 미기록");
   expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(2);
   await userEvent.click(screen.getByRole("button", { name: "선택 조건" }));
   expect(screen.getAllByRole("button", { name: /^1번 병/ })).toHaveLength(1);

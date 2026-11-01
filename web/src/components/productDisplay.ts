@@ -38,13 +38,40 @@ export function productEdition(product: {
     .join(" · ");
 }
 
-/** 표시용 참조만 줄인다. 저장·선택·라우팅에는 항상 원 UUID를 쓴다. */
-export function purchaseReference(id: string, purchaseIds: readonly string[]): string {
+/** 사람이 읽는 구매 맥락. 같은 제품의 구매끼리만 비교하며 `productId`가 없으면 한 제품으로 본다. */
+export interface PurchaseIdentity {
+  id: string;
+  productId?: string | null | undefined;
+  volumeMl?: number | null | undefined;
+  purchasedOn?: string | null | undefined;
+  vendorName?: string | null | undefined;
+}
+
+function contextKey(purchase: PurchaseIdentity): string {
+  return JSON.stringify([
+    purchase.productId ?? null,
+    purchase.volumeMl ?? null,
+    purchase.purchasedOn ?? null,
+    purchase.vendorName ?? null,
+  ]);
+}
+
+/**
+ * 용량·구매일·구매처가 같은 다른 구매가 있을 때만 줄인 내부 참조를 돌려준다(D264).
+ * 맥락만으로 구분되면 `null` 이다. 저장·선택·라우팅에는 항상 원 UUID를 쓴다.
+ */
+export function purchaseReference(
+  purchase: PurchaseIdentity,
+  purchases: readonly PurchaseIdentity[],
+): string | null {
+  const key = contextKey(purchase);
+  const others = purchases
+    .filter((other) => other.id !== purchase.id && contextKey(other) === key)
+    .map((other) => other.id);
+  if (others.length === 0) return null;
+  const { id } = purchase;
   let length = Math.min(8, id.length);
-  while (
-    length < id.length &&
-    purchaseIds.some((other) => other !== id && other.endsWith(id.slice(-length)))
-  )
+  while (length < id.length && others.some((other) => other.endsWith(id.slice(-length))))
     length += 1;
   return `구매 ${id.slice(-length)}`;
 }
