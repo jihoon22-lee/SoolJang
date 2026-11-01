@@ -440,7 +440,8 @@ export function ProductFilterPanel({
           {orderEditing ? (
             <FilterOrderEditor
               order={otherIds}
-              onChange={(next) => updateFieldOrder(["q", ...next])}
+              visibleCount={visibleCount}
+              onChange={(next) => updateFieldOrder(["q", ...next.filter((id) => id !== "q")])}
               onDone={() => setOrderEditing(false)}
             />
           ) : (
@@ -486,23 +487,26 @@ function activeFilterCount(filters: ProductFilters): number {
  * 순서 편집을 한 폼에 섞으면 레이아웃도, 각 필드 JSX 를 감싸는 것도 더 복잡해진다. */
 function FilterOrderEditor({
   order,
+  visibleCount,
   onChange,
   onDone,
 }: {
   order: FilterFieldId[];
+  /** 검색창 아래에 항상 보이는 항목 수. 검색창은 이 목록에 없다. */
+  visibleCount: number;
   onChange: (next: FilterFieldId[]) => void;
   onDone: () => void;
 }) {
   return (
     <div className="field filter-order-editor">
       <p className="muted text-sm mt-0">
-        화살표로 순서를 바꾸세요. 위 {ALWAYS_VISIBLE_FIELD_COUNT}개는 항상 보이고, 그 아래는 "더
-        많은 필터"에 접힙니다.
+        화살표로 순서를 바꾸세요. 검색창 아래 위 {visibleCount}개는 항상 보이고, 그 아래는 "더 많은
+        필터"에 접힙니다.
       </p>
       <ol className="filter-order-list">
         {order.map((id, index) => (
           <Fragment key={id}>
-            {index === ALWAYS_VISIBLE_FIELD_COUNT && (
+            {index === visibleCount && (
               <li className="filter-order-divider" aria-hidden="true">
                 여기부터 "더 많은 필터"에 접힘
               </li>
