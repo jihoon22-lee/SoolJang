@@ -2912,7 +2912,7 @@ legend {
   grid-column: 1 / -1;
 }
 
-/* 선택 모드의 확인란은 행 왼쪽에 겹쳐 두고 그만큼 들여쓴다. */
+/* 선택 모드의 확인란은 행 왼쪽 44px 여백 전체가 누르는 영역이다. 빗맞아도 상세로 가지 않는다. */
 .product-card:has(> .select-card) {
   padding-left: 44px;
 }
@@ -2920,10 +2920,20 @@ legend {
 .product-card > .select-card {
   position: absolute;
   z-index: 1;
-  top: 50%;
-  left: 4px;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
   margin: 0;
-  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.product-card > .select-card input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
 }
 
 .product-card .badge {
