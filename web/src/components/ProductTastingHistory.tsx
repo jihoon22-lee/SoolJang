@@ -20,6 +20,8 @@ export interface ProductTastingHistoryProps {
   selectedSkuId?: string | undefined;
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
+  /** 정정 폼이 목적지일 때는 고른 시음 행으로 초점을 가져가지 않는다. */
+  focusSelected?: boolean | undefined;
   offline: boolean;
   correctionPending?: boolean | undefined;
   onCorrect: (tasting: ContextualTasting) => void;
@@ -60,6 +62,7 @@ export function ProductTastingHistory({
   selectedSkuId,
   selectedBottleId,
   selectedTastingId,
+  focusSelected = true,
   offline,
   correctionPending = false,
   onCorrect,
@@ -221,11 +224,17 @@ export function ProductTastingHistory({
   const targetShown = items.some((item) => item.id === selectedTastingId);
   useEffect(() => {
     if (!selectedTastingId) focused.current = undefined;
-    if (!selectedTastingId || !targetShown || focused.current === selectedTastingId) return;
+    if (
+      !focusSelected ||
+      !selectedTastingId ||
+      !targetShown ||
+      focused.current === selectedTastingId
+    )
+      return;
     selectedRef.current?.scrollIntoView?.({ block: "nearest" });
     selectedRef.current?.focus({ preventScroll: true });
     focused.current = selectedTastingId;
-  }, [selectedTastingId, targetShown]);
+  }, [focusSelected, selectedTastingId, targetShown]);
 
   return (
     <section className="panel product-tasting-history" aria-label="제품 시음 이력">

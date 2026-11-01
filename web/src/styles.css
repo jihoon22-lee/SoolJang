@@ -919,6 +919,11 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
+/* 통계 인사이트의 지표는 카드 없이 이름·값만 둔다. 값이 브라우저 기본 들여쓰기(40px)로 밀리지 않게 한다. */
+.metrics-grid dd {
+  margin-inline-start: 0;
+}
+
 .metric {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2243,8 +2248,9 @@ legend {
 .toast {
   pointer-events: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space);
+  gap: var(--space-sm) var(--space);
   max-width: min(560px, 100%);
   padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space);
   border: 1px solid var(--border-strong);
@@ -2260,6 +2266,19 @@ legend {
 
 .toast-error {
   border-color: var(--danger);
+}
+
+.toast-message {
+  flex: 1 1 12rem;
+}
+
+/* 이어서 할 동작이 여럿이면 메시지를 한 줄로 두고 동작과 닫기를 아래 줄에 모은다. */
+.toast-stacked .toast-message {
+  flex-basis: 100%;
+}
+
+.toast-stacked .toast-close {
+  margin-left: auto;
 }
 
 .toast-action {
@@ -2477,10 +2496,7 @@ legend {
   .toast-action,
   .settings-menu-panel a,
   .settings-menu-panel button,
-  .inventory-table select,
-  .tasting-details summary,
-  .metrics-more summary,
-  .history-details summary {
+  .inventory-table select {
     min-height: var(--control-h-md);
   }
 
@@ -2643,7 +2659,8 @@ legend {
 
 /* 열린 병: 게이지 · 이름과 잔량 · 한 잔. 카드 대신 구분선 목록이다. */
 .home-bottle-list,
-.home-tasting-list {
+.home-tasting-list,
+.detail-tasting-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -2699,11 +2716,13 @@ legend {
 }
 
 /* 최근 시음: 한 행 전체가 그 기록을 여는 단추다. 고치기·삭제는 기록 화면에 있다(D261). */
-.home-tasting-list li {
+.home-tasting-list li,
+.detail-tasting-list li {
   border-bottom: 1px solid var(--border);
 }
 
-.home-tasting-list button {
+.home-tasting-list button,
+.detail-tasting-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0 var(--space);
@@ -2717,8 +2736,14 @@ legend {
   text-align: left;
 }
 
-.home-tasting-list button:hover:not(:disabled) {
+.home-tasting-list button:hover:not(:disabled),
+.detail-tasting-list button:hover:not(:disabled) {
   background: var(--bg-raised);
+}
+
+.detail-tasting-list button[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--accent);
+  padding-left: var(--space-sm);
 }
 
 .home-tasting-name {
@@ -2731,8 +2756,19 @@ legend {
   font-variant-numeric: tabular-nums;
 }
 
-.home-tasting-list .muted {
+.home-tasting-list .muted,
+.detail-tasting-list .muted {
   grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.detail-tasting-list span:nth-child(2) {
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-recent-tastings {
+  max-width: 48rem;
+  margin-bottom: var(--space-lg);
 }
 
 .home-side {
@@ -2929,6 +2965,12 @@ legend {
   scroll-margin-top: 5rem;
 }
 
+/* 머리부 "한 잔 기록"·"구매 추가"가 옮겨 가는 입력은 고정 머리글 아래에 보이게 한다. */
+.tasting-form h4,
+.detail-anchor > form {
+  scroll-margin-top: calc(var(--app-header-h, 4.5rem) + var(--space));
+}
+
 .interest-row-panel {
   margin-top: var(--space-sm);
 }
@@ -2956,6 +2998,28 @@ legend {
   justify-content: space-between;
   gap: var(--space-sm);
   text-align: left;
+}
+
+/* 빠른 시음의 병 고르기: 잔량 게이지 · 이름과 구매 맥락 · 상태 칩. 칩은 줄바꿈하지 않는다. */
+.pick-list .pick-bottle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.pick-bottle-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pick-bottle .bottle-badge {
+  white-space: nowrap;
+}
+
+/* 후보 이름이 길면 이름이 줄바꿈하고 "이 술에 구매 추가"는 한 줄로 남는다. */
+.pick-list .pick-action {
+  flex: none;
+  white-space: nowrap;
 }
 
 /* --- 제품 상세 --------------------------------------------------------------- */
@@ -2998,6 +3062,41 @@ legend {
   font-size: var(--text-xl);
 }
 
+/* 머리부: 지금 마실 병의 잔량, 내 평점과 시음 평균(이름을 나눔), 주 행동(D268). */
+.product-hero-pour {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.product-hero-ratings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 14rem));
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.product-hero-ratings > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.product-hero-ratings dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.product-hero-ratings dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.product-hero-actions > button {
+  flex: 1 1 8rem;
+  max-width: 16rem;
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -3020,6 +3119,22 @@ legend {
 }
 
 .metrics-more summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  min-height: var(--control-h-sm);
+}
+
+.form-more summary {
+  cursor: pointer;
+  min-height: var(--control-h-sm);
+}
+
+/* 통계 상세 탭 아래 "계산 기준". 차트에 붙지 않게 띄운다. */
+.stats-method {
+  margin-top: var(--space-lg);
+}
+
+.stats-method > summary {
   cursor: pointer;
   color: var(--text-muted);
   min-height: var(--control-h-sm);
@@ -3842,5 +3957,19 @@ legend {
   }
   .quality-table .entity-link {
     font-size: 0.9rem;
+  }
+}
+
+/*
+ * 펼침 요약의 기본 규칙(32px)은 위 터치 블록보다 뒤에 있어 같은 특이성으로 터치 44px를 덮었다.
+ * 그래서 이 블록은 기본 규칙들보다 뒤인 파일 끝에 둔다.
+ */
+@media (pointer: coarse) {
+  .tasting-details summary,
+  .metrics-more summary,
+  .history-details summary,
+  .form-more summary,
+  .stats-method > summary {
+    min-height: var(--control-h-md);
   }
 }

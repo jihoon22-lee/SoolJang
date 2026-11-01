@@ -202,6 +202,16 @@ export function App() {
     }
     setRoute(next);
   }, []);
+  // "산 술 기록"·"이 술에 구매 추가"는 해시에 없는 한 번 쓰는 표시다. 받은 화면이 소비해야
+  // 재로그인이나 수정 뒤 상세 복귀처럼 같은 주소에서 다시 마운트될 때 폼을 또 열지 않는다.
+  const consumeRouteFlag = useCallback((flag: "create" | "addPurchase") => {
+    setRoute((current) => {
+      if (!current[flag]) return current;
+      return flag === "create"
+        ? { ...current, create: undefined }
+        : { ...current, addPurchase: undefined };
+    });
+  }, []);
 
   const session = useQuery({
     queryKey: ["auth", "me"],
@@ -483,6 +493,7 @@ export function App() {
                     initialCategoryId={route.categoryId}
                     initialVendorId={route.vendorId}
                     initialCreate={route.create}
+                    onConsumeRouteFlag={consumeRouteFlag}
                     onOpenStoreMode={() => navigate({ view: "scan" })}
                   />
                 )}

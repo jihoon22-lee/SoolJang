@@ -390,6 +390,36 @@ it("첫 화면은 인사이트이고 기존 합계·집계·피벗은 보조 보
   expect(screen.getByRole("tab", { name: "피벗·추이" })).toBeInTheDocument();
 });
 
+it("인사이트 밖 탭은 전체 기간 기준과 구매 표본을 숫자 곁에 보인다", async () => {
+  await db.product.put(row({ id: "p", name: "표본 제품" }));
+  await db.sku.put(row({ id: "s", product_id: "p", volume_ml: 700 }));
+  await db.purchase.bulkPut([
+    row({
+      id: "pu1",
+      sku_id: "s",
+      quantity: 1,
+      unit_paid_price: "30000",
+      unit_list_price: "40000",
+    }),
+    row({ id: "pu2", sku_id: "s", quantity: 1, unit_paid_price: null, unit_list_price: null }),
+  ]);
+  renderStatsPage();
+
+  // 인사이트에서 기간을 골라도 이 탭들은 전체 기록이다. 접힌 계산 기준을 열지 않아도 보인다.
+  for (const name of ["상세 합계", "주종별", "랭킹"]) {
+    await openSection(name);
+    expect(
+      await within(screen.getByRole("tabpanel")).findByText(
+        "전체 기간 기준 · 구매 2건(0원 1건 포함)",
+      ),
+    ).toBeInTheDocument();
+  }
+  await openSection("상세 합계");
+  expect(screen.getByText("평균 할인율").nextElementSibling).toHaveTextContent(
+    "25% · 정가 기록 1건",
+  );
+});
+
 it("근거를 보고 돌아와 다시 마운트해도 고른 통계 탭을 유지한다", async () => {
   const first = renderStatsPage();
   await openSection("랭킹");

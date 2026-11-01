@@ -84,6 +84,8 @@ interface ProductsPageProps {
   /** 홈 "산 술 기록"으로 들어올 때 등록 폼을 연 채 시작한다. 같은 마운트 시점 시딩 패턴이며
    * 작성 중이던 등록이 있으면 툴바 단추처럼 그 등록을 이어 연다. */
   initialCreate?: boolean | undefined;
+  /** 받은 한 번 쓰는 표시(`create`·`addPurchase`)를 소비했음을 App 에 알린다. */
+  onConsumeRouteFlag?: ((flag: "create" | "addPurchase") => void) | undefined;
   /** 매장 모드로 이동한다. 모바일 폭에서만 보이는 진입 버튼에 연결한다(항목 6). */
   onOpenStoreMode: () => void;
 }
@@ -112,6 +114,7 @@ export function ProductsPage({
   initialCategoryId,
   initialVendorId,
   initialCreate,
+  onConsumeRouteFlag,
   onOpenStoreMode,
 }: ProductsPageProps) {
   const toast = useToast();
@@ -224,6 +227,9 @@ export function ProductsPage({
     setStockFirstPreference(next);
   }
   const [formOpen, setFormOpen] = useState(Boolean(initialCreate));
+  useEffect(() => {
+    if (initialCreate) onConsumeRouteFlag?.("create");
+  }, [initialCreate, onConsumeRouteFlag]);
   // 모바일 폭에서 기본 접힘인 필터 항목의 펼침 상태(항목 2). 검색창은 접히지 않는다(D263).
   const [filterExpanded, setFilterExpanded] = useState(false);
   // 라벨 OCR(Task 17)이 채운 값과 원본 사진. 폼이 닫힐 때마다 함께 지운다 — 그러지 않으면
@@ -286,8 +292,11 @@ export function ProductsPage({
   // 상세로 들어가기 직전 스크롤 위치를 기억해 뒤로 왔을 때 되돌린다. `visibleCount`
   // ("더 보기" 로 펼친 개수)는 이 컴포넌트가 상세 진입/복귀 사이에 언마운트되지 않아
   // 별도 처리 없이도 이미 유지된다 — 스크롤 위치만 브라우저가 기억해 주지 않는다.
-  const savedScrollY = useRef<number | null>(restoredList?.scrollY ?? null);
-  const savedTableScroll = useRef(restoredList?.tableScrollTop ?? 0);
+  // "산 술 기록"으로 들어오면 목록 위의 등록 폼이 목적지라 예전 목록 위치로 되돌리지 않는다.
+  const savedScrollY = useRef<number | null>(
+    initialCreate ? null : (restoredList?.scrollY ?? null),
+  );
+  const savedTableScroll = useRef(initialCreate ? 0 : (restoredList?.tableScrollTop ?? 0));
   useEffect(() => {
     // `null` 이면 아직 상세로 들어간 적이 없다는 뜻이다(최초 마운트 포함) — 되돌릴 위치가
     // 없으니 그냥 둔다.
@@ -361,14 +370,23 @@ export function ProductsPage({
   const completedCreation = createProduct.progress?.completedId;
   const completedDraftCleared = createProduct.progress?.draftCleared;
   const creationPending = createProduct.isPending;
+  // "산 술 기록"으로 새 폼을 열었을 때 화면 밖에서 이미 끝난 앞선 등록이 남아 있으면 그 완료만
+  // 정리하고, 방금 연 폼은 닫지 않고 새로 시작한다.
+  const [staleCompletion] = useState(() =>
+    initialCreate ? (readProductCreationProgress()?.completedId ?? null) : null,
+  );
   useEffect(() => {
     if (!creationPending && completedCreation && completedDraftCleared && finishProductCreation()) {
+      if (completedCreation === staleCompletion) {
+        setFormInstance((instance) => instance + 1);
+        return;
+      }
       setFormOpen(false);
       setFormPrefill(null);
       setPendingLabelFile(null);
       setFormInstance((instance) => instance + 1);
     }
-  }, [completedCreation, completedDraftCleared, creationPending]);
+  }, [completedCreation, completedDraftCleared, creationPending, staleCompletion]);
 
   function closeForm() {
     if (productCreationPending()) return;
@@ -550,6 +568,7 @@ export function ProductsPage({
           onCorrectionSavingChange={(saving) => {
             if (saving) correctionOriginNavigation.current = latestNavigation.current;
           }}
+          onAddPurchaseDelivered={() => onConsumeRouteFlag?.("addPurchase")}
           onSelectContext={(next) =>
             onSelectProduct(selectedProductId, {
               ...next,
@@ -833,8 +852,10 @@ function ProductDetailView({
   onTastingCorrected,
   correctionSynchronizing,
   onCorrectionSavingChange,
+  onAddPurchaseDelivered,
 }: {
   onCorrectionSavingChange: (saving: boolean) => void;
+  onAddPurchaseDelivered?: (() => void) | undefined;
   onTastingCorrected: (record: ContextualTasting) => void;
   correctionSynchronizing: boolean;
   productId: string;
@@ -1147,6 +1168,8 @@ function ProductDetailView({
       selectedBottleId={target.bottleId}
       selectedTastingId={target.tastingId}
       editTasting={context.editTasting}
+      addPurchase={context.addPurchase}
+      onAddPurchaseDelivered={onAddPurchaseDelivered}
       onTastingDeleted={(record) => {
         if (context.tastingId === record.id)
           onSelectContext({ skuId: target.skuId, bottleId: target.bottleId });

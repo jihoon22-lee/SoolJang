@@ -99,3 +99,9 @@
   cursor: pointer;
   padding-block: 0.6rem;
 }
+/* 기간 필터·월별 표·계산 기준 펼침도 터치 기기에서 손가락 크기(44px)를 보장한다. */
+@media (pointer: coarse) {
+  .insights-dashboard details > summary {
+    min-height: var(--control-h-md);
+  }
+}

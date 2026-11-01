@@ -119,6 +119,7 @@ function rating(value: unknown): number | null {
   const number = numeric(value);
   return number !== null && number >= 0 && number <= 6 ? number : null;
 }
+
 const productLabel = (product: SyncRow) =>
   [
     str(product.name),

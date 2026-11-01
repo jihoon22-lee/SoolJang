@@ -88,6 +88,11 @@ describe("routeToHash", () => {
     // 새로고침·뒤로가기로 닫은 등록 폼이 다시 열리지 않는다.
     expect(routeToHash({ view: "products", create: true })).toBe("#products");
     expect(parseHash("#products")).not.toHaveProperty("create");
+    // 새 술 폼의 "이 술에 구매 추가"도 같다. 새로고침으로 구매 추가 폼이 다시 열리지 않는다.
+    expect(routeToHash({ view: "products", productId: "p1", skuId: "s1", addPurchase: true })).toBe(
+      "#products/p1?sku=s1",
+    );
+    expect(parseHash("#products/p1?sku=s1")).not.toHaveProperty("addPurchase");
   });
 
   it("categoryId 가 vendorId 보다 우선한다", () => {

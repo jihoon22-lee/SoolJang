@@ -1,9 +1,16 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { type RefObject, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { BottleGauge } from "@/components/BottleGauge";
-import { productEdition } from "@/components/productDisplay";
-import { QuickTastingSheet } from "@/components/QuickTastingSheet";
+import {
+  bottlePurchaseContext,
+  bottlePurchaseIdentity,
+  bottlePurchaseLabel,
+  sameLookingBottleIds,
+} from "@/components/drinkableBottleLabel";
+import { productEdition, purchaseReferences } from "@/components/productDisplay";
+import { QuickTastingSheet, type RecordedTasting } from "@/components/QuickTastingSheet";
 import { LoadingState } from "@/components/StatusViews";
+import { useToast } from "@/components/Toast";
 import { daysSince } from "@/domain/openedShelfLife";
 import { formatMoney, formatRating, formatVolume, todayLocal } from "@/format";
 import type { ProductContext, View } from "@/router";
@@ -41,6 +48,18 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
   const { pendingCount, lastError } = useSyncStatus();
   const [showAllOpen, setShowAllOpen] = useState(false);
   const [sheet, setSheet] = useState<{ bottle?: DrinkableBottle } | null>(null);
+  const toast = useToast();
+  // 저장 알림의 "한 잔 더"는 이 화면의 시트를 연다. 홈을 떠나면 열 시트가 없으니 알림을 거두고,
+  // 떠난 뒤에 끝난 저장은 이어가기 없이 기록했다고만 알린다.
+  const followUp = useRef<(() => void) | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      followUp.current?.();
+    };
+  }, []);
   const primaryAction = useRef<HTMLButtonElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   // 기록으로 병이 소진되어 누른 "한 잔" 단추가 사라졌으면 주 행동으로 초점을 돌린다.
@@ -58,11 +77,40 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
   }
 
   const openBottles = drinkable.filter((item) => item.status === "open");
+  // 같은 이름·판본·용량의 열린 병은 번호로, 번호까지 같으면(다른 구매) 구매일·구매처로 구분해
+  // 다른 병에 기록하지 않게 한다(D264).
+  const numbered = sameLookingBottleIds(openBottles);
+  const sameNumber = sameLookingBottleIds(openBottles, true);
+  const references = purchaseReferences(openBottles.map(bottlePurchaseIdentity));
   const today = todayLocal();
   const count = (value: number) => `${value.toLocaleString("ko-KR")}병`;
   function openSheet(button: HTMLButtonElement, bottle?: DrinkableBottle) {
+    // 새 기록을 시작하면 앞 기록의 이어가기는 거둔다(열린 시트 위에서 다른 병을 열지 않게).
+    followUp.current?.();
     trigger.current = button;
     setSheet(bottle ? { bottle } : {});
+  }
+  function offerFollowUp({ tastingId, bottle, message, finished }: RecordedTasting) {
+    if (!mounted.current) {
+      toast.show({ message });
+      return;
+    }
+    // 다 마신 병의 행은 곧 목록에서 빠진다. 시트가 닫힐 때 아직 남은 그 "한 잔"에 초점을
+    // 돌리면 행이 사라지며 초점을 잃으므로 주 행동으로 돌린다.
+    if (finished) trigger.current = primaryAction.current;
+    const context = { skuId: bottle.skuId, bottleId: bottle.bottleId, tastingId };
+    followUp.current?.();
+    followUp.current = toast.show({
+      message,
+      actions: [
+        {
+          label: "고치기",
+          onAction: () => onSelectProduct(bottle.productId, { ...context, editTasting: true }),
+        },
+        ...(finished ? [] : [{ label: "한 잔 더", onAction: () => setSheet({ bottle }) }]),
+        { label: "보기", onAction: () => onSelectProduct(bottle.productId, context) },
+      ],
+    });
   }
 
   return (
@@ -86,6 +134,7 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
           initialBottle={sheet.bottle}
           onSelectProduct={onSelectProduct}
           returnFocusRef={returnFocus}
+          onRecorded={offerFollowUp}
           onClose={() => setSheet(null)}
         />
       ) : null}
@@ -127,6 +176,9 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                 age_years: item.ageYears,
                 abv: item.abv,
               });
+              const detail = sameNumber.has(item.bottleId)
+                ? bottlePurchaseContext(item, references)
+                : null;
               return (
                 <li key={item.bottleId}>
                   <BottleGauge
@@ -138,7 +190,7 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                     <button
                       type="button"
                       className="entity-link"
-                      aria-label={`${item.productName} #${item.labelNo} · ${formatVolume(item.volumeMl)}`}
+                      aria-label={`${item.productName} #${item.labelNo} · ${formatVolume(item.volumeMl)}${detail ? ` · ${detail}` : ""}`}
                       onClick={() =>
                         onSelectProduct(item.productId, {
                           skuId: item.skuId,
@@ -150,6 +202,11 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                     </button>
                     <span className="muted text-sm">
                       {[
+                        detail
+                          ? bottlePurchaseLabel(item, references)
+                          : numbered.has(item.bottleId)
+                            ? `#${item.labelNo}`
+                            : null,
                         item.remainingMl !== null ? `${item.remainingMl}ml 남음` : "잔량 미기록",
                         item.openedOn
                           ? `개봉 후 ${daysSince(item.openedOn, today)}일 경과`
@@ -163,7 +220,7 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                   <button
                     type="button"
                     className="home-pour"
-                    aria-label={`${item.productName} #${item.labelNo} 한 잔 기록`}
+                    aria-label={`${item.productName} #${item.labelNo}${detail ? ` · ${detail}` : ""} 한 잔 기록`}
                     onClick={(event) => openSheet(event.currentTarget, item)}
                   >
                     한 잔
@@ -210,6 +267,8 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                           record.tasted_on,
                           record.poured_ml === null ? null : `${record.poured_ml}ml`,
                           record.bottle ? `${record.bottle.label_no}번 병` : null,
+                          // 같은 이름의 다른 빈티지·숙성을 구분한다(도수는 빼서 짧게 둔다).
+                          productEdition({ ...record.context, abv: null }) || null,
                         ]
                           .filter(Boolean)
                           .join(" · ")}

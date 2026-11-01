@@ -6,6 +6,7 @@ import type { Product } from "@/api/types";
 import { ProductsPage } from "@/pages/ProductsPage";
 import { StoreModePage } from "@/pages/StoreModePage";
 import { activateDatabase, db, lockDatabase } from "@/sync/db";
+import { readProductCreationProgress } from "@/sync/useCreateProductProgress";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
 const connection = vi.hoisted(() => ({ state: "idle" }));
@@ -292,4 +293,70 @@ it("제품 수정의 늦은 성공은 새 초안을 지우거나 다시 연 수�
   expect(screen.getByLabelText("메모")).toHaveValue("새 폼에서 작성한 메모");
   const key = `sooljang-draft-v1:recovery-ui-owner:recovery-ui-tab:product:edit:${created.id}`;
   expect(localStorage.getItem(key)).toContain("새 폼에서 작성한 메모");
+});
+
+function entryPage(onConsumeRouteFlag = vi.fn()) {
+  return (
+    <ProductsPage
+      selectedProductId={null}
+      onSelectProduct={select}
+      onDeselectProduct={vi.fn()}
+      onOpenStoreMode={vi.fn()}
+      initialCreate
+      onConsumeRouteFlag={onConsumeRouteFlag}
+    />
+  );
+}
+
+it("산 술 기록으로 들어오면 예전 목록 위치로 되돌리지 않고 한 번 쓰는 표시를 소비한다", async () => {
+  const now = "2026-10-23T00:00:00Z";
+  await db.product.put({
+    id: "listed",
+    user_id: "recovery-ui-owner",
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+    name: "목록의 술",
+    category_id: null,
+  } as never);
+  // 같은 탭에서 앞서 내 술을 1,500px까지 내려 본 상태(목록이 스크롤마다 저장한다).
+  sessionStorage.setItem(
+    "sooljang:product-list:recovery-ui-owner",
+    JSON.stringify({ filters: { sort: "name", order: "asc" }, visibleCount: 30, scrollY: 1500 }),
+  );
+  const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+  const consume = vi.fn();
+
+  renderWithQuery(entryPage(consume));
+
+  expect(await screen.findByRole("button", { name: "폼 닫기" })).toBeInTheDocument();
+  expect((await screen.findAllByRole("button", { name: "목록의 술" })).length).toBeGreaterThan(0);
+  await waitFor(() => expect(consume).toHaveBeenCalledWith("create"));
+  expect(scrollTo).not.toHaveBeenCalledWith(0, 1500);
+});
+
+it("화면 밖에서 끝난 앞선 등록이 남아 있어도 산 술 기록으로 연 새 폼은 닫지 않는다", async () => {
+  sessionStorage.setItem(
+    "sooljang-request-v1:recovery-ui-owner:recovery-ui-tab:product:create:recovery",
+    JSON.stringify({
+      requestId: "earlier",
+      progress: {
+        version: 1,
+        onlineAttempted: true,
+        product: null,
+        purchaseCreated: true,
+        labelPending: false,
+        completedId: "done-earlier",
+        draftCleared: true,
+        error: null,
+        values: { name: "앞서 등록한 술" },
+      },
+    }),
+  );
+
+  renderWithQuery(entryPage());
+
+  await waitFor(() => expect(readProductCreationProgress()).toBeNull());
+  expect(screen.getByRole("button", { name: "폼 닫기" })).toBeInTheDocument();
+  expect(screen.getByLabelText("이름 *")).toHaveValue("");
 });

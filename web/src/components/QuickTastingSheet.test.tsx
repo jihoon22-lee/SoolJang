@@ -5,9 +5,10 @@ import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Bottle } from "@/api/types";
 import { BottlePanel } from "@/components/BottlePanel";
-import { QuickTastingSheet } from "@/components/QuickTastingSheet";
+import { QuickTastingSheet, type RecordedTasting } from "@/components/QuickTastingSheet";
 import { ToastProvider } from "@/components/Toast";
 import { activateDatabase, databaseIdentity, db } from "@/sync/db";
+import type { DrinkableBottle } from "@/sync/queries";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import * as tastingActions from "@/sync/tastingActions";
 import { applyWaitingUpdate, hasDirtyForms, markUpdateReady } from "@/sync/update";
@@ -87,17 +88,33 @@ async function seed() {
     }),
   ]);
 }
-function Harness() {
-  const [open, setOpen] = useState(true);
+/** 홈처럼 시트를 열고, 저장 결과로 "한 잔 더"(같은 병으로 다시 열기)를 제공한다. */
+function Harness({ onRecorded }: { onRecorded?: (recorded: RecordedTasting) => void }) {
+  const [sheet, setSheet] = useState<{ bottle?: DrinkableBottle } | null>({});
+  const [last, setLast] = useState<RecordedTasting | null>(null);
   return (
     <SyncStatusProvider>
       <ToastProvider>
-        {open ? (
-          <QuickTastingSheet onClose={() => setOpen(false)} />
+        {sheet ? (
+          <QuickTastingSheet
+            initialBottle={sheet.bottle}
+            onRecorded={(recorded) => {
+              setLast(recorded);
+              onRecorded?.(recorded);
+            }}
+            onClose={() => setSheet(null)}
+          />
         ) : (
-          <button type="button" onClick={() => setOpen(true)}>
-            다시 열기
-          </button>
+          <>
+            <button type="button" onClick={() => setSheet({})}>
+              다시 열기
+            </button>
+            {last && !last.finished ? (
+              <button type="button" onClick={() => setSheet({ bottle: last.bottle })}>
+                한 잔 더
+              </button>
+            ) : null}
+          </>
         )}
       </ToastProvider>
     </SyncStatusProvider>
@@ -108,13 +125,15 @@ async function chooseLarge() {
   await screen.findByRole("button", { name: "기록 저장" });
 }
 
-it("저장 후 같은 병에 새 시음을 이어 쓰며 이전 기록을 중복 제출하지 않는다", async () => {
+it("저장하면 시트를 닫고 한 잔 더로 같은 병을 다시 열어도 이전 기록을 중복 제출하지 않는다", async () => {
   renderWithQuery(<Harness />);
   await chooseLarge();
   await userEvent.type(screen.getByLabelText("시음 메모"), "첫 잔");
   await userEvent.click(screen.getByRole("button", { name: "30ml" }));
   await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
-  await userEvent.click(await screen.findByRole("button", { name: "같은 병에 새 기록" }));
+  await userEvent.click(await screen.findByRole("button", { name: "한 잔 더" }));
+  expect(await screen.findByRole("heading", { name: "합성 위스키" })).toBeInTheDocument();
+  expect(screen.getByText(/700ml · #9 · 구매 2025-01-01/)).toBeInTheDocument();
   expect(screen.getByLabelText("시음 메모")).toHaveValue("");
   expect(await db.tasting_session.count()).toBe(1);
   await userEvent.click(screen.getByRole("button", { name: "50ml" }));
@@ -161,6 +180,33 @@ it("미개봉은 용량별로 묶고 가장 오래된 구매의 병을 기본으
   await waitFor(async () => expect((await db.bottle.get("older"))?.remaining_ml).toBe(670));
   expect((await db.bottle.get("newer"))?.status).toBe("unopened");
   expect((await db.outbox.toArray())[0]?.fields.bottle_id).toBe("older");
+});
+
+it("같은 이름·용량의 개봉 병이 하나면 구매·위치 줄 없이 고르고, 둘이면 그 줄로 구분한다", async () => {
+  renderWithQuery(<Harness />);
+  const single = await screen.findByRole("button", { name: /700ml #3.*개봉/ });
+  expect(single).not.toHaveAccessibleName(/구매|위치/);
+
+  await db.bottle.put(
+    row({
+      id: "open-two",
+      purchase_id: "old-purchase",
+      label_no: 4,
+      status: "open",
+      opened_on: "2026-01-02",
+      remaining_ml: 500,
+    }),
+  );
+
+  expect(
+    await screen.findByRole("button", { name: /700ml #3.*구매 2026-01-01.*새 매장/ }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /700ml #4.*구매 2025-01-01.*오래된 매장/ }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /700ml.*미개봉 2병/ })).not.toHaveAccessibleName(
+    /구매/,
+  );
 });
 
 it("병 변경에서 구매일·구매처·번호·온라인 위치를 확인하고 다른 병을 선택한다", async () => {
@@ -228,7 +274,7 @@ it("다른 탭의 초안은 자동 섞지 않고 명시적 복원으로 병과 �
   expect(screen.getByText(/#9.*오래된 매장/)).toBeInTheDocument();
 });
 
-it("다른 탭에서 불러와 저장한 입력은 같은 병에 새 기록을 열어도 다시 채우지 않는다", async () => {
+it("다른 탭에서 불러와 저장한 입력은 한 잔 더로 같은 병을 열어도 다시 채우지 않는다", async () => {
   sessionStorage.setItem("sooljang-draft-tab", "first-tab");
   const first = renderWithQuery(<Harness />);
   await chooseLarge();
@@ -240,7 +286,7 @@ it("다른 탭에서 불러와 저장한 입력은 같은 병에 새 기록을 �
   await userEvent.click(await screen.findByRole("button", { name: "이전 입력 불러오기" }));
   await waitFor(() => expect(screen.getByLabelText("시음 메모")).toHaveValue("첫 탭의 잔"));
   await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
-  await userEvent.click(await screen.findByRole("button", { name: "같은 병에 새 기록" }));
+  await userEvent.click(await screen.findByRole("button", { name: "한 잔 더" }));
 
   expect(screen.getByLabelText("시음 메모")).toHaveValue("");
   expect(screen.getByRole("button", { name: "30ml" })).toHaveAttribute("aria-pressed", "false");
@@ -300,8 +346,7 @@ it("저장 실패 때는 초안을 유지하고 성공한 병의 초안만 지�
   await userEvent.clear(amount);
   await userEvent.type(amount, "30");
   await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
-  await screen.findByRole("button", { name: "같은 병에 새 기록" });
-  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+  await screen.findByRole("button", { name: "다시 열기" });
   expect(Object.keys(localStorage).some((key) => key.includes("quick-tasting:"))).toBe(false);
 });
 
@@ -378,8 +423,6 @@ it("저장 transaction 대기 중 닫기·Escape로 새 시트를 열어 이전 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "다시 열기" })).not.toBeInTheDocument();
   await act(async () => held.release());
-  await screen.findByRole("button", { name: "같은 병에 새 기록" });
-  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
   await userEvent.click(await screen.findByRole("button", { name: "다시 열기" }));
   await userEvent.click(await screen.findByRole("button", { name: /700ml.*#9.*개봉/ }));
   await writeNote("새 시트의 다음 기록");
@@ -404,8 +447,7 @@ it("저장 transaction 대기 중 입력·별점·프리셋 편집을 막아 최
   fireEvent.change(note, { target: { value: "지연 이벤트 입력" } });
   expect(note).toHaveValue("제출한 노트");
   await act(async () => held.release());
-  await screen.findByRole("button", { name: "같은 병에 새 기록" });
-  await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+  await screen.findByRole("button", { name: "다시 열기" });
   expect((await db.tasting_session.toArray())[0]?.nose).toBe("제출한 노트");
   expect(Object.keys(localStorage).some((key) => key.includes("quick-tasting:"))).toBe(false);
 });
@@ -434,7 +476,11 @@ it("동일 이름·용량의 다른 빈티지를 구분하고 선택한 실제 �
   renderWithQuery(
     <SyncStatusProvider>
       <ToastProvider>
-        <QuickTastingSheet onClose={onClose} onSelectProduct={onSelectProduct} />
+        <QuickTastingSheet
+          onClose={onClose}
+          onRecorded={vi.fn()}
+          onSelectProduct={onSelectProduct}
+        />
       </ToastProvider>
     </SyncStatusProvider>,
   );
@@ -458,7 +504,7 @@ it("빠른 입력의 상세 이동에서 같은 병의 메모·양·평점 초�
   const navigate = vi.fn();
   const quick = renderWithQuery(
     <SyncStatusProvider>
-      <QuickTastingSheet onClose={vi.fn()} onSelectProduct={navigate} />
+      <QuickTastingSheet onClose={vi.fn()} onRecorded={vi.fn()} onSelectProduct={navigate} />
     </SyncStatusProvider>,
   );
   await chooseLarge();
@@ -480,4 +526,60 @@ it("빠른 입력의 상세 이동에서 같은 병의 메모·양·평점 초�
     poured_ml: 50,
     rating: "0.0",
   });
+});
+
+it("저장 결과로 시음 ID·병·안내 문구를 넘기고 다 마신 병은 소진으로 알린다", async () => {
+  const onRecorded = vi.fn();
+  renderWithQuery(<Harness onRecorded={onRecorded} />);
+  await chooseLarge();
+  await userEvent.click(screen.getByRole("button", { name: "30ml" }));
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await screen.findByRole("button", { name: "다시 열기" });
+  const [first] = (await db.tasting_session.toArray()).map((entry) => entry.id);
+  expect(onRecorded).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      tastingId: first,
+      bottle: expect.objectContaining({ bottleId: "older", productId: "product" }),
+      message: "합성 위스키 시음을 기록했습니다 (개봉 처리)",
+      finished: false,
+    }),
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "다시 열기" }));
+  await userEvent.click(await screen.findByRole("button", { name: /700ml.*#3.*개봉 · 100ml/ }));
+  await userEvent.type(screen.getByLabelText(/직접 입력\(ml\)/), "100");
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await screen.findByRole("button", { name: "다시 열기" });
+  expect(onRecorded).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      bottle: expect.objectContaining({ bottleId: "open-bottle" }),
+      message: "합성 위스키 시음을 기록했습니다 (다 마셔 소진 처리)",
+      finished: true,
+    }),
+  );
+  // 다 마신 병에는 이어서 한 잔을 권하지 않는다.
+  expect(screen.queryByRole("button", { name: "한 잔 더" })).not.toBeInTheDocument();
+});
+
+it("저장 중 다른 탭이 같은 병 입력을 바꾸면 기록만 알리고 바뀐 입력을 시트에 남긴다", async () => {
+  const onRecorded = vi.fn();
+  renderWithQuery(<Harness onRecorded={onRecorded} />);
+  await chooseLarge();
+  await writeNote("제출한 노트");
+  const held = holdTastingSave();
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(() => expect(held.record).toHaveBeenCalledOnce());
+  const key = Object.keys(localStorage).find((item) => item.endsWith("quick-tasting:bottle:older"));
+  expect(key).toBeDefined();
+  const stored = JSON.parse(localStorage.getItem(key as string) ?? "{}");
+  localStorage.setItem(key as string, JSON.stringify({ ...stored, updatedAt: Date.now() + 1 }));
+  await act(async () => held.release());
+
+  expect(
+    await screen.findByText("합성 위스키 시음을 기록했습니다 (개봉 처리)"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(onRecorded).not.toHaveBeenCalled();
+  expect(localStorage.getItem(key as string)).not.toBeNull();
+  expect(await db.tasting_session.count()).toBe(1);
 });

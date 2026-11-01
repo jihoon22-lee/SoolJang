@@ -2,7 +2,7 @@
  * 직전 구매처 미리 채우기. 구매처 기억은 계정별이라 로컬 저장소 소유자를 활성화해야 한다 —
  * 전역 `db` 를 바꾸므로 다른 컴포넌트 테스트와 섞이지 않게 파일을 나눈다.
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product, ProductMetrics, Purchase } from "@/api/types";
@@ -139,7 +139,11 @@ describe("직전 구매처 미리 채우기", () => {
       addingSku: false,
     };
     const { unmount } = renderWithQuery(<ProductDetail {...props} />);
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "구매 이력" })).getByRole("button", {
+        name: "구매 추가",
+      }),
+    );
     expect(screen.getByLabelText("구매처")).toHaveValue("이마트");
     unmount();
 

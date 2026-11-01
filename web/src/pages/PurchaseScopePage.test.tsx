@@ -105,7 +105,11 @@ it("같은 용량 동시 추가 409는 현재 제품의 기존 SKU를 골라 입
   await userEvent.click(
     within(await screen.findByRole("table")).getByRole("button", { name: "제품 A" }),
   );
-  await userEvent.click(await screen.findByRole("button", { name: "구매 추가" }));
+  await userEvent.click(
+    within(await screen.findByRole("region", { name: "구매 이력" })).getByRole("button", {
+      name: "구매 추가",
+    }),
+  );
   await userEvent.type(screen.getByLabelText("구매처"), "합성 매장");
   await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
   await userEvent.type(screen.getByLabelText("용량 (ml)"), "500");

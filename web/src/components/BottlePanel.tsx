@@ -50,6 +50,8 @@ interface BottlePanelProps {
   onSavingChange?: (saving: boolean) => void;
   contextLabel?: string | undefined;
   selectedTastingId?: string | undefined;
+  /** 정정 폼이 목적지일 때는 고른 시음 행으로 초점을 가져가지 않는다. */
+  focusSelectedTasting?: boolean | undefined;
   onCorrect?: ((item: ContextualTasting) => void) | undefined;
   onDeleted?: ((item: ContextualTasting) => void) | undefined;
 }
@@ -60,6 +62,7 @@ export function BottlePanel({
   onSavingChange,
   contextLabel,
   selectedTastingId,
+  focusSelectedTasting = true,
   onCorrect,
   onDeleted,
 }: BottlePanelProps): React.JSX.Element {
@@ -93,6 +96,7 @@ export function BottlePanel({
       return;
     }
     if (
+      !focusSelectedTasting ||
       !selectedTastingLoaded ||
       !selectedTastingRef.current ||
       focusedTasting.current === selectedTastingId
@@ -101,7 +105,7 @@ export function BottlePanel({
     focusedTasting.current = selectedTastingId;
     selectedTastingRef.current.scrollIntoView?.({ block: "nearest" });
     selectedTastingRef.current.focus({ preventScroll: true });
-  }, [selectedTastingId, selectedTastingLoaded]);
+  }, [focusSelectedTasting, selectedTastingId, selectedTastingLoaded]);
 
   const summary = useQuery({
     queryKey: ["tastings", "summary", bottle.id],
@@ -505,7 +509,8 @@ function TastingForm({
     <form id={`tasting-form-${bottleId}`} className="tasting-form" onSubmit={handleSubmit}>
       <fieldset disabled={pending} style={{ border: 0, padding: 0 }}>
         <DraftRecoveryButton form={formKey} />
-        <h4>시음 기록하기</h4>
+        {/* 상세 머리부 "한 잔 기록"이 여기로 초점을 옮긴다(입력 칸에 바로 두면 모바일 키보드가 뜬다). */}
+        <h4 tabIndex={-1}>시음 기록하기</h4>
 
         <TastingFields
           values={values}
