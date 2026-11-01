@@ -26,7 +26,7 @@ import {
   formatVolume,
 } from "@/format";
 import { InsightsDashboard } from "@/insights/InsightsDashboard";
-import { getDrinkableBottles, getStatsDashboard } from "@/sync/queries";
+import { getDrinkableBottles, getStatsDashboard, type StatsCoverage } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { useViewState } from "@/viewState";
 
@@ -239,6 +239,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
           <h3 id="stats-summary-heading" className="sr-only">
             전체 합계
           </h3>
+          <ScopeNote coverage={dashboard?.coverage} />
           <dl className="metrics-grid metrics-grid--hero">
             <Metric label="재고" value={`${totals.in_stock_count.toLocaleString("ko-KR")}병`} />
             <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
@@ -269,7 +270,10 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
               <Metric label="실구매 총액" value={formatMoney(totals.paid_total)} />
               <Metric label="병당 평균 정가" value={formatMoney(totals.avg_list_price)} />
               <Metric label="병당 평균 실구매가" value={formatMoney(totals.avg_paid_price)} />
-              <Metric label="평균 할인율" value={formatPercent(totals.discount_rate)} />
+              <Metric
+                label="평균 할인율"
+                value={`${formatPercent(totals.discount_rate)} · 정가 기록 ${(dashboard?.coverage.listPricedPurchaseCount ?? 0).toLocaleString("ko-KR")}건`}
+              />
               <Metric label="평균 내 평점" value={formatRating(totals.avg_personal_rating)} />
               <Metric label="평균 개봉→소진 일수" value={formatDays(totals.avg_days_to_finish)} />
               <Metric label="평균 가성비" value={formatValueForMoney(totals.avg_value_for_money)} />
@@ -297,6 +301,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
 
       {section === "categories" && (
         <section aria-labelledby="stats-tab-categories" id="stats-panel-categories" role="tabpanel">
+          <ScopeNote coverage={dashboard?.coverage} />
           {categories.length === 0 ? (
             <p className="muted">등록된 술이 없습니다.</p>
           ) : (
@@ -356,6 +361,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
       {section === "rankings" && (
         <section aria-labelledby="stats-rankings-heading" id="stats-panel-rankings" role="tabpanel">
           <h3 id="stats-rankings-heading">랭킹</h3>
+          <ScopeNote coverage={dashboard?.coverage} />
           <div className="ranking-grid">
             <RankingList
               title="병당 가격"
@@ -444,6 +450,21 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
         </details>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * 인사이트 밖 탭은 인사이트의 기간·상태 필터와 별개로 전체 기록을 쓴다. 기간을 고른 뒤 넘어와도
+ * 어느 범위의 숫자인지와 표본을 숫자 곁에서 보이게 한다(D246·D266).
+ */
+function ScopeNote({ coverage }: { coverage: StatsCoverage | undefined }) {
+  if (!coverage) return null;
+  const count = (value: number) => value.toLocaleString("ko-KR");
+  return (
+    <p className="muted text-sm stats-scope">
+      전체 기간 기준 · 구매 {count(coverage.purchaseCount)}건(0원{" "}
+      {count(coverage.zeroPaidPurchaseCount)}건 포함)
+    </p>
   );
 }
 
