@@ -23,6 +23,7 @@ from sooljang.config import Settings, get_settings
 from sooljang.infrastructure.database import models as _models  # noqa: F401 - 메타데이터 등록
 from sooljang.infrastructure.database import session as session_module
 from sooljang.infrastructure.database.base import Base
+from sooljang.infrastructure.database.session import get_engine as _cached_engine
 from sooljang.infrastructure.database.session import reset_database_state
 
 TEST_DATABASE_URL = "postgresql+psycopg://sooljang@127.0.0.1:54329/sooljang_test"
@@ -33,6 +34,19 @@ TEST_SECRET_KEY = "b_hsHWsTUYKT4jxk9bNuJ7Q8gl_3Fg7AVm4GzMntuEg="
 TEST_EMAIL = "owner@example.com"
 TEST_PASSWORD = "sooljang-test-1234"
 TEST_DISPLAY_NAME = "테스트 소유자"
+
+
+def _dispose_cached_engine() -> None:
+    """캐시를 비우기 전에 엔진 풀의 연결을 닫는다.
+
+    `reset_database_state()` 는 캐시만 비운다. 버린 엔진의 연결은 순환 GC 가 거둘 때까지
+    PostgreSQL 연결 슬롯을 잡고 있어, GC 시점이 다른 Python 패치(CI 의 3.14.4)에서는 전체
+    실행 중 한도 100 을 넘었다("too many clients"). psycopg 의 close 는 소켓만 닫으므로
+    연결을 만든 루프가 끝난 뒤 새 루프에서 닫아도 된다. 테스트가 `get_engine` 을 바꿔
+    끼워도 원래 캐시 함수를 본다.
+    """
+    if _cached_engine.cache_info().currsize:
+        asyncio.run(_cached_engine().dispose())
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +74,7 @@ def _isolated_settings(
         "SOOLJANG_UPLOAD_DIR", str(tmp_path_factory.mktemp("uploads", numbered=True))
     )
     get_settings.cache_clear()
+    _dispose_cached_engine()
     session_module.reset_database_state()
 
 
@@ -94,6 +109,7 @@ def anon_client() -> Iterator[TestClient]:
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         yield client
 
+    _dispose_cached_engine()
     reset_database_state()
 
 
