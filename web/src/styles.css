@@ -2496,11 +2496,7 @@ legend {
   .toast-action,
   .settings-menu-panel a,
   .settings-menu-panel button,
-  .inventory-table select,
-  .tasting-details summary,
-  .metrics-more summary,
-  .history-details summary,
-  .form-more summary {
+  .inventory-table select {
     min-height: var(--control-h-md);
   }
 
@@ -3130,6 +3126,17 @@ legend {
 
 .form-more summary {
   cursor: pointer;
+  min-height: var(--control-h-sm);
+}
+
+/* 통계 상세 탭 아래 "계산 기준". 차트에 붙지 않게 띄운다. */
+.stats-method {
+  margin-top: var(--space-lg);
+}
+
+.stats-method > summary {
+  cursor: pointer;
+  color: var(--text-muted);
   min-height: var(--control-h-sm);
 }
 
@@ -3950,5 +3957,19 @@ legend {
   }
   .quality-table .entity-link {
     font-size: 0.9rem;
+  }
+}
+
+/*
+ * 펼침 요약의 기본 규칙(32px)은 위 터치 블록보다 뒤에 있어 같은 특이성으로 터치 44px를 덮었다.
+ * 그래서 이 블록은 기본 규칙들보다 뒤인 파일 끝에 둔다.
+ */
+@media (pointer: coarse) {
+  .tasting-details summary,
+  .metrics-more summary,
+  .history-details summary,
+  .form-more summary,
+  .stats-method > summary {
+    min-height: var(--control-h-md);
   }
 }

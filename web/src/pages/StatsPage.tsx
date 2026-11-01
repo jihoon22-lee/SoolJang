@@ -412,7 +412,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
         </section>
       )}
       {section !== "insights" ? (
-        <details className="card">
+        <details className="stats-method">
           <summary>계산 기준</summary>
           <p>
             상세 합계·주종별·랭킹은 인사이트의 기간·상태 필터와 별개로 전체 기록을 씁니다. 피벗은
