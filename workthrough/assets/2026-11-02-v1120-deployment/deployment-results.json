@@ -1,0 +1,246 @@
+{
+  "target_version": "1.12.0",
+  "tag": "v1.12.0",
+  "tag_commit": "aa8511468ac24f1a25b42055eed599e16cc9a5dc",
+  "release_ci_run": "https://github.com/jihoon22-lee/SoolJang/actions/runs/41355921850",
+  "images": {
+    "api": "ghcr.io/jihoon22-lee/sooljang-api@sha256:410edf9e41020a5f807741723f10d552b9a8c2b835094e8eb3143921dc59bc6e",
+    "web": "ghcr.io/jihoon22-lee/sooljang-web@sha256:43652bf3b89f02c8e0c48bbc834e21fd477b540430bc1ab6627b8e892a67ee8d",
+    "oci_version": "1.12.0",
+    "oci_revision": "aa8511468ac24f1a25b42055eed599e16cc9a5dc"
+  },
+  "window_kst": {
+    "api_stopped": "2026-11-02 07:37:03",
+    "web_healthy": "2026-11-02 07:37:42"
+  },
+  "before": {
+    "api": {
+      "id": "f60c957e803f",
+      "image": "sha256:43fd4a8d1681d2831aa0d7486762eb332df7ee2aedb582fb8e8f599393583e97",
+      "version": "1.11.1"
+    },
+    "web": {
+      "id": "ad1ec7a7309e",
+      "image": "sha256:f015672f75d484a39333f5c829f9e17b469b23dce9cfdd63ddbfc0ec40cbce06",
+      "version": "1.11.1"
+    },
+    "db": {
+      "id": "3a44186161ed"
+    }
+  },
+  "after": {
+    "api": {
+      "id": "909f886de279",
+      "started_utc": "2026-11-01T22:37:30Z",
+      "health": "healthy",
+      "restarts": 0
+    },
+    "web": {
+      "id": "22a4bcff84b9",
+      "started_utc": "2026-11-01T22:37:36Z",
+      "health": "healthy",
+      "restarts": 0
+    },
+    "db": {
+      "id": "3a44186161ed",
+      "started_utc": "2026-10-22T13:54:15Z",
+      "preserved": true
+    }
+  },
+  "write_stop": {
+    "other_client_connections": 0
+  },
+  "backup": {
+    "bundle": "sooljang-20261101T223704554396Z-b227805d",
+    "app_version": "1.11.1",
+    "tool_version": "1.12.0",
+    "verify": "passed"
+  },
+  "isolated_restore": {
+    "empty_target_db": true,
+    "result": "passed (dropped after verification)"
+  },
+  "full_row_hash_compare": {
+    "settings": "UTC, ISO dates, READ ONLY on both",
+    "table_count": 44,
+    "same_table_set": true,
+    "mismatched_tables": [],
+    "all_equal": true
+  },
+  "new_api_image_probe_on_restore": {
+    "readiness": {
+      "status": 200,
+      "version": "1.12.0",
+      "migration_revision": "0021_quality_aliases"
+    },
+    "passed": 28,
+    "failed": [],
+    "checks": [
+      {
+        "check": "users_present",
+        "ok": true
+      },
+      {
+        "check": "ready",
+        "ok": true
+      },
+      {
+        "check": "anonymous_products_401",
+        "ok": true
+      },
+      {
+        "check": "login",
+        "ok": true
+      },
+      {
+        "check": "cookie_httponly",
+        "ok": true
+      },
+      {
+        "check": "me_matches_user",
+        "ok": true
+      },
+      {
+        "check": "sync_pull_pages",
+        "ok": true
+      },
+      {
+        "check": "sync_count_category",
+        "ok": true
+      },
+      {
+        "check": "sync_count_producer",
+        "ok": true
+      },
+      {
+        "check": "sync_count_variety",
+        "ok": true
+      },
+      {
+        "check": "sync_count_product",
+        "ok": true
+      },
+      {
+        "check": "sync_count_product_variety",
+        "ok": true
+      },
+      {
+        "check": "sync_count_sku",
+        "ok": true
+      },
+      {
+        "check": "sync_count_vendor",
+        "ok": true
+      },
+      {
+        "check": "sync_count_purchase",
+        "ok": true
+      },
+      {
+        "check": "sync_count_bottle",
+        "ok": true
+      },
+      {
+        "check": "sync_count_tasting_session",
+        "ok": true
+      },
+      {
+        "check": "sync_count_attachment",
+        "ok": true
+      },
+      {
+        "check": "sync_count_conflict_log",
+        "ok": true
+      },
+      {
+        "check": "products_list_matches_live",
+        "ok": true
+      },
+      {
+        "check": "product_detail_0",
+        "ok": true
+      },
+      {
+        "check": "product_detail_1",
+        "ok": true
+      },
+      {
+        "check": "product_detail_2",
+        "ok": true
+      },
+      {
+        "check": "stats_summary",
+        "ok": true
+      },
+      {
+        "check": "stats_by-category",
+        "ok": true
+      },
+      {
+        "check": "stats_rankings",
+        "ok": true
+      },
+      {
+        "check": "stats_timeseries",
+        "ok": true
+      },
+      {
+        "check": "logout_then_401",
+        "ok": true
+      }
+    ]
+  },
+  "env_change": "SOOLJANG_VERSION line only (rest-of-file sha256 unchanged, mode 0600)",
+  "switch": "docker compose up -d --no-deps --no-build --pull never --wait (api, then web)",
+  "post_checks": {
+    "health": {
+      "localhost_live_ready": "1.12.0 / 0021_quality_aliases / schema_ready / worker ready",
+      "https_live_ready": "same"
+    },
+    "logs": {
+      "api_error_or_traceback": 0,
+      "web_emerg_crit": 0
+    },
+    "static_https_equals_image": {
+      "index.html": true,
+      "sw.js": true,
+      "manifest.webmanifest": true,
+      "assets/index-B68KRtcL.css": true,
+      "assets/index-CzW9mzqx.js": true
+    },
+    "security_headers_unchanged": [
+      "content-security-policy",
+      "permissions-policy",
+      "referrer-policy",
+      "x-content-type-options",
+      "x-frame-options"
+    ],
+    "anonymous_products": 401,
+    "failures": 0
+  },
+  "pwa": {
+    "profile": "isolated anonymous context, 390x844; only static files and GET /auth/me, /auth/setup allowed",
+    "before": {
+      "script": "index-iO6L_k1Q.js",
+      "service_worker": "activated",
+      "precache_entries": 24
+    },
+    "after_update": {
+      "new_sw_fetched": "sw.js e0d03c300594",
+      "activated_without_waiting": "page was not controlled",
+      "old_index_removed_from_precache": true
+    },
+    "new_tab": {
+      "script": "index-CzW9mzqx.js",
+      "controlled": true,
+      "precache_entries": 24,
+      "precached_js_http_200": 14,
+      "page_errors": 0,
+      "csp_violations": 0,
+      "console_errors": [
+        "anonymous /api/v1/auth/me 401 (expected)"
+      ]
+    },
+    "not_executed": "controlled page under the old worker showing '새 버전 적용' (registerSW, UpdateNotice and vite config unchanged since v1.11.1; sync/update.ts view-only form change covered by unit test only)"
+  }
+}

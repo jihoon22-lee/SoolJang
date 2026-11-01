@@ -206,6 +206,10 @@ gh auth token | docker login ghcr.io -u jihoon22-lee --password-stdin
 /usr/bin/sg docker -c "docker compose up -d --no-deps web"
 ```
 
+웹 nginx(`docker/nginx.conf`)는 `api` 주소를 시작할 때 한 번만 찾는다(resolver 없음). 버전 전환은 두
+이미지가 함께 바뀌어 웹도 다시 만들어지지만, API 컨테이너만 다시 만들었다면
+`docker compose restart web`으로 웹도 다시 시작해 새 주소를 찾게 한다.
+
 `uvicorn` 시작은 migration을 자동 수행하지 않는다. v1.10.0에서 `0020_bottle_revision`을
 `0021_quality_aliases`로 이전하며 기존 제품의 검색 별칭과 관심의 참고 URL을 빈 배열로
 추가했다. v1.10.1도 동일한 schema 0021을 사용하므로 v1.10.0에서 올릴 때 데이터 이전은 없다.
@@ -275,13 +279,14 @@ docker compose ps
 
 ### 4.8 현재 배포 기준
 
-2026-10-23 22:10:34 KST에 v1.11.1 / `0021_quality_aliases`를 배포했다. API와 웹은 모두 태그
-커밋 `9d55639429fdf6cf36e4a1fddf8cdeaf66a894a4`이며 이후 문서 커밋과 구분한다. 리뷰 후속
-F1~F5와 Vite·Vitest·certifi 보안 패치를 담았으며 schema는 그대로라 migration을 실행하지 않았다.
-DB 컨테이너·DB/uploads 볼륨과 기존 모든 테이블·열을 보존했다. 태그 전과 전환 직전 새 백업의 빈
-격리 복원·쿠키 인증·새 코드의 SQL 대 API 대조, 새 이미지의 읽기 전용 조회·전체 해시, 보안
-헤더·CSP, HTTPS의 새 PWA와 이전 배포 파일로 재구성한 캐시 전환을 확인했다. 정확한 image digest·시작 시각·검증
-제한은 [v1.11.1 릴리스·배포 기록](../workthrough/2026-10-23-v1111-release.md)에 있다.
+2026-11-02 07:37 KST에 v1.12.0 / `0021_quality_aliases`를 배포했다. API와 웹은 모두 태그
+커밋 `aa8511468ac24f1a25b42055eed599e16cc9a5dc`이며 이후 문서 커밋과 구분한다. 간결한 화면
+U1~U6(웹)과 dnspython 2.9.1 보안 패치를 담았고 schema는 그대로라 migration을 실행하지 않았다.
+DB 컨테이너·DB/uploads 볼륨과 기존 모든 테이블·열을 보존했다. 태그 전 백업과 전환 직전 새 백업의
+빈 격리 복원, 운영·복원본 44개 테이블 전체 행 해시(UTC·READ ONLY) 일치, 새 API 이미지로 복원본
+조회 28개, HTTPS의 정적 파일 해시·보안 헤더·새 서비스워커를 확인했다. 정확한 image digest·시작
+시각·검증 제한은 [v1.12.0 기록](../workthrough/2026-11-01-ux-concise.md)의 「버전·배포」에 있다.
+복귀가 필요하면 §4.5의 v1.12.0 문단대로 보존한 v1.11.1 이미지로 돌아간다.
 
 ## 5. 접속(Tailscale HTTPS)
 
