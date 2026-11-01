@@ -196,6 +196,45 @@ function pourTarget(
   );
 }
 
+function bottleVolume(
+  bottle: Bottle,
+  purchases: readonly Purchase[],
+  skus: readonly Sku[],
+): number | null {
+  const purchase = purchases.find((item) => item.id === bottle.purchase_id);
+  return purchase?.volume_ml ?? skus.find((sku) => sku.id === purchase?.sku_id)?.volume_ml ?? null;
+}
+
+/**
+ * 머리부 병 이름. 병 번호는 구매마다 1부터 다시 매기므로 규격이 둘 이상이면 용량을, 같은 용량에
+ * 같은 번호의 다른 마실 병이 있으면 구매일을 덧붙인다(D264).
+ */
+function pourTargetLabel(
+  target: Bottle,
+  bottles: readonly Bottle[],
+  purchases: readonly Purchase[],
+  skus: readonly Sku[],
+): string {
+  const volume = bottleVolume(target, purchases, skus);
+  const amount =
+    target.status === "unopened"
+      ? "미개봉"
+      : target.remaining_ml === null
+        ? "잔량 미기록"
+        : `${target.remaining_ml.toLocaleString("ko-KR")}ml 남음`;
+  const size = skus.length > 1 && volume !== null ? `${formatVolume(volume)} ` : "";
+  const collides = bottles.some(
+    (bottle) =>
+      bottle.id !== target.id &&
+      (bottle.status === "open" || bottle.status === "unopened") &&
+      bottle.label_no === target.label_no &&
+      bottleVolume(bottle, purchases, skus) === volume,
+  );
+  const purchasedOn = purchases.find((item) => item.id === target.purchase_id)?.purchased_on;
+  const purchase = collides ? ` · ${purchasedOn ? `구매 ${purchasedOn}` : "구매일 미기록"}` : "";
+  return `${amount} · ${size}${target.label_no}번 병${purchase}`;
+}
+
 export function ProductDetail({
   product,
   purchases,
@@ -472,20 +511,12 @@ export function ProductDetail({
             <BottleGauge
               status={target.status}
               remainingMl={target.remaining_ml}
-              volumeMl={
-                purchases.find((purchase) => purchase.id === target.purchase_id)?.volume_ml ??
-                product.skus.find(
-                  (sku) =>
-                    sku.id ===
-                    purchases.find((purchase) => purchase.id === target.purchase_id)?.sku_id,
-                )?.volume_ml ??
-                null
-              }
+              volumeMl={bottleVolume(target, purchases, product.skus)}
             />
           ) : null}
           <p className="mb-0">
             {target
-              ? `${target.status === "unopened" ? "미개봉" : target.remaining_ml === null ? "잔량 미기록" : `${target.remaining_ml.toLocaleString("ko-KR")}ml 남음`} · ${target.label_no}번 병`
+              ? pourTargetLabel(target, bottles, purchases, product.skus)
               : "마실 수 있는 병이 없습니다"}
           </p>
         </div>
