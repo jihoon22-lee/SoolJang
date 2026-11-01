@@ -94,6 +94,35 @@ function initialFilters(today: string): InsightFilters {
   };
 }
 const STATUSES = ["all", "stock", "unopened", "open", "finished", "gifted", "sold"];
+const STATUS_SUMMARY: Record<string, string> = {
+  all: "전체 상태",
+  stock: "현재 보유",
+  unopened: "미개봉",
+  open: "개봉",
+  finished: "소진",
+  gifted: "증여",
+  sold: "판매",
+};
+type Period = "recent" | "year" | "all" | "custom";
+const PERIODS: { id: Period; label: string }[] = [
+  { id: "recent", label: "최근 90일" },
+  { id: "year", label: "올해" },
+  { id: "all", label: "전체 기간" },
+  { id: "custom", label: "직접 설정" },
+];
+function periodRange(period: Exclude<Period, "custom">, today: string) {
+  if (period === "recent") return { from: initialFilters(today).from, to: today };
+  if (period === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
+  return { from: "", to: today };
+}
+/** 기간 칩은 오늘 기준 범위와 같을 때만 눌린 상태다. 직접 고른 날짜는 "직접 설정"이다. */
+function activePeriod(filters: InsightFilters, today: string): Period {
+  for (const period of ["recent", "year", "all"] as const) {
+    const range = periodRange(period, today);
+    if (filters.from === range.from && filters.to === range.to) return period;
+  }
+  return "custom";
+}
 /** 탭 세션에 둔 분석 범위. `day`는 저장한 날이다. */
 type StoredFilters = InsightFilters & { day: string };
 
@@ -148,6 +177,12 @@ export function InsightsDashboard({
     [ratingLabel, setRatingLabel] = useViewState("insights:rating-label", "");
   const [priceKey, setPriceKey] = useViewState("insights:price-key", "");
   const invalid = Boolean(filters.from && filters.to && filters.from > filters.to);
+  // 첫 화면은 기간 칩과 요약이다(D266). 날짜·주종·상태 입력은 접어 두되 직접 고른 범위나
+  // 잘못된 범위로 돌아왔으면 펼쳐서 왜 결과가 비었는지 보이게 한다.
+  const [customRequested, setCustomRequested] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(
+    () => invalid || activePeriod(filters, today) === "custom",
+  );
   const data = useMemo(() => {
     if (!source?.data) return null;
     const result = calculateInsights(source.data.snapshot, filters, today);
@@ -161,80 +196,112 @@ export function InsightsDashboard({
   const ratings = data.ratings[dimension],
     selectedRating = ratings.find((row) => row.label === ratingLabel) ?? ratings[0];
   const price = data.prices.find((row) => row.key === priceKey) ?? data.prices[0];
+  const period = customRequested ? "custom" : activePeriod(filters, today);
+  const categoryKnown = data.categories.some(({ id }) => id === filters.categoryId);
+  const categoryLabel = categoryKnown
+    ? (data.categories.find(({ id }) => id === filters.categoryId)?.label ?? "전체 주종")
+    : "전체 주종";
   return (
     <div className="insights-dashboard">
-      <p className="muted">
-        {today} 기준 기기에 저장된 기록으로 계산합니다.
-        {source.data?.pendingCount
-          ? ` 동기화 대기 ${source.data.pendingCount}건(실패 ${source.data.failedCount}건)의 로컬 변경이 포함됩니다.`
-          : ""}
-      </p>
-      <fieldset className="insight-filters">
-        <legend>분석 범위</legend>
-        <label>
-          시작일
-          <input
-            type="date"
-            value={filters.from}
-            max={filters.to || today}
-            onChange={(event) => setFilters({ ...filters, from: event.target.value })}
-          />
-        </label>
-        <label>
-          종료일
-          <input
-            type="date"
-            value={filters.to}
-            min={filters.from}
-            max={today}
-            onChange={(event) => setFilters({ ...filters, to: event.target.value })}
-          />
-        </label>
-        <label>
-          주종 (하위 포함)
-          <select
-            value={
-              data.categories.some(({ id }) => id === filters.categoryId) ? filters.categoryId : ""
-            }
-            onChange={(event) => setFilters({ ...filters, categoryId: event.target.value })}
-          >
-            <option value="">전체 주종</option>
-            {data.categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          대상 병의 현재 상태
-          <select
-            value={filters.status}
-            onChange={(event) => setFilters({ ...filters, status: event.target.value })}
-          >
-            <option value="all">전체 상태 · 병 없는 기록 포함</option>
-            <option value="stock">현재 보유 (미개봉·개봉)</option>
-            <option value="unopened">미개봉</option>
-            <option value="open">개봉</option>
-            <option value="finished">소진</option>
-            <option value="gifted">증여</option>
-            <option value="sold">판매</option>
-          </select>
-        </label>
-        <div className="button-row">
-          <button type="button" onClick={() => setFilters({ ...filters, from: "", to: today })}>
-            날짜 있는 전체 기간
-          </button>
-          <button type="button" onClick={() => setFilters(initialFilters(today))}>
-            최근 90일·전체로 초기화
-          </button>
-        </div>
-      </fieldset>
-      <p className="insight-scope">
-        현재 재고와 제품 총평은 기간에 영향을 받지 않습니다. 기간은 구매일·시음일·최종
-        소진/증여/판매일에 적용합니다. 상태를 고르면 그 현재 상태의 병과 연결된 기록만 분석하며,
-        구매 금액은 선택된 병수×단가입니다. 과거 당시의 재고·상태를 추정하지 않습니다.
-      </p>
+      <div className="insight-range">
+        <fieldset className="insight-periods">
+          <legend className="sr-only">분석 기간</legend>
+          {PERIODS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={period === item.id}
+              onClick={() => {
+                if (item.id === "custom") {
+                  setCustomRequested(true);
+                  setFiltersOpen(true);
+                  return;
+                }
+                setCustomRequested(false);
+                setFilters({ ...filters, ...periodRange(item.id, today) });
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </fieldset>
+        <details
+          className="insight-filter-details"
+          open={filtersOpen}
+          onToggle={(event) => setFiltersOpen(event.currentTarget.open)}
+        >
+          <summary>
+            {filters.from || "기록 시작"} ~ {filters.to || "기록 끝"} · {categoryLabel} ·{" "}
+            {STATUS_SUMMARY[filters.status] ?? STATUS_SUMMARY.all}
+          </summary>
+          <fieldset className="insight-filters">
+            <legend className="sr-only">분석 범위</legend>
+            <label>
+              시작일
+              <input
+                type="date"
+                value={filters.from}
+                max={filters.to || today}
+                onChange={(event) => setFilters({ ...filters, from: event.target.value })}
+              />
+            </label>
+            <label>
+              종료일
+              <input
+                type="date"
+                value={filters.to}
+                min={filters.from}
+                max={today}
+                onChange={(event) => setFilters({ ...filters, to: event.target.value })}
+              />
+            </label>
+            <label>
+              주종 (하위 포함)
+              <select
+                value={categoryKnown ? filters.categoryId : ""}
+                onChange={(event) => setFilters({ ...filters, categoryId: event.target.value })}
+              >
+                <option value="">전체 주종</option>
+                {data.categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              대상 병의 현재 상태
+              <select
+                value={filters.status}
+                onChange={(event) => setFilters({ ...filters, status: event.target.value })}
+              >
+                <option value="all">전체 상태 · 병 없는 기록 포함</option>
+                <option value="stock">현재 보유 (미개봉·개봉)</option>
+                <option value="unopened">미개봉</option>
+                <option value="open">개봉</option>
+                <option value="finished">소진</option>
+                <option value="gifted">증여</option>
+                <option value="sold">판매</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setCustomRequested(false);
+                setFilters(initialFilters(today));
+              }}
+            >
+              최근 90일·전체로 초기화
+            </button>
+          </fieldset>
+        </details>
+        {source.data?.pendingCount ? (
+          <p className="muted text-sm">
+            동기화 대기 {source.data.pendingCount}건(실패 {source.data.failedCount}건)의 이 기기
+            변경을 포함했습니다.
+          </p>
+        ) : null}
+      </div>
       {invalid ? (
         <p role="alert">시작일은 종료일보다 늦을 수 없습니다. 기간을 다시 선택하세요.</p>
       ) : null}
@@ -255,11 +322,11 @@ export function InsightsDashboard({
           />
           <Metric label="재고 원가 (SKU 실평단가 기준)" value={formatMoney(data.inventory.cost)} />
         </dl>
-        <p className="muted">
-          잔량 미확인 {data.inventory.unknownRemaining}병은 0ml로 합산하지 않았습니다. 미개봉은 규격
-          용량 전량입니다. 원가는 SKU별 전체 구매의 가중 실평단가×현재 재고 병수로, 남은 양 비율로
-          차감하지 않습니다. 기간·상태 필터는 실평단가의 구매 범위를 바꾸지 않습니다.
-        </p>
+        {data.inventory.unknownRemaining > 0 ? (
+          <p className="muted">
+            잔량 미확인 {data.inventory.unknownRemaining}병은 확인된 잔량에 0ml로 넣지 않았습니다.
+          </p>
+        ) : null}
         <BarChart
           title="현재 재고의 주종 구성"
           data={data.stockCategories.map((row) => ({ label: row.label, value: row.count }))}
@@ -287,16 +354,11 @@ export function InsightsDashboard({
             <p className="muted">
               같은 길이의 직전 기간 ({data.previous.from} ~ {data.previous.to}): 구매{" "}
               {data.previous.purchasedBottles}병 · 소진 {data.previous.finished}병 · 지출{" "}
-              {formatMoney(data.previous.spend)} · 시음 {data.previous.tastings}회. 서로 다른 제품과
-              표본일 수 있습니다.
+              {formatMoney(data.previous.spend)} · 시음 {data.previous.tastings}회
             </p>
           ) : (
             <p className="muted">시작일과 종료일이 있으면 같은 길이의 직전 기간과 비교합니다.</p>
           )}
-          <p className="muted">
-            증여·판매·소진은 현재 기록의 최종 종료일 기준입니다. 되돌린 과거 사건과 과거 재고는
-            복원하지 않습니다. 실구매가 공란은 기존 정책대로 0원에 포함합니다.
-          </p>
           <EvidenceList items={data.period.evidence} onSelectProduct={onSelectProduct} />
           <details>
             <summary>월별 구매·소진·지출</summary>
@@ -332,7 +394,7 @@ export function InsightsDashboard({
       ) : null}
       <section className="card" aria-labelledby="insight-open">
         <h3 id="insight-open">열린 병의 경과</h3>
-        <p>선택된 현재 개봉 병 {data.openBottles.length}병 · 날짜로 계산한 경과일입니다.</p>
+        <p>선택한 범위의 현재 개봉 병 {data.openBottles.length}병</p>
         <BarChart
           title="개봉 경과일 분포"
           data={data.aging.map((row) => ({ label: row.label, value: row.count }))}
@@ -423,18 +485,6 @@ export function InsightsDashboard({
                   );
                 })}
               </div>
-              <p className="muted">
-                제품 총평은 현재 평가 제품당 1개, 시음은 선택 기간의 평가 세션당 1개입니다. 0점은
-                평가에 포함하고 평점 없음은 제외합니다. 분포는 평가가 있는 0.5점 구간만 표시합니다.
-                표본이 적거나 같은 제품의 반복 시음이면 개인 취향 전체로 일반화할 수 없습니다.
-              </p>
-              {dimension === "price" ? (
-                <p className="muted">
-                  시음 가격대는 연결된 구매의 병당 원화 실구매가입니다. 제품은
-                  규격·통화·조건·가격대가 하나로 확인될 때만 분류합니다. 통화와 기록된 조건이 다른
-                  표본은 합치지 않습니다.
-                </p>
-              ) : null}
             </>
           ) : (
             <p>선택 범위에 평가한 제품이나 시음이 없습니다.</p>
@@ -489,11 +539,6 @@ export function InsightsDashboard({
                 />
               </dl>
               <EvidenceList preview items={price.evidence} onSelectProduct={onSelectProduct} />
-              <p className="muted">
-                같은 SKU·통화·기록된 할인 조건·구매처 종류의 구매만 비교합니다. 모든 금액은 저장된
-                병당 원화 실구매가이며 현재 환율로 바꾸지 않습니다. 중앙값은 병수 가중 없이 구매건별
-                단가 기준입니다. 조건 미기록은 실제 조건이 같다는 뜻이 아닙니다.
-              </p>
               {price.count < 2 ? <p>구매 표본이 1건이라 가격 변화는 비교할 수 없습니다.</p> : null}
             </>
           ) : (
@@ -503,9 +548,7 @@ export function InsightsDashboard({
       ) : null}
       <section className="card" aria-labelledby="insight-experience">
         <h3 id="insight-experience">보유 중 아직 시음 기록이 없는 제품</h3>
-        <p>
-          {data.untried.length}제품 · 제품의 전체 시음 기록 기준으로, 미개봉 여부와는 별개입니다.
-        </p>
+        <p>{data.untried.length}제품</p>
         <EvidenceList preview items={data.untried} onSelectProduct={onSelectProduct} />
         {!invalid ? (
           <>
@@ -530,10 +573,7 @@ export function InsightsDashboard({
       {!invalid ? (
         <section className="card" aria-labelledby="insight-change">
           <h3 id="insight-change">같은 제품의 반복 시음 평점</h3>
-          <p className="muted">
-            선택 기간에 평점이 2회 이상 있는 제품입니다. 처음·마지막 날짜에 여러 기록이 있으면 그날
-            평균을 비교합니다. 원인이나 숙성 효과를 추정하지 않습니다.
-          </p>
+          <p className="muted">선택 기간에 평점이 2회 이상 있는 제품입니다.</p>
           {data.changes.length ? (
             data.changes.map((item) => (
               <details key={item.id}>
@@ -556,7 +596,6 @@ export function InsightsDashboard({
       ) : null}
       <section className="card" aria-labelledby="insight-quality">
         <h3 id="insight-quality">분석을 제한하는 기록</h3>
-        <p>지표마다 제외 이유를 따로 표시합니다. 한 기록은 여러 점검 항목에 해당할 수 있습니다.</p>
         {data.coverage
           .filter((item) => item.items.length)
           .map((item) => (
@@ -576,6 +615,53 @@ export function InsightsDashboard({
           </button>
         ) : null}
       </section>
+      <details className="card insight-method">
+        <summary>계산 기준</summary>
+        <ul>
+          <li>{today} 기준, 이 기기에 저장된 기록으로 계산합니다.</li>
+          <li>
+            현재 재고와 제품 총평은 기간에 영향을 받지 않습니다. 기간은 구매일·시음일·최종
+            소진/증여/판매일에 적용하고 날짜가 확인된 사건만 셉니다. 상태를 고르면 그 현재 상태의
+            병과 연결된 기록만 분석하며, 구매 금액은 선택된 병수×단가입니다. 과거 당시의 재고·상태를
+            추정하지 않습니다.
+          </li>
+          <li>
+            미개봉은 규격 용량 전량입니다. 재고 원가는 SKU별 전체 구매의 가중 실평단가×현재 재고
+            병수로, 남은 양 비율로 차감하지 않습니다. 기간·상태 필터는 실평단가의 구매 범위를 바꾸지
+            않습니다.
+          </li>
+          <li>
+            증여·판매·소진은 현재 기록의 최종 종료일 기준이며 되돌린 과거 사건과 과거 재고는
+            복원하지 않습니다. 실구매가 공란은 0원에 포함합니다. 직전 기간과는 서로 다른 제품과
+            표본일 수 있습니다.
+          </li>
+          <li>
+            제품 총평은 현재 평가 제품당 1개, 시음은 선택 기간의 평가 세션당 1개입니다. 0점은 평가에
+            포함하고 평점 없음은 제외합니다. 분포는 평가가 있는 0.5점 구간만 표시합니다. 표본이
+            적거나 같은 제품의 반복 시음이면 개인 취향 전체로 일반화할 수 없습니다.
+          </li>
+          <li>
+            시음 가격대는 연결된 구매의 병당 원화 실구매가입니다. 제품은 규격·통화·조건·가격대가
+            하나로 확인될 때만 분류하고, 통화와 기록된 조건이 다른 표본은 합치지 않습니다.
+          </li>
+          <li>
+            구매 가격은 같은 SKU·통화·기록된 할인 조건·구매처 종류의 구매만 비교합니다. 금액은
+            저장된 병당 원화 실구매가이며 현재 환율로 바꾸지 않습니다. 중앙값은 병수 가중 없이
+            구매건별 단가 기준이고, 조건 미기록은 실제 조건이 같다는 뜻이 아닙니다.
+          </li>
+          <li>
+            아직 시음 기록이 없는 제품은 제품의 전체 시음 기록 기준이며 미개봉 여부와는 별개입니다.
+          </li>
+          <li>
+            반복 시음 평점은 처음·마지막 날짜에 여러 기록이 있으면 그날 평균을 비교하고 원인이나
+            숙성 효과를 추정하지 않습니다.
+          </li>
+          <li>
+            분석을 제한하는 기록은 지표마다 제외 이유를 따로 표시합니다. 한 기록은 여러 점검 항목에
+            해당할 수 있습니다.
+          </li>
+        </ul>
+      </details>
     </div>
   );
 }

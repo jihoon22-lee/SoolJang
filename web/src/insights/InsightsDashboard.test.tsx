@@ -55,6 +55,8 @@ it("기간·하위 주종·현재 상태 필터의 범위를 표시하고 원래
   const navigate = vi.fn();
   render(<InsightsDashboard onSelectProduct={navigate} today="2026-03-01" />);
   await screen.findByRole("heading", { name: "지금 보유한 술" });
+  await userEvent.click(screen.getByRole("button", { name: "직접 설정" }));
+  expect(screen.getByLabelText("시작일")).toBeVisible();
   await userEvent.clear(screen.getByLabelText("시작일"));
   await userEvent.type(screen.getByLabelText("시작일"), "2026-02-01");
   await userEvent.clear(screen.getByLabelText("종료일"));
@@ -66,7 +68,13 @@ it("기간·하위 주종·현재 상태 필터의 범위를 표시하고 원래
     expect(within(period).getByTestId("period-purchased")).toHaveTextContent("0병"),
   );
   expect(within(period).getByTestId("period-finished")).toHaveTextContent("0병");
-  expect(screen.getByText(/현재 재고와 제품 총평은 기간에 영향/)).toBeInTheDocument();
+  // 적용 중인 범위·주종·상태를 접힌 입력 위 요약으로 보인다.
+  expect(screen.getByText(/2026-02-01 ~ 2026-02-28 · 양주.* · 개봉/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "직접 설정" })).toHaveAttribute("aria-pressed", "true");
+  // 일반 계산 기준은 한 곳(계산 기준)에 모은다.
+  expect(
+    screen.getByText(/현재 재고와 제품 총평은 기간에 영향/).closest("details"),
+  ).toHaveTextContent("계산 기준");
   const opened = screen.getByRole("region", { name: "열린 병의 경과" });
   await userEvent.click(within(opened).getByRole("button", { name: /합성 위스키.*1번 병/ }));
   expect(navigate).toHaveBeenCalledWith("p", { skuId: "s", bottleId: "open" });
@@ -158,4 +166,35 @@ it("자정을 넘긴 탭에서 오늘까지로 둔 기간은 오늘로 따라오
   });
   render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
   expect(await screen.findByLabelText("종료일")).toHaveValue("2026-02-10");
+  // 직접 고른 범위로 돌아오면 입력을 펼쳐 둔다.
+  expect(screen.getByLabelText("종료일")).toBeVisible();
+});
+
+it("첫 화면은 기간 칩과 범위 요약이고 칩을 누르면 범위만 바꾼다", async () => {
+  render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
+  await screen.findByRole("heading", { name: "지금 보유한 술" });
+  const periods = screen.getByRole("group", { name: "분석 기간" });
+  expect(within(periods).getByRole("button", { name: "최근 90일" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // 입력은 접혀 있고 요약이 적용 범위를 보인다(D266).
+  expect(screen.getByText("2025-12-02 ~ 2026-03-01 · 전체 주종 · 전체 상태")).toBeInTheDocument();
+  expect(screen.getByLabelText("시작일")).not.toBeVisible();
+
+  await userEvent.click(within(periods).getByRole("button", { name: "올해" }));
+  expect(screen.getByText("2026-01-01 ~ 2026-03-01 · 전체 주종 · 전체 상태")).toBeInTheDocument();
+  const period = screen.getByRole("region", { name: "선택 기간의 변화" });
+  expect(within(period).getByTestId("period-purchased")).toHaveTextContent("2병");
+
+  await userEvent.click(within(periods).getByRole("button", { name: "전체 기간" }));
+  expect(screen.getByText("기록 시작 ~ 2026-03-01 · 전체 주종 · 전체 상태")).toBeInTheDocument();
+  expect(within(periods).getByRole("button", { name: "전체 기간" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // 이 기기 기록으로 계산한다는 설명은 본문이 아닌 계산 기준에 있다.
+  expect(
+    screen.getByText(/이 기기에 저장된 기록으로 계산합니다/).closest("details"),
+  ).not.toHaveAttribute("open");
 });

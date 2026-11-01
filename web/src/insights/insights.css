@@ -6,11 +6,49 @@
 .insights-dashboard .card {
   min-width: 0;
 }
+/* 첫 화면은 기간 칩과 범위 요약이다(D266). 날짜·주종·상태 입력은 요약 아래에 접힌다. */
+.insight-range {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+.insight-periods {
+  display: flex;
+  gap: var(--space-xs);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.insight-periods button {
+  flex: none;
+  min-height: var(--control-h-md);
+  padding-inline: var(--space);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+}
+.insight-periods button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: var(--font-weight-semibold);
+}
+.insight-filter-details > summary {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
 .insight-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: end;
+  margin: 0;
+  padding: var(--space);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
 }
 .insight-filters label {
   display: grid;
@@ -23,10 +61,13 @@
   width: 100%;
   min-height: 44px;
 }
-.insight-scope {
-  margin-block: 0;
-  font-size: 0.9rem;
+.insight-method ul {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding-left: 1.1rem;
   color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 .insights-dashboard select {
   max-width: 100%;
