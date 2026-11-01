@@ -347,7 +347,8 @@ describe("StatsPage", () => {
       await openSection("주종별");
 
       const table = await screen.findByRole("table", { name: /주종별 통계 표/ });
-      const nameHeader = screen.getByRole("columnheader", { name: /주종/ });
+      // 같은 탭의 주종별 보유 표와 구분해 집계 표 안에서 찾는다.
+      const nameHeader = within(table).getByRole("columnheader", { name: /주종/ });
       await userEvent.click(within(nameHeader).getByRole("button"));
 
       // 이름 오름차순: "맥주" 가 "양주" 보다 먼저다.
@@ -367,7 +368,7 @@ describe("StatsPage", () => {
 
       const table = await screen.findByRole("table", { name: /주종별 통계 표/ });
       const nameHeaderButton = () =>
-        within(screen.getByRole("columnheader", { name: /주종/ })).getByRole("button");
+        within(within(table).getByRole("columnheader", { name: /주종/ })).getByRole("button");
       await userEvent.click(nameHeaderButton());
       expect(categoryRowNames(table)).toEqual(["맥주", "양주"]);
 
@@ -397,4 +398,36 @@ it("근거를 보고 돌아와 다시 마운트해도 고른 통계 탭을 유�
 
   renderStatsPage();
   expect(await screen.findByRole("tab", { name: "랭킹" })).toHaveAttribute("aria-selected", "true");
+});
+
+it("주종별 보유의 현재·미개봉·개봉 수에서 같은 병을 찾고 하위 주종으로 내려간다", async () => {
+  await db.category.bulkPut([
+    row({ id: "r", name: "위스키", parent_id: null }),
+    row({ id: "c", name: "싱글몰트", parent_id: "r" }),
+  ]);
+  await db.product.put(row({ id: "p", name: "오래 보유한 싱글몰트", category_id: "c" }));
+  await db.sku.put(row({ id: "s", product_id: "p", volume_ml: 700 }));
+  await db.purchase.put(row({ id: "pu", sku_id: "s", quantity: 3, unit_paid_price: "30000" }));
+  await db.bottle.bulkPut([
+    row({ id: "b1", purchase_id: "pu", label_no: 1, status: "open" }),
+    row({ id: "b2", purchase_id: "pu", label_no: 2, status: "unopened" }),
+    row({ id: "b3", purchase_id: "pu", label_no: 3, status: "finished" }),
+  ]);
+  const { onSelectProduct } = renderStatsPage();
+  await openSection("주종별");
+  expect(await screen.findByRole("heading", { name: "주종별 보유" })).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "위스키 미개봉 1병 보기" }));
+  const evidence = screen.getByRole("region", { name: "위스키 · 미개봉 병 목록" });
+  expect(within(evidence).getByText(/병 #2/)).toBeInTheDocument();
+  expect(within(evidence).queryByText(/병 #1/)).not.toBeInTheDocument();
+  await userEvent.click(within(evidence).getByRole("button", { name: "오래 보유한 싱글몰트" }));
+  expect(onSelectProduct).toHaveBeenCalledWith("p", { skuId: "s", bottleId: "b2" });
+  await userEvent.click(screen.getByLabelText("하위 주종 함께 보기"));
+  expect(screen.getByRole("button", { name: "싱글몰트 현재 보유 2병 보기" })).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("누적·원가 보기"));
+  expect(screen.getByRole("columnheader", { name: "누적 구매" })).toBeInTheDocument();
+  const stockRow = screen.getByRole("button", { name: "위스키 현재 보유 2병 보기" }).closest("tr");
+  expect(stockRow).toHaveTextContent("3");
+  // 주종별 집계 표는 같은 탭에서 이어진다.
+  expect(screen.getByRole("heading", { name: "주종별 집계" })).toBeInTheDocument();
 });

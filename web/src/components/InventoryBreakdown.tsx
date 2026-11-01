@@ -69,7 +69,7 @@ export function InventoryBreakdown({
         </label>
       </div>
       <p className="muted text-sm">
-        현재 보유 = 미개봉 + 개봉. 숫자를 누르면 해당 병을 볼 수 있습니다.
+        숫자를 누르면 해당 병을 볼 수 있습니다.
         {expanded ? " 상위 행에는 하위 주종이 포함됩니다." : ""}
       </p>
       {rows.length === 0 ? (

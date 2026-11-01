@@ -12,6 +12,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import type { CategoryStat, RankingEntry } from "@/api/types";
 import { BarChart, type BarChartDatum } from "@/components/charts/BarChart";
 import { DonutChart } from "@/components/charts/DonutChart";
+import { InventoryBreakdown } from "@/components/InventoryBreakdown";
 import { PivotExplorer } from "@/components/PivotExplorer";
 import { LoadingState } from "@/components/StatusViews";
 import {
@@ -25,7 +26,7 @@ import {
   formatVolume,
 } from "@/format";
 import { InsightsDashboard } from "@/insights/InsightsDashboard";
-import { getStatsDashboard } from "@/sync/queries";
+import { getDrinkableBottles, getStatsDashboard } from "@/sync/queries";
 import { useSyncStatus } from "@/sync/SyncStatusProvider";
 import { useViewState } from "@/viewState";
 
@@ -174,6 +175,11 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
     "insights",
     STATS_SECTION_IDS,
   );
+  // 주종별 보유의 숫자를 누르면 해당 병 목록을 보인다(QS07). 그 탭에서만 병을 모은다.
+  const bottles = useLiveQuery(
+    async () => (section === "categories" ? getDrinkableBottles() : null),
+    [section],
+  );
 
   if (rankings === undefined || categoriesRaw === undefined || totals === undefined) {
     return <LoadingState label="통계를 불러오고 있습니다…" />;
@@ -206,41 +212,6 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
   return (
     <div className="stats-page">
       <h2 className="page-title">통계</h2>
-      {section !== "insights" ? (
-        <details className="card">
-          <summary>통계에 포함된 기록과 계산 기준</summary>
-          <p>
-            구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다. 재고는 미개봉·개봉 병만
-            포함합니다.
-          </p>
-          <p>
-            전체·제품별 평단가는 0원 구매를 포함한 구매 병수로 나눕니다. 평균 100ml가는 정가 합계와
-            총 용량 기준입니다.
-          </p>
-          <p>할인율은 정가가 기록된 구매만으로 계산하고, 가격 순위에는 0원 제품을 넣지 않습니다.</p>
-          <p>
-            구매 {dashboard?.coverage.purchaseCount}건 · 0원(공란·선물·포인트){" "}
-            {dashboard?.coverage.zeroPaidPurchaseCount}건 포함 · 할인율 기준(정가 기록){" "}
-            {dashboard?.coverage.listPricedPurchaseCount}건 · 규격 미등록 제품{" "}
-            {dashboard?.coverage.missingVolumeProducts.length}개
-          </p>
-          <ul>
-            {dashboard?.coverage.missingVolumeProducts.map((product) => (
-              <li key={product.id}>
-                <button type="button" onClick={() => onSelectProduct(product.id)}>
-                  {product.name} · 규격 등록 확인
-                </button>
-              </li>
-            ))}
-          </ul>
-          {onOpenQuality && (
-            <button type="button" onClick={onOpenQuality}>
-              데이터 품질에서 정리
-            </button>
-          )}
-        </details>
-      ) : null}
-
       {/* 한 화면에 지표 16개·랭킹 5종·피벗이 세로로 이어지던 것을 탭으로 나눈다. */}
       <div className="tab-list" role="tablist" aria-label="통계 구간">
         {STATS_SECTIONS.map((item) => (
@@ -262,12 +233,7 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
         <section role="tabpanel" id="stats-panel-insights" aria-labelledby="stats-tab-insights">
           <InsightsDashboard onSelectProduct={onSelectProduct} onOpenQuality={onOpenQuality} />
         </section>
-      ) : (
-        <p className="muted">
-          기존 상세 집계·랭킹·피벗 보기입니다. 인사이트의 기간·상태 필터와 별도로 전체 기록을
-          표시하며 피벗은 자체 조건을 사용합니다.
-        </p>
-      )}
+      ) : null}
       {section === "summary" && (
         <section aria-labelledby="stats-summary-heading" id="stats-panel-summary" role="tabpanel">
           <h3 id="stats-summary-heading" className="sr-only">
@@ -330,17 +296,24 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
       )}
 
       {section === "categories" && (
-        <section
-          aria-labelledby="stats-category-heading"
-          id="stats-panel-categories"
-          role="tabpanel"
-        >
-          <h3 id="stats-category-heading">주종별 집계</h3>
-
+        <section aria-labelledby="stats-tab-categories" id="stats-panel-categories" role="tabpanel">
           {categories.length === 0 ? (
             <p className="muted">등록된 술이 없습니다.</p>
           ) : (
             <>
+              <h3 id="stats-holdings-heading">주종별 보유</h3>
+              {bottles && categoryTree ? (
+                <InventoryBreakdown
+                  stats={dashboard?.categoryDetails ?? []}
+                  tree={categoryTree}
+                  bottles={bottles}
+                  onSelectProduct={onSelectProduct}
+                  onSelectCategory={onSelectCategory}
+                />
+              ) : (
+                <output>병 목록을 불러오는 중…</output>
+              )}
+              <h3 id="stats-category-heading">주종별 집계</h3>
               {/* 기준(주종)은 이 절에서는 고정이지만 측정값은 바꿀 수 있다 — 바꾸면 차트가
                 바로 다시 그려진다. 주종을 누르면 그 주종 필터가 걸린 "내 술" 탭으로
                 이동한다("주종 미지정" 은 실제 카테고리가 아니라 건너뛸 곳이 없어 비활성이다). */}
@@ -432,6 +405,44 @@ export function StatsPage({ onSelectProduct, onSelectCategory, onOpenQuality }: 
           )}
         </section>
       )}
+      {section !== "insights" ? (
+        <details className="card">
+          <summary>계산 기준</summary>
+          <p>
+            상세 합계·주종별·랭킹은 인사이트의 기간·상태 필터와 별개로 전체 기록을 씁니다. 피벗은
+            자체 조건을 씁니다.
+          </p>
+          <p>
+            구매 가격 공란은 선물·포인트 구매 등의 0원으로 포함합니다. 재고는 미개봉·개봉 병만
+            포함합니다.
+          </p>
+          <p>
+            전체·제품별 평단가는 0원 구매를 포함한 구매 병수로 나눕니다. 평균 100ml가는 정가 합계와
+            총 용량 기준입니다.
+          </p>
+          <p>할인율은 정가가 기록된 구매만으로 계산하고, 가격 순위에는 0원 제품을 넣지 않습니다.</p>
+          <p>
+            구매 {dashboard?.coverage.purchaseCount}건 · 0원(공란·선물·포인트){" "}
+            {dashboard?.coverage.zeroPaidPurchaseCount}건 포함 · 할인율 기준(정가 기록){" "}
+            {dashboard?.coverage.listPricedPurchaseCount}건 · 규격 미등록 제품{" "}
+            {dashboard?.coverage.missingVolumeProducts.length}개
+          </p>
+          <ul>
+            {dashboard?.coverage.missingVolumeProducts.map((product) => (
+              <li key={product.id}>
+                <button type="button" onClick={() => onSelectProduct(product.id)}>
+                  {product.name} · 규격 등록 확인
+                </button>
+              </li>
+            ))}
+          </ul>
+          {onOpenQuality && (
+            <button type="button" onClick={onOpenQuality}>
+              데이터 품질에서 정리
+            </button>
+          )}
+        </details>
+      ) : null}
     </div>
   );
 }
