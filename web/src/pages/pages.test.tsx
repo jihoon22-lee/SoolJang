@@ -83,9 +83,16 @@ describe("ProductsPage", () => {
   }
 
   /** App.tsx 가 URL 해시로 하는 선택 상태 제어를, 테스트에서는 로컬 state 로 흉내낸다. */
-  function ProductsPageHarness() {
-    const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-    const [context, setContext] = useState<ProductContext>({});
+  /** App 처럼 화면 상태를 들고, 한 번 쓰는 표시는 받은 화면이 소비하면 지운다. */
+  function ProductsPageHarness({
+    initialProductId = null,
+    initialContext = {},
+  }: {
+    initialProductId?: string | null;
+    initialContext?: ProductContext;
+  }) {
+    const [selectedProductId, setSelectedProductId] = useState<string | null>(initialProductId);
+    const [context, setContext] = useState<ProductContext>(initialContext);
     return (
       <ProductsPage
         selectedProductId={selectedProductId}
@@ -95,16 +102,26 @@ describe("ProductsPage", () => {
           setContext(next);
         }}
         onDeselectProduct={() => setSelectedProductId(null)}
+        onConsumeRouteFlag={(flag) =>
+          setContext((current) =>
+            flag === "addPurchase" ? { ...current, addPurchase: undefined } : current,
+          )
+        }
         onOpenStoreMode={vi.fn()}
       />
     );
   }
 
-  function renderProductsPage() {
+  function renderProductsPage(
+    initial: { productId?: string | null; context?: ProductContext } = {},
+  ) {
     return renderWithQuery(
       <SyncStatusProvider>
         <ToastProvider>
-          <ProductsPageHarness />
+          <ProductsPageHarness
+            initialProductId={initial.productId ?? null}
+            initialContext={initial.context ?? {}}
+          />
         </ToastProvider>
       </SyncStatusProvider>,
     );
@@ -728,6 +745,24 @@ describe("ProductsPage", () => {
       const call = calls.find((c) => c.method === "POST" && c.url.includes("/purchases"));
       expect(call?.body).toMatchObject({ quantity: 3, vendor_id: null });
     });
+  });
+
+  it("이 술에 구매 추가로 연 폼을 닫고 제품 수정을 취소해도 폼을 다시 열지 않는다", async () => {
+    await seedProductWithPurchase("p1", "다시 열지 않을 술");
+
+    renderProductsPage({ productId: "p1", context: { addPurchase: true } });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+    await waitFor(() => expect(form).toHaveFocus());
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "구매 이력" })).getByRole("button", {
+        name: "취소",
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "수정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "취소" }));
+
+    expect(await screen.findByRole("button", { name: "수정" })).toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "구매 추가" })).not.toBeInTheDocument();
   });
 
   it("구매 건 삭제를 확인하면 삭제 요청을 보낸다", async () => {

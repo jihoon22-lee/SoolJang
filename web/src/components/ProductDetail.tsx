@@ -88,6 +88,8 @@ interface ProductDetailProps {
   editTasting?: boolean | undefined;
   /** 새 술 폼의 "이 술에 구매 추가"로 들어오면 구매 추가 폼을 열어 둔다(D268). */
   addPurchase?: boolean | undefined;
+  /** 구매 추가 요청을 받았다. 한 번 쓰는 표시라 다시 마운트돼도 폼을 또 열지 않게 소비한다. */
+  onAddPurchaseDelivered?: (() => void) | undefined;
   onTastingDeleted?: ((item: ContextualTasting) => void) | undefined;
   onSelectContext?: ((context: ProductContext) => void) | undefined;
   onTastingCorrected?: ((tasting: ContextualTasting) => void) | undefined;
@@ -206,6 +208,7 @@ export function ProductDetail({
   selectedTastingId,
   editTasting,
   addPurchase,
+  onAddPurchaseDelivered,
   onTastingDeleted,
   onSelectContext,
   onTastingCorrected,
@@ -313,8 +316,12 @@ export function ProductDetail({
     heading.focus({ preventScroll: true });
   });
   const [addPurchaseRequest, setAddPurchaseRequest] = useState(0);
+  const addPurchaseDelivered = useRef(onAddPurchaseDelivered);
+  addPurchaseDelivered.current = onAddPurchaseDelivered;
   useEffect(() => {
-    if (addPurchase) setAddPurchaseRequest((request) => request + 1);
+    if (!addPurchase) return;
+    setAddPurchaseRequest((request) => request + 1);
+    addPurchaseDelivered.current?.();
   }, [addPurchase]);
   useEffect(() => {
     if (editTasting && contextTastingId) setCorrectionTastingId(contextTastingId);
