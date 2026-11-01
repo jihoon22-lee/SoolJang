@@ -83,6 +83,23 @@ const SETTINGS_VIEWS: { id: View; label: string }[] = [
 ];
 
 /**
+ * 내 술 표 머리글이 붙는 위치(`--app-header-h`)를 실제 헤더 높이로 맞춘다. 헤더는 글꼴·계정
+ * 이름·동기화 문구에 따라 줄바꿈되어 높이가 바뀌므로 고정값으로 두면 머리글이 헤더 밑에 숨는다.
+ */
+function trackHeaderHeight(header: HTMLElement | null) {
+  if (!header || typeof ResizeObserver === "undefined") return;
+  const root = document.documentElement;
+  const update = () => root.style.setProperty("--app-header-h", `${header.offsetHeight}px`);
+  const observer = new ResizeObserver(update);
+  observer.observe(header);
+  update();
+  return () => {
+    observer.disconnect();
+    root.style.removeProperty("--app-header-h");
+  };
+}
+
+/**
  * 애플리케이션 루트.
  *
  * 라우터 라이브러리를 쓰지 않고 `history.pushState`/`popstate` 만으로 URL 해시에 뷰 상태를
@@ -347,7 +364,7 @@ export function App() {
             </a>
 
             <UpdateNotice />
-            <header className="app-header">
+            <header className="app-header" ref={trackHeaderHeight}>
               <h1>술장</h1>
               <nav className="app-nav" aria-label="주요 화면">
                 {VIEWS.map((item) => (

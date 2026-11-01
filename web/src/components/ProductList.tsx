@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import type { Product, ProductMetrics, SortKey, SortOrder } from "@/api/types";
 import { productEdition } from "@/components/productDisplay";
 
@@ -60,6 +61,19 @@ export function ProductList({
   onToggleSelect,
   onToggleAll,
 }: ProductListProps) {
+  // 데스크톱 표는 페이지가 스크롤하고 머리글이 앱 헤더 아래 붙는다. 좁은 데스크톱이나 조건 열로
+  // 표가 결과 영역보다 넓어지면 페이지 전체를 밀지 않고 표 안에서만 가로로 넘긴다.
+  const [overflowing, setOverflowing] = useState(false);
+  const trackOverflow = useCallback((scroller: HTMLDivElement | null) => {
+    const table = scroller?.querySelector("table");
+    if (!scroller || !table || typeof ResizeObserver === "undefined") return;
+    const update = () => setOverflowing(table.offsetWidth > scroller.clientWidth + 1);
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller);
+    observer.observe(table);
+    update();
+    return () => observer.disconnect();
+  }, []);
   if (products.length === 0) {
     return (
       <output className="empty-state">
@@ -82,7 +96,11 @@ export function ProductList({
   });
   return (
     <>
-      <div className="table-scroll">
+      <div
+        ref={trackOverflow}
+        className="table-scroll"
+        data-overflow={overflowing ? "" : undefined}
+      >
         <table className="product-table">
           <caption className="sr-only">
             제품 목록. 이름을 선택하면 상세 화면으로 이동합니다.
@@ -155,7 +173,7 @@ export function ProductList({
                   ) : null}
                 </th>
                 <td className="numeric">{product.vintage ?? "—"}</td>
-                <td>{formatCategoryPath(product.category_path)}</td>
+                <td className="category-cell">{formatCategoryPath(product.category_path)}</td>
                 <td className="numeric">{formatAbv(product.abv)}</td>
                 <td className="numeric">
                   <StockBadge
@@ -163,7 +181,7 @@ export function ProductList({
                     allSkus={product.skus.length > 1 || product.filtered_stock_count != null}
                   />
                   {product.filtered_stock_count != null ? (
-                    <span className="stock-breakdown">
+                    <span className="stock-breakdown stock-filtered">
                       조건 내 재고 {product.filtered_stock_count}병
                     </span>
                   ) : null}
