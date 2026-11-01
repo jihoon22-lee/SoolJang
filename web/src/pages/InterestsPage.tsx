@@ -95,7 +95,7 @@ export function InterestsPage({
         <div>
           <h2 className="page-title">관심 목록</h2>
           <p className="muted">
-            다음에 경험할 술을 모으고 비교하세요. 관심 저장은 재고와 지출에 포함되지 않습니다.
+            다음에 마셔 볼 술을 모아 두고 비교하세요. 내 술 재고와는 따로 관리됩니다.
           </p>
         </div>
         <button

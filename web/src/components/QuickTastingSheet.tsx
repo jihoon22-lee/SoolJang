@@ -3,7 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { collectionApi } from "@/api/collection";
-import { productEdition, purchaseReference } from "@/components/productDisplay";
+import {
+  type PurchaseIdentity,
+  productEdition,
+  purchaseReferences,
+} from "@/components/productDisplay";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { useToast } from "@/components/Toast";
 import { formatDate, formatVolume } from "@/format";
@@ -30,8 +34,18 @@ const SELECTION_FORM = "quick-tasting:selection";
 const EMPTY_SELECTION = { bottleId: "", skuId: "", productName: "", labelNo: 0, volumeLabel: "" };
 type BottleSelection = typeof EMPTY_SELECTION;
 
-function purchaseLabel(bottle: DrinkableBottle, purchaseIds: readonly string[]): string {
-  return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"} · ${purchaseReference(bottle.purchaseId, purchaseIds)}`;
+function purchaseIdentity(bottle: DrinkableBottle): PurchaseIdentity {
+  return {
+    id: bottle.purchaseId,
+    productId: bottle.productId,
+    volumeMl: bottle.volumeMl,
+    purchasedOn: bottle.purchasedOn,
+    vendorName: bottle.vendorName,
+  };
+}
+function purchaseLabel(bottle: DrinkableBottle, references: ReadonlyMap<string, string>): string {
+  const reference = references.get(bottle.purchaseId);
+  return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"}${reference ? ` · ${reference}` : ""}`;
 }
 function bottleProductLabel(bottle: DrinkableBottle): string {
   const edition = productEdition({
@@ -54,7 +68,11 @@ export function QuickTastingSheet({
   const dialogRef = useModalDialog(returnFocusRef);
   const [session] = useState(captureWriteSession);
   const bottles = useLiveQuery(() => getDrinkableBottles(), [session.userId]);
-  const purchaseIds = (bottles ?? []).map((bottle) => bottle.purchaseId);
+  // 병마다 전체 목록을 다시 비교하지 않도록 구매 참조를 한 번만 계산한다(D264).
+  const references = useMemo(
+    () => purchaseReferences((bottles ?? []).map(purchaseIdentity)),
+    [bottles],
+  );
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useDraftState(SELECTION_FORM, EMPTY_SELECTION);
   const [scope, setScope] = useState<"all" | "sku" | null>(null);
@@ -331,7 +349,7 @@ export function QuickTastingSheet({
                     </span>
                     {scope === "sku" || item.status === "open" ? (
                       <span className="muted text-sm">
-                        {purchaseLabel(item, purchaseIds)} · {locationLabel(item.bottleId)}
+                        {purchaseLabel(item, references)} · {locationLabel(item.bottleId)}
                       </span>
                     ) : null}
                   </button>
@@ -343,7 +361,7 @@ export function QuickTastingSheet({
           <QuickTastingForm
             key={selection.bottleId}
             selection={selection}
-            purchaseIds={purchaseIds}
+            references={references}
             bottle={selectedBottle}
             loading={bottles === undefined}
             location={locationLabel(selection.bottleId)}
@@ -380,7 +398,7 @@ export function QuickTastingSheet({
 
 function QuickTastingForm({
   selection,
-  purchaseIds,
+  references,
   bottle,
   loading,
   location,
@@ -395,7 +413,7 @@ function QuickTastingForm({
   onRecorded,
 }: {
   selection: BottleSelection;
-  purchaseIds: readonly string[];
+  references: ReadonlyMap<string, string>;
   bottle: DrinkableBottle | null;
   loading: boolean;
   location: string;
@@ -510,7 +528,7 @@ function QuickTastingForm({
     >
       <p className="muted text-sm mt-0">
         {bottle
-          ? `${formatVolume(bottle.volumeMl)} · ${purchaseLabel(bottle, purchaseIds)}`
+          ? `${formatVolume(bottle.volumeMl)} · ${purchaseLabel(bottle, references)}`
           : `${selection.volumeLabel} · #${selection.labelNo}`}{" "}
         · {location}
       </p>

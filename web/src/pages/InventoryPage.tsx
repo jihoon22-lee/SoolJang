@@ -21,7 +21,11 @@ import {
 } from "@/api/collection";
 import { BottleQr, BottleQrCamera } from "@/components/BottleQr";
 import { CleanupConfirmation } from "@/components/CleanupConfirmation";
-import { productEdition, purchaseReference } from "@/components/productDisplay";
+import {
+  type PurchaseIdentity,
+  productEdition,
+  purchaseReferences,
+} from "@/components/productDisplay";
 import { useToast } from "@/components/Toast";
 import { downloadCsv } from "@/csvExport";
 import { formatDate, formatVolume, todayLocal } from "@/format";
@@ -204,6 +208,7 @@ function BottleLocations({
   locationName: (id: string | null) => string;
 }) {
   const toast = useToast();
+  const references = useMemo(() => inventoryReferences(bottles), [bottles]);
   const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -313,7 +318,7 @@ function BottleLocations({
                   <td className="select-col">
                     <input
                       type="checkbox"
-                      aria-label={`${inventoryBottleLabel(bottle, bottles)} 선택`}
+                      aria-label={`${inventoryBottleLabel(bottle, references)} 선택`}
                       checked={selected.has(bottle.id)}
                       onChange={() => toggle(bottle.id)}
                     />
@@ -321,10 +326,10 @@ function BottleLocations({
                   <th scope="row">
                     <button
                       type="button"
-                      className="link-like"
+                      className="entity-link"
                       onClick={() => onSelectProduct(bottle.product_id, { bottleId: bottle.id })}
                     >
-                      {inventoryBottleLabel(bottle, bottles)}
+                      {inventoryBottleLabel(bottle, references)}
                     </button>
                     {bottle.legacy_location ? (
                       <span className="muted text-sm"> · 기존 메모: {bottle.legacy_location}</span>
@@ -332,7 +337,7 @@ function BottleLocations({
                   </th>
                   <td>
                     <select
-                      aria-label={`${inventoryBottleLabel(bottle, bottles)} 위치`}
+                      aria-label={`${inventoryBottleLabel(bottle, references)} 위치`}
                       disabled={!online || pending}
                       value={bottle.location_id ?? ""}
                       onChange={(event) => {
@@ -428,7 +433,7 @@ function BottleQrCard({
   });
   return (
     <section className="card">
-      <h3>{inventoryBottleLabel(bottle, [bottle])}</h3>
+      <h3>{inventoryBottleLabel(bottle, NO_REFERENCES)}</h3>
       <BottleQr code={bottle.bottle_code} />
       <button type="button" onClick={() => window.print()}>
         QR 인쇄
@@ -599,6 +604,7 @@ function StocktakePanel({
   locationName: (id: string | null) => string;
 }) {
   const toast = useToast();
+  const references = useMemo(() => inventoryReferences(bottles), [bottles]);
   const [sessionName, setSessionName] = useDraftState("stocktake-name", "");
   const [scope, setScope] = useState("");
   const [code, setCode] = useState("");
@@ -885,7 +891,7 @@ function StocktakePanel({
                           })
                         }
                       />
-                      {inventoryBottleLabel(bottle, bottles)}
+                      {inventoryBottleLabel(bottle, references)}
                     </label>{" "}
                     <button
                       type="button"
@@ -1097,7 +1103,29 @@ function ObservationCorrection({
   );
 }
 
-function inventoryBottleLabel(bottle: InventoryBottle, bottles: InventoryBottle[]): string {
+const NO_REFERENCES: ReadonlyMap<string, string> = new Map();
+function inventoryPurchase(bottle: InventoryBottle, purchaseId: string): PurchaseIdentity {
+  return {
+    id: purchaseId,
+    productId: bottle.product_id,
+    volumeMl: bottle.volume_ml,
+    purchasedOn: bottle.purchased_on,
+    vendorName: bottle.vendor_name,
+  };
+}
+
+/** 같은 화면의 병들로 구매 참조를 한 번만 계산한다(행마다 전체 목록을 다시 비교하지 않는다). */
+function inventoryReferences(bottles: readonly InventoryBottle[]): ReadonlyMap<string, string> {
+  return purchaseReferences(
+    bottles.flatMap((item) =>
+      item.purchase_id ? [inventoryPurchase(item, item.purchase_id)] : [],
+    ),
+  );
+}
+function inventoryBottleLabel(
+  bottle: InventoryBottle,
+  references: ReadonlyMap<string, string>,
+): string {
   const context = [
     bottle.volume_ml ? formatVolume(bottle.volume_ml) : null,
     productEdition({
@@ -1107,12 +1135,7 @@ function inventoryBottleLabel(bottle: InventoryBottle, bottles: InventoryBottle[
     }),
     bottle.purchased_on ? formatDate(bottle.purchased_on) : null,
     bottle.vendor_name,
-    bottle.purchase_id
-      ? purchaseReference(
-          bottle.purchase_id,
-          bottles.flatMap((item) => (item.purchase_id ? [item.purchase_id] : [])),
-        )
-      : null,
+    bottle.purchase_id ? references.get(bottle.purchase_id) : null,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -875,7 +875,20 @@ function CorrectionEditor({
       }
     }
   }
-  const purchaseIds = [...new Set((bottleOptions ?? []).map((option) => option.purchase.id))];
+  const purchases = [
+    ...new Map(
+      (bottleOptions ?? []).map((option) => [
+        option.purchase.id,
+        {
+          id: option.purchase.id,
+          productId: option.context.product_id,
+          volumeMl: option.context.volume_ml,
+          purchasedOn: option.purchase.purchased_on,
+          vendorName: option.purchase.vendor_name,
+        },
+      ]),
+    ).values(),
+  ];
   const options = [
     ...new Map(
       [...(bottleOptions ?? []), ...(source ? [source] : [])].map((option) => [
@@ -953,7 +966,16 @@ function CorrectionEditor({
                   .map((option) => (
                     <option key={option.bottle.id} value={option.bottle.id}>
                       {label(option.context)} · {option.bottle.label_no}번 병 ·{" "}
-                      {purchaseReference(option.purchase.id, purchaseIds)} ·{" "}
+                      {[
+                        purchaseReference(
+                          purchases.find((purchase) => purchase.id === option.purchase.id) ?? {
+                            id: option.purchase.id,
+                          },
+                          purchases,
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .map((reference) => `${reference} · `)}
                       {option.purchase.purchased_on ?? "구매일 미기록"} ·{" "}
                       {option.purchase.vendor_name ?? "구매처 미기록"} ·{" "}
                       {STATUS_LABELS[option.bottle.status]}

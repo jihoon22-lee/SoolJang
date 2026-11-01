@@ -88,7 +88,17 @@ export function BottleSection({
         : bottles,
     [bottles, purchaseById, selectedSkuId],
   );
-  const purchaseIds = purchases.map((purchase) => purchase.id);
+  const purchaseIdentities = purchases.map((purchase) => ({
+    id: purchase.id,
+    volumeMl:
+      purchase.volume_ml ?? product?.skus.find((sku) => sku.id === purchase.sku_id)?.volume_ml,
+    purchasedOn: purchase.purchased_on,
+    vendorName: purchase.vendor_name,
+  }));
+  function bottleReference(bottle: Bottle): string | null {
+    const identity = purchaseIdentities.find((purchase) => purchase.id === bottle.purchase_id);
+    return identity ? purchaseReference(identity, purchaseIdentities) : null;
+  }
   function bottleContext(bottle: Bottle): string {
     const purchase = purchaseById.get(bottle.purchase_id);
     const sku = product?.skus.find((sku) => sku.id === purchase?.sku_id);
@@ -97,7 +107,7 @@ export function BottleSection({
       product ? productEdition(product) : null,
       purchase ? formatDate(purchase.purchased_on) : null,
       purchase?.vendor_name ?? "구매처 미기록",
-      purchaseReference(bottle.purchase_id, purchaseIds),
+      bottleReference(bottle),
     ]
       .filter(Boolean)
       .join(" · ");
@@ -105,7 +115,9 @@ export function BottleSection({
   function actionContext(bottle: Bottle): string {
     const purchase = purchaseById.get(bottle.purchase_id);
     const sku = product?.skus.find((sku) => sku.id === purchase?.sku_id);
-    return `${formatVolume(purchase?.volume_ml ?? sku?.volume_ml)} · ${purchaseReference(bottle.purchase_id, purchaseIds)}`;
+    return [formatVolume(purchase?.volume_ml ?? sku?.volume_ml), bottleReference(bottle)]
+      .filter(Boolean)
+      .join(" · ");
   }
   function expandBottle(bottle: Bottle): void {
     if (savingBottle) return;

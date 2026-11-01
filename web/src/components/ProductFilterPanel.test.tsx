@@ -70,8 +70,11 @@ describe("ProductFilterPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
 
-    expect(screen.queryByLabelText("이름 검색")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("주종")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "국가 위로 이동" })).toBeInTheDocument();
+    // 검색창은 순서 목록에 없고 맨 위에 그대로 남는다(D263).
+    expect(screen.getByLabelText("이름 검색")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "이름 검색 위로 이동" })).not.toBeInTheDocument();
   });
 
   it("맨 위 항목은 위로 이동이, 맨 아래 항목은 아래로 이동이 비활성화된다", async () => {
@@ -79,7 +82,7 @@ describe("ProductFilterPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
 
-    expect(screen.getByRole("button", { name: "이름 검색 위로 이동" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "주종 위로 이동" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "용량 아래로 이동" })).toBeDisabled();
   });
 
@@ -101,6 +104,16 @@ describe("ProductFilterPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("순서 목록의 접힘 경계는 검색창을 뺀 실제 상시 항목 수에 맞춘다", async () => {
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
+    // 검색창 아래 상시 항목은 6개이고 기본 순서의 7번째 항목인 "국가"부터 접힌다.
+    expect(screen.getByText(/검색창 아래 위 6개는 항상 보이고/)).toBeInTheDocument();
+    const divider = screen.getByText(/여기부터 "더 많은 필터"에 접힘/);
+    expect(divider.nextElementSibling).toHaveTextContent("국가");
+  });
+
   it("'기본 순서로' 를 누르면 바뀐 순서가 초기화된다", async () => {
     renderPanel();
 
@@ -111,6 +124,9 @@ describe("ProductFilterPanel", () => {
 
     const details = screen.getByText("더 많은 필터").closest("details") as HTMLElement;
     expect(within(details).getByLabelText("국가")).toBeInTheDocument();
+    // 기본 순서에 든 검색창을 다시 앞에 붙여 두 번 저장하지 않는다.
+    const stored = JSON.parse(localStorage.getItem("sooljang:products-filter-order") ?? "[]");
+    expect(stored.filter((id: string) => id === "q")).toHaveLength(1);
   });
 
   it("순서 변경은 localStorage 에 저장되어 재마운트해도 유지된다", async () => {

@@ -99,7 +99,7 @@ describe("App", () => {
     renderWithQuery(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
-    await userEvent.click(await screen.findByRole("link", { name: "설정" }));
+    await userEvent.click(await screen.findByRole("link", { name: "앱 설정" }));
 
     expect(await screen.findByRole("heading", { name: "API·외부 연결" })).toBeInTheDocument();
     // 메뉴 항목을 고르면 패널도 닫힌다.
@@ -167,7 +167,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "설정" }));
     expect(await screen.findByRole("navigation", { name: "설정 메뉴" })).toBeInTheDocument();
     // 열면 첫 항목으로 초점이 간다.
-    expect(screen.getByRole("link", { name: "주종 관리" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "매장 모드" })).toHaveFocus();
 
     await userEvent.keyboard("{Escape}");
 

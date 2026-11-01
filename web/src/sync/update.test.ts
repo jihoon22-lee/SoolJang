@@ -33,6 +33,18 @@ it("미저장 폼은 페이지 종료 경고를 제공한다", () => {
   stop();
 });
 
+it("보기만 바꾸는 필터 폼은 페이지 종료 경고나 SW 교체 보류를 만들지 않는다", async () => {
+  const stop = protectFormUpdates();
+  document.body.innerHTML =
+    "<form data-view-only><select><option>재고 있음</option></select></form>";
+  document.querySelector("select")?.dispatchEvent(new Event("change", { bubbles: true }));
+  expect(hasDirtyForms()).toBe(false);
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(false);
+  stop();
+});
+
 it("다른 탭의 SW 활성화도 작성 중인 탭을 강제 새로고침하지 않는다", async () => {
   const { controllerChanged } = await import("@/sync/update");
   const stop = protectFormUpdates();

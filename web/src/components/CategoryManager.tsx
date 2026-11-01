@@ -374,7 +374,7 @@ function CategoryBranch({
           </>
         ) : (
           <>
-            <button type="button" className="link-like" onClick={() => onSelectCategory(node.id)}>
+            <button type="button" className="entity-link" onClick={() => onSelectCategory(node.id)}>
               {node.name}
             </button>
             <button

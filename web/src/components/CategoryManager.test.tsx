@@ -30,11 +30,11 @@ const IDLE = { isPending: false, isSuccess: false, variables: undefined, error: 
 /**
  * 주종 이름은 트리와 각 select 의 option 에 여러 번 나타난다(예: 최상위 주종은 자기 이름이
  * 그대로 다른 행의 이동 대상 option 텍스트로도 쓰인다). 행을 찾을 때는 그 행 자신의
- * 이름 링크(`.link-like`)로 범위를 좁힌다.
+ * 이름 링크(`.entity-link`)로 범위를 좁힌다.
  */
 function rowOf(name: string): HTMLElement {
   return screen
-    .getByText(name, { selector: ".category-row .link-like" })
+    .getByText(name, { selector: ".category-row .entity-link" })
     .closest(".category-row") as HTMLElement;
 }
 
@@ -119,7 +119,7 @@ describe("CategoryManager", () => {
 
     const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const names = [...container.querySelectorAll(".category-row .link-like")].map(
+    const names = [...container.querySelectorAll(".category-row .entity-link")].map(
       (el) => el.textContent,
     );
     expect(names).toEqual(["위스키", "와인", "맥주"]);
@@ -148,7 +148,7 @@ describe("CategoryManager", () => {
 
     const { container } = render(<CategoryManager tree={tree(items)} {...handlers()} />);
 
-    const names = [...container.querySelectorAll(".category-row .link-like")].map(
+    const names = [...container.querySelectorAll(".category-row .entity-link")].map(
       (el) => el.textContent,
     );
     expect(names).toEqual(["와인", "레드", "스파클링"]);
@@ -204,13 +204,13 @@ describe("CategoryManager", () => {
     await userEvent.click(toggle);
 
     expect(
-      screen.queryByText("레드와인", { selector: ".category-row .link-like" }),
+      screen.queryByText("레드와인", { selector: ".category-row .entity-link" }),
     ).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "와인 하위 목록 펼치기" }));
 
     expect(
-      screen.getByText("레드와인", { selector: ".category-row .link-like" }),
+      screen.getByText("레드와인", { selector: ".category-row .entity-link" }),
     ).toBeInTheDocument();
   });
 

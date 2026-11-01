@@ -260,7 +260,7 @@ export function VendorsPage({ onSelectVendor }: { onSelectVendor: (vendorId: str
               <li className="vendor-row" key={vendor.id}>
                 <button
                   type="button"
-                  className="link-like"
+                  className="entity-link"
                   onClick={() => onSelectVendor(vendor.id)}
                 >
                   {vendor.name}
