@@ -1191,6 +1191,38 @@ describe("머리부와 최근 시음(D268)", () => {
     expect(correction).toHaveFocus();
   });
 
+  it("정정 폼을 닫으면 초점을 body가 아니라 그 시음 행이나 연 단추로 돌린다", async () => {
+    setup({
+      bottles: [openBottle],
+      offline: true,
+      selectedSkuId: "s1",
+      selectedBottleId: "b1",
+      selectedTastingId: "t1",
+      editTasting: true,
+    });
+    const correction = await screen.findByRole("region", { name: "시음 기록 정정" });
+    await waitFor(() => expect(correction).toHaveFocus());
+    await waitFor(() => expect(document.getElementById("history-tasting-t1")).not.toBeNull());
+
+    // 토스트 "고치기"로 왔으면 연 단추가 없으니 고르던 시음의 이력 행으로 돌린다.
+    await userEvent.click(
+      await within(correction).findByRole("button", { name: "입력 보관하고 닫기" }),
+    );
+    expect(screen.queryByRole("region", { name: "시음 기록 정정" })).not.toBeInTheDocument();
+    expect(document.getElementById("history-tasting-t1")).toHaveFocus();
+
+    // 목록의 "수정"으로 열었으면 그 단추로 돌린다.
+    const row = document.getElementById("history-tasting-t2") as HTMLElement;
+    const edit = within(row).getByRole("button", { name: "수정" });
+    await userEvent.click(edit);
+    const reopened = await screen.findByRole("region", { name: "시음 기록 정정" });
+    await userEvent.click(
+      await within(reopened).findByRole("button", { name: "입력 폐기하고 닫기" }),
+    );
+    expect(screen.queryByRole("region", { name: "시음 기록 정정" })).not.toBeInTheDocument();
+    expect(edit).toHaveFocus();
+  });
+
   it("고치기로 연 정정 폼이 위쪽 목록에 밀리면 되돌리고, 화면을 떠나면 지켜보기를 멈춘다", async () => {
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;

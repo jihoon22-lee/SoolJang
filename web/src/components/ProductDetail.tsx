@@ -382,8 +382,30 @@ export function ProductDetail({
     return keepInView(section);
   }, [correctionTastingId]);
 
+  const correctionTrigger = useRef<HTMLElement | null>(null);
+  const historySummaryRef = useRef<HTMLElement>(null);
   const correctTasting = (tasting: ContextualTasting) => {
-    if (!savingCorrection) setCorrectionTastingId(tasting.id);
+    if (savingCorrection) return;
+    correctionTrigger.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setCorrectionTastingId(tasting.id);
+  };
+  // 정정 폼을 닫으면 폼 안에 있던 초점이 body로 떨어진다. 연 단추 → 그 시음의 이력·병 행 → 이력
+  // 요약 순으로 돌린다(토스트 "고치기"로 왔으면 연 단추가 이 화면에 없다).
+  const cancelCorrection = (tastingId: string) => {
+    const trigger = correctionTrigger.current;
+    correctionTrigger.current = null;
+    setCorrectionTastingId(null);
+    for (const element of [
+      trigger,
+      document.getElementById(`history-tasting-${tastingId}`),
+      document.getElementById(`tasting-${tastingId}`),
+      historySummaryRef.current,
+    ]) {
+      if (!element?.isConnected || tastingCorrectionRef.current?.contains(element)) continue;
+      element.focus();
+      if (document.activeElement === element) return;
+    }
   };
   const tastingDeleted = (tasting: ContextualTasting) => {
     if (correctionTastingId === tasting.id) setCorrectionTastingId(null);
@@ -735,7 +757,7 @@ export function ProductDetail({
           open={historyOpen}
           onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
         >
-          <summary>시음 기록 찾기·정정</summary>
+          <summary ref={historySummaryRef}>시음 기록 찾기·정정</summary>
           {historyOpen ? (
             <ProductTastingHistory
               productId={product.id}
@@ -772,7 +794,7 @@ export function ProductDetail({
               skuOptions={correctionOptions?.skus}
               onSavingChange={setSavingCorrection}
               onCancel={() => {
-                if (!savingCorrection) setCorrectionTastingId(null);
+                if (!savingCorrection) cancelCorrection(correctionTastingId);
               }}
               onSaved={(result) => {
                 setSavingCorrection(false);
