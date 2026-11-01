@@ -94,23 +94,26 @@ export function DonutChart({
         ))}
       </ul>
 
-      <table className="sr-only">
-        <caption>{title}</caption>
-        <thead>
-          <tr>
-            <th scope="col">항목</th>
-            <th scope="col">값</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((datum) => (
-            <tr key={datum.label}>
-              <th scope="row">{datum.label}</th>
-              <td>{formatValue(datum.value)}</td>
+      {/* 표는 1px 너비를 무시하고 내용 폭으로 펼쳐져 좁은 화면을 가로로 밀었다. 1px 상자에 가둔다. */}
+      <div className="sr-only">
+        <table>
+          <caption>{title}</caption>
+          <thead>
+            <tr>
+              <th scope="col">항목</th>
+              <th scope="col">값</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((datum) => (
+              <tr key={datum.label}>
+                <th scope="row">{datum.label}</th>
+                <td>{formatValue(datum.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }
