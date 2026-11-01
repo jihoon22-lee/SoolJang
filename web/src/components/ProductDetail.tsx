@@ -29,6 +29,7 @@ import {
   todayLocal,
 } from "@/format";
 import { tastingRatingAverage } from "@/insights/calculate";
+import { keepInView } from "@/keepInView";
 import { getLastVendorName } from "@/lastVendor";
 import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
@@ -325,12 +326,13 @@ export function ProductDetail({
     if (correctionPurchaseId) purchaseCorrectionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [correctionPurchaseId]);
   // 정정 폼이 목적지다(토스트 "고치기"·목록의 "수정"). 늦게 불러온 병·이력 목록이 고른 시음 행으로
-  // 초점을 가져가 폼이 화면 아래에 남지 않게 한다.
+  // 초점을 가져가거나 자라면서 폼을 화면 아래로 밀지 않게 한다.
   const correcting = Boolean(correctionTastingId) || Boolean(editTasting && contextTastingId);
   useEffect(() => {
-    if (!correctionTastingId) return;
-    tastingCorrectionRef.current?.scrollIntoView?.({ block: "start" });
-    tastingCorrectionRef.current?.focus({ preventScroll: true });
+    const section = tastingCorrectionRef.current;
+    if (!correctionTastingId || !section) return;
+    section.focus({ preventScroll: true });
+    return keepInView(section);
   }, [correctionTastingId]);
 
   const correctTasting = (tasting: ContextualTasting) => {
@@ -989,8 +991,9 @@ function PurchaseSection({
     if (!focusAddRequest) return;
     // 오프라인이면 빈 폼 대신 온라인에서만 된다는 안내로 옮긴다.
     const target = addFormRef.current?.querySelector("form") ?? offlineNoteRef.current;
-    target?.scrollIntoView?.({ block: "start" });
-    target?.focus({ preventScroll: true });
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    return keepInView(target);
   }, [focusAddRequest]);
 
   function submitPurchase(input: AddPurchaseInput): void {

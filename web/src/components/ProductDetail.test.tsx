@@ -1125,6 +1125,59 @@ describe("머리부와 최근 시음(D268)", () => {
     expect(correction).toHaveFocus();
   });
 
+  it("고치기로 연 정정 폼이 위쪽 목록에 밀리면 되돌리고, 화면을 떠나면 지켜보기를 멈춘다", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    const holds: { observed?: Element; disconnected: boolean; notify: () => void }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        private readonly hold: (typeof holds)[number];
+        constructor(callback: ResizeObserverCallback) {
+          this.hold = {
+            disconnected: false,
+            notify: () => callback([], this as unknown as ResizeObserver),
+          };
+          holds.push(this.hold);
+        }
+        observe(element: Element) {
+          this.hold.observed = element;
+        }
+        disconnect() {
+          this.hold.disconnected = true;
+        }
+      },
+    );
+    try {
+      const view = setup({
+        bottles: [openBottle],
+        offline: true,
+        selectedSkuId: "s1",
+        selectedBottleId: "b1",
+        selectedTastingId: "t1",
+        editTasting: true,
+      });
+      const correction = await screen.findByRole("region", { name: "시음 기록 정정" });
+      await waitFor(() => expect(correction).toHaveFocus());
+      const correctionScrolls = () =>
+        scrolled.mock.contexts.filter((context) => context === correction).length;
+      const hold = holds.find((item) => item.observed === document.body);
+      expect(hold).toBeDefined();
+      expect(correctionScrolls()).toBe(1);
+
+      correction.getBoundingClientRect = () => ({ top: 506 }) as DOMRect;
+      hold?.notify();
+      expect(correctionScrolls()).toBe(2);
+      expect(correction).toHaveFocus();
+
+      view.unmount();
+      expect(hold?.disconnected).toBe(true);
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("마실 병이 없으면 한 잔 기록 대신 구매 추가를 주 행동으로 둔다", () => {
     setup({ bottles: [{ ...openBottle, status: "finished", remaining_ml: 0 }] });
 
