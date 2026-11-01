@@ -177,6 +177,17 @@ export function QuickTastingSheet({
         : row,
     );
   }, [bottles, query, scope, selection.skuId]);
+  // 같은 이름·용량으로 보이는 병이 둘 이상일 때만 구매·위치 줄로 구분한다(D264와 같은 원칙).
+  // 병을 고르면 입력 머리에 번호·구매·위치를 모두 보인다.
+  const needsDetail = useMemo(() => {
+    const key = (item: DrinkableBottle) => `${bottleProductLabel(item)}\u0000${item.volumeMl}`;
+    const shown = visible.filter((item) => scope === "sku" || item.status === "open");
+    const counts = new Map<string, number>();
+    for (const item of shown) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
+    return new Set(
+      shown.filter((item) => (counts.get(key(item)) ?? 0) > 1).map((item) => item.bottleId),
+    );
+  }, [visible, scope]);
   const choosing = !selection.bottleId || scope !== null;
   const selectedBottle = bottles?.find((bottle) => bottle.bottleId === selection.bottleId) ?? null;
 
@@ -294,7 +305,7 @@ export function QuickTastingSheet({
                         {bottleProductLabel(item)} · {formatVolume(item.volumeMl)}{" "}
                         {item.status === "open" || scope === "sku" ? `#${item.labelNo}` : ""}
                       </span>
-                      {scope === "sku" || item.status === "open" ? (
+                      {needsDetail.has(item.bottleId) ? (
                         <span className="muted text-sm">
                           {purchaseLabel(item, references)} · {locationLabel(item.bottleId)}
                         </span>

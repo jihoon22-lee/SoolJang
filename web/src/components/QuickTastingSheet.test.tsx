@@ -182,6 +182,33 @@ it("미개봉은 용량별로 묶고 가장 오래된 구매의 병을 기본으
   expect((await db.outbox.toArray())[0]?.fields.bottle_id).toBe("older");
 });
 
+it("같은 이름·용량의 개봉 병이 하나면 구매·위치 줄 없이 고르고, 둘이면 그 줄로 구분한다", async () => {
+  renderWithQuery(<Harness />);
+  const single = await screen.findByRole("button", { name: /700ml #3.*개봉/ });
+  expect(single).not.toHaveAccessibleName(/구매|위치/);
+
+  await db.bottle.put(
+    row({
+      id: "open-two",
+      purchase_id: "old-purchase",
+      label_no: 4,
+      status: "open",
+      opened_on: "2026-01-02",
+      remaining_ml: 500,
+    }),
+  );
+
+  expect(
+    await screen.findByRole("button", { name: /700ml #3.*구매 2026-01-01.*새 매장/ }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /700ml #4.*구매 2025-01-01.*오래된 매장/ }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /700ml.*미개봉 2병/ })).not.toHaveAccessibleName(
+    /구매/,
+  );
+});
+
 it("병 변경에서 구매일·구매처·번호·온라인 위치를 확인하고 다른 병을 선택한다", async () => {
   vi.stubGlobal("navigator", { ...navigator, onLine: true });
   const { calls } = stubRoutes([
