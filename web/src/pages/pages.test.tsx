@@ -735,11 +735,7 @@ describe("ProductsPage", () => {
     );
     await userEvent.clear(screen.getByLabelText("병수"));
     await userEvent.type(screen.getByLabelText("병수"), "3");
-    await userEvent.click(
-      within(screen.getByRole("region", { name: "구매 이력" })).getByRole("button", {
-        name: "구매 추가",
-      }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "구매 저장" }));
 
     await waitFor(() => {
       const call = calls.find((c) => c.method === "POST" && c.url.includes("/purchases"));

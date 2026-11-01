@@ -1704,7 +1704,7 @@ function AddPurchaseForm({
         </div>
 
         <button type="submit" className="primary" disabled={busy || !chosenSku}>
-          {submitting ? "저장 중…" : "구매 추가"}
+          {submitting ? "저장 중…" : "구매 저장"}
         </button>
       </fieldset>
     </form>
