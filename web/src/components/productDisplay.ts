@@ -60,18 +60,38 @@ function contextKey(purchase: PurchaseIdentity): string {
  * 용량·구매일·구매처가 같은 다른 구매가 있을 때만 줄인 내부 참조를 돌려준다(D264).
  * 맥락만으로 구분되면 `null` 이다. 저장·선택·라우팅에는 항상 원 UUID를 쓴다.
  */
+/**
+ * 여러 행이 같은 구매 목록을 함께 보일 때 한 번에 계산한다(D264). 맥락이 같은 구매가 둘 이상인
+ * 구매만 짧은 참조를 갖는다. 목록 전체를 행마다 다시 비교하지 않도록 맥락별로 한 번 묶는다.
+ */
+export function purchaseReferences(
+  purchases: readonly PurchaseIdentity[],
+): ReadonlyMap<string, string> {
+  const groups = new Map<string, Set<string>>();
+  for (const purchase of purchases) {
+    const key = contextKey(purchase);
+    const ids = groups.get(key) ?? new Set<string>();
+    ids.add(purchase.id);
+    groups.set(key, ids);
+  }
+  const references = new Map<string, string>();
+  for (const ids of groups.values()) {
+    if (ids.size < 2) continue;
+    const members = [...ids];
+    for (const id of members) {
+      const others = members.filter((other) => other !== id);
+      let length = Math.min(8, id.length);
+      while (length < id.length && others.some((other) => other.endsWith(id.slice(-length))))
+        length += 1;
+      references.set(id, `구매 ${id.slice(-length)}`);
+    }
+  }
+  return references;
+}
+
 export function purchaseReference(
   purchase: PurchaseIdentity,
   purchases: readonly PurchaseIdentity[],
 ): string | null {
-  const key = contextKey(purchase);
-  const others = purchases
-    .filter((other) => other.id !== purchase.id && contextKey(other) === key)
-    .map((other) => other.id);
-  if (others.length === 0) return null;
-  const { id } = purchase;
-  let length = Math.min(8, id.length);
-  while (length < id.length && others.some((other) => other.endsWith(id.slice(-length))))
-    length += 1;
-  return `구매 ${id.slice(-length)}`;
+  return purchaseReferences([purchase, ...purchases]).get(purchase.id) ?? null;
 }

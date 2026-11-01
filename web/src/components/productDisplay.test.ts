@@ -4,6 +4,7 @@ import {
   productEdition,
   productSkuSummaries,
   purchaseReference,
+  purchaseReferences,
   skuHistoryLabel,
 } from "@/components/productDisplay";
 
@@ -44,6 +45,20 @@ describe("제품과 구매 식별", () => {
     const otherProduct = [ownProduct, { id: "b", productId: "y", ...same }];
     expect(purchaseReference(ownProduct, otherProduct)).toBeNull();
     expect(purchaseReference({ id: "short", ...same }, [{ id: "short", ...same }])).toBeNull();
+  });
+  it("여러 병이 같은 구매를 가리켜도 한 번에 계산한 참조가 행별 계산과 같다", () => {
+    const same = { volumeMl: 700, purchasedOn: "2026-08-04", vendorName: "가상마트" };
+    const a = { id: "00000000-0000-4000-8000-00000000aaaa", ...same };
+    const b = { id: "00000000-0000-4000-8000-00000000bbbb", ...same };
+    const lone = { id: "00000000-0000-4000-8000-00000000cccc", ...same, volumeMl: 375 };
+    // 병 행마다 구매가 반복된다(같은 구매의 두 병 + 다른 구매 + 맥락이 다른 구매).
+    const rows = [a, a, b, lone, lone];
+    const references = purchaseReferences(rows);
+    expect([...references.keys()].sort()).toEqual([a.id, b.id].sort());
+    for (const purchase of [a, b, lone])
+      expect(references.get(purchase.id) ?? null).toBe(purchaseReference(purchase, rows));
+    // 같은 구매가 여러 번 있어도 자기 자신과는 겹치지 않는다.
+    expect(purchaseReferences([a, a]).size).toBe(0);
   });
   it("단일 SKU의 구응답만 제품 집계를 재사용한다", () => {
     const metrics = {
