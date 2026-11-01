@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { collectionApi } from "@/api/collection";
+import { BottleGauge } from "@/components/BottleGauge";
 import {
   type PurchaseIdentity,
   productEdition,
@@ -47,6 +48,16 @@ function purchaseLabel(bottle: DrinkableBottle, references: ReadonlyMap<string, 
   const reference = references.get(bottle.purchaseId);
   return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"}${reference ? ` · ${reference}` : ""}`;
 }
+/** 저장이 끝나 초안까지 정리된 시음. 이어서 할 일(고치기·한 잔 더·보기)은 시트를 연 쪽이 띄운다. */
+export interface RecordedTasting {
+  tastingId: string;
+  bottle: DrinkableBottle;
+  /** "… 시음을 기록했습니다 (개봉 처리)" */
+  message: string;
+  /** 이 기록으로 병을 다 마셔 같은 병에 더 기록할 수 없다. */
+  finished: boolean;
+}
+
 function bottleProductLabel(bottle: DrinkableBottle): string {
   const edition = productEdition({
     vintage: bottle.vintage,
@@ -58,11 +69,14 @@ function bottleProductLabel(bottle: DrinkableBottle): string {
 
 export function QuickTastingSheet({
   onClose,
+  onRecorded,
   returnFocusRef,
   onSelectProduct,
   initialBottle,
 }: {
   onClose: () => void;
+  /** 저장과 초안 정리가 끝나면 부른 뒤 시트를 닫는다(D267). 결과 미확정·실패는 시트에 남는다. */
+  onRecorded: (recorded: RecordedTasting) => void;
   onSelectProduct?: ((productId: string, context?: ProductContext) => void) | undefined;
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
   /** 홈 열린 병의 "한 잔"처럼 병을 정하고 열 때. 다른 병의 작성 중 입력은 그 병에 남는다. */
@@ -83,7 +97,6 @@ export function QuickTastingSheet({
   const [recovery, setRecovery] = useState(() => recoverableDraft(SELECTION_FORM));
   const [restoreSource, setRestoreSource] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [recorded, setRecorded] = useState<{ id: string; bottle: DrinkableBottle } | null>(null);
   const savingRef = useRef(false);
   // 저장된 선택 초안이 다른 병을 가리켜도 고른 병으로 연다. 입력 초안은 병별 키라 그대로다.
   const [preselect, setPreselect] = useState(initialBottle ?? null);
@@ -227,81 +240,7 @@ export function QuickTastingSheet({
             이 병 상세
           </button>
         ) : null}
-        {recorded ? (
-          <section aria-label="저장한 시음">
-            <output>
-              시음을 기기에 저장했습니다. 서버 반영 상태는 동기화 표시에서 확인하세요.
-            </output>
-            <p>
-              {bottleProductLabel(recorded.bottle)} · {formatVolume(recorded.bottle.volumeMl)} · #
-              {recorded.bottle.labelNo}
-            </p>
-            <div className="button-row">
-              {onSelectProduct ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onSelectProduct(recorded.bottle.productId, {
-                        skuId: recorded.bottle.skuId,
-                        bottleId: recorded.bottle.bottleId,
-                        tastingId: recorded.id,
-                      });
-                    }}
-                  >
-                    방금 기록 보기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onSelectProduct(recorded.bottle.productId, {
-                        skuId: recorded.bottle.skuId,
-                        bottleId: recorded.bottle.bottleId,
-                        tastingId: recorded.id,
-                        editTasting: true,
-                      });
-                    }}
-                  >
-                    방금 기록 수정
-                  </button>
-                </>
-              ) : null}
-              <button
-                type="button"
-                disabled={!selectedBottle}
-                onClick={() => {
-                  setRecorded(null);
-                  setCarry(null);
-                  // 새 기록은 빈 폼이다. 앞서 불러온 다른 탭 입력을 다시 가져오지 않는다.
-                  setRestoreSource(null);
-                  setSelection({ ...selection });
-                }}
-              >
-                같은 병에 새 기록
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setRecorded(null);
-                  setCarry(null);
-                  setSelection(EMPTY_SELECTION);
-                  setScope("all");
-                }}
-              >
-                다른 술에 새 기록
-              </button>
-            </div>
-            <p className="muted">
-              새 기록은 별도의 시음으로 저장하고 따른 양을 다시 차감합니다. 잘못 입력했다면 방금
-              기록을 수정하세요.
-            </p>
-            {!selectedBottle ? (
-              <p>다 마신 병은 새 소비 기록 대신 방금 기록에서 내용을 수정할 수 있습니다.</p>
-            ) : null}
-          </section>
-        ) : choosing ? (
+        {choosing ? (
           <>
             {recovery ? (
               <button
@@ -344,10 +283,22 @@ export function QuickTastingSheet({
             <ul className="pick-list">
               {visible.map((item) => (
                 <li key={item.bottleId}>
-                  <button type="button" onClick={() => choose(item)}>
-                    <span>
-                      {bottleProductLabel(item)} · {formatVolume(item.volumeMl)}{" "}
-                      {item.status === "open" || scope === "sku" ? `#${item.labelNo}` : ""}
+                  <button type="button" className="pick-bottle" onClick={() => choose(item)}>
+                    <BottleGauge
+                      status={item.status}
+                      remainingMl={item.remainingMl}
+                      volumeMl={item.volumeMl}
+                    />
+                    <span className="pick-bottle-text">
+                      <span>
+                        {bottleProductLabel(item)} · {formatVolume(item.volumeMl)}{" "}
+                        {item.status === "open" || scope === "sku" ? `#${item.labelNo}` : ""}
+                      </span>
+                      {scope === "sku" || item.status === "open" ? (
+                        <span className="muted text-sm">
+                          {purchaseLabel(item, references)} · {locationLabel(item.bottleId)}
+                        </span>
+                      ) : null}
                     </span>
                     <span className={`bottle-badge bottle-badge-${item.status}`}>
                       {item.status === "open"
@@ -356,11 +307,6 @@ export function QuickTastingSheet({
                           : "개봉"
                         : `미개봉 ${item.unopenedCount ?? 1}병`}
                     </span>
-                    {scope === "sku" || item.status === "open" ? (
-                      <span className="muted text-sm">
-                        {purchaseLabel(item, references)} · {locationLabel(item.bottleId)}
-                      </span>
-                    ) : null}
                   </button>
                 </li>
               ))}
@@ -389,8 +335,9 @@ export function QuickTastingSheet({
               setSaving(false);
             }}
             onClose={onClose}
-            onRecorded={(id) => {
-              if (selectedBottle) setRecorded({ id, bottle: selectedBottle });
+            onRecorded={(recorded) => {
+              onRecorded(recorded);
+              onClose();
             }}
             onChooseAnother={(values, all) => {
               if (savingRef.current) return;
@@ -434,7 +381,7 @@ function QuickTastingForm({
   finishSaving: () => void;
   onClose: () => void;
   onChooseAnother: (values: TastingFieldValues, all: boolean) => void;
-  onRecorded: (id: string) => void;
+  onRecorded: (recorded: RecordedTasting) => void;
 }) {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -504,21 +451,24 @@ function QuickTastingForm({
         });
         session.assertCurrent();
         const updated = await session.store.bottle.get(selection.bottleId);
-        const label =
-          updated?.status === "finished"
-            ? " (다 마셔 소진 처리)"
-            : current.status === "unopened"
-              ? " (개봉 처리)"
-              : "";
-        return { id, label };
+        const finished = updated?.status === "finished";
+        const label = finished
+          ? " (다 마셔 소진 처리)"
+          : current.status === "unopened"
+            ? " (개봉 처리)"
+            : "";
+        return { id, label, finished };
       });
       session.assertCurrent();
       rememberTastingContext({ place: values.place.trim(), companions: values.companions.trim() });
       const cleared = clearSubmittedDraft(submittedDraft);
       if (cleared) clearSubmittedDraft(legacyDraft);
       const selectionCleared = clearSubmittedDraft(submittedSelection);
-      toast.show({ message: `${bottle.productName} 시음을 기록했습니다${effect.label}` });
-      if (cleared && selectionCleared) onRecorded(effect.id);
+      const message = `${bottle.productName} 시음을 기록했습니다${effect.label}`;
+      if (cleared && selectionCleared)
+        onRecorded({ tastingId: effect.id, bottle, message, finished: effect.finished });
+      // 저장 중 다른 탭이 같은 입력을 바꿨다. 기록은 남았고 바뀐 입력은 시트에 그대로 둔다(D248).
+      else toast.show({ message });
     } catch (cause) {
       if (session.isCurrent())
         setError(cause instanceof Error ? cause.message : "기록하지 못했습니다");

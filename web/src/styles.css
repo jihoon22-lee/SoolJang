@@ -2243,8 +2243,9 @@ legend {
 .toast {
   pointer-events: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space);
+  gap: var(--space-sm) var(--space);
   max-width: min(560px, 100%);
   padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space);
   border: 1px solid var(--border-strong);
@@ -2260,6 +2261,19 @@ legend {
 
 .toast-error {
   border-color: var(--danger);
+}
+
+.toast-message {
+  flex: 1 1 12rem;
+}
+
+/* 이어서 할 동작이 여럿이면 메시지를 한 줄로 두고 동작과 닫기를 아래 줄에 모은다. */
+.toast-stacked .toast-message {
+  flex-basis: 100%;
+}
+
+.toast-stacked .toast-close {
+  margin-left: auto;
 }
 
 .toast-action {
@@ -2956,6 +2970,22 @@ legend {
   justify-content: space-between;
   gap: var(--space-sm);
   text-align: left;
+}
+
+/* 빠른 시음의 병 고르기: 잔량 게이지 · 이름과 구매 맥락 · 상태 칩. 칩은 줄바꿈하지 않는다. */
+.pick-list .pick-bottle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.pick-bottle-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pick-bottle .bottle-badge {
+  white-space: nowrap;
 }
 
 /* --- 제품 상세 --------------------------------------------------------------- */

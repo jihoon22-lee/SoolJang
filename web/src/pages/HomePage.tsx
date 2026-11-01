@@ -1,9 +1,10 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { type RefObject, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { BottleGauge } from "@/components/BottleGauge";
 import { productEdition } from "@/components/productDisplay";
-import { QuickTastingSheet } from "@/components/QuickTastingSheet";
+import { QuickTastingSheet, type RecordedTasting } from "@/components/QuickTastingSheet";
 import { LoadingState } from "@/components/StatusViews";
+import { useToast } from "@/components/Toast";
 import { daysSince } from "@/domain/openedShelfLife";
 import { formatMoney, formatRating, formatVolume, todayLocal } from "@/format";
 import type { ProductContext, View } from "@/router";
@@ -41,6 +42,10 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
   const { pendingCount, lastError } = useSyncStatus();
   const [showAllOpen, setShowAllOpen] = useState(false);
   const [sheet, setSheet] = useState<{ bottle?: DrinkableBottle } | null>(null);
+  const toast = useToast();
+  // 저장 알림의 "한 잔 더"는 이 화면의 시트를 연다. 홈을 떠나면 열 시트가 없으니 알림을 거둔다.
+  const followUp = useRef<(() => void) | null>(null);
+  useEffect(() => () => followUp.current?.(), []);
   const primaryAction = useRef<HTMLButtonElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   // 기록으로 병이 소진되어 누른 "한 잔" 단추가 사라졌으면 주 행동으로 초점을 돌린다.
@@ -61,8 +66,28 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
   const today = todayLocal();
   const count = (value: number) => `${value.toLocaleString("ko-KR")}병`;
   function openSheet(button: HTMLButtonElement, bottle?: DrinkableBottle) {
+    // 새 기록을 시작하면 앞 기록의 이어가기는 거둔다(열린 시트 위에서 다른 병을 열지 않게).
+    followUp.current?.();
     trigger.current = button;
     setSheet(bottle ? { bottle } : {});
+  }
+  function offerFollowUp({ tastingId, bottle, message, finished }: RecordedTasting) {
+    // 다 마신 병의 행은 곧 목록에서 빠진다. 시트가 닫힐 때 아직 남은 그 "한 잔"에 초점을
+    // 돌리면 행이 사라지며 초점을 잃으므로 주 행동으로 돌린다.
+    if (finished) trigger.current = primaryAction.current;
+    const context = { skuId: bottle.skuId, bottleId: bottle.bottleId, tastingId };
+    followUp.current?.();
+    followUp.current = toast.show({
+      message,
+      actions: [
+        {
+          label: "고치기",
+          onAction: () => onSelectProduct(bottle.productId, { ...context, editTasting: true }),
+        },
+        ...(finished ? [] : [{ label: "한 잔 더", onAction: () => setSheet({ bottle }) }]),
+        { label: "보기", onAction: () => onSelectProduct(bottle.productId, context) },
+      ],
+    });
   }
 
   return (
@@ -86,6 +111,7 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
           initialBottle={sheet.bottle}
           onSelectProduct={onSelectProduct}
           returnFocusRef={returnFocus}
+          onRecorded={offerFollowUp}
           onClose={() => setSheet(null)}
         />
       ) : null}
