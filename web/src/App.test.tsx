@@ -200,6 +200,22 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "최신 상태" })).toBeInTheDocument();
   });
 
+  it("홈의 산 술 기록은 등록 폼을 연 내 술로 가고 관리 화면은 설정 메뉴에 있다", async () => {
+    stubAll();
+    renderWithQuery(<App />);
+
+    await userEvent.click(await screen.findByRole("link", { name: "홈" }));
+    await userEvent.click(await screen.findByRole("button", { name: "산 술 기록" }));
+    expect(await screen.findByRole("button", { name: "폼 닫기" })).toBeInTheDocument();
+    // 새로고침·뒤로가기로 폼이 다시 열리지 않게 해시에는 남기지 않는다.
+    expect(window.location.hash).toBe("#products");
+
+    // 홈에서 뺀 관리 바로가기는 설정 메뉴에서 연다(D265).
+    await userEvent.click(screen.getByRole("button", { name: "설정" }));
+    for (const name of ["매장 모드", "보관·실사", "데이터 품질", "가격 감시·알림"])
+      expect(screen.getByRole("link", { name })).toBeInTheDocument();
+  });
+
   it("탭을 전환하면 URL 해시가 바뀐다", async () => {
     stubAll();
     renderWithQuery(<App />);

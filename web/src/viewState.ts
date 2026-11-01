@@ -33,6 +33,17 @@ export function readViewState<T>(name: string, fallback: T, allowed?: readonly T
   }
 }
 
+/** 다른 화면이 이 보기 상태를 미리 정해 두고 이동할 때 쓴다(홈 → 통계 주종별). */
+export function writeViewState<T>(name: string, value: T): void {
+  const owner = databaseIdentity().userId;
+  if (!owner) return;
+  try {
+    sessionStorage.setItem(key(owner, name), JSON.stringify(value));
+  } catch {
+    /* 저장소를 못 쓰면 이동한 화면이 기본 보기로 열린다. */
+  }
+}
+
 export function useViewState<T>(
   name: string,
   initial: T,

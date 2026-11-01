@@ -67,6 +67,9 @@ export interface Route extends ProductContext {
   categoryId?: string | undefined;
   /** `view === "products"` 일 때만 의미가 있다 — 구매처에서 드릴다운할 때 걸리는 구매처 필터. */
   vendorId?: string | undefined;
+  /** `view === "products"` 일 때만 의미가 있다 — 홈 "산 술 기록"처럼 등록 폼을 연 채 들어온다.
+   * 해시에 남기지 않아 새로고침·뒤로가기로 폼이 다시 열리지 않는다. */
+  create?: boolean | undefined;
 }
 
 function isView(value: string): value is View {

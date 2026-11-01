@@ -22,20 +22,49 @@ function row(overrides: Record<string, unknown>) {
 
 function renderHomePage() {
   const onSelectProduct = vi.fn();
-  const onSelectCategory = vi.fn();
+  const onRecordPurchase = vi.fn();
   const onNavigate = vi.fn();
   renderWithQuery(
     <SyncStatusProvider>
       <ToastProvider>
         <HomePage
           onSelectProduct={onSelectProduct}
-          onSelectCategory={onSelectCategory}
+          onRecordPurchase={onRecordPurchase}
           onNavigate={onNavigate}
         />
       </ToastProvider>
     </SyncStatusProvider>,
   );
-  return { onSelectProduct, onSelectCategory, onNavigate };
+  return { onSelectProduct, onRecordPurchase, onNavigate };
+}
+
+/** 보유 요약의 한 지표 값. */
+function metric(label: string): string | null | undefined {
+  return screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
+}
+
+async function openBottle(
+  id: string,
+  productId: string,
+  labelNo = 1,
+  remaining: number | null = 400,
+) {
+  await db.bottle.put(
+    row({
+      id,
+      purchase_id: `pu-${productId}`,
+      label_no: labelNo,
+      status: "open",
+      opened_on: "2026-01-02",
+      remaining_ml: remaining,
+    }),
+  );
+}
+
+async function product(id: string, name: string, volume = 700) {
+  await db.product.put(row({ id, name }));
+  await db.sku.put(row({ id: `s-${id}`, product_id: id, volume_ml: volume }));
+  await db.purchase.put(row({ id: `pu-${id}`, sku_id: `s-${id}`, quantity: 1 }));
 }
 
 beforeEach(async () => {
@@ -58,108 +87,59 @@ afterEach(async () => {
 });
 
 describe("HomePage", () => {
-  it("빈 컬렉션이면 안내 문구를 보여준다", async () => {
-    renderHomePage();
+  it("빈 컬렉션이면 두 기록 행동과 첫 등록 안내를 보여준다", async () => {
+    const { onRecordPurchase } = renderHomePage();
 
     expect(
-      await screen.findByText("등록한 술이 없습니다. 내 술에서 첫 제품을 추가하세요."),
+      await screen.findByText("아직 기록한 술이 없습니다. 산 술 기록에서 첫 술을 등록하세요."),
     ).toBeInTheDocument();
-    expect(screen.getByText("아직 등록한 술이 없습니다.")).toBeInTheDocument();
+    expect(screen.getByText("열려 있는 병이 없습니다.")).toBeInTheDocument();
     expect(screen.getByText("아직 시음 기록이 없습니다.")).toBeInTheDocument();
+    expect(metric("현재 보유")).toBe("0병");
+    await userEvent.click(screen.getByRole("button", { name: "산 술 기록" }));
+    expect(onRecordPurchase).toHaveBeenCalledOnce();
   });
 
-  it("요약·주종별 보유·랭킹·최근 활동을 보여준다", async () => {
-    await db.category.bulkPut([
-      row({ id: "liquor", parent_id: null, name: "양주" }),
-      row({ id: "whisky", parent_id: "liquor", name: "위스키" }),
-    ]);
-    await db.vendor.bulkPut([row({ id: "v1", name: "가상마트", kind: "mart" })]);
-    await db.product.bulkPut([
-      row({
-        id: "p1",
-        name: "글렌고인 25y",
-        category_id: "whisky",
-        abv: "43.0",
-        personal_rating: "3.0",
-        created_at: "2026-01-02T00:00:00Z",
-      }),
-      row({
-        id: "p2",
-        name: "평점 술",
-        category_id: "whisky",
-        abv: "13.0",
-        personal_rating: "5.0",
-        created_at: "2026-01-01T00:00:00Z",
-      }),
-    ]);
-    await db.sku.bulkPut([
-      row({ id: "s1", product_id: "p1", volume_ml: 500 }),
-      row({ id: "s2", product_id: "p2", volume_ml: 500 }),
-    ]);
-    await db.purchase.bulkPut([
-      row({
-        id: "pu1",
-        sku_id: "s1",
-        vendor_id: "v1",
-        quantity: 1,
-        unit_list_price: "1000000",
-        unit_paid_price: "848000",
-      }),
-      row({
-        id: "pu2",
-        sku_id: "s2",
-        vendor_id: "v1",
-        quantity: 1,
-        unit_list_price: "100000",
-        unit_paid_price: "90000",
-      }),
-    ]);
+  it("현재·미개봉·개봉을 펼침 없이 보이고 주종별 보유는 통계 주종별로 보낸다", async () => {
+    await db.category.put(row({ id: "whisky", parent_id: null, name: "위스키" }));
+    await db.product.put(row({ id: "p1", name: "글렌고인 25y", category_id: "whisky" }));
+    await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 500 }));
+    await db.purchase.put(
+      row({ id: "pu1", sku_id: "s1", quantity: 3, unit_paid_price: "1234567" }),
+    );
     await db.bottle.bulkPut([
       row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "unopened" }),
-      row({ id: "b2", purchase_id: "pu2", label_no: 1, status: "unopened" }),
+      row({ id: "b2", purchase_id: "pu1", label_no: 2, status: "unopened" }),
+      row({ id: "b3", purchase_id: "pu1", label_no: 3, status: "open", remaining_ml: 250 }),
     ]);
-    await db.tasting_session.bulkPut([
-      row({ id: "t1", sku_id: "s1", bottle_id: "b1", tasted_on: "2026-01-05", rating: "4.5" }),
-    ]);
-
-    renderHomePage();
-
-    // 요약: 구매 병수·재고가 "2병" 으로 표시된다(여러 곳에 나타날 수 있다).
-    expect((await screen.findAllByText("2병")).length).toBeGreaterThan(0);
-    // 주종별 보유: 상위 주종("양주")으로 롤업.
-    expect(screen.getByText("양주")).toBeInTheDocument();
-    // 랭킹·최근 등록·최근 시음 어디서든 제품 이름이 보인다.
-    expect(screen.getAllByText("글렌고인 25y").length).toBeGreaterThan(0);
-  });
-
-  it("'오늘 마셨어요'로 열린 병을 골라 별점·양을 기록하고 바로가기로 이동한다", async () => {
-    await db.product.put(row({ id: "p1", name: "열린 위스키" }));
-    await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 700 }));
-    await db.purchase.put(row({ id: "pu1", sku_id: "s1", quantity: 1 }));
-    await db.bottle.put(
-      row({
-        id: "b1",
-        purchase_id: "pu1",
-        label_no: 1,
-        status: "open",
-        opened_on: "2026-01-02",
-        remaining_ml: 400,
-      }),
-    );
     const { onNavigate } = renderHomePage();
 
-    expect(await screen.findByText("400ml 남음 · 2026-01-02 개봉")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "보관·실사 병 위치와 재고 확인" }));
-    expect(onNavigate).toHaveBeenCalledWith("inventory");
-    await userEvent.click(screen.getByRole("button", { name: "매장 모드 바코드로 보유 확인" }));
-    expect(onNavigate).toHaveBeenCalledWith("scan");
+    await screen.findByText("글렌고인 25y");
+    expect(metric("현재 보유")).toBe("3병");
+    expect(metric("미개봉")).toBe("2병");
+    expect(metric("개봉 중")).toBe("1병");
+    expect(metric("재고 원가")).toBe("3,703,701원");
+    // 홈에는 관리 바로가기·랭킹·주종 표가 없다(D265).
+    expect(screen.queryByRole("navigation", { name: "바로가기" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "오늘 마셨어요" }));
-    const dialog = await screen.findByRole("dialog", { name: "무엇을 마셨나요?" });
-    await userEvent.click(within(dialog).getByRole("button", { name: /열린 위스키/ }));
-    await userEvent.click(screen.getByRole("button", { name: "4점" }));
-    await userEvent.click(screen.getByRole("button", { name: "50ml" }));
-    await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+    await userEvent.click(screen.getByRole("button", { name: "주종별 보유 보기" }));
+    expect(onNavigate).toHaveBeenCalledWith("stats");
+    expect(sessionStorage.getItem("sooljang:view:u1:stats:section")).toBe('"categories"');
+  });
+
+  it("열린 병의 한 잔에서 타이핑 없이 4번 눌러 기록한다", async () => {
+    await product("p1", "열린 위스키");
+    await openBottle("b1", "p1");
+    renderHomePage();
+
+    // 잔량 글자가 게이지와 같은 행에 있다(게이지 그림은 보조 기술에 숨긴다).
+    expect(await screen.findByText(/400ml 남음 · 개봉 후 .*일 경과/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "열린 위스키 #1 한 잔 기록" }));
+    const dialog = await screen.findByRole("dialog", { name: "열린 위스키" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "4점" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "50ml" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "기록 저장" }));
 
     await waitFor(async () => expect((await db.bottle.get("b1"))?.remaining_ml).toBe(350));
     const [entry] = await db.outbox.toArray();
@@ -168,6 +148,33 @@ describe("HomePage", () => {
     expect(screen.getByRole("button", { name: "방금 기록 수정" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "닫기" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // 닫으면 누른 한 잔 단추로 초점이 돌아온다.
+    expect(screen.getByRole("button", { name: "열린 위스키 #1 한 잔 기록" })).toHaveFocus();
+  });
+
+  it("다른 병을 쓰던 입력이 있어도 한 잔은 고른 병으로 열고 이전 입력은 그 병에 남긴다", async () => {
+    await product("p1", "첫째 병");
+    await product("p2", "둘째 병");
+    await openBottle("b1", "p1");
+    await openBottle("b2", "p2");
+    renderHomePage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "마신 술 기록" }));
+    const chooser = await screen.findByRole("dialog", { name: "무엇을 마셨나요?" });
+    await userEvent.click(within(chooser).getByRole("button", { name: /첫째 병/ }));
+    await userEvent.click(screen.getByRole("button", { name: "4점" }));
+    await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "둘째 병 #1 한 잔 기록" }));
+    const dialog = await screen.findByRole("dialog", { name: "둘째 병" });
+    expect(within(dialog).getByRole("button", { name: "4점" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "다른 술 고르기" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /첫째 병/ }));
+    expect(await screen.findByRole("dialog", { name: "첫째 병" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "4점" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("남은 양을 모두 마시면 소진으로 기록하고 그렇다고 알린다", async () => {
@@ -177,7 +184,7 @@ describe("HomePage", () => {
     await db.bottle.put(row({ id: "b1", purchase_id: "pu1", label_no: 1, status: "unopened" }));
     renderHomePage();
 
-    await userEvent.click(await screen.findByRole("button", { name: "오늘 마셨어요" }));
+    await userEvent.click(await screen.findByRole("button", { name: "마신 술 기록" }));
     const dialog = await screen.findByRole("dialog", { name: "무엇을 마셨나요?" });
     await userEvent.click(within(dialog).getByRole("button", { name: /캔맥주/ }));
     await userEvent.click(screen.getByRole("button", { name: "남은 양 전부(355ml)" }));
@@ -190,7 +197,7 @@ describe("HomePage", () => {
     expect(bottle).toMatchObject({ status: "finished", remaining_ml: 0 });
   });
 
-  it("열린 병의 실제 개봉 경과일을 표시한다", async () => {
+  it("열린 병의 실제 개봉 경과일을 보이고 잔량 미기록을 빈 병으로 그리지 않는다", async () => {
     await db.category.put(row({ id: "wine", parent_id: null, name: "와인" }));
     await db.product.put(row({ id: "p1", name: "열어 둔 와인", category_id: "wine" }));
     await db.sku.put(row({ id: "s1", product_id: "p1", volume_ml: 750 }));
@@ -201,40 +208,14 @@ describe("HomePage", () => {
 
     renderHomePage();
 
-    expect(await screen.findByText(/개봉 후 .*일 경과/)).toBeInTheDocument();
+    expect(await screen.findByText(/잔량 미기록 · 개봉 후 .*일 경과/)).toBeInTheDocument();
     expect(screen.queryByText(/권장 7일/)).not.toBeInTheDocument();
+    expect(document.querySelector(".bottle-gauge--unknown")).not.toBeNull();
+    expect(document.querySelector(".bottle-gauge-fill")).toBeNull();
   });
 });
 
-it("주종의 현재·미개봉·개봉 수에서 같은 병을 찾고 하위 주종으로 내려간다", async () => {
-  await db.category.bulkPut([
-    row({ id: "r", name: "위스키", parent_id: null }),
-    row({ id: "c", name: "싱글몰트", parent_id: "r" }),
-  ]);
-  await db.product.put(row({ id: "p", name: "오래 보유한 싱글몰트", category_id: "c" }));
-  await db.sku.put(row({ id: "s", product_id: "p", volume_ml: 700 }));
-  await db.purchase.put(row({ id: "pu", sku_id: "s", quantity: 3, unit_paid_price: "30000" }));
-  await db.bottle.bulkPut([
-    row({ id: "b1", purchase_id: "pu", label_no: 1, status: "open" }),
-    row({ id: "b2", purchase_id: "pu", label_no: 2, status: "unopened" }),
-    row({ id: "b3", purchase_id: "pu", label_no: 3, status: "finished" }),
-  ]);
-  const { onSelectProduct } = renderHomePage();
-  await userEvent.click(await screen.findByRole("button", { name: "위스키 미개봉 1병 보기" }));
-  const evidence = screen.getByRole("region", { name: "위스키 · 미개봉 병 목록" });
-  expect(within(evidence).getByText(/병 #2/)).toBeInTheDocument();
-  expect(within(evidence).queryByText(/병 #1/)).not.toBeInTheDocument();
-  await userEvent.click(within(evidence).getByRole("button", { name: "오래 보유한 싱글몰트" }));
-  expect(onSelectProduct).toHaveBeenCalledWith("p", { skuId: "s", bottleId: "b2" });
-  await userEvent.click(screen.getByLabelText("하위 주종 함께 보기"));
-  expect(screen.getByRole("button", { name: "싱글몰트 현재 보유 2병 보기" })).toBeInTheDocument();
-  await userEvent.click(screen.getByLabelText("누적·원가 보기"));
-  expect(screen.getByRole("columnheader", { name: "누적 구매" })).toBeInTheDocument();
-  const stockRow = screen.getByRole("button", { name: "위스키 현재 보유 2병 보기" }).closest("tr");
-  expect(stockRow).toHaveTextContent("3");
-});
-
-it("열린 병 전체 보기와 최근 시음 수정이 대상 병·기록을 유지한다", async () => {
+it("열린 병 전체 보기와 최근 시음이 대상 병·기록을 연다", async () => {
   await db.product.put(row({ id: "p", name: "GlenAllachie 12", category_id: null }));
   await db.sku.put(row({ id: "s", product_id: "p", volume_ml: 700 }));
   await db.purchase.put(row({ id: "pu", sku_id: "s", quantity: 7 }));
@@ -243,18 +224,23 @@ it("열린 병 전체 보기와 최근 시음 수정이 대상 병·기록을 �
       row({ id: `b${i}`, purchase_id: "pu", label_no: i + 1, status: "open", remaining_ml: 500 }),
     ),
   );
-  await db.tasting_session.put(
+  await db.tasting_session.bulkPut([
     row({ id: "t", sku_id: "s", bottle_id: "b0", tasted_on: "2026-10-10", rating: "0.0" }),
-  );
+    row({ id: "u", sku_id: "s", bottle_id: "b1", tasted_on: "2026-10-09", rating: null }),
+  ]);
   const { onSelectProduct } = renderHomePage();
   await userEvent.click(await screen.findByRole("button", { name: "전체 7병 보기" }));
-  expect(screen.getByRole("button", { name: /GlenAllachie 12 #7/ })).toBeInTheDocument();
-  const activity = screen.getByRole("region", { name: "최근 활동" });
-  await userEvent.click(within(activity).getByRole("button", { name: "수정" }));
+  expect(screen.getByRole("button", { name: "GlenAllachie 12 #7 · 700ml" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "GlenAllachie 12 #7 한 잔 기록" })).toBeInTheDocument();
+  const recent = screen.getByRole("region", { name: "최근 시음" });
+  // 0점과 평점 없음을 구분한다(QS05).
+  const [zero, unrated] = within(recent).getAllByRole("button");
+  expect(zero).toHaveTextContent("0 / 6");
+  expect(unrated).toHaveTextContent("평점 없음");
+  await userEvent.click(zero as HTMLElement);
   expect(onSelectProduct).toHaveBeenCalledWith("p", {
     skuId: "s",
     bottleId: "b0",
     tastingId: "t",
-    editTasting: true,
   });
 });

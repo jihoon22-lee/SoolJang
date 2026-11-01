@@ -84,6 +84,12 @@ describe("routeToHash", () => {
     ).toBe("#products/p1");
   });
 
+  it("등록 폼을 연 채 들어오는 표시는 해시에 남기지 않는다", () => {
+    // 새로고침·뒤로가기로 닫은 등록 폼이 다시 열리지 않는다.
+    expect(routeToHash({ view: "products", create: true })).toBe("#products");
+    expect(parseHash("#products")).not.toHaveProperty("create");
+  });
+
   it("categoryId 가 vendorId 보다 우선한다", () => {
     expect(routeToHash({ view: "products", categoryId: "c1", vendorId: "v1" })).toBe(
       "#products?category=c1",

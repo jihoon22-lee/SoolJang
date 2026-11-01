@@ -60,10 +60,13 @@ export function QuickTastingSheet({
   onClose,
   returnFocusRef,
   onSelectProduct,
+  initialBottle,
 }: {
   onClose: () => void;
   onSelectProduct?: ((productId: string, context?: ProductContext) => void) | undefined;
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
+  /** 홈 열린 병의 "한 잔"처럼 병을 정하고 열 때. 다른 병의 작성 중 입력은 그 병에 남는다. */
+  initialBottle?: DrinkableBottle | undefined;
 }) {
   const dialogRef = useModalDialog(returnFocusRef);
   const [session] = useState(captureWriteSession);
@@ -82,6 +85,12 @@ export function QuickTastingSheet({
   const [saving, setSaving] = useState(false);
   const [recorded, setRecorded] = useState<{ id: string; bottle: DrinkableBottle } | null>(null);
   const savingRef = useRef(false);
+  // 저장된 선택 초안이 다른 병을 가리켜도 고른 병으로 연다. 입력 초안은 병별 키라 그대로다.
+  const [preselect, setPreselect] = useState(initialBottle ?? null);
+  if (preselect) {
+    setPreselect(null);
+    if (selection.bottleId !== preselect.bottleId) choose(preselect);
+  }
   const { state } = useSyncStatus();
   const offline = state === "offline" || !navigator.onLine;
   const locations = useQuery({
