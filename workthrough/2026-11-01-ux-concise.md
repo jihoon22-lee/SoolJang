@@ -98,7 +98,12 @@ PR #191 첫 CI에서 Python 품질이 두 가지 이유로 실패했다. 둘 다
   간접 의존성만 2.9.1로 올린 별도 커밋을 이 묶음에 넣었다. 로컬에서 CI와 같은 `uv export` +
   `pip-audit --strict`가 "No known vulnerabilities found", 인증·초기 설정·이메일 API 테스트 58건 통과.
 - pytest: 1,853 통과 중 1건이 CI Postgres 연결 한도 초과("too many clients")로 준비 단계 오류.
-  같은 커밋의 재실행으로 확인한다.
+  재실행에서도 다른 테스트가 같은 이유로 실패했고, 10-31 dependabot PR도 같았다. 10-23까지 통과한
+  실행은 CPython 3.14.9, 이후 실행은 러너의 3.14.4였다(코드는 같다). 원인은 테스트의
+  `reset_database_state()`가 캐시만 비우고 엔진을 닫지 않아, 버린 풀의 연결이 순환 GC 때까지
+  남는 것이었다. `tests/conftest.py`가 캐시를 비우기 전에 엔진을 dispose 하도록 별도 커밋으로 고쳤다.
+  격리 DB(54329)에서 DB·인증·제품 테스트 282건의 동시 연결 최대가 26→3, GC를 끈 재현에서는
+  수정 전 100(한도, "too many clients" 146 errors)→수정 후 6(240건 통과).
 
 ### 제한
 
