@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -228,6 +228,41 @@ describe("HomePage", () => {
     await pour();
     await userEvent.click(screen.getByRole("button", { name: "다른 화면" }));
     expect(screen.queryByText("열린 위스키 시음을 기록했습니다")).not.toBeInTheDocument();
+  });
+
+  it("저장이 끝나기 전에 홈을 떠나면 이어가기 없이 기록했다고만 알린다", async () => {
+    await product("p1", "열린 위스키");
+    await openBottle("b1", "p1");
+    function Switchable() {
+      const [home, setHome] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setHome(false)}>
+            다른 화면
+          </button>
+          {home ? (
+            <HomePage onSelectProduct={vi.fn()} onRecordPurchase={vi.fn()} onNavigate={vi.fn()} />
+          ) : null}
+        </>
+      );
+    }
+    renderWithQuery(
+      <SyncStatusProvider>
+        <ToastProvider>
+          <Switchable />
+        </ToastProvider>
+      </SyncStatusProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "열린 위스키 #1 한 잔 기록" }));
+    await userEvent.click(screen.getByRole("button", { name: "30ml" }));
+    // 저장 트랜잭션이 끝나기 전에 홈을 떠난다.
+    fireEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+    fireEvent.click(screen.getByText("다른 화면"));
+
+    expect(await screen.findByText("열린 위스키 시음을 기록했습니다")).toBeInTheDocument();
+    expect(await db.tasting_session.count()).toBe(1);
+    // 열 시트가 없는 "한 잔 더"를 남기지 않는다.
+    expect(screen.queryByRole("button", { name: "한 잔 더" })).not.toBeInTheDocument();
   });
 
   it("다른 병을 쓰던 입력이 있어도 한 잔은 고른 병으로 열고 이전 입력은 그 병에 남긴다", async () => {

@@ -49,9 +49,17 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
   const [showAllOpen, setShowAllOpen] = useState(false);
   const [sheet, setSheet] = useState<{ bottle?: DrinkableBottle } | null>(null);
   const toast = useToast();
-  // 저장 알림의 "한 잔 더"는 이 화면의 시트를 연다. 홈을 떠나면 열 시트가 없으니 알림을 거둔다.
+  // 저장 알림의 "한 잔 더"는 이 화면의 시트를 연다. 홈을 떠나면 열 시트가 없으니 알림을 거두고,
+  // 떠난 뒤에 끝난 저장은 이어가기 없이 기록했다고만 알린다.
   const followUp = useRef<(() => void) | null>(null);
-  useEffect(() => () => followUp.current?.(), []);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      followUp.current?.();
+    };
+  }, []);
   const primaryAction = useRef<HTMLButtonElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   // 기록으로 병이 소진되어 누른 "한 잔" 단추가 사라졌으면 주 행동으로 초점을 돌린다.
@@ -83,6 +91,10 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
     setSheet(bottle ? { bottle } : {});
   }
   function offerFollowUp({ tastingId, bottle, message, finished }: RecordedTasting) {
+    if (!mounted.current) {
+      toast.show({ message });
+      return;
+    }
     // 다 마신 병의 행은 곧 목록에서 빠진다. 시트가 닫힐 때 아직 남은 그 "한 잔"에 초점을
     // 돌리면 행이 사라지며 초점을 잃으므로 주 행동으로 돌린다.
     if (finished) trigger.current = primaryAction.current;
