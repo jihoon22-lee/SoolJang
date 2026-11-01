@@ -5,13 +5,15 @@ import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { collectionApi } from "@/api/collection";
 import { BottleGauge } from "@/components/BottleGauge";
 import {
-  type PurchaseIdentity,
-  productEdition,
-  purchaseReferences,
-} from "@/components/productDisplay";
+  bottleProductLabel,
+  bottlePurchaseIdentity,
+  bottlePurchaseLabel,
+  sameLookingBottleIds,
+} from "@/components/drinkableBottleLabel";
+import { purchaseReferences } from "@/components/productDisplay";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { useToast } from "@/components/Toast";
-import { formatDate, formatVolume } from "@/format";
+import { formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
@@ -35,19 +37,6 @@ const SELECTION_FORM = "quick-tasting:selection";
 const EMPTY_SELECTION = { bottleId: "", skuId: "", productName: "", labelNo: 0, volumeLabel: "" };
 type BottleSelection = typeof EMPTY_SELECTION;
 
-function purchaseIdentity(bottle: DrinkableBottle): PurchaseIdentity {
-  return {
-    id: bottle.purchaseId,
-    productId: bottle.productId,
-    volumeMl: bottle.volumeMl,
-    purchasedOn: bottle.purchasedOn,
-    vendorName: bottle.vendorName,
-  };
-}
-function purchaseLabel(bottle: DrinkableBottle, references: ReadonlyMap<string, string>): string {
-  const reference = references.get(bottle.purchaseId);
-  return `#${bottle.labelNo} · 구매 ${formatDate(bottle.purchasedOn)} · ${bottle.vendorName ?? "구매처 미기록"}${reference ? ` · ${reference}` : ""}`;
-}
 /** 저장이 끝나 초안까지 정리된 시음. 이어서 할 일(고치기·한 잔 더·보기)은 시트를 연 쪽이 띄운다. */
 export interface RecordedTasting {
   tastingId: string;
@@ -56,15 +45,6 @@ export interface RecordedTasting {
   message: string;
   /** 이 기록으로 병을 다 마셔 같은 병에 더 기록할 수 없다. */
   finished: boolean;
-}
-
-function bottleProductLabel(bottle: DrinkableBottle): string {
-  const edition = productEdition({
-    vintage: bottle.vintage,
-    abv: bottle.abv,
-    age_years: bottle.ageYears,
-  });
-  return edition ? `${bottle.productName} · ${edition}` : bottle.productName;
 }
 
 export function QuickTastingSheet({
@@ -87,7 +67,7 @@ export function QuickTastingSheet({
   const bottles = useLiveQuery(() => getDrinkableBottles(), [session.userId]);
   // 병마다 전체 목록을 다시 비교하지 않도록 구매 참조를 한 번만 계산한다(D264).
   const references = useMemo(
-    () => purchaseReferences((bottles ?? []).map(purchaseIdentity)),
+    () => purchaseReferences((bottles ?? []).map(bottlePurchaseIdentity)),
     [bottles],
   );
   const [query, setQuery] = useState("");
@@ -179,15 +159,10 @@ export function QuickTastingSheet({
   }, [bottles, query, scope, selection.skuId]);
   // 같은 이름·용량으로 보이는 병이 둘 이상일 때만 구매·위치 줄로 구분한다(D264와 같은 원칙).
   // 병을 고르면 입력 머리에 번호·구매·위치를 모두 보인다.
-  const needsDetail = useMemo(() => {
-    const key = (item: DrinkableBottle) => `${bottleProductLabel(item)}\u0000${item.volumeMl}`;
-    const shown = visible.filter((item) => scope === "sku" || item.status === "open");
-    const counts = new Map<string, number>();
-    for (const item of shown) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
-    return new Set(
-      shown.filter((item) => (counts.get(key(item)) ?? 0) > 1).map((item) => item.bottleId),
-    );
-  }, [visible, scope]);
+  const needsDetail = useMemo(
+    () => sameLookingBottleIds(visible.filter((item) => scope === "sku" || item.status === "open")),
+    [visible, scope],
+  );
   const choosing = !selection.bottleId || scope !== null;
   const selectedBottle = bottles?.find((bottle) => bottle.bottleId === selection.bottleId) ?? null;
 
@@ -307,7 +282,7 @@ export function QuickTastingSheet({
                       </span>
                       {needsDetail.has(item.bottleId) ? (
                         <span className="muted text-sm">
-                          {purchaseLabel(item, references)} · {locationLabel(item.bottleId)}
+                          {bottlePurchaseLabel(item, references)} · {locationLabel(item.bottleId)}
                         </span>
                       ) : null}
                     </span>
@@ -498,7 +473,7 @@ function QuickTastingForm({
     >
       <p className="muted text-sm mt-0">
         {bottle
-          ? `${formatVolume(bottle.volumeMl)} · ${purchaseLabel(bottle, references)}`
+          ? `${formatVolume(bottle.volumeMl)} · ${bottlePurchaseLabel(bottle, references)}`
           : `${selection.volumeLabel} · #${selection.labelNo}`}{" "}
         · {location}
       </p>

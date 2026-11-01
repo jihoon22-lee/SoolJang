@@ -1,7 +1,13 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { BottleGauge } from "@/components/BottleGauge";
-import { productEdition } from "@/components/productDisplay";
+import {
+  bottlePurchaseContext,
+  bottlePurchaseIdentity,
+  bottlePurchaseLabel,
+  sameLookingBottleIds,
+} from "@/components/drinkableBottleLabel";
+import { productEdition, purchaseReferences } from "@/components/productDisplay";
 import { QuickTastingSheet, type RecordedTasting } from "@/components/QuickTastingSheet";
 import { LoadingState } from "@/components/StatusViews";
 import { useToast } from "@/components/Toast";
@@ -63,6 +69,11 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
   }
 
   const openBottles = drinkable.filter((item) => item.status === "open");
+  // 같은 이름·판본·용량의 열린 병은 번호로, 번호까지 같으면(다른 구매) 구매일·구매처로 구분해
+  // 다른 병에 기록하지 않게 한다(D264).
+  const numbered = sameLookingBottleIds(openBottles);
+  const sameNumber = sameLookingBottleIds(openBottles, true);
+  const references = purchaseReferences(openBottles.map(bottlePurchaseIdentity));
   const today = todayLocal();
   const count = (value: number) => `${value.toLocaleString("ko-KR")}병`;
   function openSheet(button: HTMLButtonElement, bottle?: DrinkableBottle) {
@@ -153,6 +164,9 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                 age_years: item.ageYears,
                 abv: item.abv,
               });
+              const detail = sameNumber.has(item.bottleId)
+                ? bottlePurchaseContext(item, references)
+                : null;
               return (
                 <li key={item.bottleId}>
                   <BottleGauge
@@ -164,7 +178,7 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                     <button
                       type="button"
                       className="entity-link"
-                      aria-label={`${item.productName} #${item.labelNo} · ${formatVolume(item.volumeMl)}`}
+                      aria-label={`${item.productName} #${item.labelNo} · ${formatVolume(item.volumeMl)}${detail ? ` · ${detail}` : ""}`}
                       onClick={() =>
                         onSelectProduct(item.productId, {
                           skuId: item.skuId,
@@ -176,6 +190,11 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                     </button>
                     <span className="muted text-sm">
                       {[
+                        detail
+                          ? bottlePurchaseLabel(item, references)
+                          : numbered.has(item.bottleId)
+                            ? `#${item.labelNo}`
+                            : null,
                         item.remainingMl !== null ? `${item.remainingMl}ml 남음` : "잔량 미기록",
                         item.openedOn
                           ? `개봉 후 ${daysSince(item.openedOn, today)}일 경과`
@@ -189,7 +208,7 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                   <button
                     type="button"
                     className="home-pour"
-                    aria-label={`${item.productName} #${item.labelNo} 한 잔 기록`}
+                    aria-label={`${item.productName} #${item.labelNo}${detail ? ` · ${detail}` : ""} 한 잔 기록`}
                     onClick={(event) => openSheet(event.currentTarget, item)}
                   >
                     한 잔
@@ -236,6 +255,8 @@ export function HomePage({ onSelectProduct, onRecordPurchase, onNavigate }: Home
                           record.tasted_on,
                           record.poured_ml === null ? null : `${record.poured_ml}ml`,
                           record.bottle ? `${record.bottle.label_no}번 병` : null,
+                          // 같은 이름의 다른 빈티지·숙성을 구분한다(도수는 빼서 짧게 둔다).
+                          productEdition({ ...record.context, abv: null }) || null,
                         ]
                           .filter(Boolean)
                           .join(" · ")}

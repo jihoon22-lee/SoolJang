@@ -343,3 +343,74 @@ it("열린 병 전체 보기와 최근 시음이 대상 병·기록을 연다", 
     tastingId: "t",
   });
 });
+
+it("같은 이름·용량의 열린 병은 번호로, 번호까지 같으면 구매일·구매처로 구분한다", async () => {
+  await product("p1", "같은 위스키");
+  await db.vendor.bulkPut([
+    row({ id: "v-old", name: "오래된 매장" }),
+    row({ id: "v-new", name: "새 매장" }),
+  ]);
+  // 같은 규격을 두 번 샀다. 병 번호는 구매마다 1부터 매긴다.
+  await db.purchase.bulkPut([
+    row({
+      id: "pu-p1",
+      sku_id: "s-p1",
+      quantity: 2,
+      purchased_on: "2025-01-01",
+      vendor_id: "v-old",
+    }),
+    row({
+      id: "pu-p1b",
+      sku_id: "s-p1",
+      quantity: 1,
+      purchased_on: "2026-01-01",
+      vendor_id: "v-new",
+    }),
+  ]);
+  await openBottle("b-old-1", "p1", 1, 300);
+  await openBottle("b-old-2", "p1", 2, 500);
+  await db.bottle.put(
+    row({
+      id: "b-new-1",
+      purchase_id: "pu-p1b",
+      label_no: 1,
+      status: "open",
+      opened_on: "2026-01-03",
+      remaining_ml: 600,
+    }),
+  );
+
+  renderHomePage();
+
+  expect(
+    await screen.findByRole("button", {
+      name: "같은 위스키 #1 · 구매 2025-01-01 · 오래된 매장 한 잔 기록",
+    }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "같은 위스키 #1 · 구매 2026-01-01 · 새 매장 한 잔 기록" }),
+  ).toBeInTheDocument();
+  // 다른 번호인 2번 병은 번호만으로 구분한다.
+  expect(screen.getByRole("button", { name: "같은 위스키 #2 한 잔 기록" })).toBeInTheDocument();
+  expect(screen.getByText(/^#1 · 구매 2026-01-01 · 새 매장 · 600ml 남음/)).toBeInTheDocument();
+  expect(screen.getByText(/^#2 · 500ml 남음/)).toBeInTheDocument();
+});
+
+it("하나뿐인 열린 병에는 번호·구매를 덧붙이지 않고 최근 시음에는 빈티지를 보인다", async () => {
+  await db.product.put(row({ id: "w", name: "가상 샤토", vintage: 2009, abv: "13.5" }));
+  await db.sku.put(row({ id: "s-w", product_id: "w", volume_ml: 750 }));
+  await db.purchase.put(row({ id: "pu-w", sku_id: "s-w", quantity: 1 }));
+  await openBottle("b-w", "w", 1, 400);
+  await db.tasting_session.put(
+    row({ id: "t-w", sku_id: "s-w", bottle_id: "b-w", tasted_on: "2026-10-10", rating: "4.0" }),
+  );
+
+  renderHomePage();
+
+  expect(
+    await screen.findByRole("button", { name: "가상 샤토 #1 한 잔 기록" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/^400ml 남음/)).toBeInTheDocument();
+  const recent = screen.getByRole("region", { name: "최근 시음" });
+  expect(within(recent).getByRole("button")).toHaveTextContent("2026-10-10 · 1번 병 · 2009 빈티지");
+});
