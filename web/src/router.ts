@@ -57,6 +57,9 @@ export interface ProductContext {
   bottleId?: string | undefined;
   tastingId?: string | undefined;
   editTasting?: boolean | undefined;
+  /** 구매 추가 폼을 연 채 상세로 들어온다(새 술 폼의 "이 술에 구매 추가"). 해시에 남기지 않아
+   * 새로고침·뒤로가기로 폼이 다시 열리지 않는다. */
+  addPurchase?: boolean | undefined;
 }
 
 export interface Route extends ProductContext {

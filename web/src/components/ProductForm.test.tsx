@@ -5,6 +5,7 @@ import { ApiError } from "@/api/client";
 import type { CategoryNode, ProblemDetail } from "@/api/types";
 import { ProductForm } from "@/components/ProductForm";
 import { todayLocal } from "@/format";
+import { hasDirtyForms } from "@/sync/update";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -23,6 +24,13 @@ const categories: CategoryNode[] = [
     descendant_product_count: 0,
   },
 ];
+
+/** 접힌 "더 입력" 영역. */
+function moreSection(): HTMLDetailsElement {
+  return screen
+    .getByText("더 입력", { exact: false, selector: "summary" })
+    .closest("details") as HTMLDetailsElement;
+}
 
 function setup(overrides: Partial<Parameters<typeof ProductForm>[0]> = {}) {
   const onSubmit = vi.fn();
@@ -138,10 +146,45 @@ describe("ProductForm", () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ categoryId: "single-malt" }));
   });
 
-  it("평점 상한을 6으로 제한한다", () => {
+  it("새 술 폼은 이름·주종·용량·도수와 구매 칸을 먼저 보이고 나머지는 '더 입력'에 접는다", () => {
     setup();
 
-    expect(screen.getByLabelText("내 평점 (0.5~6)")).toHaveAttribute("max", "6");
+    const more = moreSection();
+    expect(more).not.toHaveAttribute("open");
+    for (const label of ["이름 *", "주종", "용량 (ml)", "도수 (%)", "병수", "구매일", "구매처"])
+      expect(more).not.toContainElement(screen.getByLabelText(label));
+    for (const label of ["빈티지", "숙성 연수", "생산자", "원어명", "메모"])
+      expect(more).toContainElement(screen.getByLabelText(label));
+    expect(within(more).getByRole("group", { name: /내 평점/ })).toBeInTheDocument();
+  });
+
+  it("내 평점은 0점 없이 별로 고르고 작성 중으로 표시한다", async () => {
+    const { onSubmit } = setup();
+    await userEvent.type(screen.getByLabelText("이름 *"), "가상 위스키");
+    await userEvent.click(within(moreSection()).getByText("더 입력", { exact: false }));
+    const rating = screen.getByRole("group", { name: /내 평점/ });
+
+    // 제품 평점은 0.5~6이라 0점이 없다. 미평가는 "평점 없음"이다(D268).
+    expect(within(rating).queryByRole("button", { name: "0점" })).not.toBeInTheDocument();
+    expect(hasDirtyForms()).toBe(false);
+    await userEvent.click(within(rating).getByRole("button", { name: "5점" }));
+    await userEvent.click(within(rating).getByRole("button", { name: "5점" }));
+    expect(hasDirtyForms()).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "등록" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ personalRating: "4.5" }));
+  });
+
+  it("수정 모드는 접지 않고 기존 평점을 건드리지 않으면 그대로 보낸다", async () => {
+    const { onSubmit } = setup({
+      mode: "edit",
+      initialValues: { name: "가상 위스키", personalRating: "4.3" },
+    });
+
+    expect(screen.queryByText("더 입력", { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /내 평점 \(4\.3 \/ 6\)/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ personalRating: "4.3" }));
   });
 
   it("서버 필드 오류를 해당 입력에 표시한다", () => {
@@ -157,6 +200,11 @@ describe("ProductForm", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("입력값을 확인하세요");
     expect(screen.getByText("6 이하여야 합니다")).toBeInTheDocument();
+    // 오류가 난 칸이 접혀 있으면 보이지 않으므로 펼친다.
+    expect(moreSection()).toHaveAttribute("open");
+    expect(screen.getByRole("group", { name: /내 평점/ })).toHaveAccessibleDescription(
+      "6 이하여야 합니다",
+    );
   });
 
   it("저장 중에는 버튼을 막는다", () => {
@@ -204,21 +252,22 @@ describe("ProductForm", () => {
     });
 
     await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키 12년");
-    expect(await screen.findByText(/이름이 같은 기존 제품이 있습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/이미 등록한 술입니다/)).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", {
-        name: /글렌알라키 12년.*판본 정보 미기록.*이 제품의 구매 이력으로 이동/,
+        name: /글렌알라키 12년.*판본 정보 미기록.*이 술에 구매 추가/,
       }),
     );
-    expect(onSelectExisting).toHaveBeenCalledWith("p1");
+    // 그 술의 구매 추가 폼을 연 상세로 간다(D268).
+    expect(onSelectExisting).toHaveBeenCalledWith("p1", { addPurchase: true });
   });
 
   it("부분 일치나 다른 이름은 중복으로 경고하지 않는다", async () => {
     setup({ existingProducts: [{ id: "p1", name: "글렌알라키 12년" }] });
 
     await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키");
-    expect(screen.queryByText(/이름이 같은 기존 제품이 있습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이미 등록한 술입니다/)).not.toBeInTheDocument();
   });
 
   it("수정 모드에서는 중복 경고를 하지 않는다", async () => {
@@ -228,7 +277,7 @@ describe("ProductForm", () => {
       existingProducts: [{ id: "p1", name: "글렌알라키 12년" }],
     });
 
-    expect(screen.queryByText(/이름이 같은 기존 제품이 있습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이미 등록한 술입니다/)).not.toBeInTheDocument();
   });
 
   it("구매처 자동완성 후보를 보여준다", async () => {
@@ -292,21 +341,32 @@ it("동일 이름의 빈티지·도수 후보를 구분하고 입력 용량과 �
   });
   expect(screen.getByRole("button", { name: "등록" })).toBeEnabled();
   await userEvent.click(next);
-  expect(onSelectExisting).toHaveBeenCalledWith("edition21", { skuId: "sku21" });
+  expect(onSelectExisting).toHaveBeenCalledWith("edition21", {
+    skuId: "sku21",
+    addPurchase: true,
+  });
+  // 미리 채운 빈티지가 접힌 칸에 숨지 않게 펼쳐 둔다.
+  expect(moreSection()).toHaveAttribute("open");
   expect(screen.getByLabelText("빈티지")).toHaveValue(2022);
 });
 
 it("확인한 검색 별칭을 입력하고 20개를 초과한 입력은 저장 전에 알린다", async () => {
   const { onSubmit } = setup();
   await userEvent.type(screen.getByLabelText("이름 *"), "GlenAllachie 12");
+  await userEvent.click(within(moreSection()).getByText("더 입력", { exact: false }));
   await userEvent.type(screen.getByLabelText("원어명"), "The GlenAllachie");
   await userEvent.type(
     screen.getByLabelText(/^검색 별칭/),
     Array.from({ length: 21 }, (_, i) => `별칭${i}`).join(","),
   );
+  // 접어 둔 채 제출해도 오류 칸을 펼쳐 초점을 옮긴다.
+  await userEvent.click(within(moreSection()).getByText("더 입력", { exact: false }));
+  expect(moreSection()).not.toHaveAttribute("open");
   await userEvent.click(screen.getByRole("button", { name: "등록" }));
   expect(onSubmit).not.toHaveBeenCalled();
   expect(screen.getByRole("alert")).toHaveTextContent("최대 20개");
+  expect(moreSection()).toHaveAttribute("open");
+  expect(screen.getByLabelText(/^검색 별칭/)).toHaveFocus();
   await userEvent.clear(screen.getByLabelText(/^검색 별칭/));
   await userEvent.type(screen.getByLabelText(/^검색 별칭/), "글렌알라키,내 셰리");
   await userEvent.click(screen.getByRole("button", { name: "등록" }));

@@ -42,6 +42,7 @@ export function BottleSection({
   selectedSkuId,
   selectedBottleId,
   selectedTastingId,
+  focusSelectedTasting,
   onCorrectTasting,
   onTastingDeleted,
   onSelectContext,
@@ -54,6 +55,7 @@ export function BottleSection({
   selectedSkuId?: string | undefined;
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
+  focusSelectedTasting?: boolean | undefined;
   onCorrectTasting?: ((item: ContextualTasting) => void) | undefined;
   onTastingDeleted?: ((item: ContextualTasting) => void) | undefined;
   onSelectContext?: ((context: ProductContext) => void) | undefined;
@@ -319,6 +321,7 @@ export function BottleSection({
             offline={offline}
             contextLabel={context}
             selectedTastingId={selectedTastingId}
+            focusSelectedTasting={focusSelectedTasting}
             onCorrect={onCorrectTasting}
             onDeleted={onTastingDeleted}
             onSavingChange={(saving) => {

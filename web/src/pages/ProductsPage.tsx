@@ -1147,6 +1147,7 @@ function ProductDetailView({
       selectedBottleId={target.bottleId}
       selectedTastingId={target.tastingId}
       editTasting={context.editTasting}
+      addPurchase={context.addPurchase}
       onTastingDeleted={(record) => {
         if (context.tastingId === record.id)
           onSelectContext({ skuId: target.skuId, bottleId: target.bottleId });

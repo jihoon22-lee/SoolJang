@@ -8,8 +8,15 @@ import {
   foreignPriceMismatch,
   ProductDetail,
 } from "@/components/ProductDetail";
-import { activateDatabase, lockDatabase } from "@/sync/db";
+import { activateDatabase, databaseIdentity, db, lockDatabase } from "@/sync/db";
 import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
+
+/** 구매 이력 구역의 "구매 추가". 머리부의 같은 이름 주 행동과 구분한다. */
+function purchaseAdd(): HTMLElement {
+  return within(screen.getByRole("region", { name: "구매 이력" })).getByRole("button", {
+    name: "구매 추가",
+  });
+}
 
 function stubRoutes(routes: Parameters<typeof originalStubRoutes>[0]) {
   return originalStubRoutes([
@@ -402,11 +409,11 @@ describe("ProductDetail", () => {
     it("구매 추가 폼을 열고 제출하면 입력값을 그대로 넘긴다", async () => {
       const { onAddPurchase } = setup();
 
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
       await userEvent.clear(screen.getByLabelText("병수"));
       await userEvent.type(screen.getByLabelText("병수"), "3");
       await userEvent.type(screen.getByLabelText("구매처"), "새 구매처");
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
 
       expect(onAddPurchase).toHaveBeenCalledWith(
         expect.objectContaining({ skuId: "s1", quantity: 3, vendorName: "새 구매처" }),
@@ -416,16 +423,16 @@ describe("ProductDetail", () => {
     it("해외 구매는 외화 단가 × 환율을 원화 실구매가로 넘기고 통화·환율을 함께 보낸다", async () => {
       const { onAddPurchase } = setup();
 
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
       await userEvent.click(screen.getByLabelText("해외 구매(외화로 결제)"));
       await userEvent.selectOptions(screen.getByLabelText("통화"), "JPY");
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
       expect(screen.getByRole("alert")).toHaveTextContent("외화 단가와 환율을 함께 입력하세요");
       await userEvent.type(screen.getByLabelText("병당 외화 단가 (JPY)"), "5980");
       await userEvent.type(screen.getByLabelText("환율 (1 JPY당 원)"), "9.12");
 
       expect(screen.getByLabelText("병당 실구매가 (원)")).toHaveValue(54538);
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
       expect(onAddPurchase).toHaveBeenCalledWith(
         expect.objectContaining({
           unitPaidPrice: "54538",
@@ -437,7 +444,7 @@ describe("ProductDetail", () => {
     it("구매처 자동완성 후보를 보여준다", async () => {
       setup({ vendorNames: ["이마트", "이마트 트레이더스", "코스트코"] });
 
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
       await userEvent.type(screen.getByLabelText("구매처"), "이마트");
 
       const options = within(screen.getByRole("listbox")).getAllByRole("option");
@@ -499,7 +506,7 @@ describe("ProductDetail", () => {
         product: { ...product, skus: [] },
       });
 
-      await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+      await userEvent.click(purchaseAdd());
       expect(screen.getByText(/먼저 규격을 등록하세요/)).toBeInTheDocument();
 
       await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
@@ -642,12 +649,12 @@ describe("ProductDetail", () => {
 
 it("첫 규격을 추가한 같은 폼에서 바로 구매를 저장한다", async () => {
   const { onAddPurchase, onAddSku, rerenderProduct } = setup({ product: { ...product, skus: [] } });
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
   await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
   expect(onAddSku).toHaveBeenCalledWith(700);
   rerenderProduct(product);
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   expect(onAddPurchase).toHaveBeenCalledWith(expect.objectContaining({ skuId: "s1", quantity: 1 }));
   expect(screen.queryByText("규격을 선택하세요")).not.toBeInTheDocument();
 });
@@ -657,7 +664,7 @@ it("규격 목록이 바뀌어도 유효한 선택과 구매 입력을 보존하
   const { onAddPurchase, rerenderProduct } = setup({
     product: { ...product, skus: [...product.skus, other] },
   });
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   await userEvent.selectOptions(screen.getByLabelText("규격"), "s2");
   await userEvent.clear(screen.getByLabelText("병수"));
   await userEvent.type(screen.getByLabelText("병수"), "3");
@@ -669,10 +676,10 @@ it("규격 목록이 바뀌어도 유효한 선택과 구매 입력을 보존하
   rerenderProduct(product);
   expect(screen.getByRole("alert")).toHaveTextContent("선택한 규격을 사용할 수 없습니다");
   expect(screen.getByLabelText("규격")).toHaveValue("s2");
-  expect(screen.getByRole("button", { name: "구매 추가" })).toBeDisabled();
+  expect(purchaseAdd()).toBeDisabled();
   expect(onAddPurchase).not.toHaveBeenCalled();
   await userEvent.selectOptions(screen.getByLabelText("규격"), "s1");
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   expect(onAddPurchase).toHaveBeenCalledWith(expect.objectContaining({ skuId: "s1", quantity: 3 }));
 });
 
@@ -727,14 +734,14 @@ describe("구매 저장 중 입력 보호", () => {
         }),
     );
     setup({ onAddPurchase: add });
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(purchaseAdd());
     await userEvent.type(screen.getByLabelText("구매처"), "가상 새 매장");
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(purchaseAdd());
     expect(screen.getByRole("button", { name: "취소" })).toBeDisabled();
     expect(screen.getByLabelText("구매처")).toBeDisabled();
     await act(async () => complete());
     await waitFor(() => expect(screen.queryByLabelText("구매처")).not.toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(purchaseAdd());
     expect(screen.getByLabelText("구매처")).toHaveValue("");
   });
 
@@ -748,12 +755,12 @@ describe("구매 저장 중 입력 보호", () => {
         }),
     );
     const first = setup({ onAddPurchase: add });
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(purchaseAdd());
     await userEvent.type(screen.getByLabelText("구매처"), "이전 제출");
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(purchaseAdd());
     first.unmount();
     setup({ onAddPurchase: add });
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(purchaseAdd());
     await userEvent.clear(screen.getByLabelText("구매처"));
     await userEvent.type(screen.getByLabelText("구매처"), "새 입력");
     await act(async () => complete());
@@ -842,7 +849,7 @@ it("다른 용량을 추가해도 구매 입력 전부를 보존하고 미러 �
       }),
   );
   const { onAddPurchase } = setup({ onAddSku });
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   await userEvent.clear(screen.getByLabelText("병수"));
   await userEvent.type(screen.getByLabelText("병수"), "3");
   fireEvent.change(screen.getByLabelText("구매일"), { target: { value: "2026-02-03" } });
@@ -869,7 +876,7 @@ it("다른 용량을 추가해도 구매 입력 전부를 보존하고 미러 �
   expect(screen.getByLabelText("병수")).toHaveValue(3);
   expect(screen.getByLabelText("구매일")).toHaveValue("2026-02-03");
   expect(screen.getByLabelText("구매처")).toHaveValue("입력한 매장");
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   expect(onAddPurchase).toHaveBeenCalledWith({
     skuId: "new350",
     quantity: 3,
@@ -883,7 +890,7 @@ it("다른 용량을 추가해도 구매 입력 전부를 보존하고 미러 �
 it("같은 용량은 API 생성 없이 재사용하고 규격 추가 실패에도 입력을 남긴다", async () => {
   const onAddSku = vi.fn().mockRejectedValue(new Error("규격 생성 실패"));
   setup({ onAddSku });
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   await userEvent.type(screen.getByLabelText("구매처"), "보존 매장");
   await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
   await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
@@ -909,7 +916,7 @@ it("이전 제품의 늦은 규격 생성 성공은 새 제품의 구매 선택�
       }),
   );
   const { rerenderProduct } = setup({ onAddSku });
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   await userEvent.click(screen.getByRole("button", { name: "다른 용량 추가" }));
   await userEvent.type(screen.getByLabelText("용량 (ml)"), "350");
   await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
@@ -921,7 +928,7 @@ it("이전 제품의 늦은 규격 생성 성공은 새 제품의 구매 선택�
       { id: "another1000", volume_ml: 1000, barcode: null, barcode_type: null, package_note: null },
     ],
   });
-  await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+  await userEvent.click(purchaseAdd());
   await act(async () =>
     complete({
       id: "old350",
@@ -1005,4 +1012,144 @@ it("외화 환산은 부동소수 오차 없이 원 단위 반올림한다", () 
   expect(convertedPaidPrice("", "1")).toBeNull();
   expect(convertedPaidPrice("1e3", "1")).toBeNull();
   expect(convertedPaidPrice("-1", "1")).toBeNull();
+});
+
+describe("머리부와 최근 시음(D268)", () => {
+  const openBottle: Bottle = {
+    id: "b1",
+    purchase_id: "pu1",
+    label_no: 1,
+    status: "open",
+    opened_on: "2026-03-02",
+    finished_on: null,
+    remaining_ml: 420,
+    storage_location: null,
+    note: null,
+  };
+  const unopened: Bottle = { ...openBottle, id: "b3", label_no: 3, status: "unopened" };
+  function syncRow(fields: Record<string, unknown>) {
+    return {
+      id: "row",
+      user_id: databaseIdentity().userId ?? "",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+      deleted_at: null,
+      ...fields,
+    };
+  }
+  beforeEach(async () => {
+    await db.product.put(syncRow({ id: "p1", name: product.name }));
+    await db.sku.put(syncRow({ id: "s1", product_id: "p1", volume_ml: 700 }));
+    await db.purchase.put(syncRow({ id: "pu1", sku_id: "s1", quantity: 2 }));
+    await db.bottle.put(syncRow({ ...openBottle }));
+    await db.tasting_session.bulkPut([
+      syncRow({
+        id: "t1",
+        sku_id: "s1",
+        bottle_id: "b1",
+        tasted_on: "2026-04-03",
+        rating: "4.5",
+        poured_ml: 30,
+      }),
+      syncRow({
+        id: "t2",
+        sku_id: "s1",
+        bottle_id: "b1",
+        tasted_on: "2026-04-02",
+        rating: "0.0",
+        poured_ml: 50,
+      }),
+      syncRow({ id: "t3", sku_id: "s1", bottle_id: "b1", tasted_on: "2026-04-01", rating: null }),
+      syncRow({ id: "t4", sku_id: "s1", bottle_id: "b1", tasted_on: "2026-03-31", rating: "3.0" }),
+    ]);
+  });
+  afterEach(async () => {
+    await db.transaction("rw", db.tables, async () => {
+      for (const table of db.tables) await table.clear();
+    });
+  });
+
+  it("마실 병의 잔량과 내 평점·시음 평균을 이름을 나눠 보인다", async () => {
+    setup({ bottles: [unopened, openBottle], offline: true });
+
+    expect(screen.getByText("420ml 남음 · 1번 병")).toBeInTheDocument();
+    expect(screen.getByText("내 평점").nextElementSibling).toHaveTextContent("5 / 6");
+    // 0점은 평균에 넣고 미평가는 뺀다: (4.5 + 0 + 3) / 3.
+    await waitFor(() =>
+      expect(screen.getByText("시음 평균").nextElementSibling).toHaveTextContent(
+        "2.5 / 6 · 3회 평가",
+      ),
+    );
+  });
+
+  it("최근 시음 3개를 펼침 없이 보이고 누르면 그 시음으로 간다", async () => {
+    const onSelectContext = vi.fn();
+    setup({ bottles: [openBottle], offline: true, onSelectContext });
+
+    const recent = await screen.findByRole("region", { name: "최근 시음" });
+    const rows = within(recent).getAllByRole("button");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent(/2026-04-03.*4\.5 \/ 6.*30ml · 1번 병/);
+    expect(rows[1]).toHaveTextContent("0 / 6");
+    expect(rows[2]).toHaveTextContent("평점 없음");
+    await userEvent.click(rows[1] as HTMLElement);
+    expect(onSelectContext).toHaveBeenCalledWith({ skuId: "s1", bottleId: "b1", tastingId: "t2" });
+  });
+
+  it("한 잔 기록은 마실 병을 펼치고 그 병의 시음 입력으로 초점을 옮긴다", async () => {
+    setup({ bottles: [unopened, openBottle], offline: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "한 잔 기록" }));
+
+    const form = await screen.findByRole("heading", { name: "시음 기록하기" });
+    await waitFor(() => expect(form).toHaveFocus());
+    expect(form.closest("form")).toHaveAttribute("id", "tasting-form-b1");
+  });
+
+  it("고치기로 들어오면 늦게 불러온 병·이력 목록이 아니라 정정 폼에 초점을 둔다", async () => {
+    setup({
+      bottles: [openBottle],
+      offline: true,
+      selectedSkuId: "s1",
+      selectedBottleId: "b1",
+      selectedTastingId: "t1",
+      editTasting: true,
+    });
+
+    const correction = await screen.findByRole("region", { name: "시음 기록 정정" });
+    await waitFor(() => expect(correction).toHaveFocus());
+    // 병 패널과 이력 목록이 고른 시음을 불러와 강조한 뒤에도 초점을 가져가지 않는다.
+    await waitFor(() =>
+      expect(document.querySelectorAll(".tasting-selected").length).toBeGreaterThan(0),
+    );
+    expect(correction).toHaveFocus();
+  });
+
+  it("마실 병이 없으면 한 잔 기록 대신 구매 추가를 주 행동으로 둔다", () => {
+    setup({ bottles: [{ ...openBottle, status: "finished", remaining_ml: 0 }] });
+
+    expect(screen.getByText("마실 수 있는 병이 없습니다")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "한 잔 기록" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "구매 추가" })[0]).toHaveClass("primary");
+  });
+});
+
+it("새 술 폼의 이 술에 구매 추가로 들어오면 구매 추가 폼을 열어 초점을 옮긴다", async () => {
+  setup({ addPurchase: true });
+
+  expect(await screen.findByRole("form", { name: "구매 추가" })).toHaveFocus();
+});
+
+it("머리부 구매 추가는 구매 이력의 추가 폼을 열고, 오프라인이면 숨긴다", async () => {
+  const view = setup();
+  await userEvent.click(screen.getAllByRole("button", { name: "구매 추가" })[0] as HTMLElement);
+  expect(await screen.findByRole("form", { name: "구매 추가" })).toHaveFocus();
+  view.unmount();
+
+  setup({ offline: true, addPurchase: true });
+  expect(screen.queryByRole("button", { name: "구매 추가" })).not.toBeInTheDocument();
+  // 온라인에서만 되는 일이라 빈 폼 대신 그 안내로 옮긴다.
+  await waitFor(() =>
+    expect(screen.getByText("구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.")).toHaveFocus(),
+  );
 });

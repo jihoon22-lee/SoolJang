@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
-import { calculateInsights, type InsightSnapshot } from "@/insights/calculate";
+import {
+  calculateInsights,
+  type InsightSnapshot,
+  tastingRatingAverage,
+} from "@/insights/calculate";
 import type { SyncRow } from "@/sync/db";
 import inventoryFixture from "../../../tests/fixtures/category_inventory_cases.json";
 import metricsFixture from "../../../tests/fixtures/metrics_cases.json";
@@ -380,4 +384,13 @@ it("남은 고가 구매 병에도 SKU 전체 구매 가중 실평단가를 쓰�
     calculateInsights(data, { ...filters, from: "2026-01-01", status: "open" }, "2026-03-01")
       .inventory.cost,
   ).toBe("15000.00");
+});
+
+it("시음 평균은 0점을 넣고 미평가는 빼며 소수 둘째 자리로 맞춘다", () => {
+  expect(tastingRatingAverage(["4.0", "4.5", "4.5", null, ""])).toEqual({
+    average: 4.33,
+    rated: 3,
+  });
+  expect(tastingRatingAverage(["0.0", "3.0"])).toEqual({ average: 1.5, rated: 2 });
+  expect(tastingRatingAverage([null, undefined])).toEqual({ average: null, rated: 0 });
 });

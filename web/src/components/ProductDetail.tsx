@@ -2,6 +2,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bottle, ContextualTasting, Product, Purchase, Sku } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
+import { BottleGauge } from "@/components/BottleGauge";
 import { BottleSection } from "@/components/BottleSection";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { ExternalInfoCard } from "@/components/ExternalInfoCard";
@@ -27,12 +28,13 @@ import {
   formatVolume,
   todayLocal,
 } from "@/format";
+import { tastingRatingAverage } from "@/insights/calculate";
 import { getLastVendorName } from "@/lastVendor";
 import type { ProductContext } from "@/router";
 import { rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
-import { getCorrectionOptions } from "@/sync/tastingHistory";
+import { getCorrectionOptions, getLocalTastingHistory } from "@/sync/tastingHistory";
 import { captureWriteSession } from "@/sync/writeSession";
 
 //: `ProductForm` 과 같은 값 — 405종 목록에서도 스크롤 없이 훑을 수 있는 후보 수.
@@ -83,6 +85,8 @@ interface ProductDetailProps {
   selectedBottleId?: string | undefined;
   selectedTastingId?: string | undefined;
   editTasting?: boolean | undefined;
+  /** 새 술 폼의 "이 술에 구매 추가"로 들어오면 구매 추가 폼을 열어 둔다(D268). */
+  addPurchase?: boolean | undefined;
   onTastingDeleted?: ((item: ContextualTasting) => void) | undefined;
   onSelectContext?: ((context: ProductContext) => void) | undefined;
   onTastingCorrected?: ((tasting: ContextualTasting) => void) | undefined;
@@ -150,6 +154,46 @@ export function foreignPriceMismatch(
  * 구매 추가·삭제·분할·규격 추가는 서버 상태 기준으로 병 라벨을 재배치하므로 온라인
  * 전용이다(`CategoriesPage` 의 reparent/merge 와 같은 판단).
  */
+const RECENT_TASTINGS = 3;
+
+/**
+ * 머리부 "한 잔 기록"이 고를 병. 보고 있는 병이 마실 수 있으면 그 병, 아니면 보고 있는 규격의
+ * 열린 병(최근 개봉), 오래된 미개봉 순이다(빠른 시음의 기본 병과 같은 순서).
+ */
+function pourTarget(
+  bottles: readonly Bottle[],
+  purchases: readonly Purchase[],
+  bottleId: string | undefined,
+  skuId: string | undefined,
+): Bottle | null {
+  const drinkable = (bottle: Bottle) => bottle.status === "open" || bottle.status === "unopened";
+  const current = bottles.find((bottle) => bottle.id === bottleId);
+  if (current && drinkable(current)) return current;
+  const purchaseById = new Map(purchases.map((purchase) => [purchase.id, purchase]));
+  const candidates = bottles.filter(drinkable);
+  const inSku = candidates.filter(
+    (bottle) => purchaseById.get(bottle.purchase_id)?.sku_id === skuId,
+  );
+  const pool = inSku.length > 0 ? inSku : candidates;
+  const purchasedOn = (bottle: Bottle) =>
+    purchaseById.get(bottle.purchase_id)?.purchased_on ?? null;
+  return (
+    [...pool].sort((a, b) => {
+      const status = (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1);
+      if (status) return status;
+      if (a.status === "open")
+        return (b.opened_on ?? "").localeCompare(a.opened_on ?? "") || a.label_no - b.label_no;
+      const left = purchasedOn(a);
+      const right = purchasedOn(b);
+      return (
+        (left === null ? 1 : 0) - (right === null ? 1 : 0) ||
+        (left ?? "").localeCompare(right ?? "") ||
+        a.label_no - b.label_no
+      );
+    })[0] ?? null
+  );
+}
+
 export function ProductDetail({
   product,
   purchases,
@@ -160,6 +204,7 @@ export function ProductDetail({
   selectedBottleId,
   selectedTastingId,
   editTasting,
+  addPurchase,
   onTastingDeleted,
   onSelectContext,
   onTastingCorrected,
@@ -245,7 +290,31 @@ export function ProductDetail({
     [correctionTastingId],
   );
   const purchaseCorrectionRef = useRef<HTMLDivElement>(null);
-  const tastingCorrectionRef = useRef<HTMLDivElement>(null);
+  const tastingCorrectionRef = useRef<HTMLElement>(null);
+  // 제품 전체 시음(최근 순). 머리부 시음 평균과 병 구역의 최근 시음이 같이 쓴다. 로컬 기록이라
+  // 방금 저장한 시음도 동기화 전에 반영된다.
+  const productTastings = useLiveQuery(
+    async () => (await getLocalTastingHistory({ product_id: product.id })).items,
+    [product.id],
+  );
+  const tastingAverage = tastingRatingAverage((productTastings ?? []).map((item) => item.rating));
+  const target = pourTarget(scopedBottles, purchases, contextBottleId, activeSkuId);
+  const busy = savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku;
+  // "한 잔 기록": 병을 펼친 뒤 그 병의 시음 입력으로 옮긴다. 빠른 시음 시트를 겹쳐 열지 않는다
+  // (같은 병 초안을 두 폼이 따로 들고 서로 덮어쓰게 된다).
+  const [pourBottleId, setPourBottleId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pourBottleId || contextBottleId !== pourBottleId) return;
+    const heading = document.querySelector<HTMLElement>(`#tasting-form-${pourBottleId} h4`);
+    if (!heading) return;
+    setPourBottleId(null);
+    heading.scrollIntoView?.({ block: "start" });
+    heading.focus({ preventScroll: true });
+  });
+  const [addPurchaseRequest, setAddPurchaseRequest] = useState(0);
+  useEffect(() => {
+    if (addPurchase) setAddPurchaseRequest((request) => request + 1);
+  }, [addPurchase]);
   useEffect(() => {
     if (editTasting && contextTastingId) setCorrectionTastingId(contextTastingId);
   }, [editTasting, contextTastingId]);
@@ -255,8 +324,13 @@ export function ProductDetail({
   useEffect(() => {
     if (correctionPurchaseId) purchaseCorrectionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [correctionPurchaseId]);
+  // 정정 폼이 목적지다(토스트 "고치기"·목록의 "수정"). 늦게 불러온 병·이력 목록이 고른 시음 행으로
+  // 초점을 가져가 폼이 화면 아래에 남지 않게 한다.
+  const correcting = Boolean(correctionTastingId) || Boolean(editTasting && contextTastingId);
   useEffect(() => {
-    if (correctionTastingId) tastingCorrectionRef.current?.scrollIntoView?.({ block: "nearest" });
+    if (!correctionTastingId) return;
+    tastingCorrectionRef.current?.scrollIntoView?.({ block: "start" });
+    tastingCorrectionRef.current?.focus({ preventScroll: true });
   }, [correctionTastingId]);
 
   const correctTasting = (tasting: ContextualTasting) => {
@@ -381,11 +455,74 @@ export function ProductDetail({
               <span className="muted">품종·스타일</span> {product.varieties.join(", ")}
             </li>
           ) : null}
-          <li className="chip">
-            <span className="muted">내 평점</span> {formatRating(product.personal_rating)}
-          </li>
         </ul>
         {product.note && <p className="pre-wrap mb-0">{product.note}</p>}
+        <div className="product-hero-pour">
+          {target ? (
+            <BottleGauge
+              status={target.status}
+              remainingMl={target.remaining_ml}
+              volumeMl={
+                purchases.find((purchase) => purchase.id === target.purchase_id)?.volume_ml ??
+                product.skus.find(
+                  (sku) =>
+                    sku.id ===
+                    purchases.find((purchase) => purchase.id === target.purchase_id)?.sku_id,
+                )?.volume_ml ??
+                null
+              }
+            />
+          ) : null}
+          <p className="mb-0">
+            {target
+              ? `${target.status === "unopened" ? "미개봉" : target.remaining_ml === null ? "잔량 미기록" : `${target.remaining_ml.toLocaleString("ko-KR")}ml 남음`} · ${target.label_no}번 병`
+              : "마실 수 있는 병이 없습니다"}
+          </p>
+        </div>
+        {/* 제품에 매긴 평점과 시음 평점의 평균은 다른 값이라 이름을 나눠 보인다(D268). */}
+        <dl className="product-hero-ratings">
+          <div>
+            <dt>내 평점</dt>
+            <dd>{formatRating(product.personal_rating)}</dd>
+          </div>
+          <div>
+            <dt>시음 평균</dt>
+            <dd>
+              {tastingAverage.average === null ? "—" : formatRating(String(tastingAverage.average))}
+              {tastingAverage.rated > 0 ? (
+                <span className="muted text-sm"> · {tastingAverage.rated}회 평가</span>
+              ) : null}
+            </dd>
+          </div>
+        </dl>
+        <div className="button-row product-hero-actions">
+          {target ? (
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => {
+                const skuId = purchases.find(
+                  (purchase) => purchase.id === target.purchase_id,
+                )?.sku_id;
+                setPourBottleId(target.id);
+                selectContext({ ...(skuId ? { skuId } : {}), bottleId: target.id });
+              }}
+            >
+              한 잔 기록
+            </button>
+          ) : null}
+          {offline ? null : (
+            <button
+              type="button"
+              className={target ? undefined : "primary"}
+              disabled={busy}
+              onClick={() => setAddPurchaseRequest((request) => request + 1)}
+            >
+              구매 추가
+            </button>
+          )}
+        </div>
       </header>
 
       <section aria-labelledby="detail-metrics-heading">
@@ -492,6 +629,45 @@ export function ProductDetail({
       </nav>
       {/* 가장 잦은 일(병 상태·시음)을 구매 이력보다 먼저 둔다. */}
       <div id="detail-bottles" className="detail-anchor">
+        {productTastings && productTastings.length > 0 ? (
+          <section aria-labelledby="detail-recent-tastings" className="detail-recent-tastings">
+            <h3 id="detail-recent-tastings">최근 시음</h3>
+            <ul className="detail-tasting-list">
+              {productTastings.slice(0, RECENT_TASTINGS).map((tasting) => (
+                <li key={tasting.id}>
+                  <button
+                    type="button"
+                    aria-current={tasting.id === contextTastingId ? "true" : undefined}
+                    disabled={busy}
+                    onClick={() =>
+                      selectContext({
+                        skuId: tasting.sku_id,
+                        bottleId: tasting.bottle_id ?? undefined,
+                        tastingId: tasting.id,
+                      })
+                    }
+                  >
+                    <span>{formatDate(tasting.tasted_on)}</span>
+                    <span>
+                      {tasting.rating === null ? "평점 없음" : formatRating(tasting.rating)}
+                    </span>
+                    <span className="muted text-sm">
+                      {[
+                        tasting.poured_ml === null ? null : `${tasting.poured_ml}ml`,
+                        tasting.bottle?.label_no === undefined || tasting.bottle?.label_no === null
+                          ? null
+                          : `${tasting.bottle.label_no}번 병`,
+                        tasting.note || null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {matchingOnly && scopedBottles.length === 0 ? (
           <output className="notice">
             선택 조건에 맞는 병이 없습니다. 전체 구매 이력에서 확인하세요.
@@ -505,6 +681,7 @@ export function ProductDetail({
             selectedSkuId={activeSkuId}
             selectedBottleId={contextBottleId}
             selectedTastingId={contextTastingId}
+            focusSelectedTasting={!correcting}
             onCorrectTasting={correctTasting}
             onTastingDeleted={tastingDeleted}
             onSelectContext={selectContext}
@@ -524,6 +701,7 @@ export function ProductDetail({
               selectedSkuId={activeSkuId}
               selectedBottleId={contextBottleId}
               selectedTastingId={contextTastingId}
+              focusSelected={!correcting}
               offline={offline}
               correctionPending={savingCorrection}
               onCorrect={correctTasting}
@@ -539,7 +717,12 @@ export function ProductDetail({
           ) : null}
         </details>
         {correctionTastingId ? (
-          <div ref={tastingCorrectionRef}>
+          <section
+            ref={tastingCorrectionRef}
+            aria-label="시음 기록 정정"
+            tabIndex={-1}
+            className="detail-anchor"
+          >
             <TastingCorrectionForm
               key={correctionTastingId}
               tastingId={correctionTastingId}
@@ -566,7 +749,7 @@ export function ProductDetail({
                 }
               }}
             />
-          </div>
+          </section>
         ) : null}
       </div>
       <div id="detail-purchases" className="detail-anchor">
@@ -591,6 +774,7 @@ export function ProductDetail({
           splitError={splitError}
           onAddSku={onAddSku}
           addingSku={addingSku}
+          openAddRequest={addPurchaseRequest}
           correctionPending={savingCorrection}
           onCorrectSku={(id) => {
             if (!savingCorrection) setCorrectionPurchaseId(id);
@@ -699,9 +883,12 @@ function PurchaseSection({
   onSavingChange,
   onCorrectSku,
   correctionPending,
+  openAddRequest,
 }: {
   onCorrectSku: (purchaseId: string) => void;
   correctionPending: boolean;
+  /** 머리부 "구매 추가"·새 술 폼에서 온 요청. 바뀔 때마다 폼을 열고 그리로 옮긴다. */
+  openAddRequest: number;
   onSavingChange: (saving: boolean) => void;
   product: Product;
   matchingPurchaseIds?: readonly string[] | undefined;
@@ -787,6 +974,24 @@ function PurchaseSection({
     skuSaving ||
     addingSku ||
     correctionPending;
+  // 요청마다 한 번만 연다. 온라인 상태가 바뀌어 다시 실행돼도 사용자가 닫은 폼을 다시 열지 않는다.
+  const handledAddRequest = useRef(0);
+  const [focusAddRequest, setFocusAddRequest] = useState(0);
+  const addFormRef = useRef<HTMLDivElement>(null);
+  const offlineNoteRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!openAddRequest || handledAddRequest.current === openAddRequest) return;
+    handledAddRequest.current = openAddRequest;
+    if (!offline && !busy) setAddFormOpen(true);
+    setFocusAddRequest((request) => request + 1);
+  }, [openAddRequest, offline, busy]);
+  useEffect(() => {
+    if (!focusAddRequest) return;
+    // 오프라인이면 빈 폼 대신 온라인에서만 된다는 안내로 옮긴다.
+    const target = addFormRef.current?.querySelector("form") ?? offlineNoteRef.current;
+    target?.scrollIntoView?.({ block: "start" });
+    target?.focus({ preventScroll: true });
+  }, [focusAddRequest]);
 
   function submitPurchase(input: AddPurchaseInput): void {
     if (flight.current || busy) return;
@@ -818,9 +1023,9 @@ function PurchaseSection({
   }
 
   return (
-    <>
+    <section aria-labelledby="detail-purchases-heading">
       <div className="section-header">
-        <h3>구매 이력</h3>
+        <h3 id="detail-purchases-heading">구매 이력</h3>
         {!offline && (
           <button
             type="button"
@@ -834,25 +1039,29 @@ function PurchaseSection({
         )}
       </div>
       {offline && (
-        <p className="muted text-sm">구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.</p>
+        <p ref={offlineNoteRef} tabIndex={-1} className="muted text-sm detail-anchor">
+          구매 추가·삭제·분할은 온라인일 때만 할 수 있습니다.
+        </p>
       )}
 
       {addFormOpen && (
-        <AddPurchaseForm
-          key={product.id}
-          product={product}
-          selectedSkuId={selectedSkuId}
-          onSavingChange={(saving) => {
-            setSkuSaving(saving);
-            onSavingChange(saving);
-          }}
-          onSubmit={submitPurchase}
-          onAddSku={onAddSku}
-          addingSku={addingSku}
-          submitting={addingPurchase || addingLocally}
-          error={addPurchaseError}
-          vendorNames={vendorNames}
-        />
+        <div ref={addFormRef} className="detail-anchor">
+          <AddPurchaseForm
+            key={product.id}
+            product={product}
+            selectedSkuId={selectedSkuId}
+            onSavingChange={(saving) => {
+              setSkuSaving(saving);
+              onSavingChange(saving);
+            }}
+            onSubmit={submitPurchase}
+            onAddSku={onAddSku}
+            addingSku={addingSku}
+            submitting={addingPurchase || addingLocally}
+            error={addPurchaseError}
+            vendorNames={vendorNames}
+          />
+        </div>
       )}
 
       {visiblePurchases.length === 0 ? (
@@ -1060,7 +1269,7 @@ function PurchaseSection({
           </table>
         </div>
       )}
-    </>
+    </section>
   );
 }
 
@@ -1213,6 +1422,8 @@ function AddPurchaseForm({
   return (
     <form
       className="panel"
+      aria-label="구매 추가"
+      tabIndex={-1}
       onSubmit={(event) => {
         event.preventDefault();
         if (skuFlight.current || busy) return;

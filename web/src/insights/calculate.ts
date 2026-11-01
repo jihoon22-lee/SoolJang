@@ -119,6 +119,18 @@ function rating(value: unknown): number | null {
   const number = numeric(value);
   return number !== null && number >= 0 && number <= 6 ? number : null;
 }
+
+/** 시음 평점 평균과 평가 수. 0점은 넣고 미평가는 뺀다. 기간 요약의 평균 평점과 같은 규칙이다. */
+export function tastingRatingAverage(ratings: readonly unknown[]): {
+  average: number | null;
+  rated: number;
+} {
+  const values = ratings.flatMap((value) => {
+    const parsed = rating(value);
+    return parsed === null ? [] : [parsed];
+  });
+  return { average: mean(values), rated: values.length };
+}
 const productLabel = (product: SyncRow) =>
   [
     str(product.name),

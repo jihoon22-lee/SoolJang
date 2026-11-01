@@ -1,14 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/api/client";
 import type { CategoryNode, Product } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { productEdition } from "@/components/productDisplay";
+import { RatingStars } from "@/components/RatingStars";
 import { formatCategoryPath, formatVolume, todayLocal } from "@/format";
 import { getLastVendorName } from "@/lastVendor";
 import type { ProductContext } from "@/router";
 import { normalizeNameForMatching, rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { useDraftState } from "@/sync/drafts";
+import { markFormDirty } from "@/sync/update";
 import type { ProductCreationProgress } from "@/sync/useCreateProductProgress";
 
 //: 자동완성이 한 번에 보여줄 후보 수. 405종 목록에서도 스크롤 없이 훑을 수 있는 정도.
@@ -60,6 +62,32 @@ export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   vendorName: "",
 };
 
+/** 새 술 폼에서 "더 입력"에 접어 두는 칸(D268). 값이 있거나 오류가 나면 펼친다. */
+const MORE_FIELDS = [
+  "vintage",
+  "ageYears",
+  "producerName",
+  "varietyNames",
+  "personalRating",
+  "nameEn",
+  "searchAliases",
+  "note",
+] as const satisfies readonly (keyof ProductFormValues)[];
+const MORE_API_FIELDS = [
+  "vintage",
+  "age_years",
+  "producer_name",
+  "variety_names",
+  "personal_rating",
+  "name_en",
+  "search_aliases",
+  "note",
+];
+
+function hasMoreValues(values: ProductFormValues): boolean {
+  return MORE_FIELDS.some((field) => (values[field] ?? "").trim() !== "");
+}
+
 export type ExistingProductCandidate = Pick<Product, "id" | "name"> &
   Partial<Pick<Product, "vintage" | "abv" | "age_years" | "skus" | "name_en" | "search_aliases">>;
 
@@ -89,7 +117,7 @@ interface ProductFormProps {
   /** 이름 자동완성 후보이자 중복 등록 경고의 대상. `mode === "edit"` 이면 쓰지 않는다
    * (수정 중인 제품 자기 자신은 항상 이름이 일치하므로 경고 대상에서 뺄 방법이 없다). */
   existingProducts?: ExistingProductCandidate[];
-  /** 이미 등록된 술과 이름이 정확히 일치하면 이 콜백으로 그 제품으로 건너뛸 수 있게 한다. */
+  /** 이미 등록된 술과 이름이 정확히 일치하면 이 콜백으로 그 술의 구매 추가로 건너뛴다. */
   onSelectExisting?: (productId: string, context?: ProductContext) => void;
   /** 구매처 자동완성 후보. */
   vendorNames?: string[];
@@ -107,7 +135,8 @@ interface ProductFormProps {
  *
  * 등록(`create`)은 제품·규격·구매 건을 **한 폼에서** 만든다. 4계층 구조는 기록 정확성을
  * 위해 필요하지만, 입력할 때마다 세 화면을 거치게 하면 기록 자체를 안 하게 된다. 구매
- * 정보는 선택이며 비워 두면 제품만 만든다.
+ * 정보는 선택이며 비워 두면 제품만 만든다. 이름·주종·용량·도수와 구매 칸을 먼저 두고
+ * 나머지는 "더 입력"에 접는다(D268).
  *
  * 수정(`edit`)은 이미 존재하는 제품의 이름·주종·도수·빈티지·평점·품종·메모만 고친다 —
  * 새 컴포넌트를 만들지 않고 이 폼을 재사용한다(두 모드가 대부분의 필드를 공유한다).
@@ -140,8 +169,19 @@ export function ProductForm({
   const [localError, setLocalError] = useState<string | null>(null);
   /** 로컬 검증에 걸린 칸. 그 칸에 `aria-invalid` 와 칸 아래 오류 문구를 붙이고 초점을 옮긴다. */
   const [invalidField, setInvalidField] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const moreRef = useRef<HTMLDetailsElement>(null);
 
   const apiError = error instanceof ApiError ? error : null;
+  // 접힌 칸에 값(초안 복원·라벨 인식)이나 오류가 있으면 펼쳐 둔다. 숨은 입력이 몰래 저장되지 않게.
+  const moreFilled = hasMoreValues(values);
+  const moreError =
+    invalidField === "form-search-aliases" ||
+    MORE_API_FIELDS.some((field) => Boolean(apiError?.errorFor(field)));
+  const [moreOpen, setMoreOpen] = useState(() => moreFilled || moreError);
+  useEffect(() => {
+    if (moreFilled || moreError) setMoreOpen(true);
+  }, [moreFilled, moreError]);
   // outbox 경로는 일반 Error 를 던진다(서버 왕복 없이 로컬에서 바로 검증하는 경우).
   const genericError = !apiError && error instanceof Error ? error.message : null;
   const productUncertain = Boolean(
@@ -176,7 +216,13 @@ export function ProductForm({
   const fail = (field: string, message: string) => {
     setLocalError(message);
     setInvalidField(field);
-    document.getElementById(field)?.focus();
+    const target = document.getElementById(field);
+    // 접힌 "더 입력" 안의 칸은 먼저 펼쳐야 초점이 간다.
+    if (target && moreRef.current?.contains(target)) {
+      moreRef.current.open = true;
+      setMoreOpen(true);
+    }
+    target?.focus();
   };
 
   /** 칸 하나의 오류 속성. 서버 필드 오류(`errorFor`)와 로컬 검증을 같은 방식으로 붙인다. */
@@ -230,8 +276,108 @@ export function ProductForm({
     onSubmit(values);
   };
 
+  const moreFields = (
+    <>
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="form-vintage">빈티지</label>
+          <input
+            id="form-vintage"
+            type="number"
+            inputMode="numeric"
+            min={1800}
+            max={2200}
+            value={values.vintage}
+            onChange={(event) => set({ vintage: event.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="form-age-years">숙성 연수</label>
+          <input
+            id="form-age-years"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.1"
+            value={values.ageYears}
+            onChange={(event) => set({ ageYears: event.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="field">
+        <label htmlFor="form-producer">생산자</label>
+        <input
+          id="form-producer"
+          value={values.producerName}
+          placeholder="예: 글렌피딕"
+          onChange={(event) => set({ producerName: event.target.value })}
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="form-varieties">품종·스타일 (쉼표로 구분)</label>
+        <input
+          id="form-varieties"
+          value={values.varietyNames}
+          placeholder="예: Cabernet Sauvignon, Merlot"
+          onChange={(event) => set({ varietyNames: event.target.value })}
+        />
+      </div>
+
+      <div className="field">
+        <RatingStars
+          id="form-rating"
+          label="내 평점"
+          allowZero={false}
+          value={values.personalRating}
+          describedBy={apiError?.errorFor("personal_rating") ? "form-rating-error" : undefined}
+          onChange={(personalRating) => {
+            set({ personalRating });
+            // 별은 입력 이벤트가 없어 작성 중 표시를 직접 남긴다(업데이트가 입력을 덮지 않게).
+            if (formRef.current) markFormDirty(formRef.current);
+          }}
+        />
+        {errorText("form-rating", "personal_rating")}
+      </div>
+
+      <div className="field">
+        <label>
+          원어명
+          <input
+            value={values.nameEn ?? ""}
+            maxLength={300}
+            onChange={(event) => set({ nameEn: event.target.value })}
+          />
+        </label>
+        <label>
+          검색 별칭
+          <input
+            id="form-search-aliases"
+            {...errorProps("form-search-aliases", "search_aliases")}
+            value={values.searchAliases ?? ""}
+            onChange={(event) => set({ searchAliases: event.target.value })}
+            placeholder="확인한 한글 이름, 다른 표기 (쉼표로 구분)"
+          />
+          {errorText("form-search-aliases", "search_aliases")}
+          <span className="muted text-sm">
+            검색에만 사용하며 제품 이름이나 판본은 바뀌지 않습니다.
+          </span>
+        </label>
+        <label htmlFor="form-note">메모</label>
+        <textarea
+          id="form-note"
+          rows={2}
+          value={values.note}
+          onChange={(event) => set({ note: event.target.value })}
+        />
+      </div>
+    </>
+  );
+
   return (
     <form
+      ref={formRef}
       className="panel"
       aria-labelledby="product-form-heading"
       onSubmit={handleSubmit}
@@ -341,8 +487,8 @@ export function ProductForm({
             {duplicateProducts.length > 0 ? (
               <div className="notice">
                 <p>
-                  이름이 같은 기존 제품이 있습니다. 빈티지·도수·용량을 확인하세요. 다른 판본은 새로
-                  등록할 수 있습니다.
+                  이미 등록한 술입니다. 같은 술을 또 샀다면 그 술에 구매를 추가하세요. 빈티지·도수가
+                  다른 판본이면 그대로 새로 등록할 수 있습니다.
                 </p>
                 <ul className="pick-list" aria-label="기존 제품 후보">
                   {duplicateProducts.map((candidate) => (
@@ -357,12 +503,14 @@ export function ProductForm({
                                 (sku) => sku.volume_ml === Number(values.volumeMl),
                               ) ?? [];
                             const sku = matches.length === 1 ? matches[0] : undefined;
-                            if (sku) onSelectExisting(candidate.id, { skuId: sku.id });
-                            else onSelectExisting(candidate.id);
+                            onSelectExisting(candidate.id, {
+                              ...(sku ? { skuId: sku.id } : {}),
+                              addPurchase: true,
+                            });
                           }}
                         >
                           <span>{candidateLabel(candidate)}</span>
-                          <span className="muted">이 제품의 구매 이력으로 이동</span>
+                          <span className="muted pick-action">이 술에 구매 추가</span>
                         </button>
                       ) : (
                         <span>{candidateLabel(candidate)}</span>
@@ -391,19 +539,6 @@ export function ProductForm({
           </div>
 
           <div className="field-row">
-            <div className="field">
-              <label htmlFor="form-abv">도수 (%)</label>
-              <input
-                id="form-abv"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                max={100}
-                step="0.1"
-                value={values.abv}
-                onChange={(event) => set({ abv: event.target.value })}
-              />
-            </div>
             {mode === "create" && (
               <div className="field">
                 <label htmlFor="form-volume">용량 (ml)</label>
@@ -421,114 +556,30 @@ export function ProductForm({
                 {errorText("form-volume")}
               </div>
             )}
-          </div>
-
-          <div className="field-row">
             <div className="field">
-              <label htmlFor="form-vintage">빈티지</label>
+              <label htmlFor="form-abv">도수 (%)</label>
               <input
-                id="form-vintage"
-                type="number"
-                inputMode="numeric"
-                min={1800}
-                max={2200}
-                value={values.vintage}
-                onChange={(event) => set({ vintage: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="form-rating">내 평점 (0.5~6)</label>
-              <input
-                id="form-rating"
-                type="number"
-                inputMode="decimal"
-                min={0.5}
-                max={6}
-                step="0.5"
-                value={values.personalRating}
-                onChange={(event) => set({ personalRating: event.target.value })}
-                {...errorProps("form-rating", "personal_rating")}
-              />
-              {errorText("form-rating", "personal_rating")}
-            </div>
-          </div>
-
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="form-producer">생산자</label>
-              <input
-                id="form-producer"
-                value={values.producerName}
-                placeholder="예: 글렌피딕"
-                onChange={(event) => set({ producerName: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="form-age-years">숙성 연수</label>
-              <input
-                id="form-age-years"
+                id="form-abv"
                 type="number"
                 inputMode="decimal"
                 min={0}
+                max={100}
                 step="0.1"
-                value={values.ageYears}
-                onChange={(event) => set({ ageYears: event.target.value })}
+                value={values.abv}
+                onChange={(event) => set({ abv: event.target.value })}
               />
             </div>
           </div>
-
-          <div className="field">
-            <label htmlFor="form-varieties">품종·스타일 (쉼표로 구분)</label>
-            <input
-              id="form-varieties"
-              value={values.varietyNames}
-              placeholder="예: Cabernet Sauvignon, Merlot"
-              onChange={(event) => set({ varietyNames: event.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label>
-              원어명
-              <input
-                value={values.nameEn ?? ""}
-                maxLength={300}
-                onChange={(event) => set({ nameEn: event.target.value })}
-              />
-            </label>
-            <label>
-              검색 별칭
-              <input
-                id="form-search-aliases"
-                {...errorProps("form-search-aliases", "search_aliases")}
-                value={values.searchAliases ?? ""}
-                onChange={(event) => set({ searchAliases: event.target.value })}
-                placeholder="확인한 한글 이름, 다른 표기 (쉼표로 구분)"
-              />
-              {errorText("form-search-aliases", "search_aliases")}
-              <span className="muted text-sm">
-                검색에만 사용하며 제품 이름이나 판본은 바뀌지 않습니다.
-              </span>
-            </label>
-            <label htmlFor="form-note">메모</label>
-            <textarea
-              id="form-note"
-              rows={2}
-              value={values.note}
-              onChange={(event) => set({ note: event.target.value })}
-            />
-          </div>
+          {mode === "edit" ? moreFields : null}
         </fieldset>
+
         {mode === "create" && (
           <fieldset
             className="fieldset-bordered"
             disabled={creation?.purchaseCreated || purchaseUncertain}
           >
             <legend>구매 정보 (선택)</legend>
-            <p className="muted text-sm mt-0">
-              병수를 입력하면 구매 건과 병 기록을 함께 만듭니다. 같은 술을 나중에 다른 곳에서 사면
-              구매 건을 따로 추가할 수 있습니다.
-            </p>
+            <p className="muted text-sm mt-0">병수를 넣으면 구매와 병을 함께 기록합니다.</p>
             <div className="field-row">
               <div className="field">
                 <label htmlFor="form-quantity">병수</label>
@@ -595,6 +646,24 @@ export function ProductForm({
             </div>
           </fieldset>
         )}
+        {mode === "create" ? (
+          <details
+            ref={moreRef}
+            className="form-more"
+            open={moreOpen}
+            onToggle={(event) => setMoreOpen(event.currentTarget.open)}
+          >
+            <summary>
+              더 입력 <span className="muted text-sm">빈티지·숙성·생산자·품종·평점·메모</span>
+            </summary>
+            <fieldset
+              disabled={Boolean(creation?.product) || productUncertain}
+              style={{ border: 0, padding: 0, margin: 0 }}
+            >
+              {moreFields}
+            </fieldset>
+          </details>
+        ) : null}
 
         {creation?.labelPending && onLabelFile ? (
           <label>

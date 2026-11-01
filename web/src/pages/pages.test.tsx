@@ -520,8 +520,11 @@ describe("ProductsPage", () => {
 
     await userEvent.type(within(form).getByLabelText("이름 *"), "새 위스키");
     await userEvent.type(within(form).getByLabelText("도수 (%)"), "43");
+    await userEvent.click(within(form).getByText("더 입력", { exact: false, selector: "summary" }));
     await userEvent.type(within(form).getByLabelText("빈티지"), "2010");
-    await userEvent.type(within(form).getByLabelText("내 평점 (0.5~6)"), "4.5");
+    // 별을 다시 누르면 반 점 내린다(5 → 4.5).
+    await userEvent.click(within(form).getByRole("button", { name: "5점" }));
+    await userEvent.click(within(form).getByRole("button", { name: "5점" }));
     await userEvent.type(
       within(form).getByLabelText("품종·스타일 (쉼표로 구분)"),
       "싱글몰트, 셰리캐스크",
@@ -708,10 +711,18 @@ describe("ProductsPage", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: "구매 추가 대상" }))[0] as Element,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "구매 추가" }));
+    await userEvent.click(
+      within(await screen.findByRole("region", { name: "구매 이력" })).getByRole("button", {
+        name: "구매 추가",
+      }),
+    );
     await userEvent.clear(screen.getByLabelText("병수"));
     await userEvent.type(screen.getByLabelText("병수"), "3");
-    await userEvent.click(screen.getByRole("button", { name: "구매 추가" }));
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "구매 이력" })).getByRole("button", {
+        name: "구매 추가",
+      }),
+    );
 
     await waitFor(() => {
       const call = calls.find((c) => c.method === "POST" && c.url.includes("/purchases"));
@@ -790,7 +801,11 @@ describe("ProductsPage", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: "규격 없는 술" }))[0] as Element,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "구매 추가" }));
+    await userEvent.click(
+      within(await screen.findByRole("region", { name: "구매 이력" })).getByRole("button", {
+        name: "구매 추가",
+      }),
+    );
     await userEvent.type(screen.getByLabelText("용량 (ml)"), "500");
     await userEvent.click(screen.getByRole("button", { name: "규격 추가" }));
 
