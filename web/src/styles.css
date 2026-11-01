@@ -919,6 +919,11 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
+/* 통계 인사이트의 지표는 카드 없이 이름·값만 둔다. 값이 브라우저 기본 들여쓰기(40px)로 밀리지 않게 한다. */
+.metrics-grid dd {
+  margin-inline-start: 0;
+}
+
 .metric {
   background: var(--surface);
   border: 1px solid var(--border);
