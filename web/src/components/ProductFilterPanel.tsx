@@ -417,6 +417,7 @@ export function ProductFilterPanel({
       <form
         className="filter-panel-form"
         aria-labelledby="filter-heading"
+        data-view-only
         onSubmit={(event) => event.preventDefault()}
       >
         <div className="filter-search-row">

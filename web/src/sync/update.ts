@@ -37,7 +37,8 @@ export function protectFormUpdates(): () => void {
       target instanceof HTMLTextAreaElement ||
       target instanceof HTMLSelectElement
     ) {
-      if (target.form) dirtyForms.add(target.form);
+      // 필터·정렬처럼 보기만 바꾸는 폼은 작성 중 입력이 아니다. 보기 상태는 따로 보존된다.
+      if (target.form && !target.form.hasAttribute("data-view-only")) dirtyForms.add(target.form);
       updateEvents.dispatchEvent(new Event("change"));
     }
   };
