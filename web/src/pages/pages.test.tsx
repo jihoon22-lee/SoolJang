@@ -264,19 +264,26 @@ describe("ProductsPage", () => {
     });
   });
 
-  it("필터 패널은 기본 접힘이고 버튼으로 펼치고 접을 수 있다", async () => {
+  it("검색창은 접지 않고 나머지 필터만 버튼으로 펼치고 접는다", async () => {
     renderProductsPage();
-    const toggle = await screen.findByRole("button", { name: "펼치기" });
+    const toggle = await screen.findByRole("button", { name: /^필터( \d+)?$/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // 접힌 상태에서도 검색창은 보인다(D263).
+    expect(screen.getByLabelText("이름 검색")).toBeVisible();
 
     await userEvent.click(toggle);
-    expect(screen.getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
 
-    await userEvent.click(screen.getByRole("button", { name: "접기" }));
-    expect(screen.getByRole("button", { name: "펼치기" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("적용 중인 필터 수를 접힌 필터 버튼에 보인다", async () => {
+    renderProductsPage();
+    const toggle = await screen.findByRole("button", { name: /^필터( \d+)?$/ });
+    await userEvent.click(toggle);
+    await userEvent.type(screen.getByLabelText("내 평점 최소"), "4");
+    expect(toggle).toHaveTextContent("필터 1");
   });
 
   it("재고 필터를 적용한다", async () => {
@@ -852,10 +859,8 @@ describe("ProductsPage", () => {
 
       await userEvent.keyboard("/");
 
+      // 검색창은 필터를 접어도 보이므로 단축키가 패널을 펼치지 않아도 된다(D263).
       expect(screen.getByLabelText("이름 검색")).toHaveFocus();
-      // 모바일 폭에서 기본 접힘인 필터 패널이 단축키로 무력화되면 안 된다(항목 2) —
-      // 접힌 채로 시작했더라도 펼침 상태로 전환돼 있어야 한다.
-      expect(screen.getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
     });
 
     it("이미 입력 중이면 / 를 그냥 문자로 받는다", async () => {
@@ -1033,7 +1038,7 @@ describe("CategoriesPage", () => {
 
     expect(await screen.findByRole("heading", { name: "주종 관리" })).toBeInTheDocument();
     expect(
-      await screen.findByText("위스키", { selector: ".category-row .link-like" }),
+      await screen.findByText("위스키", { selector: ".category-row .entity-link" }),
     ).toBeInTheDocument();
   });
 
@@ -1045,9 +1050,9 @@ describe("CategoriesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     // "새 주종" 자체가 상위 주종 선택 드롭다운 옵션에도 나타나므로, 행에만 있는
-    // `.category-row .link-like` 으로 범위를 좁혀 존재를 확인한다.
+    // `.category-row .entity-link` 으로 범위를 좁혀 존재를 확인한다.
     expect(
-      await screen.findByText("새 주종", { selector: ".category-row .link-like" }),
+      await screen.findByText("새 주종", { selector: ".category-row .entity-link" }),
     ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);
@@ -1078,7 +1083,7 @@ describe("CategoriesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "저장" }));
 
     expect(
-      await screen.findByText("양주", { selector: ".category-row .link-like" }),
+      await screen.findByText("양주", { selector: ".category-row .entity-link" }),
     ).toBeInTheDocument();
     const entries = await db.outbox.toArray();
     expect(entries).toHaveLength(1);

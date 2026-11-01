@@ -325,7 +325,7 @@ function BottleLocations({
                   <th scope="row">
                     <button
                       type="button"
-                      className="link-like"
+                      className="entity-link"
                       onClick={() => onSelectProduct(bottle.product_id, { bottleId: bottle.id })}
                     >
                       {inventoryBottleLabel(bottle, bottles)}

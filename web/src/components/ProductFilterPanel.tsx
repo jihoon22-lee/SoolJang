@@ -400,65 +400,86 @@ export function ProductFilterPanel({
     }
   }
 
-  const visibleIds = fieldOrder.slice(0, ALWAYS_VISIBLE_FIELD_COUNT);
-  const collapsedIds = fieldOrder.slice(ALWAYS_VISIBLE_FIELD_COUNT);
+  // 검색창은 순서와 상관없이 맨 위에 고정해 접지 않는다(D263). 나머지 항목만 순서를 따른다.
+  const otherIds = fieldOrder.filter((id) => id !== "q");
+  const visibleCount =
+    ALWAYS_VISIBLE_FIELD_COUNT -
+    (fieldOrder.slice(0, ALWAYS_VISIBLE_FIELD_COUNT).includes("q") ? 1 : 0);
+  const visibleIds = otherIds.slice(0, visibleCount);
+  const collapsedIds = otherIds.slice(visibleCount);
+  const activeCount = activeFilterCount(filters);
 
   return (
     <div className="panel filter-panel">
-      <div className="section-header">
-        <h2 id="filter-heading">검색과 필터</h2>
-        <button
-          type="button"
-          className="filter-panel-toggle"
-          aria-expanded={expanded}
-          aria-controls="filter-panel-body"
-          onClick={() => onExpandedChange(!expanded)}
-        >
-          {expanded ? "접기" : "펼치기"}
-        </button>
-      </div>
+      <h2 id="filter-heading" className="filter-panel-heading">
+        검색과 필터
+      </h2>
       <form
-        id="filter-panel-body"
-        className={
-          expanded ? "filter-panel-body" : "filter-panel-body filter-panel-body--collapsed"
-        }
+        className="filter-panel-form"
         aria-labelledby="filter-heading"
         onSubmit={(event) => event.preventDefault()}
       >
-        {orderEditing ? (
-          <FilterOrderEditor
-            order={fieldOrder}
-            onChange={updateFieldOrder}
-            onDone={() => setOrderEditing(false)}
-          />
-        ) : (
-          <>
-            {visibleIds.map((id) => (
-              <Fragment key={id}>{renderField(id)}</Fragment>
-            ))}
+        <div className="filter-search-row">
+          {renderField("q")}
+          <button
+            type="button"
+            className="filter-panel-toggle"
+            aria-expanded={expanded}
+            aria-controls="filter-panel-body"
+            onClick={() => onExpandedChange(!expanded)}
+          >
+            필터{activeCount > 0 ? ` ${activeCount}` : ""}
+          </button>
+        </div>
+        <div
+          id="filter-panel-body"
+          className={
+            expanded ? "filter-panel-body" : "filter-panel-body filter-panel-body--collapsed"
+          }
+        >
+          {orderEditing ? (
+            <FilterOrderEditor
+              order={otherIds}
+              onChange={(next) => updateFieldOrder(["q", ...next])}
+              onDone={() => setOrderEditing(false)}
+            />
+          ) : (
+            <>
+              {visibleIds.map((id) => (
+                <Fragment key={id}>{renderField(id)}</Fragment>
+              ))}
 
-            {collapsedIds.length > 0 && (
-              <details className="field">
-                <summary>더 많은 필터</summary>
-                {collapsedIds.map((id) => (
-                  <Fragment key={id}>{renderField(id)}</Fragment>
-                ))}
-              </details>
-            )}
+              {collapsedIds.length > 0 && (
+                <details className="field">
+                  <summary>더 많은 필터</summary>
+                  {collapsedIds.map((id) => (
+                    <Fragment key={id}>{renderField(id)}</Fragment>
+                  ))}
+                </details>
+              )}
 
-            <div className="button-row">
-              <button type="button" onClick={onReset}>
-                필터 초기화
-              </button>
-              <button type="button" onClick={() => setOrderEditing(true)}>
-                필터 순서 편집
-              </button>
-            </div>
-          </>
-        )}
+              <div className="button-row">
+                <button type="button" onClick={onReset}>
+                  필터 초기화
+                </button>
+                <button type="button" onClick={() => setOrderEditing(true)}>
+                  필터 순서 편집
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </form>
     </div>
   );
+}
+
+/** 검색어·정렬·쪽 크기를 뺀, 결과를 좁히는 조건의 수. 접힌 필터에 적용 중인 조건을 알린다. */
+const NON_FILTER_KEYS = new Set(["q", "sort", "order", "limit", "offset", "cursor"]);
+function activeFilterCount(filters: ProductFilters): number {
+  return Object.entries(filters).filter(
+    ([key, value]) => !NON_FILTER_KEYS.has(key) && value !== undefined && value !== "",
+  ).length;
 }
 
 /** 순서 편집 화면. 실제 필터 입력 대신 필드 이름 + 위/아래 버튼만 보여준다 — 값 입력과

@@ -70,8 +70,11 @@ describe("ProductFilterPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
 
-    expect(screen.queryByLabelText("이름 검색")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("주종")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "국가 위로 이동" })).toBeInTheDocument();
+    // 검색창은 순서 목록에 없고 맨 위에 그대로 남는다(D263).
+    expect(screen.getByLabelText("이름 검색")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "이름 검색 위로 이동" })).not.toBeInTheDocument();
   });
 
   it("맨 위 항목은 위로 이동이, 맨 아래 항목은 아래로 이동이 비활성화된다", async () => {
@@ -79,7 +82,7 @@ describe("ProductFilterPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "필터 순서 편집" }));
 
-    expect(screen.getByRole("button", { name: "이름 검색 위로 이동" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "주종 위로 이동" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "용량 아래로 이동" })).toBeDisabled();
   });
 

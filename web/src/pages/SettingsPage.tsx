@@ -78,7 +78,7 @@ export function SettingsPage() {
   return (
     <section aria-labelledby="settings-heading" className="panel">
       <h2 id="settings-heading" className="page-title">
-        설정
+        앱 설정
       </h2>
 
       <div className="field">

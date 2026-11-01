@@ -14,6 +14,7 @@ import type { User } from "@/api/types";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { HealthPanel } from "@/components/HealthPanel";
 import { LoginScreen } from "@/components/LoginScreen";
+import { NavIcon } from "@/components/NavIcon";
 import { LoadingState } from "@/components/StatusViews";
 import { ToastProvider } from "@/components/Toast";
 import { type Density, DISPLAY_PREFERENCES_CHANGED, getDensity } from "@/displayPreferences";
@@ -58,8 +59,8 @@ const VendorsPage = lazyPage(() => import("@/pages/VendorsPage").then((m) => m.V
 
 const SKIP_LINK_HASH = "#main";
 
-/** 자주 쓰는 화면만 주 탭에 남긴다(항목 3·6). "매장 모드" 는 nav 에서 빠졌지만 `#scan`
- * 라우트·화면은 그대로 있다 — `ProductsPage` 의 모바일 전용 진입 버튼으로만 들어간다. */
+/** 자주 쓰는 화면만 주 탭에 남긴다(항목 3·6). "매장 모드"(`#scan`)는 설정 메뉴와
+ * `ProductsPage` 의 모바일 진입 버튼으로 들어간다. */
 const VIEWS: { id: View; label: string }[] = [
   { id: "home", label: "홈" },
   { id: "products", label: "내 술" },
@@ -70,13 +71,14 @@ const VIEWS: { id: View; label: string }[] = [
 
 /** 자주 쓰지 않는 환경 설정류. 헤더의 설정 메뉴 안에 접어 둔다(항목 3). */
 const SETTINGS_VIEWS: { id: View; label: string }[] = [
+  { id: "scan", label: "매장 모드" },
   { id: "categories", label: "주종 관리" },
   { id: "vendors", label: "구매처" },
   { id: "inventory", label: "보관·실사" },
   { id: "quality", label: "데이터 품질" },
   { id: "import", label: "가져오기" },
   { id: "price-watch", label: "가격 감시·알림" },
-  { id: "settings", label: "설정" },
+  { id: "settings", label: "앱 설정" },
   { id: "status", label: "서비스 상태" },
 ];
 
@@ -163,8 +165,7 @@ export function App() {
   const previousRoute = useRef(route);
   useEffect(() => {
     const label =
-      [...VIEWS, ...SETTINGS_VIEWS].find((item) => item.id === route.view)?.label ??
-      (route.view === "scan" ? "매장 모드" : "술장");
+      [...VIEWS, ...SETTINGS_VIEWS].find((item) => item.id === route.view)?.label ?? "술장";
     // 상세 제목은 제품명을 아는 상세 화면이 정한다.
     if (!route.productId) document.title = `${label} · 술장`;
     if (firstRoute.current) {
@@ -359,7 +360,8 @@ export function App() {
                       navigate({ view: item.id });
                     }}
                   >
-                    {item.label}
+                    <NavIcon view={item.id} />
+                    <span className="app-nav-label">{item.label}</span>
                   </a>
                 ))}
               </nav>

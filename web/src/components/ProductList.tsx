@@ -2,7 +2,7 @@ import type { Product, ProductMetrics, SortKey, SortOrder } from "@/api/types";
 import { productEdition } from "@/components/productDisplay";
 
 import { SkuSummaryList } from "@/components/SkuMetricsTable";
-import { formatAbv, formatCategoryPath, formatMoney, formatRating } from "@/format";
+import { formatAbv, formatCategoryPath, formatMoney, formatRating, formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 
 interface ProductListProps {
@@ -129,7 +129,11 @@ export function ProductList({
                   </td>
                 )}
                 <th scope="row">
-                  <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
+                  <button
+                    type="button"
+                    className="entity-link"
+                    onClick={() => onSelect(product.id)}
+                  >
                     {product.name}
                   </button>
                   {product.age_years !== null ? (
@@ -143,10 +147,12 @@ export function ProductList({
                           : "제품 가격: 전체 용량 구매 평균")}
                     </span>
                   ) : null}
-                  <SkuSummaryList
-                    product={product}
-                    onSelect={(skuId) => onSelect(product.id, { skuId })}
-                  />
+                  {showSkuSummary(product) ? (
+                    <SkuSummaryList
+                      product={product}
+                      onSelect={(skuId) => onSelect(product.id, { skuId })}
+                    />
+                  ) : null}
                 </th>
                 <td className="numeric">{product.vintage ?? "—"}</td>
                 <td>{formatCategoryPath(product.category_path)}</td>
@@ -200,16 +206,16 @@ export function ProductList({
               </label>
             )}
             <h3>
-              <button type="button" className="link-like" onClick={() => onSelect(product.id)}>
+              {/* 카드 전체가 누르는 영역이다(::after). 이름만 작은 목표로 남기지 않는다. */}
+              <button
+                type="button"
+                className="entity-link product-card-link"
+                onClick={() => onSelect(product.id)}
+              >
                 {product.name}
               </button>
             </h3>
-            <p className="muted">
-              {formatCategoryPath(product.category_path)}
-              {productEdition(product) && ` · ${productEdition(product)}`}
-            </p>
-            {/* 모바일 카드는 두 줄 요약 — 재고와 가격·평점을 한 줄에 모아 한 화면에 더 많이 본다. */}
-            <div className="product-card-meta">
+            <div className="product-card-stock">
               <StockBadge
                 metrics={product.metrics}
                 allSkus={product.skus.length > 1 || product.filtered_stock_count != null}
@@ -220,37 +226,66 @@ export function ProductList({
                 </span>
               ) : null}
             </div>
-            <SkuSummaryList
-              product={product}
-              onSelect={(skuId) => onSelect(product.id, { skuId })}
-            />
+            <p className="product-card-sub">{cardContext(product)}</p>
+            {showSkuSummary(product) ? (
+              <SkuSummaryList
+                product={product}
+                onSelect={(skuId) => onSelect(product.id, { skuId })}
+              />
+            ) : null}
             {product.skus.length > 1 || product.filtered_prices != null || priceScopeLabel ? (
-              <p className="muted text-sm">
+              <p className="product-card-note">
                 {priceScopeLabel ??
                   (product.filtered_prices != null
                     ? "조건에 맞는 구매 평균"
                     : "제품 가격은 전체 용량 구매 기준")}
               </p>
             ) : null}
-            <dl className={product.filtered_prices != null ? "filtered-price-summary" : undefined}>
-              <dt>{product.filtered_prices != null ? "조건 평균 정가" : "평단가"}</dt>
-              <dd>{formatMoney((product.filtered_prices ?? product.metrics).avg_list_price)}</dd>
+            <dl
+              className={`product-card-prices${
+                product.filtered_prices != null ? " filtered-price-summary" : ""
+              }`}
+            >
+              <div>
+                <dt>{product.filtered_prices != null ? "조건 평균 정가" : "평단가"}</dt>
+                <dd>{formatMoney((product.filtered_prices ?? product.metrics).avg_list_price)}</dd>
+              </div>
               {product.filtered_prices != null ? (
-                <>
+                <div>
                   <dt>조건 평균 실구매가</dt>
                   <dd>{formatMoney(product.filtered_prices.avg_paid_price)}</dd>
-                </>
+                </div>
               ) : null}
-              <dt>{product.filtered_prices != null ? "조건 100ml당(정가)" : "100ml당"}</dt>
-              <dd>{formatMoney((product.filtered_prices ?? product.metrics).price_per_100ml)}</dd>
-              <dt>내 평점</dt>
-              <dd>{formatRating(product.personal_rating)}</dd>
+              <div>
+                <dt>{product.filtered_prices != null ? "조건 100ml당(정가)" : "100ml당"}</dt>
+                <dd>{formatMoney((product.filtered_prices ?? product.metrics).price_per_100ml)}</dd>
+              </div>
+              <div>
+                <dt>내 평점</dt>
+                <dd>{formatRating(product.personal_rating)}</dd>
+              </div>
             </dl>
           </li>
         ))}
       </ul>
     </>
   );
+}
+
+/** 규격이 하나뿐이면 재고·가격이 제품 줄과 같아 규격 요약을 반복하지 않는다(D263). */
+function showSkuSummary(product: Product): boolean {
+  return (
+    product.skus.length > 1 ||
+    product.filtered_prices != null ||
+    product.filtered_stock_count != null
+  );
+}
+
+/** 카드 둘째 줄: 가장 가까운 주종 · (단일 규격) 용량 · 빈티지·숙성·도수. */
+function cardContext(product: Product): string {
+  const leaf = product.category_path[product.category_path.length - 1] ?? "미분류";
+  const volume = product.skus.length === 1 ? formatVolume(product.skus[0]?.volume_ml) : null;
+  return [leaf, volume, productEdition(product)].filter(Boolean).join(" · ");
 }
 
 function ColumnHeader({

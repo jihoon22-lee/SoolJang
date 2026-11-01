@@ -145,9 +145,7 @@ describe("BottleSection", () => {
     await seed(bottles);
     renderSection(bottles);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: /한 병 개봉 \(2번 · 700ml\)/ }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: /한 병 개봉 \(2번 · 700ml\)/ }));
     await waitFor(async () => expect((await db.bottle.get("b2"))?.status).toBe("open"));
     await userEvent.click(screen.getByRole("button", { name: /개봉한 병 다 마심/ }));
     await waitFor(async () => expect((await db.bottle.get("b1"))?.status).toBe("finished"));

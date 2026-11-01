@@ -501,7 +501,7 @@ function CategoryTable({
                   {stat.category_id ? (
                     <button
                       type="button"
-                      className="link-like"
+                      className="entity-link"
                       onClick={() => onSelectCategory(stat.category_id as string)}
                     >
                       {stat.name}
@@ -529,7 +529,7 @@ function CategoryTable({
               {stat.category_id ? (
                 <button
                   type="button"
-                  className="link-like"
+                  className="entity-link"
                   onClick={() => onSelectCategory(stat.category_id as string)}
                 >
                   {stat.name}

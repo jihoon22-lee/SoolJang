@@ -32,17 +32,17 @@ describe("제품과 구매 식별", () => {
   it("맥락이 겹치는 구매끼리만 서로 다른 참조를 만든다", () => {
     const ids = ["00000000-0000-4000-8000-0001abcd1234", "00000000-0000-4000-8000-0002abcd1234"];
     const same = { volumeMl: 700, purchasedOn: null, vendorName: null };
-    const purchases = ids.map((id) => ({ id, ...same }));
-    const first = purchaseReference(purchases[0]!, purchases);
-    const second = purchaseReference(purchases[1]!, purchases);
+    const [one, two] = ids.map((id) => ({ id, ...same }));
+    if (!one || !two) throw new Error("구매 준비 실패");
+    const purchases = [one, two];
+    const first = purchaseReference(one, purchases);
+    const second = purchaseReference(two, purchases);
     expect(first).toMatch(/^구매 /);
     expect(first).not.toBe(second);
     // 다른 제품의 같은 맥락 구매와는 겹치지 않는다(제품 이름이 이미 구분한다).
-    const otherProduct = [
-      { id: "a", productId: "x", ...same },
-      { id: "b", productId: "y", ...same },
-    ];
-    expect(purchaseReference(otherProduct[0]!, otherProduct)).toBeNull();
+    const ownProduct = { id: "a", productId: "x", ...same };
+    const otherProduct = [ownProduct, { id: "b", productId: "y", ...same }];
+    expect(purchaseReference(ownProduct, otherProduct)).toBeNull();
     expect(purchaseReference({ id: "short", ...same }, [{ id: "short", ...same }])).toBeNull();
   });
   it("단일 SKU의 구응답만 제품 집계를 재사용한다", () => {
