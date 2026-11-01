@@ -2499,7 +2499,8 @@ legend {
   .inventory-table select,
   .tasting-details summary,
   .metrics-more summary,
-  .history-details summary {
+  .history-details summary,
+  .form-more summary {
     min-height: var(--control-h-md);
   }
 
@@ -3124,6 +3125,11 @@ legend {
 .metrics-more summary {
   cursor: pointer;
   color: var(--text-muted);
+  min-height: var(--control-h-sm);
+}
+
+.form-more summary {
+  cursor: pointer;
   min-height: var(--control-h-sm);
 }
 
