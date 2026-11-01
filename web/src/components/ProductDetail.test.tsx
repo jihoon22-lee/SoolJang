@@ -245,6 +245,23 @@ describe("ProductDetail", () => {
     expect(within(table).getByText("90,000원")).toBeInTheDocument();
   });
 
+  it("같은 날·같은 구매처의 다른 용량 구매도 정정 단추 이름으로 구분한다", () => {
+    const base = purchases[0] as Purchase;
+    setup({
+      purchases: [
+        { ...base, id: "pu-700" },
+        { ...base, id: "pu-375", volume_ml: 375 },
+      ],
+    });
+
+    expect(
+      screen.getByRole("button", { name: "2026-03-01 가상마트 700ml 구매 규격 정정" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "2026-03-01 가상마트 375ml 구매 규격 정정" }),
+    ).toBeInTheDocument();
+  });
+
   it("구매일이 없으면 미기록임을 알린다", () => {
     setup();
 

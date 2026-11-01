@@ -916,6 +916,10 @@ function PurchaseSection({
                         aria-label={`${[
                           formatDate(purchase.purchased_on),
                           purchase.vendor_name ?? "구매처 미기록",
+                          formatVolume(
+                            purchase.volume_ml ??
+                              product.skus.find((sku) => sku.id === purchase.sku_id)?.volume_ml,
+                          ),
                           referenceOf(purchase.id),
                         ]
                           .filter(Boolean)
