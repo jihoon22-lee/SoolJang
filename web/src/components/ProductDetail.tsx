@@ -28,7 +28,6 @@ import {
   formatVolume,
   todayLocal,
 } from "@/format";
-import { tastingRatingAverage } from "@/insights/calculate";
 import { keepInView } from "@/keepInView";
 import { getLastVendorName } from "@/lastVendor";
 import type { ProductContext } from "@/router";
@@ -295,13 +294,15 @@ export function ProductDetail({
   );
   const purchaseCorrectionRef = useRef<HTMLDivElement>(null);
   const tastingCorrectionRef = useRef<HTMLElement>(null);
-  // 제품 전체 시음(최근 순). 머리부 시음 평균과 병 구역의 최근 시음이 같이 쓴다. 로컬 기록이라
-  // 방금 저장한 시음도 동기화 전에 반영된다.
-  const productTastings = useLiveQuery(
-    async () => (await getLocalTastingHistory({ product_id: product.id })).items,
+  // 제품 전체 시음(최근 순)과 요약. 머리부 시음 평균과 병 구역의 최근 시음이 같이 쓴다. 로컬
+  // 기록이라 방금 저장한 시음도 동기화 전에 반영된다. 평균은 이력 요약과 같은 값(Decimal 짝수
+  // 반올림, 서버와 같은 규칙)이라 같은 화면의 평균 평점과 어긋나지 않는다.
+  const productHistory = useLiveQuery(
+    () => getLocalTastingHistory({ product_id: product.id }),
     [product.id],
   );
-  const tastingAverage = tastingRatingAverage((productTastings ?? []).map((item) => item.rating));
+  const productTastings = productHistory?.items;
+  const tastingSummary = productHistory?.summary;
   const target = pourTarget(scopedBottles, purchases, contextBottleId, activeSkuId);
   const busy = savingBottle || savingPurchase || savingCorrection || addingPurchase || addingSku;
   // "한 잔 기록": 병을 펼친 뒤 그 병의 시음 입력으로 옮긴다. 빠른 시음 시트를 겹쳐 열지 않는다
@@ -497,9 +498,9 @@ export function ProductDetail({
           <div>
             <dt>시음 평균</dt>
             <dd>
-              {tastingAverage.average === null ? "—" : formatRating(String(tastingAverage.average))}
-              {tastingAverage.rated > 0 ? (
-                <span className="muted text-sm"> · {tastingAverage.rated}회 평가</span>
+              {formatRating(tastingSummary?.average_rating)}
+              {tastingSummary && tastingSummary.rated_count > 0 ? (
+                <span className="muted text-sm"> · {tastingSummary.rated_count}회 평가</span>
               ) : null}
             </dd>
           </div>

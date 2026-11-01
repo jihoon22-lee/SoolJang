@@ -1082,6 +1082,29 @@ describe("머리부와 최근 시음(D268)", () => {
     );
   });
 
+  it("머리부 시음 평균은 시음 기록 요약과 같은 짝수 반올림을 쓴다", async () => {
+    await db.tasting_session.clear();
+    await db.tasting_session.bulkPut(
+      ["4.5", "4.0", "4.0", "4.0"].map((rating, index) =>
+        syncRow({
+          id: `r${index}`,
+          sku_id: "s1",
+          bottle_id: "b1",
+          tasted_on: `2026-04-0${index + 1}`,
+          rating,
+        }),
+      ),
+    );
+    setup({ bottles: [openBottle], offline: true });
+
+    // 16.5 / 4 = 4.125 → 4.12(서버·이력 요약과 같은 ROUND_HALF_EVEN). 4.13이면 어긋난다.
+    await waitFor(() =>
+      expect(screen.getByText("시음 평균").nextElementSibling).toHaveTextContent(
+        "4.12 / 6 · 4회 평가",
+      ),
+    );
+  });
+
   it("최근 시음 3개를 펼침 없이 보이고 누르면 그 시음으로 간다", async () => {
     const onSelectContext = vi.fn();
     setup({ bottles: [openBottle], offline: true, onSelectContext });
