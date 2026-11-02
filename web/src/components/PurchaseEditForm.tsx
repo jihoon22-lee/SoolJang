@@ -1,16 +1,28 @@
 /**
- * 구매 건 수정 — 구매일·구매처·가격·병수.
+ * 구매 건 수정 — 구매일·구매처·가격·병수·외화 결제.
  *
  * 이전에는 수정 경로가 없어 가격 오타 하나를 고치려면 구매를 지우고 다시 만들어야 했다.
  * 그러면 딸린 병의 개봉·소진 상태와 시음 연결까지 사라진다. 병수를 줄이면 번호가 큰
  * 미개봉 병부터 지우며, 이미 마신 병은 서버가 지우지 않는다.
+ *
+ * 외화 구매는 등록 폼처럼 실구매가를 외화 단가 × 환율의 원 단위 값으로 둔다(D276). 외화 칸을
+ * 고치지 않으면 실구매가와 외화 값을 보내지 않아, 검사 전에 어긋난 기록도 구매처 같은 다른
+ * 칸은 그대로 고칠 수 있다.
  */
 
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import { purchasesApi } from "@/api/client";
 import type { Purchase } from "@/api/types";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
 import { HistoryDetails } from "@/components/HistoryList";
+import {
+  convertedPaidPrice,
+  FOREIGN_CURRENCIES,
+  FOREIGN_PRICE_MESSAGES,
+  foreignPriceMismatch,
+  foreignPriceProblem,
+  sameAmount,
+} from "@/domain/purchaseFx";
 import { rankByQuery } from "@/search";
 import { useDraftState } from "@/sync/drafts";
 
@@ -19,7 +31,10 @@ export interface EditPurchaseInput {
   vendorName: string;
   quantity: number;
   unitListPrice: string;
-  unitPaidPrice: string;
+  /** 외화 칸을 고치지 않은 외화 구매는 없다(저장된 실구매가를 그대로 둔다). */
+  unitPaidPrice?: string;
+  /** 외화 칸을 고쳤을 때만 있다. null 은 원화 구매로 되돌린다. */
+  foreign?: { currency: string; fxRate: string; foreignUnitPrice: string } | null;
 }
 
 const MAX_SUGGESTIONS = 8;
@@ -28,6 +43,12 @@ function priceInput(value: string | null): string {
   if (value === null) return "";
   const amount = Number(value);
   return Number.isFinite(amount) && amount !== 0 ? String(Math.round(amount * 100) / 100) : "";
+}
+
+/** 저장 형식("1431.900000")을 입력 칸 값("1431.9")으로 바꾼다. */
+function decimalInput(value: string | null): string {
+  if (value === null) return "";
+  return value.includes(".") ? value.replace(/\.?0+$/, "") : value;
 }
 
 export function PurchaseEditForm({
@@ -65,7 +86,45 @@ export function PurchaseEditForm({
     `purchase-edit:${purchase.id}:unitPaidPrice`,
     priceInput(purchase.unit_paid_price),
   );
-  const ids = { date: useId(), qty: useId(), list: useId(), paid: useId(), vendor: useId() };
+  // 외화 칸을 고쳤는지는 폼을 연 때의 값과 비교한다. 열어 둔 사이 동기화로 바뀐 값을 사용자가
+  // 고친 것으로 보면, 고치지 않은 이전 외화 값을 보내 새 값을 되돌리거나 지우게 된다.
+  const [opened] = useState(purchase);
+  // 빈 통화는 원화 구매다(구매 추가 폼과 같음).
+  const storedCurrency = opened.currency === "KRW" ? "" : opened.currency;
+  const storedRate = decimalInput(opened.fx_rate);
+  const storedForeignPrice = decimalInput(opened.foreign_unit_price);
+  const [foreignCurrency, setForeignCurrency] = useDraftState(
+    `purchase-edit:${purchase.id}:foreignCurrency`,
+    storedCurrency,
+  );
+  const [fxRate, setFxRate] = useDraftState(`purchase-edit:${purchase.id}:fxRate`, storedRate);
+  const [foreignUnitPrice, setForeignUnitPrice] = useDraftState(
+    `purchase-edit:${purchase.id}:foreignUnitPrice`,
+    storedForeignPrice,
+  );
+  // 외화 값은 그대로 두고 어긋난 실구매가만 환산값으로 맞출 때.
+  const [recompute, setRecompute] = useState(false);
+  const paidRef = useRef<HTMLInputElement>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const ids = {
+    date: useId(),
+    qty: useId(),
+    list: useId(),
+    paid: useId(),
+    vendor: useId(),
+    currency: useId(),
+    foreignPrice: useId(),
+    rate: useId(),
+    note: useId(),
+  };
+  const currencies = [...new Set([storedCurrency, ...FOREIGN_CURRENCIES].filter(Boolean))];
+  const foreignEdited =
+    recompute ||
+    foreignCurrency !== storedCurrency ||
+    !sameAmount(fxRate, storedRate) ||
+    !sameAmount(foreignUnitPrice, storedForeignPrice);
+  const convertedPaid = foreignCurrency ? convertedPaidPrice(foreignUnitPrice, fxRate) : null;
+  const storedMismatch = Boolean(storedCurrency) && !foreignEdited && foreignPriceMismatch(opened);
 
   const quantityValue = Number(quantity);
   const quantityValid =
@@ -75,7 +134,8 @@ export function PurchaseEditForm({
     0,
     MAX_SUGGESTIONS,
   );
-  const message = error instanceof Error ? error.message : error ? String(error) : null;
+  const message =
+    localError ?? (error instanceof Error ? error.message : error ? String(error) : null);
 
   return (
     <form
@@ -84,12 +144,49 @@ export function PurchaseEditForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (submitting || !quantityValid) return;
-        onSubmit({
+        const base = {
           purchasedOn,
           vendorName: vendorName.trim(),
           quantity: quantityValue,
           unitListPrice: unitListPrice.trim(),
-          unitPaidPrice: unitPaidPrice.trim(),
+        };
+        if (!foreignCurrency) {
+          setLocalError(null);
+          onSubmit({
+            ...base,
+            unitPaidPrice: unitPaidPrice.trim(),
+            ...(storedCurrency ? { foreign: null } : {}),
+          });
+          return;
+        }
+        if (!foreignEdited) {
+          setLocalError(null);
+          onSubmit(base);
+          return;
+        }
+        if (convertedPaid === null) {
+          setLocalError("해외 구매는 외화 단가와 환율을 함께 입력하세요");
+          return;
+        }
+        const problem = foreignPriceProblem({
+          currency: foreignCurrency,
+          fxRate,
+          foreignUnitPrice,
+          unitPaidPrice: convertedPaid,
+        });
+        if (problem) {
+          setLocalError(FOREIGN_PRICE_MESSAGES[problem]);
+          return;
+        }
+        setLocalError(null);
+        onSubmit({
+          ...base,
+          unitPaidPrice: convertedPaid,
+          foreign: {
+            currency: foreignCurrency,
+            fxRate: fxRate.trim(),
+            foreignUnitPrice: foreignUnitPrice.trim(),
+          },
         });
       }}
     >
@@ -137,17 +234,101 @@ export function PurchaseEditForm({
           <div className="field">
             <label htmlFor={ids.paid}>병당 실구매가 (원)</label>
             <input
+              ref={paidRef}
               id={ids.paid}
               type="number"
               inputMode="decimal"
               min={0}
               step="any"
-              placeholder="비우면 0원(선물·포인트)"
-              value={unitPaidPrice}
+              placeholder={foreignCurrency ? undefined : "비우면 0원(선물·포인트)"}
+              value={
+                !foreignCurrency
+                  ? unitPaidPrice
+                  : foreignEdited
+                    ? (convertedPaid ?? "")
+                    : priceInput(opened.unit_paid_price)
+              }
+              readOnly={Boolean(foreignCurrency)}
+              aria-describedby={foreignCurrency ? ids.note : undefined}
               onChange={(event) => setUnitPaidPrice(event.target.value)}
             />
           </div>
         </div>
+        <div className="checkbox-field">
+          <label>
+            <input
+              type="checkbox"
+              checked={Boolean(foreignCurrency)}
+              onChange={(event) =>
+                setForeignCurrency(event.target.checked ? storedCurrency || "USD" : "")
+              }
+            />
+            해외 구매(외화로 결제)
+          </label>
+        </div>
+        {foreignCurrency ? (
+          <fieldset className="fieldset-bordered">
+            <legend>외화 결제</legend>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor={ids.currency}>통화</label>
+                <select
+                  id={ids.currency}
+                  value={foreignCurrency}
+                  onChange={(event) => setForeignCurrency(event.target.value)}
+                >
+                  {currencies.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor={ids.foreignPrice}>병당 외화 단가 ({foreignCurrency})</label>
+                <input
+                  id={ids.foreignPrice}
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={foreignUnitPrice}
+                  onChange={(event) => setForeignUnitPrice(event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={ids.rate}>환율 (1 {foreignCurrency}당 원)</label>
+                <input
+                  id={ids.rate}
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={fxRate}
+                  onChange={(event) => setFxRate(event.target.value)}
+                />
+              </div>
+            </div>
+            <p id={ids.note} className="muted text-sm mb-0">
+              {storedMismatch
+                ? "저장된 실구매가가 외화 단가 × 환율과 1% 넘게 다릅니다. 외화 칸을 고치거나 환산값으로 맞추면 외화 단가 × 환율을 원 단위로 반올림해 저장합니다."
+                : "실구매가는 외화 단가 × 환율을 원 단위로 반올림해 저장합니다."}
+            </p>
+            {storedMismatch ? (
+              <button
+                type="button"
+                className="btn-quiet"
+                onClick={() => {
+                  setRecompute(true);
+                  // 누른 단추가 사라지므로 바뀐 실구매가로 초점을 옮긴다.
+                  paidRef.current?.focus();
+                }}
+              >
+                환산값으로 맞추기
+              </button>
+            ) : null}
+          </fieldset>
+        ) : null}
         <div className="field">
           <label htmlFor={ids.vendor}>구매처</label>
           <AutocompleteInput

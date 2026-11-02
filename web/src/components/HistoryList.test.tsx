@@ -44,6 +44,20 @@ describe("HistoryList", () => {
     ).toBe("메모 친구 · 구매처 지운 구매처 → 지운 구매처");
   });
 
+  it("외화 결제 칸은 통화·환율·외화 단가 이름으로 읽는다", () => {
+    expect(
+      describeHistory({
+        at: "x",
+        action: "update",
+        detail: {
+          currency: ["USD", "KRW"],
+          fx_rate: ["1431.9", null],
+          foreign_unit_price: ["46.67", null],
+        },
+      }),
+    ).toBe("통화 USD → KRW · 환율 1431.9 → 없음 · 외화 단가 46.67 → 없음");
+  });
+
   it("구매처·위치는 서버가 붙인 이름으로, 가격은 원 단위로 읽는다", () => {
     expect(
       describeHistory({

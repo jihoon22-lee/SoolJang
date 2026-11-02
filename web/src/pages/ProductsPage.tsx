@@ -1051,7 +1051,17 @@ function ProductDetailView({
       quantity: input.quantity,
       // 공란은 0원(D211) — 정가 공란은 할인율 계산에서 빠진다(D215).
       unit_list_price: input.unitListPrice || "0",
-      unit_paid_price: input.unitPaidPrice || "0",
+      // 외화 칸을 고치지 않은 외화 구매는 실구매가를 보내지 않는다(D276).
+      ...(input.unitPaidPrice === undefined ? {} : { unit_paid_price: input.unitPaidPrice || "0" }),
+      ...(input.foreign === undefined
+        ? {}
+        : input.foreign === null
+          ? { currency: "KRW", fx_rate: null, foreign_unit_price: null }
+          : {
+              currency: input.foreign.currency,
+              fx_rate: input.foreign.fxRate,
+              foreign_unit_price: input.foreign.foreignUnitPrice,
+            }),
     });
     session.assertCurrent();
     if (input.vendorName) setLastVendorName(input.vendorName);

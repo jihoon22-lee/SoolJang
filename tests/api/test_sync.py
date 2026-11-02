@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -1018,3 +1019,139 @@ def test_purchase_quantity_change_is_online_only(api_client: TestClient, prefix:
 
     assert result["results"][0]["status"] == "failed"
     assert "온라인" in result["results"][0]["detail"]
+
+
+# --- 외화 구매 (D276) -----------------------------------------------------------
+
+
+def _sku(client: TestClient, prefix: str) -> str:
+    product = client.post(
+        f"{prefix}/products", json={"name": "동기화 외화 술", "skus": [{"volume_ml": 700}]}
+    ).json()
+    return product["skus"][0]["id"]
+
+
+def _stored_purchase(client: TestClient, prefix: str, sku_id: str) -> dict[str, Any]:
+    return client.get(f"{prefix}/purchases", params={"sku_id": sku_id}).json()[0]
+
+
+def test_sync_create_applies_foreign_price_rule(api_client: TestClient, prefix: str) -> None:
+    sku_id = _sku(api_client, prefix)
+    foreign = {"sku_id": sku_id, "quantity": 1, "currency": "jpy", "fx_rate": "9.12"}
+    filled_id = uuid.uuid4()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="purchase",
+                op="create",
+                entity_id=filled_id,
+                fields=foreign | {"foreign_unit_price": "5980"},
+            ),
+            _op(
+                entity="purchase",
+                op="create",
+                fields=foreign | {"foreign_unit_price": "5980", "unit_paid_price": "5980"},
+            ),
+        ],
+    )
+
+    assert [r["status"] for r in result["results"]] == ["applied", "failed"]
+    assert "1%" in (result["results"][1]["detail"] or "")
+    stored = api_client.get(f"{prefix}/purchases", params={"sku_id": sku_id}).json()
+    assert [(row["id"], row["unit_paid_price"]) for row in stored] == [(str(filled_id), "54537.60")]
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        ({"unit_paid_price": "46.67"}, "1%"),
+        ({"fx_rate": None}, "환율"),
+        ({"currency": "KRW"}, "원화"),
+        ({"unit_paid_price": "-1"}, "unit_paid_price"),
+        ({"fx_rate": "0"}, "fx_rate"),
+        ({"unit_list_price": "abc"}, "unit_list_price"),
+        ({"foreign_unit_price": "NaN"}, "foreign_unit_price"),
+    ],
+)
+def test_sync_update_rejects_foreign_price_violation_before_db_check(
+    api_client: TestClient, prefix: str, fields: dict[str, Any], message: str
+) -> None:
+    sku_id = _sku(api_client, prefix)
+    purchase = api_client.post(
+        f"{prefix}/purchases",
+        json={
+            "sku_id": sku_id,
+            "currency": "USD",
+            "foreign_unit_price": "46.67",
+            "fx_rate": "1431.9",
+            "unit_paid_price": "66827",
+        },
+    ).json()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="purchase",
+                op="update",
+                entity_id=uuid.UUID(purchase["id"]),
+                fields=fields,
+            )
+        ],
+    )
+
+    assert result["results"][0]["status"] == "failed"
+    assert message in (result["results"][0]["detail"] or "")
+    stored = _stored_purchase(api_client, prefix, sku_id)
+    assert (stored["currency"], stored["fx_rate"], stored["unit_paid_price"]) == (
+        "USD",
+        "1431.900000",
+        "66827.00",
+    )
+
+
+def test_sync_update_switches_to_krw_and_logs_foreign_fields(
+    api_client: TestClient, prefix: str
+) -> None:
+    sku_id = _sku(api_client, prefix)
+    purchase = api_client.post(
+        f"{prefix}/purchases",
+        json={
+            "sku_id": sku_id,
+            "currency": "USD",
+            "foreign_unit_price": "46.67",
+            "fx_rate": "1431.9",
+        },
+    ).json()
+
+    result = _batch(
+        api_client,
+        prefix,
+        [
+            _op(
+                entity="purchase",
+                op="update",
+                entity_id=uuid.UUID(purchase["id"]),
+                fields={
+                    "currency": "krw",
+                    "fx_rate": None,
+                    "foreign_unit_price": None,
+                    "unit_paid_price": "65000",
+                },
+            )
+        ],
+    )
+    history = api_client.get(f"{prefix}/purchases/{purchase['id']}/history").json()
+
+    assert result["results"][0]["status"] == "applied", result
+    stored = _stored_purchase(api_client, prefix, sku_id)
+    assert (stored["currency"], stored["fx_rate"], stored["foreign_unit_price"]) == (
+        "KRW",
+        None,
+        None,
+    )
+    assert set(history[0]["detail"]) >= {"currency", "fx_rate", "foreign_unit_price"}

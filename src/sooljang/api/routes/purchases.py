@@ -43,6 +43,7 @@ from sooljang.application.history import changes, entity_history, log_event
 from sooljang.application.skus import load_live_sku_for_write
 from sooljang.application.tasting_context import correction_purchase_context
 from sooljang.application.write_locks import lock_user_writes
+from sooljang.domain.purchase_fx import ForeignPrice, ForeignPriceError, reconcile_update
 from sooljang.infrastructure.database.models import (
     Bottle,
     BottleStatus,
@@ -374,13 +375,20 @@ async def update_purchase(
     # 정정·복구·다중 병 outbox와 같은 진입 잠금. 개별 행을 잠그기 전에 얻는다.
     await lock_user_writes(session, user_id)
     fields = payload.model_dump(exclude_unset=True)
+    if "currency" in fields:
+        if fields["currency"] is None:
+            raise ValidationFailedError("통화 코드가 필요합니다. 원화 구매는 KRW 입니다")
+        fields["currency"] = fields["currency"].upper()
     # 병합/일괄 수정과 같은 Vendor → Purchase 순서로 잠근다.
     if "vendor_id" in fields and fields["vendor_id"] is not None:
         await _owned_vendor(session, user_id, fields["vendor_id"])
     # 병수 비교부터 번호 발급까지 구매 건 하나를 잠가 두 기기의 수량 수정을 직렬화한다.
     purchase = await owned(session, Purchase, user_id, purchase_id)
-    if "currency" in fields and fields["currency"]:
-        fields["currency"] = fields["currency"].upper()
+    # 병수를 바꾸기 전에 등록·동기화와 같은 외화 규칙으로 합친 값을 검사한다(D276).
+    try:
+        fields = reconcile_update(ForeignPrice.of(purchase), fields)
+    except ForeignPriceError as error:
+        raise ValidationFailedError(str(error)) from error
     before = {key: getattr(purchase, key) for key in [*fields, "quantity"]}
     quantity = fields.pop("quantity", None)
     if quantity is not None and quantity != purchase.quantity:

@@ -5,6 +5,7 @@
 데이터가 정확해진다.
 """
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -591,3 +592,142 @@ def test_foreign_purchase_paid_price_must_match_foreign_times_rate(
     assert created.json()["currency"] == "USD"
     assert mismatched.status_code == 422
     assert krw_foreign.status_code == 422
+
+
+# --- 외화 구매 수정 (D276) ------------------------------------------------------
+
+
+def _foreign_purchase(client: TestClient, prefix: str) -> dict[str, Any]:
+    _, sku_id = _product_with_sku(client, prefix, name="해외 구매 수정 위스키")
+    return _post(
+        client,
+        f"{prefix}/purchases",
+        {
+            "sku_id": sku_id,
+            "quantity": 1,
+            "currency": "USD",
+            "foreign_unit_price": "46.67",
+            "fx_rate": "1431.9",
+            "unit_paid_price": "66827",
+        },
+    )
+
+
+async def _force_paid_price(purchase_id: str, paid: str) -> None:
+    """검사 전 수정·레거시 임포트로 이미 어긋난 기록을 만든다."""
+    from sqlalchemy import text
+
+    from sooljang.infrastructure.database.session import get_session_factory
+
+    async with get_session_factory().begin() as session:
+        await session.execute(
+            text("UPDATE purchase SET unit_paid_price = :paid WHERE id = :id"),
+            {"paid": paid, "id": purchase_id},
+        )
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"unit_paid_price": "46.67"},
+        {"fx_rate": "1500"},
+        {"currency": "KRW"},
+        {"fx_rate": None},
+        {"currency": None},
+        {"foreign_unit_price": "1e13"},
+    ],
+)
+def test_patch_rejects_inconsistent_foreign_price_and_keeps_row(
+    api_client: TestClient, prefix: str, patch: dict[str, Any]
+) -> None:
+    purchase = _foreign_purchase(api_client, prefix)
+
+    response = api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}", json={"vendor_id": None, **patch}
+    )
+    stored = api_client.get(f"{prefix}/purchases", params={"sku_id": purchase["sku_id"]}).json()[0]
+
+    assert response.status_code == 422, response.text
+    assert response.json()["type"].endswith("/validation")
+    assert {key: stored[key] for key in ("currency", "fx_rate", "unit_paid_price")} == {
+        "currency": "USD",
+        "fx_rate": "1431.900000",
+        "unit_paid_price": "66827.00",
+    }
+
+
+def test_patch_adding_foreign_price_without_rate_is_rejected_before_db_check(
+    api_client: TestClient, prefix: str
+) -> None:
+    _, sku_id = _product_with_sku(api_client, prefix)
+    purchase = _post(api_client, f"{prefix}/purchases", {"sku_id": sku_id, "quantity": 1})
+
+    response = api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}",
+        json={"currency": "usd", "foreign_unit_price": "10"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert "환율" in response.json()["detail"]
+
+
+def test_patch_changes_rate_with_converted_paid_price_and_logs_it(
+    api_client: TestClient, prefix: str
+) -> None:
+    purchase = _foreign_purchase(api_client, prefix)
+
+    response = api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}",
+        json={
+            "currency": "jpy",
+            "fx_rate": "9.12",
+            "foreign_unit_price": "5980",
+            "unit_paid_price": None,
+        },
+    )
+    history = api_client.get(f"{prefix}/purchases/{purchase['id']}/history").json()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["currency"] == "JPY"
+    assert response.json()["unit_paid_price"] == "54537.60"
+    assert set(history[0]["detail"]) >= {"currency", "fx_rate", "foreign_unit_price"}
+
+
+def test_patch_switches_foreign_purchase_back_to_krw(api_client: TestClient, prefix: str) -> None:
+    purchase = _foreign_purchase(api_client, prefix)
+
+    response = api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}",
+        json={
+            "currency": "KRW",
+            "fx_rate": None,
+            "foreign_unit_price": None,
+            "unit_paid_price": "65000",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["currency"], body["fx_rate"], body["foreign_unit_price"]) == ("KRW", None, None)
+    assert body["unit_paid_price"] == "65000.00"
+
+
+def test_patch_resending_values_keeps_old_mismatched_purchase_editable(
+    api_client: TestClient, prefix: str
+) -> None:
+    purchase = _foreign_purchase(api_client, prefix)
+    asyncio.run(_force_paid_price(purchase["id"], "46.67"))
+    vendor = _vendor(api_client, prefix, "해외 직구")
+
+    # 이전 웹 수정 폼처럼 실구매가를 그대로 다시 보낸다.
+    kept = api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}",
+        json={"vendor_id": vendor["id"], "unit_paid_price": "46.67", "unit_list_price": "0"},
+    )
+    changed = api_client.patch(
+        f"{prefix}/purchases/{purchase['id']}", json={"unit_paid_price": "50"}
+    )
+
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["vendor_id"] == vendor["id"]
+    assert changed.status_code == 422

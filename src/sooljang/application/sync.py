@@ -82,6 +82,15 @@ from sooljang.application.tastings import (
     unopen_bottle,
 )
 from sooljang.application.write_locks import lock_user_writes
+from sooljang.domain.purchase_fx import (
+    FOREIGN_PRICE_FIELDS,
+    MAX_AMOUNT,
+    MAX_FX_RATE,
+    ForeignPrice,
+    ForeignPriceError,
+    reconcile_foreign_price,
+    reconcile_update,
+)
 from sooljang.infrastructure.database.base import Base
 from sooljang.infrastructure.database.models import (
     Attachment,
@@ -168,6 +177,40 @@ def _decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _bounded_decimal(
+    value: Any, *, field_name: str, below: Decimal, positive: bool = False
+) -> Decimal | None:
+    """구매 금액·환율을 온라인 라우트의 Pydantic 경계(0 이상·환율은 0 초과, 열 범위 미만)와 맞춘다.
+
+    `_decimal` 만 쓰면 음수·NaN·열 범위를 넘는 값이 DB CHECK·숫자 오류까지 가서 이유를 알 수
+    없는 "제약 조건 위반"으로 실패했다.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise ValidationFailedError(f"{field_name} 은(는) 숫자여야 합니다")
+    try:
+        amount = Decimal(str(value).strip())
+    except InvalidOperation as error:
+        raise ValidationFailedError(f"{field_name} 은(는) 숫자여야 합니다") from error
+    if not amount.is_finite():
+        raise ValidationFailedError(f"{field_name} 은(는) 숫자여야 합니다")
+    if amount < 0 or (positive and amount == 0):
+        bound = "0보다 커야" if positive else "0 이상이어야"
+        raise ValidationFailedError(f"{field_name} 은(는) {bound} 합니다")
+    if amount >= below:
+        raise ValidationFailedError(f"{field_name} 이(가) 저장할 수 있는 범위를 넘습니다")
+    return amount
+
+
+def _purchase_amount(value: Any, *, field_name: str) -> Decimal | None:
+    return _bounded_decimal(value, field_name=field_name, below=MAX_AMOUNT)
+
+
+def _fx_rate(value: Any) -> Decimal | None:
+    return _bounded_decimal(value, field_name="fx_rate", below=MAX_FX_RATE, positive=True)
 
 
 def _bounded_int(value: Any, *, field_name: str, gt: int = 0, le: int) -> int:
@@ -846,6 +889,23 @@ async def _dispatch_purchase(
         if vendor_id is not None:
             await _load_writable(session, Vendor, user_id=user_id, entity_id=vendor_id, op="create")
         quantity = _bounded_int(fields.get("quantity", 1), field_name="quantity", le=1000)
+        currency = _currency(fields.get("currency") or "KRW")
+        fx_rate = _fx_rate(fields.get("fx_rate"))
+        foreign_unit_price = _purchase_amount(
+            fields.get("foreign_unit_price"), field_name="foreign_unit_price"
+        )
+        # 온라인 등록·수정과 같은 외화 규칙(D276). 실구매가를 비우면 환산값을 채운다.
+        try:
+            unit_paid_price = reconcile_foreign_price(
+                currency=currency,
+                fx_rate=fx_rate,
+                foreign_unit_price=foreign_unit_price,
+                unit_paid_price=_purchase_amount(
+                    fields.get("unit_paid_price"), field_name="unit_paid_price"
+                ),
+            )
+        except ForeignPriceError as error:
+            raise ValidationFailedError(str(error)) from error
 
         purchase = Purchase(
             id=op.entity_id,
@@ -854,11 +914,13 @@ async def _dispatch_purchase(
             vendor_id=vendor_id,
             purchased_on=_date(fields.get("purchased_on")),
             quantity=quantity,
-            unit_list_price=_decimal(fields.get("unit_list_price")),
-            unit_paid_price=_decimal(fields.get("unit_paid_price")),
-            currency=_currency(fields.get("currency") or "KRW"),
-            fx_rate=_decimal(fields.get("fx_rate")),
-            foreign_unit_price=_decimal(fields.get("foreign_unit_price")),
+            unit_list_price=_purchase_amount(
+                fields.get("unit_list_price"), field_name="unit_list_price"
+            ),
+            unit_paid_price=unit_paid_price,
+            currency=currency,
+            fx_rate=fx_rate,
+            foreign_unit_price=foreign_unit_price,
             discount_note=fields.get("discount_note"),
             import_note=fields.get("import_note"),
         )
@@ -906,8 +968,28 @@ async def _dispatch_purchase(
     if "quantity" in fields:
         # 병수 변경은 병 레코드 추가·삭제와 번호 배정이 따르는 온라인 전용 연산이다.
         raise ValidationFailedError("병수 변경은 온라인에서 다시 시도하세요")
-    tracked = ("vendor_id", "purchased_on", "unit_list_price", "unit_paid_price", "discount_note")
+    tracked = (
+        "vendor_id",
+        "purchased_on",
+        "unit_list_price",
+        *FOREIGN_PRICE_FIELDS,
+        "discount_note",
+    )
     before = {key: getattr(purchase, key) for key in tracked}
+    amounts: dict[str, Any] = {}
+    for key in ("unit_list_price", "unit_paid_price", "foreign_unit_price"):
+        if key in fields:
+            amounts[key] = _purchase_amount(fields[key], field_name=key)
+    if "fx_rate" in fields:
+        amounts["fx_rate"] = _fx_rate(fields["fx_rate"])
+    # 빈 통화 코드는 지금처럼 바꾸지 않는 값으로 본다(온라인 PATCH 는 null 을 거절한다).
+    if "currency" in fields and fields["currency"]:
+        amounts["currency"] = _currency(fields["currency"])
+    # 어떤 값도 바꾸기 전에 온라인 수정과 같은 외화 규칙으로 합친 값을 검사한다(D276).
+    try:
+        amounts = reconcile_update(ForeignPrice.of(purchase), amounts)
+    except ForeignPriceError as error:
+        raise ValidationFailedError(str(error)) from error
     if "vendor_id" in fields:
         vendor_id = _uuid(fields["vendor_id"])
         if vendor_id is not None:
@@ -915,13 +997,10 @@ async def _dispatch_purchase(
         purchase.vendor_id = vendor_id
     if "purchased_on" in fields:
         purchase.purchased_on = _date(fields["purchased_on"])
-    for key in ("unit_list_price", "unit_paid_price", "fx_rate", "foreign_unit_price"):
-        if key in fields:
-            setattr(purchase, key, _decimal(fields[key]))
+    for key, value in amounts.items():
+        setattr(purchase, key, value)
     if "discount_note" in fields:
         purchase.discount_note = fields["discount_note"]
-    if "currency" in fields and fields["currency"]:
-        purchase.currency = _currency(fields["currency"])
     if changed := changes(before, {key: getattr(purchase, key) for key in tracked}):
         log_event(
             session,
