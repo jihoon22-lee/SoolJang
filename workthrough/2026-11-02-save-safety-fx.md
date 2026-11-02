@@ -7,7 +7,8 @@
   요청했다.
 - 데이터/권한: schema 0021은 바꾸지 않는다. PR-A·PR-B는 웹만 바꾼다. 브라우저 localStorage에 요청 사본
   `sooljang-request-copy-v1:<계정>:<탭>:<폼>`이 새로 생기고(아래 「PR-A 데이터 변화」), 인사이트 보기
-  상태(sessionStorage)에 고른 기간 칩 `period`가 붙는다(PR-B).
+  상태(sessionStorage)에 고른 기간 칩 `period`가 붙는다(PR-B). PR-C는 구매 수정 PATCH와 동기화 구매
+  생성/수정의 입력 검증을 바꾼다(아래 「PR-C 데이터 변화」).
 - 결과: 진행 중.
 
 ## PR-A 저장 안전 (`feature/save-safety`)
@@ -152,3 +153,61 @@
   남음).
 - 3/31·해 바뀜은 브라우저 시계(Playwright clock)를 옮겨 확인했다. 실제 날짜 경과는 단위 테스트로만
   확인했다.
+
+## PR-C 외화 구매 수정 (`feature/purchase-fx-edit`)
+
+### 변경
+
+- 서버 규칙 하나(D276, SF08): `src/sooljang/domain/purchase_fx.py`의 `reconcile_foreign_price`(검사와
+  빈 실구매가 채움)와 `reconcile_update`(저장된 값과 합쳐 바뀐 경우에만 검사)를 등록 스키마 검증기,
+  PATCH 라우트, 동기화 생성·수정이 함께 쓴다. 상한 `MAX_AMOUNT`·`MAX_FX_RATE`도 이 모듈로 옮겼다.
+- PATCH: 병수를 바꾸기 전에 합친 값을 검사해 위반은 422(`/validation`)로 끝내고 기존 행을 그대로
+  둔다. `currency: null`은 422. 이전에는 어긋난 값을 저장하거나 DB CHECK 위반을 409 "제약 조건
+  위반"으로 돌려줬다.
+- 동기화: 금액·환율을 숫자·0 이상(환율 0 초과)·열 범위 미만으로 먼저 거르고(`_bounded_decimal`),
+  수정은 어떤 값도 바꾸기 전에 합친 값을 검사한다. 수정 이력에 통화·환율·외화 단가를 더했다. 빈
+  통화 코드는 지금처럼 바꾸지 않는 값이다.
+- 웹(SF09): `web/src/domain/purchaseFx.ts`에 같은 규칙의 사전 검사(`foreignPriceProblem`, decimal.js
+  40자리)와 기존 `convertedPaidPrice`·`foreignPriceMismatch`·통화 목록을 모았다. 구매 수정 폼은 등록
+  폼처럼 "해외 구매(외화로 결제)"·통화·외화 단가·환율 칸을 두고 실구매가를 원 단위 환산값(읽기
+  전용)으로 보인다. 외화 칸을 고치지 않으면 실구매가·외화 값을 보내지 않고, 원화로 되돌리면
+  `currency: KRW`와 환율·외화 단가 null을 보낸다. 저장된 실구매가가 어긋난 기록은 알리고 "환산값으로
+  맞추기"(누르면 초점은 실구매가 칸)를 둔다.
+- 공유 fixture `tests/fixtures/purchase_fx_cases.json` 19건: 정확히 1% 위·아래와 그 바로 밖, 1원
+  하한, 0.5 반올림(웹 원 단위·서버 소수 둘째 자리), 0원 외화 단가, 열 범위 경계, 통화·환율 순서.
+
+### PR-C 데이터 변화
+
+| 항목 | 내용 |
+|---|---|
+| schema | 변화 없음(0021). 기존 행을 고치지 않는다 |
+| PATCH `/purchases/{id}` | 외화 값이 바뀌는 어긋난 수정·`currency: null`·환율 없는 외화 단가는 422(이전: 저장 또는 409) |
+| `POST /sync/batch` 구매 | 같은 위반과 범위 밖 금액·환율은 그 작업만 `failed`(이유 문구). 앞선 작업은 유지 |
+| 등록 빈 실구매가 | 환산값을 `krw_from_foreign`(소수 둘째 자리, `ROUND_HALF_UP`)으로 채운다. 버리는 부분이 정확히 0.005일 때만 이전(짝수 쪽 반올림)과 다름 |
+| 이전 웹 클라이언트 | 외화 구매 수정 때 실구매가를 늘 보내므로, 1% 넘게 바꾸거나 공란(0원)으로 보내면 422 안내. 오프라인 대기열에는 구매 수정이 없다 |
+
+### 실행 증거
+
+- 회귀 테스트: PATCH 422·행 보존 6건과 환율 없는 외화 단가·환산 채움·원화 되돌림·이전 어긋난 기록 수정
+  4건, 동기화 생성 규칙 1건·수정 위반 7건·원화 되돌림과 이력 1건을 구현 전에 돌려 실패를 확인했다
+  (불일치 저장 또는 "제약 조건 위반"). 웹 수정 폼 5건도 구현 전 실패를 확인했고, 구현 뒤 쓴 페이지
+  PATCH 본문 테스트는 변경 전 소스의 임시 worktree에서 실패를 확인했다.
+- `npm --prefix web run check`: Biome(경고 18건은 기존 테스트 파일), 타입, Vitest 114파일 1,562 통과
+  (statements 90.21%·branch 84.52%·lines 92.10%), 빌드 성공(PR-B 검토 반영 위로 rebase한 뒤).
+- `uv run ruff check .`·`uv run ruff format --check .`·`uv run ty check`: 통과.
+- Python 전체(격리 테스트 DB, `SOOLJANG_ENV_FILE=''`): 1,899 통과·31 건너뜀(opt-in), 커버리지 92.58%
+  (기준 85%), 10분 50초. 경고 1건은 기존 Starlette `httpx` 안내.
+- 실브라우저(390×844 터치, 합성 계정, 같은 폐기용 DB, API는 PR-C 코드로 다시 시작됨):
+
+| 확인 | 결과 |
+|---|---|
+| 외화 구매 등록 | 46.67 USD × 1431.9 → 실구매가 66,827(읽기 전용) |
+| 수정 폼 초기값 | 해외 구매 체크, USD·46.67·1431.9, 실구매가 66,827 읽기 전용 |
+| 환율 수정 | 1500 → 실구매가 70,005, PATCH `{unit_paid_price: "70005", currency: "USD", fx_rate: "1500", foreign_unit_price: "46.67", …}` ([화면](assets/2026-11-02-save-safety-fx/fx-edit-390.png)) |
+| 원화 되돌림 | 체크 해제 → 실구매가 입력 가능 → 65,000. PATCH `{currency: "KRW", fx_rate: null, foreign_unit_price: null, unit_paid_price: "65000"}`, DB `KRW·null·null·65000.00` |
+
+### 제한
+
+- 어긋난 이전 기록의 "환산값으로 맞추기"와 PATCH 422 안내는 단위·API 테스트로만 확인했다(실브라우저
+  미실행).
+- 저장 직후 동기화 전에 수정 폼을 다시 열면 기기 미러의 이전 값으로 열린다(기존 동작, 이번 범위 밖).
