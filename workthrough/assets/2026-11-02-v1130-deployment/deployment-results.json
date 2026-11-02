@@ -303,6 +303,8 @@
       "index": "index-CTvUghZW.js",
       "controlled": true,
       "precache": 24,
+      "sw_manifest_entries": 27,
+      "sw_manifest_duplicate_icon_entries": 3,
       "precached_js_all_200": 15
     },
     "csp_violations": 0,
