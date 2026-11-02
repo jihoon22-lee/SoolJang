@@ -9,6 +9,7 @@ import {
   ProductDetail,
 } from "@/components/ProductDetail";
 import { activateDatabase, databaseIdentity, db, lockDatabase } from "@/sync/db";
+import * as tastingHistory from "@/sync/tastingHistory";
 import { stubRoutes as originalStubRoutes, renderWithQuery } from "@/testing";
 
 /** 구매 이력 구역의 "구매 추가". 머리부의 같은 이름 주 행동과 구분한다. */
@@ -1087,6 +1088,25 @@ describe("머리부와 최근 시음(D268)", () => {
         "2.5 / 6 · 3회 평가",
       ),
     );
+  });
+
+  it("기기의 시음 기록을 읽지 못해도 상세를 열고 시음 구역에서만 알린다", async () => {
+    const read = vi
+      .spyOn(tastingHistory, "getLocalTastingHistory")
+      .mockRejectedValue(new Error("IndexedDB 읽기 실패"));
+    try {
+      setup({ bottles: [unopened, openBottle], offline: true });
+
+      expect(
+        await screen.findByText("기기의 시음 기록을 불러오지 못했습니다."),
+      ).toBeInTheDocument();
+      // 읽지 못한 평균을 "평가 없음"(—)처럼 보이지 않는다.
+      expect(screen.getByText("시음 평균").nextElementSibling).toHaveTextContent("확인 불가");
+      expect(screen.getByText("420ml 남음 · 1번 병")).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "구매 이력" })).toBeInTheDocument();
+    } finally {
+      read.mockRestore();
+    }
   });
 
   it("규격이 둘 이상이면 머리부 병 이름에 용량을 보인다", () => {
