@@ -2,17 +2,18 @@
 
 import datetime
 import uuid
-from decimal import Decimal, DecimalException
+from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from sooljang.domain.purchase_fx import MAX_AMOUNT, MAX_FX_RATE, reconcile_foreign_price
 from sooljang.infrastructure.database.models import BarcodeType, BottleStatus, VendorKind
 
 # 구매 금액·환율 열(Numeric(14, 2)·Numeric(14, 6))에 담을 수 있는 범위. 저장 자릿수로 반올림해도
 # 넘지 않는 값만 받아, 넘는 값은 저장 오류(500) 대신 입력 오류로 끝낸다.
-_MAX_AMOUNT = Decimal("999999999999.995")
-_MAX_FX_RATE = Decimal("99999999.9999995")
+_MAX_AMOUNT = MAX_AMOUNT
+_MAX_FX_RATE = MAX_FX_RATE
 
 SearchAliases = Annotated[
     list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]],
@@ -258,25 +259,13 @@ class PurchaseCreate(BaseModel):
 
     @model_validator(mode="after")
     def _foreign_price_needs_rate(self) -> PurchaseCreate:
-        if self.foreign_unit_price is not None and self.fx_rate is None:
-            raise ValueError("외화 가격을 넣으려면 fx_rate 가 필요합니다")
-        if self.foreign_unit_price is not None and self.currency.upper() == "KRW":
-            raise ValueError("외화 단가에는 원화가 아닌 통화 코드가 필요합니다")
-        # 실구매가는 원화 환산값이다(통계·평단가가 모두 원화로 합산한다). 기록한 환율은 소수점을
-        # 줄여 적는 일이 많아 1% 안의 차이는 받되, 외화 금액을 원화 칸에 넣는 실수처럼 크게 다르면
-        # 어느 쪽이 맞는지 알 수 없어 저장하지 않는다.
-        if self.foreign_unit_price is not None and self.fx_rate is not None:
-            try:
-                converted = self.foreign_unit_price * self.fx_rate
-            except DecimalException as error:
-                raise ValueError("외화 단가 × 환율을 계산할 수 없습니다") from error
-            if converted >= _MAX_AMOUNT:
-                raise ValueError("외화 단가 × 환율이 저장할 수 있는 금액보다 큽니다")
-            if self.unit_paid_price is None:
-                # 원화 칸을 비우면 환산값을 저장한다. 비워 두면 외화 구매가 실구매가 미상이 된다.
-                self.unit_paid_price = converted.quantize(Decimal("0.01"))
-            elif abs(self.unit_paid_price - converted) > max(Decimal(1), converted / 100):
-                raise ValueError("병당 실구매가가 외화 단가 × 환율과 1% 넘게 다릅니다")
+        # 수정·동기화와 같은 외화 규칙(D276). 실구매가를 비우면 환산값을 채운다.
+        self.unit_paid_price = reconcile_foreign_price(
+            currency=self.currency,
+            fx_rate=self.fx_rate,
+            foreign_unit_price=self.foreign_unit_price,
+            unit_paid_price=self.unit_paid_price,
+        )
         return self
 
 

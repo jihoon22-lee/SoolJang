@@ -1,0 +1,174 @@
+{
+  "_comment": "외화 구매 규칙(D276)의 경계값. src/sooljang/domain/purchase_fx.py 와 web/src/domain/purchaseFx.ts 가 같은 problem 을 내는지 양쪽 테스트가 이 파일 하나로 대조한다. paid 는 서버가 저장할 실구매가로, 비운 실구매가는 환산값(krw_from_foreign, 소수 둘째 자리 반올림)을 채운다. converted_won 은 웹 폼이 보여 주고 보내는 원 단위 환산값(0.5 올림)이다.",
+  "cases": [
+    {
+      "name": "krw_purchase_is_not_checked",
+      "currency": "KRW",
+      "fx_rate": null,
+      "foreign_unit_price": null,
+      "unit_paid_price": "50000",
+      "problem": null,
+      "paid": "50000"
+    },
+    {
+      "name": "krw_purchase_keeps_unknown_paid_price",
+      "currency": "KRW",
+      "fx_rate": null,
+      "foreign_unit_price": null,
+      "unit_paid_price": null,
+      "problem": null,
+      "paid": null
+    },
+    {
+      "name": "foreign_price_needs_rate",
+      "currency": "USD",
+      "fx_rate": null,
+      "foreign_unit_price": "46.67",
+      "unit_paid_price": null,
+      "problem": "fx_rate_required"
+    },
+    {
+      "name": "rate_is_checked_before_currency",
+      "currency": "KRW",
+      "fx_rate": null,
+      "foreign_unit_price": "46.67",
+      "unit_paid_price": "66827",
+      "problem": "fx_rate_required"
+    },
+    {
+      "name": "foreign_price_needs_non_krw_currency",
+      "currency": "KRW",
+      "fx_rate": "1380.5",
+      "foreign_unit_price": "49.99",
+      "unit_paid_price": "69012",
+      "problem": "currency_not_foreign"
+    },
+    {
+      "name": "lowercase_krw_is_still_krw",
+      "currency": "krw",
+      "fx_rate": "1380.5",
+      "foreign_unit_price": "49.99",
+      "unit_paid_price": "69012",
+      "problem": "currency_not_foreign"
+    },
+    {
+      "name": "empty_paid_price_stores_conversion",
+      "currency": "JPY",
+      "fx_rate": "9.12",
+      "foreign_unit_price": "5980",
+      "unit_paid_price": null,
+      "problem": null,
+      "paid": "54537.60",
+      "converted_won": "54538"
+    },
+    {
+      "name": "exactly_one_percent_above_is_accepted",
+      "currency": "USD",
+      "fx_rate": "1350",
+      "foreign_unit_price": "100",
+      "unit_paid_price": "136350",
+      "problem": null,
+      "paid": "136350",
+      "converted_won": "135000"
+    },
+    {
+      "name": "just_over_one_percent_above_is_rejected",
+      "currency": "USD",
+      "fx_rate": "1350",
+      "foreign_unit_price": "100",
+      "unit_paid_price": "136350.01",
+      "problem": "paid_mismatch"
+    },
+    {
+      "name": "exactly_one_percent_below_is_accepted",
+      "currency": "USD",
+      "fx_rate": "1350",
+      "foreign_unit_price": "100",
+      "unit_paid_price": "133650",
+      "problem": null,
+      "paid": "133650"
+    },
+    {
+      "name": "just_over_one_percent_below_is_rejected",
+      "currency": "USD",
+      "fx_rate": "1350",
+      "foreign_unit_price": "100",
+      "unit_paid_price": "133649.99",
+      "problem": "paid_mismatch"
+    },
+    {
+      "name": "one_won_floor_accepts_one_won",
+      "currency": "JPY",
+      "fx_rate": "9.5",
+      "foreign_unit_price": "5",
+      "unit_paid_price": "48.5",
+      "problem": null,
+      "paid": "48.5",
+      "converted_won": "48"
+    },
+    {
+      "name": "one_won_floor_rejects_more",
+      "currency": "JPY",
+      "fx_rate": "9.5",
+      "foreign_unit_price": "5",
+      "unit_paid_price": "48.51",
+      "problem": "paid_mismatch"
+    },
+    {
+      "name": "half_won_rounds_up_for_the_form",
+      "currency": "USD",
+      "fx_rate": "107",
+      "foreign_unit_price": "2.5",
+      "unit_paid_price": null,
+      "problem": null,
+      "paid": "267.50",
+      "converted_won": "268"
+    },
+    {
+      "name": "form_rounded_won_is_within_tolerance",
+      "currency": "USD",
+      "fx_rate": "107",
+      "foreign_unit_price": "2.5",
+      "unit_paid_price": "268",
+      "problem": null,
+      "paid": "268"
+    },
+    {
+      "name": "conversion_fill_rounds_half_up",
+      "currency": "USD",
+      "fx_rate": "0.1",
+      "foreign_unit_price": "0.05",
+      "unit_paid_price": null,
+      "problem": null,
+      "paid": "0.01",
+      "converted_won": "0"
+    },
+    {
+      "name": "zero_foreign_price_allows_one_won",
+      "currency": "USD",
+      "fx_rate": "1300",
+      "foreign_unit_price": "0",
+      "unit_paid_price": "1",
+      "problem": null,
+      "paid": "1",
+      "converted_won": "0"
+    },
+    {
+      "name": "conversion_beyond_column_range_is_rejected",
+      "currency": "USD",
+      "fx_rate": "1000",
+      "foreign_unit_price": "9999999999",
+      "unit_paid_price": null,
+      "problem": "too_large"
+    },
+    {
+      "name": "conversion_just_below_column_range_is_accepted",
+      "currency": "USD",
+      "fx_rate": "1",
+      "foreign_unit_price": "999999999999.99",
+      "unit_paid_price": null,
+      "problem": null,
+      "paid": "999999999999.99"
+    }
+  ]
+}
