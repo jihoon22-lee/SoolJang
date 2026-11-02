@@ -274,3 +274,23 @@
 
 - 남은 세 경보는 빌드 시점 도구라 이번 출시를 막지 않는다. workbox-build가 범위를 올리기 전에는 lockfile로
   해소할 수 없다.
+
+## 버전·배포
+
+### 버전
+
+- 1.12.0 → 1.13.0(MINOR, 외화 구매 수정 기능과 API 검증 변경). schema `0021_quality_aliases` 유지, migration·
+  데이터 이전 없음. 다섯 버전 파일을 맞추고 `uv.lock`은 `uv lock`으로 갱신했다(sooljang 버전 한 줄).
+  `scripts/check_version_consistency.sh 1.13.0` 통과.
+- v1.12.0 대비 API는 구매 PATCH와 동기화 구매 생성/수정의 외화 검증(D276)과 버전 문자열만 다르다.
+  Docker·Compose·migration은 같다. 웹은 SF01~SF09 전체이고, 개발 의존성 lockfile 두 개는 빌드
+  산출물을 바꾸지 않는다(PR-D).
+- 브라우저에 남은 1.12.0 클라이언트 상태:
+  - 초안·outbox·Dexie 스키마 버전 형식은 바뀌지 않았다. 1.13.0 웹은 1.12.0이 남긴 상태를 그대로 읽는다.
+    인사이트 보기 상태에 `period`가 없으면 지금처럼 날짜로 칩을 추정한다(D274).
+  - 1.13.0이 새로 쓰는 것은 localStorage 요청 사본 `sooljang-request-copy-v1:*`(D271)와 보기 상태의
+    `period`다. 1.12.0으로 돌아가면 둘 다 읽지 않는다. 요청 사본은 남지만 쓰이지 않는다.
+  - 갱신 전 1.12.0 웹이 열린 탭에서 외화 구매를 고치면 실구매가를 늘 보내므로, 1% 넘게 바꾸거나
+    0원으로 보내면 1.13.0 API가 422로 거절한다(D276). 서비스워커가 갱신되면 새 폼을 쓴다.
+- Dependabot 열린 경보는 PR-D 병합 뒤 #14(deepmerge)·#16(minimatch) 두 건이다(#9~#13은 02:52 UTC에
+  fixed). 둘 다 `web/package-lock.json`의 빌드 경로이고 근거는 D277에 있다.
