@@ -32,48 +32,54 @@ export function RatingStars({
         {label}{" "}
         <span className="muted">({current === null ? "없음" : `${current} / ${MAX_RATING}`})</span>
       </legend>
+      {/* 별 여섯 개를 한 묶음으로 먼저 두고 0점·평점 없음은 뒤 묶음이다. 좁은 폼에서는 뒤 묶음만 다음
+          줄로 내려가 별 줄이 끊기지 않고, 초점 순서도 보이는 순서와 같다. */}
       <div className="rating-stars-row">
-        {allowZero ? (
-          <button
-            type="button"
-            className="btn-quiet"
-            aria-label="0점"
-            aria-pressed={current === 0}
-            onClick={() => onChange("0.0")}
-          >
-            0점
-          </button>
-        ) : null}
-        {Array.from({ length: MAX_RATING }, (_, index) => {
-          const star = index + 1;
-          const fill =
-            current === null
-              ? "empty"
-              : current >= star
-                ? "full"
-                : current >= star - 0.5
-                  ? "half"
-                  : "empty";
-          return (
+        <div className="rating-stars-scale">
+          {Array.from({ length: MAX_RATING }, (_, index) => {
+            const star = index + 1;
+            const fill =
+              current === null
+                ? "empty"
+                : current >= star
+                  ? "full"
+                  : current >= star - 0.5
+                    ? "half"
+                    : "empty";
+            return (
+              <button
+                key={star}
+                type="button"
+                className={`rating-star rating-star-${fill}`}
+                aria-label={`${star}점`}
+                aria-pressed={current !== null && current >= star - 0.5}
+                onClick={() => {
+                  // 같은 별을 다시 누르면 반 점 내린다(5 → 4.5). 반 별에서 다시 누르면 다시 온 별.
+                  const next = current === star ? star - 0.5 : star;
+                  onChange(next.toFixed(1));
+                }}
+              >
+                <span aria-hidden="true">★</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="rating-stars-extra">
+          {allowZero ? (
             <button
-              key={star}
               type="button"
-              className={`rating-star rating-star-${fill}`}
-              aria-label={`${star}점`}
-              aria-pressed={current !== null && current >= star - 0.5}
-              onClick={() => {
-                // 같은 별을 다시 누르면 반 점 내린다(5 → 4.5). 반 별에서 다시 누르면 다시 온 별.
-                const next = current === star ? star - 0.5 : star;
-                onChange(next.toFixed(1));
-              }}
+              className="btn-quiet"
+              aria-label="0점"
+              aria-pressed={current === 0}
+              onClick={() => onChange("0.0")}
             >
-              <span aria-hidden="true">★</span>
+              0점
             </button>
-          );
-        })}
-        <button type="button" className="btn-quiet rating-clear" onClick={() => onChange("")}>
-          평점 없음
-        </button>
+          ) : null}
+          <button type="button" className="btn-quiet rating-clear" onClick={() => onChange("")}>
+            평점 없음
+          </button>
+        </div>
       </div>
     </fieldset>
   );

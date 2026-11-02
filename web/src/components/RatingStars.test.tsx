@@ -27,6 +27,17 @@ describe("RatingStars", () => {
     expect(screen.getByRole("button", { name: "5점" })).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("별 여섯 개를 먼저 한 묶음으로 두고 0점과 평점 없음은 그 뒤에 둔다", () => {
+    renderWithQuery(<Harness />);
+
+    // 좁은 정정 폼(360px)에서도 별 줄이 끊기지 않게 보조 선택을 뒤 묶음으로 뺀다. 초점 순서도 같다.
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent),
+    ).toEqual(["1점", "2점", "3점", "4점", "5점", "6점", "0점", "평점 없음"]);
+  });
+
   it("평점 없음으로 지운다", async () => {
     renderWithQuery(<Harness initial="5.0" />);
 
