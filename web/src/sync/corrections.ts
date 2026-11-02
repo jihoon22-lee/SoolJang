@@ -53,17 +53,22 @@ export async function getCorrectionBlockReason(
  * 방금 기기에 저장한 기록은 서버에 아직 없어 정정 화면이 열리지 않는다. 그 기록의 대기 변경을 보내
  * 보고 잠깐 기다린다(D272). 다 보내졌으면 true, 실패한 변경이 동기화를 막고 있거나 오프라인·취소·
  * 시간 초과면 false다. 실패한 변경은 앞에서부터 보내는 동기화를 멈추게 해 기다려도 풀리지 않는다.
+ * 다른 탭이 동기화 잠금을 쥐고 있으면 요청이 건너뛰어지므로 기다리는 동안 몇 번 다시 요청한다.
  */
 export async function waitForCorrectionSync(
   session: WriteSession,
   affectedIds: readonly string[],
   signal?: AbortSignal,
-  { timeoutMs = 8_000, intervalMs = 250 } = {},
+  { timeoutMs = 8_000, intervalMs = 250, retriggerMs = 2_000 } = {},
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
-  void syncEngine.triggerSync();
+  let nextTrigger = 0;
   for (;;) {
     session.assertCurrent();
+    if (Date.now() >= nextTrigger) {
+      void syncEngine.triggerSync();
+      nextTrigger = Date.now() + retriggerMs;
+    }
     if (!(await getCorrectionBlockReason(session, affectedIds))) return true;
     if (signal?.aborted || !navigator.onLine || Date.now() >= deadline) return false;
     if ((await session.store.outbox.where("status").equals("failed").count()) > 0) return false;

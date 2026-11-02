@@ -100,6 +100,22 @@ it("방금 저장한 기록의 대기 변경이 보내지면 서버 기록을 �
   ).toBe(true);
   expect(syncEngine.triggerSync).toHaveBeenCalledOnce();
 });
+it("다른 탭이 동기화 중이라 첫 요청이 건너뛰어져도 기다리는 동안 다시 요청한다", async () => {
+  await queue("t1", "pending");
+  // 다른 탭이 잠금을 쥐고 이미 대기열을 읽은 뒤라 첫 요청은 아무것도 보내지 않는다.
+  vi.mocked(syncEngine.triggerSync)
+    .mockResolvedValueOnce()
+    .mockImplementation(async () => {
+      await db.outbox.clear();
+    });
+  expect(
+    await waitForCorrectionSync(captureWriteSession(), ["t1"], undefined, {
+      intervalMs: 1,
+      retriggerMs: 5,
+    }),
+  ).toBe(true);
+  expect(vi.mocked(syncEngine.triggerSync).mock.calls.length).toBeGreaterThanOrEqual(2);
+});
 it("실패한 변경이 막고 있거나 시간이 다 되면 서버 확인을 기다리지 않는다", async () => {
   await queue("t1", "failed");
   expect(
