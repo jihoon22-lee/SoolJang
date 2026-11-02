@@ -1169,6 +1169,7 @@ function ProductDetailView({
       selectedTastingId={target.tastingId}
       editTasting={context.editTasting}
       addPurchase={context.addPurchase}
+      purchaseHandoff={context.purchaseHandoff}
       onAddPurchaseDelivered={onAddPurchaseDelivered}
       onTastingDeleted={(record) => {
         if (context.tastingId === record.id)

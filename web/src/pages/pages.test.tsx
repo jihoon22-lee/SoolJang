@@ -3,11 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
+import { EMPTY_PRODUCT_FORM } from "@/components/ProductForm";
 import { ToastProvider } from "@/components/Toast";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import type { ProductContext } from "@/router";
 import { activateDatabase, db } from "@/sync/db";
+import { captureFormDraft } from "@/sync/drafts";
 import { SyncStatusProvider } from "@/sync/SyncStatusProvider";
 import { renderWithQuery, stubRoutes } from "@/testing";
 
@@ -104,7 +106,9 @@ describe("ProductsPage", () => {
         onDeselectProduct={() => setSelectedProductId(null)}
         onConsumeRouteFlag={(flag) =>
           setContext((current) =>
-            flag === "addPurchase" ? { ...current, addPurchase: undefined } : current,
+            flag === "addPurchase"
+              ? { ...current, addPurchase: undefined, purchaseHandoff: undefined }
+              : current,
           )
         }
         onOpenStoreMode={vi.fn()}
@@ -759,6 +763,109 @@ describe("ProductsPage", () => {
 
     expect(await screen.findByRole("button", { name: "수정" })).toBeInTheDocument();
     expect(screen.queryByRole("form", { name: "구매 추가" })).not.toBeInTheDocument();
+  });
+
+  /** 새 술 폼에 적은 뒤 "이 술에 구매 추가"를 누른 상태(D273). */
+  function handOff(values: Partial<typeof EMPTY_PRODUCT_FORM>, matchingSkus: number) {
+    sessionStorage.setItem("sooljang-draft-tab", "handoff-tab");
+    const draft = { ...EMPTY_PRODUCT_FORM, name: "넘겨받을 술", ...values };
+    localStorage.setItem(
+      "sooljang-draft-v1:u1:handoff-tab:product:create",
+      JSON.stringify({ value: draft, updatedAt: 1, revision: "handoff" }),
+    );
+    return {
+      quantity: draft.quantity,
+      purchasedOn: draft.purchasedOn,
+      unitListPrice: draft.unitListPrice,
+      unitPaidPrice: draft.unitPaidPrice,
+      vendorName: draft.vendorName,
+      volumeMl: draft.volumeMl,
+      matchingSkus,
+      draft: captureFormDraft("product:create"),
+    };
+  }
+  const createDraft = () => localStorage.getItem("sooljang-draft-v1:u1:handoff-tab:product:create");
+
+  it("이 술에 구매 추가로 넘긴 구매 칸을 채우고 구매를 저장하면 넘겨준 새 술 초안을 지운다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    const { calls } = stubRoutes([
+      { match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } },
+    ]);
+    const purchaseHandoff = handOff(
+      { volumeMl: "700", quantity: "2", unitPaidPrice: "50000", purchasedOn: "2026-10-30" },
+      1,
+    );
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+    expect(within(form).getByLabelText("병수")).toHaveValue(2);
+    expect(within(form).getByLabelText("병당 실구매가 (원)")).toHaveValue(50000);
+    expect(within(form).getByLabelText("구매일")).toHaveValue("2026-10-30");
+    expect(
+      within(form).getByText(
+        "새 술 폼의 구매 입력을 가져왔습니다. 구매를 저장하면 새 술 입력은 지웁니다.",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+
+    await waitFor(() => expect(createDraft()).toBeNull());
+    const call = calls.find((c) => c.method === "POST" && c.url.includes("/purchases"));
+    expect(call?.body).toMatchObject({
+      sku_id: "p1-sku",
+      quantity: 2,
+      unit_paid_price: "50000",
+      purchased_on: "2026-10-30",
+    });
+  });
+
+  it("이 술에 작성 중인 구매 입력이 있으면 넘긴 칸으로 덮지 않고 새 술 초안도 남긴다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    stubRoutes([{ match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } }]);
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "2" }, 1);
+    localStorage.setItem(
+      "sooljang-draft-v1:u1:handoff-tab:purchase:p1:quantity",
+      JSON.stringify({ value: "5", updatedAt: 2, revision: "mine" }),
+    );
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+    expect(within(form).getByLabelText("병수")).toHaveValue(5);
+    expect(
+      within(form).getByText(
+        "이 술에 작성 중인 구매 입력이 있어 새 술 폼의 구매 입력은 가져오지 않았습니다.",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "구매 추가" })).not.toBeInTheDocument(),
+    );
+    expect(createDraft()).not.toBeNull();
+  });
+
+  it("넘긴 용량과 맞는 규격이 없으면 하나뿐인 다른 용량을 고르지 않고 그 용량 추가를 권한다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    const { calls } = stubRoutes([
+      { match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } },
+    ]);
+    const purchaseHandoff = handOff({ volumeMl: "500", quantity: "1" }, 0);
+
+    renderProductsPage({ productId: "p1", context: { addPurchase: true, purchaseHandoff } });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+    expect(within(form).getByLabelText("규격")).toHaveValue("");
+    expect(within(form).getByLabelText("용량 (ml)")).toHaveValue(500);
+    expect(within(form).getByText(/500ml 규격이 아직 없습니다/)).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+
+    expect(await within(form).findByText("규격을 선택하세요")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.url.includes("/purchases"))).toBe(false);
+    expect(createDraft()).not.toBeNull();
   });
 
   it("구매 건 삭제를 확인하면 삭제 요청을 보낸다", async () => {

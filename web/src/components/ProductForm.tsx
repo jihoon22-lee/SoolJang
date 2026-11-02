@@ -9,7 +9,7 @@ import { getLastVendorName } from "@/lastVendor";
 import type { ProductContext } from "@/router";
 import { normalizeNameForMatching, rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
-import { useDraftState } from "@/sync/drafts";
+import { captureFormDraft, useDraftState } from "@/sync/drafts";
 import { markFormDirty } from "@/sync/update";
 import type { ProductCreationProgress } from "@/sync/useCreateProductProgress";
 
@@ -506,6 +506,16 @@ export function ProductForm({
                             onSelectExisting(candidate.id, {
                               ...(sku ? { skuId: sku.id } : {}),
                               addPurchase: true,
+                              purchaseHandoff: {
+                                quantity: values.quantity,
+                                purchasedOn: values.purchasedOn,
+                                unitListPrice: values.unitListPrice,
+                                unitPaidPrice: values.unitPaidPrice,
+                                vendorName: values.vendorName,
+                                volumeMl: values.volumeMl,
+                                matchingSkus: matches.length,
+                                draft: captureFormDraft(formKey),
+                              },
                             });
                           }}
                         >

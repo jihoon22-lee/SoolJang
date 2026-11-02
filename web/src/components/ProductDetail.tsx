@@ -30,7 +30,7 @@ import {
 } from "@/format";
 import { keepInView } from "@/keepInView";
 import { getLastVendorName } from "@/lastVendor";
-import type { ProductContext } from "@/router";
+import type { ProductContext, PurchaseHandoff } from "@/router";
 import { rankByQuery } from "@/search";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
@@ -87,6 +87,8 @@ interface ProductDetailProps {
   editTasting?: boolean | undefined;
   /** 새 술 폼의 "이 술에 구매 추가"로 들어오면 구매 추가 폼을 열어 둔다(D268). */
   addPurchase?: boolean | undefined;
+  /** `addPurchase`와 함께 넘어온 새 술 폼의 구매 칸(D273). */
+  purchaseHandoff?: PurchaseHandoff | undefined;
   /** 구매 추가 요청을 받았다. 한 번 쓰는 표시라 다시 마운트돼도 폼을 또 열지 않게 소비한다. */
   onAddPurchaseDelivered?: (() => void) | undefined;
   onTastingDeleted?: ((item: ContextualTasting) => void) | undefined;
@@ -249,6 +251,7 @@ export function ProductDetail({
   selectedTastingId,
   editTasting,
   addPurchase,
+  purchaseHandoff,
   onAddPurchaseDelivered,
   onTastingDeleted,
   onSelectContext,
@@ -360,10 +363,14 @@ export function ProductDetail({
     heading.focus({ preventScroll: true });
   });
   const [addPurchaseRequest, setAddPurchaseRequest] = useState(0);
+  const [handoff, setHandoff] = useState<PurchaseHandoff | null>(null);
   const addPurchaseDelivered = useRef(onAddPurchaseDelivered);
   addPurchaseDelivered.current = onAddPurchaseDelivered;
+  const purchaseHandoffRef = useRef(purchaseHandoff);
+  purchaseHandoffRef.current = purchaseHandoff;
   useEffect(() => {
     if (!addPurchase) return;
+    setHandoff(purchaseHandoffRef.current ?? null);
     setAddPurchaseRequest((request) => request + 1);
     addPurchaseDelivered.current?.();
   }, [addPurchase]);
@@ -845,6 +852,7 @@ export function ProductDetail({
           onAddSku={onAddSku}
           addingSku={addingSku}
           openAddRequest={addPurchaseRequest}
+          handoff={handoff}
           correctionPending={savingCorrection}
           onCorrectSku={(id) => {
             if (!savingCorrection) setCorrectionPurchaseId(id);
@@ -954,11 +962,14 @@ function PurchaseSection({
   onCorrectSku,
   correctionPending,
   openAddRequest,
+  handoff,
 }: {
   onCorrectSku: (purchaseId: string) => void;
   correctionPending: boolean;
   /** 머리부 "구매 추가"·새 술 폼에서 온 요청. 바뀔 때마다 폼을 열고 그리로 옮긴다. */
   openAddRequest: number;
+  /** 마지막 요청과 함께 넘어온 새 술 폼의 구매 칸. */
+  handoff: PurchaseHandoff | null;
   onSavingChange: (saving: boolean) => void;
   product: Product;
   matchingPurchaseIds?: readonly string[] | undefined;
@@ -1018,6 +1029,11 @@ function PurchaseSection({
   const mounted = useRef(true);
   const [skuSaving, setSkuSaving] = useState(false);
   const [addingLocally, setAddingLocally] = useState(false);
+  // 넘겨받은 구매 칸. 이 술에 작성 중인 구매 입력이 있으면 섞지 않는다(applied: false, D273).
+  const [prefill, setPrefill] = useState<HandoffPrefill | null>(null);
+  const handoffRef = useRef(handoff);
+  handoffRef.current = handoff;
+  const addHandoff = useRef<PurchaseHandoff | null>(null);
   const addSnapshot = useRef<ReturnType<typeof captureFormDraft> | null>(null);
   const promiseAdding = useRef(false);
   const wasAdding = useRef(false);
@@ -1029,8 +1045,11 @@ function PurchaseSection({
   }, []);
   useEffect(() => {
     if (wasAdding.current && !addingPurchase && !promiseAdding.current) {
-      if (!addPurchaseError && addSnapshot.current && clearSubmittedDraft(addSnapshot.current))
+      if (!addPurchaseError && addHandoff.current) clearSubmittedDraft(addHandoff.current.draft);
+      if (!addPurchaseError && addSnapshot.current && clearSubmittedDraft(addSnapshot.current)) {
         setAddFormOpen(false);
+        setPrefill(null);
+      }
       flight.current = false;
       setAddingLocally(false);
       onSavingChange(false);
@@ -1052,9 +1071,20 @@ function PurchaseSection({
   useEffect(() => {
     if (!openAddRequest || handledAddRequest.current === openAddRequest) return;
     handledAddRequest.current = openAddRequest;
-    if (!offline && !busy) setAddFormOpen(true);
+    if (!offline && !busy) {
+      const next = handoffRef.current;
+      setPrefill(
+        next
+          ? {
+              handoff: next,
+              applied: captureFormDraft(`purchase:${product.id}`).entries.length === 0,
+            }
+          : null,
+      );
+      setAddFormOpen(true);
+    }
     setFocusAddRequest((request) => request + 1);
-  }, [openAddRequest, offline, busy]);
+  }, [openAddRequest, offline, busy, product.id]);
   useEffect(() => {
     if (!focusAddRequest) return;
     // 오프라인이면 빈 폼 대신 온라인에서만 된다는 안내로 옮긴다.
@@ -1072,13 +1102,20 @@ function PurchaseSection({
     const session = captureWriteSession();
     const snapshot = captureFormDraft(`purchase:${product.id}`);
     addSnapshot.current = snapshot;
+    const handedOff = prefill?.applied ? prefill.handoff : null;
+    addHandoff.current = handedOff;
     const result = onAddPurchase({ ...input });
     if (result && typeof result.then === "function") {
       promiseAdding.current = true;
       void result
         .then(() => {
+          // 넘겨받은 칸으로 구매를 저장했다. 넘긴 뒤 그대로인 새 술 초안만 지운다(D273).
+          if (handedOff) clearSubmittedDraft(handedOff.draft);
           const cleared = clearSubmittedDraft(snapshot);
-          if (mounted.current && session.isCurrent() && cleared) setAddFormOpen(false);
+          if (mounted.current && session.isCurrent() && cleared) {
+            setAddFormOpen(false);
+            setPrefill(null);
+          }
         })
         .catch(() => {
           // The parent's mutation exposes the error and preserves the draft.
@@ -1102,7 +1139,9 @@ function PurchaseSection({
             type="button"
             disabled={busy || addingSku}
             onClick={() => {
-              if (!flight.current) setAddFormOpen((open) => !open);
+              if (flight.current) return;
+              setPrefill(null);
+              setAddFormOpen((open) => !open);
             }}
           >
             {addFormOpen ? "취소" : "구매 추가"}
@@ -1121,6 +1160,7 @@ function PurchaseSection({
             key={product.id}
             product={product}
             selectedSkuId={selectedSkuId}
+            prefill={prefill}
             onSavingChange={(saving) => {
               setSkuSaving(saving);
               onSavingChange(saving);
@@ -1344,9 +1384,16 @@ function PurchaseSection({
   );
 }
 
+/** 구매 추가 폼에 넘긴 새 술 폼의 구매 칸과, 이 술의 작성 중 입력이 없어 실제로 채웠는지. */
+interface HandoffPrefill {
+  handoff: PurchaseHandoff;
+  applied: boolean;
+}
+
 function AddPurchaseForm({
   product,
   selectedSkuId,
+  prefill,
   onSavingChange,
   onSubmit,
   onAddSku,
@@ -1357,6 +1404,7 @@ function AddPurchaseForm({
 }: {
   product: Product;
   selectedSkuId?: string | undefined;
+  prefill: HandoffPrefill | null;
   onSavingChange: (saving: boolean) => void;
   onSubmit: (input: AddPurchaseInput) => void;
   onAddSku: (volumeMl: number) => Promise<Sku>;
@@ -1365,26 +1413,40 @@ function AddPurchaseForm({
   error: unknown;
   vendorNames: string[];
 }) {
+  const handed = prefill?.applied ? prefill.handoff : null;
+  const handedVolume = Number(handed?.volumeMl) > 0 ? Number(handed?.volumeMl) : null;
+  // 넘긴 용량이 있으면 그 용량의 규격 하나(`selectedSkuId`)만 고른다. 하나뿐인 다른 용량을
+  // 기본으로 고르면 다른 규격에 구매가 붙는다(D273).
   const [skuId, setSkuId] = useDraftState(
     `purchase:${product.id}:skuId`,
-    selectedSkuId ?? (product.skus.length === 1 ? (product.skus[0]?.id ?? "") : ""),
+    selectedSkuId ??
+      (handedVolume === null && product.skus.length === 1 ? (product.skus[0]?.id ?? "") : ""),
   );
-  const [quantity, setQuantity] = useDraftState(`purchase:${product.id}:quantity`, "1");
-  const [vendorName, setVendorName] = useDraftState(`purchase:${product.id}:vendorName`, () =>
-    getLastVendorName(),
+  const [quantity, setQuantity] = useDraftState(
+    `purchase:${product.id}:quantity`,
+    handed?.quantity || "1",
   );
-  const [purchasedOn, setPurchasedOn] = useDraftState(`purchase:${product.id}:purchasedOn`, () =>
-    todayLocal(),
+  const [vendorName, setVendorName] = useDraftState(
+    `purchase:${product.id}:vendorName`,
+    () => handed?.vendorName || getLastVendorName(),
+  );
+  const [purchasedOn, setPurchasedOn] = useDraftState(
+    `purchase:${product.id}:purchasedOn`,
+    () => handed?.purchasedOn || todayLocal(),
   );
   const [unitListPrice, setUnitListPrice] = useDraftState(
     `purchase:${product.id}:unitListPrice`,
-    "",
+    handed?.unitListPrice ?? "",
   );
   const [unitPaidPrice, setUnitPaidPrice] = useDraftState(
     `purchase:${product.id}:unitPaidPrice`,
-    "",
+    handed?.unitPaidPrice ?? "",
   );
-  const [newVolumeMl, setNewVolumeMl] = useDraftState(`purchase:${product.id}:newVolumeMl`, "");
+  const missingVolume = handedVolume !== null && handed?.matchingSkus === 0;
+  const [newVolumeMl, setNewVolumeMl] = useDraftState(
+    `purchase:${product.id}:newVolumeMl`,
+    missingVolume ? String(handedVolume) : "",
+  );
   // 빈 통화는 원화 구매다.
   const [foreignCurrency, setForeignCurrency] = useDraftState(
     `purchase:${product.id}:foreignCurrency`,
@@ -1399,7 +1461,7 @@ function AddPurchaseForm({
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [confirmedSkus, setConfirmedSkus] = useState<Sku[]>([]);
-  const [volumeOpen, setVolumeOpen] = useState(product.skus.length === 0);
+  const [volumeOpen, setVolumeOpen] = useState(product.skus.length === 0 || missingVolume);
   const [savingSku, setSavingSku] = useState(false);
   const skuFlight = useRef(false);
   const mounted = useRef(true);
@@ -1531,6 +1593,22 @@ function AddPurchaseForm({
     >
       <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
         <DraftRecoveryButton form={`purchase:${product.id}`} />
+        {prefill ? (
+          <div className="notice">
+            {prefill.applied ? (
+              <p>새 술 폼의 구매 입력을 가져왔습니다. 구매를 저장하면 새 술 입력은 지웁니다.</p>
+            ) : (
+              <p>이 술에 작성 중인 구매 입력이 있어 새 술 폼의 구매 입력은 가져오지 않았습니다.</p>
+            )}
+            {handedVolume !== null && prefill.handoff.matchingSkus !== 1 ? (
+              <p>
+                {missingVolume
+                  ? `${formatVolume(handedVolume)} 규격이 아직 없습니다. 용량을 추가하거나 다른 규격을 고르세요.`
+                  : `${formatVolume(handedVolume)} 규격이 여럿이라 고르지 않았습니다. 규격을 고르세요.`}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {errorMessage && (
           <p className="alert" role="alert">
             {errorMessage}
