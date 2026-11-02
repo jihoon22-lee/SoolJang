@@ -1,0 +1,314 @@
+{
+  "target_version": "1.13.0",
+  "tag": "v1.13.0",
+  "tag_commit": "c1524d1fe865797befd366d38607149d513088a5",
+  "release_ci_run": "https://github.com/jihoon22-lee/SoolJang/actions/runs/41381725960",
+  "release_ci_tests": {
+    "python_passed": 1899,
+    "python_skipped_opt_in": 31,
+    "python_coverage": "92.58%",
+    "web_passed": 1565
+  },
+  "images": {
+    "api": "ghcr.io/jihoon22-lee/sooljang-api@sha256:d2be4ac11288e44cee6290eb6060d9a3b4535934436436707bb2a71f832cb2ad",
+    "web": "ghcr.io/jihoon22-lee/sooljang-web@sha256:73dfb79acea5be0cd74058370818b80bd500d4ed9e5073073aa799547e217fd2",
+    "oci_version": "1.13.0",
+    "oci_revision": "c1524d1fe865797befd366d38607149d513088a5"
+  },
+  "pretag": {
+    "api_stopped_kst": "2026-11-02 11:54:33",
+    "api_ready_kst": "2026-11-02 11:54:59",
+    "backup": {
+      "bundle": "sooljang-20261102T025434658097Z-cdca8e79",
+      "app_version": "1.12.0",
+      "tool_version": "1.13.0",
+      "verify": "passed"
+    },
+    "isolated_restore": "passed (dropped after verification)",
+    "probe_code_15a8eec": {
+      "passed": 35,
+      "failed": []
+    },
+    "probe_release_api_image": {
+      "passed": 35,
+      "failed": []
+    },
+    "real_scale_390": {
+      "home_height_px": 1023,
+      "list_card_avg_px": 88,
+      "list_card_max_px": 192,
+      "detail_hero_add_top_px": 384,
+      "horizontal_overflow": false,
+      "fx_mismatch_row_form": {
+        "note": true,
+        "button_height_px": 48,
+        "recomputes_to_conversion": true,
+        "focus_moves_to_paid": true,
+        "saved": false
+      },
+      "page_errors": 0
+    }
+  },
+  "window_kst": {
+    "api_stopped": "2026-11-02 12:34:41",
+    "web_healthy": "2026-11-02 12:35:27"
+  },
+  "before": {
+    "api": {
+      "id": "909f886de279",
+      "image": "sha256:410edf9e41020a5f807741723f10d552b9a8c2b835094e8eb3143921dc59bc6e",
+      "version": "1.12.0"
+    },
+    "web": {
+      "id": "22a4bcff84b9",
+      "image": "sha256:43652bf3b89f02c8e0c48bbc834e21fd477b540430bc1ab6627b8e892a67ee8d",
+      "version": "1.12.0"
+    },
+    "db": {
+      "id": "3a44186161ed"
+    }
+  },
+  "after": {
+    "api": {
+      "id": "8dcff4e5ef73",
+      "started_utc": "2026-11-02T03:35:14Z",
+      "health": "healthy",
+      "restarts": 0
+    },
+    "web": {
+      "id": "8f60208c4679",
+      "started_utc": "2026-11-02T03:35:21Z",
+      "health": "healthy",
+      "restarts": 0
+    },
+    "db": {
+      "id": "3a44186161ed",
+      "started_utc": "2026-10-22T13:54:15Z",
+      "preserved": true
+    }
+  },
+  "write_stop": {
+    "other_client_connections": 0
+  },
+  "backup": {
+    "bundle": "sooljang-20261102T033442534162Z-c5c1a009",
+    "app_version": "1.12.0",
+    "tool_version": "1.13.0",
+    "verify": "passed"
+  },
+  "isolated_restore": {
+    "empty_target_db": true,
+    "result": "passed (dropped after verification)"
+  },
+  "full_row_hash_compare": {
+    "settings": "UTC, ISO dates, READ ONLY on both",
+    "table_count": 44,
+    "same_table_set": true,
+    "mismatched_tables": [],
+    "all_equal": true
+  },
+  "new_api_image_probe_on_restore": {
+    "readiness": {
+      "status": 200,
+      "version": "1.13.0",
+      "migration_revision": "0021_quality_aliases"
+    },
+    "passed": 35,
+    "failed": [],
+    "checks": [
+      {
+        "check": "users_present",
+        "ok": true
+      },
+      {
+        "check": "probe_sku_present",
+        "ok": true
+      },
+      {
+        "check": "ready",
+        "ok": true
+      },
+      {
+        "check": "anonymous_products_401",
+        "ok": true
+      },
+      {
+        "check": "login",
+        "ok": true
+      },
+      {
+        "check": "cookie_httponly",
+        "ok": true
+      },
+      {
+        "check": "me_matches_user",
+        "ok": true
+      },
+      {
+        "check": "sync_pull_pages",
+        "ok": true
+      },
+      {
+        "check": "sync_count_category",
+        "ok": true
+      },
+      {
+        "check": "sync_count_producer",
+        "ok": true
+      },
+      {
+        "check": "sync_count_variety",
+        "ok": true
+      },
+      {
+        "check": "sync_count_product",
+        "ok": true
+      },
+      {
+        "check": "sync_count_product_variety",
+        "ok": true
+      },
+      {
+        "check": "sync_count_sku",
+        "ok": true
+      },
+      {
+        "check": "sync_count_vendor",
+        "ok": true
+      },
+      {
+        "check": "sync_count_purchase",
+        "ok": true
+      },
+      {
+        "check": "sync_count_bottle",
+        "ok": true
+      },
+      {
+        "check": "sync_count_tasting_session",
+        "ok": true
+      },
+      {
+        "check": "sync_count_attachment",
+        "ok": true
+      },
+      {
+        "check": "sync_count_conflict_log",
+        "ok": true
+      },
+      {
+        "check": "products_list_matches_live",
+        "ok": true
+      },
+      {
+        "check": "product_detail_0",
+        "ok": true
+      },
+      {
+        "check": "product_detail_1",
+        "ok": true
+      },
+      {
+        "check": "product_detail_2",
+        "ok": true
+      },
+      {
+        "check": "stats_summary",
+        "ok": true
+      },
+      {
+        "check": "stats_by-category",
+        "ok": true
+      },
+      {
+        "check": "stats_rankings",
+        "ok": true
+      },
+      {
+        "check": "stats_timeseries",
+        "ok": true
+      },
+      {
+        "check": "write_create_fills_converted_paid",
+        "ok": true
+      },
+      {
+        "check": "write_patch_mismatch_422_row_kept",
+        "ok": true
+      },
+      {
+        "check": "write_patch_currency_null_422",
+        "ok": true
+      },
+      {
+        "check": "write_patch_consistent_200",
+        "ok": true
+      },
+      {
+        "check": "write_history_records_fx_rate",
+        "ok": true
+      },
+      {
+        "check": "write_cleanup_delete",
+        "ok": true
+      },
+      {
+        "check": "logout_then_401",
+        "ok": true
+      }
+    ]
+  },
+  "env_change": "SOOLJANG_VERSION 1.12.0 -> 1.13.0 only (other bytes' sha256 and 0600 unchanged)",
+  "after_checks": {
+    "health": "localhost and HTTPS live/ready 1.13.0, 0021_quality_aliases, schema/DB/price-watch worker ready",
+    "logs_since_start": {
+      "api_error_traceback": 0,
+      "web_emerg_crit": 0
+    },
+    "https_static_equals_image": [
+      "index.html",
+      "sw.js",
+      "manifest.webmanifest",
+      "assets/index-BYD_idcp.css",
+      "assets/index-CTvUghZW.js"
+    ],
+    "https_static_equals_local_build_of_tag": [
+      "sw.js",
+      "index.html",
+      "manifest.webmanifest"
+    ],
+    "security_headers_unchanged": [
+      "content-security-policy",
+      "permissions-policy",
+      "referrer-policy",
+      "x-content-type-options",
+      "x-frame-options"
+    ],
+    "anonymous_products": 401
+  },
+  "pwa_https_anonymous_390": {
+    "before": {
+      "index": "index-CzW9mzqx.js",
+      "controlled": true,
+      "precache": 24
+    },
+    "same_page_update": {
+      "new_worker_waiting": true,
+      "skip_waiting_controllerchange": true,
+      "auto_reload": true,
+      "index_after": "index-CTvUghZW.js",
+      "old_index_dropped_from_precache": true
+    },
+    "new_tab": {
+      "index": "index-CTvUghZW.js",
+      "controlled": true,
+      "precache": 24,
+      "precached_js_all_200": 15
+    },
+    "csp_violations": 0,
+    "page_errors": 0,
+    "console_errors": [
+      "anonymous /api/v1/auth/me 401 (expected)"
+    ]
+  }
+}
