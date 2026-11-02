@@ -350,8 +350,8 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
       session.assertCurrent();
       return item;
     },
-    // 오류에는 "기록 다시 확인"이 있다. 자동 재시도는 서버에 없는 기록의 404와 동기화 대기를
-    // 되풀이해 안내만 늦춘다.
+    // 구매 규격 정정처럼 자동 재시도하지 않고 실패를 바로 "기록 다시 확인"으로 안내한다. 재시도는
+    // 서버에 없는 기록(404)의 동기화 대기도 되풀이해 안내만 늦춘다.
     retry: false,
     refetchOnWindowFocus: false,
   });
