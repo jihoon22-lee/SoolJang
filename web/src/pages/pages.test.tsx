@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryTree, Product, ProductMetrics } from "@/api/types";
 import { EMPTY_PRODUCT_FORM } from "@/components/ProductForm";
 import { ToastProvider } from "@/components/Toast";
+import { setLastVendorName } from "@/lastVendor";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { ProductsPage } from "@/pages/ProductsPage";
 import type { ProductContext } from "@/router";
@@ -866,6 +867,167 @@ describe("ProductsPage", () => {
     expect(await within(form).findByText("규격을 선택하세요")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST" && c.url.includes("/purchases"))).toBe(false);
     expect(createDraft()).not.toBeNull();
+  });
+
+  /** 상세 머리부의 "구매 추가". 구매 이력 구역의 같은 이름 단추보다 앞에 있다. */
+  const heroAddPurchase = () =>
+    screen.getAllByRole("button", { name: "구매 추가" })[0] as HTMLElement;
+  const purchasePosts = (calls: { method: string; url: string }[]) =>
+    calls.filter((call) => call.method === "POST" && call.url.includes("/purchases"));
+
+  it("넘겨받은 구매를 저장한 뒤 머리부 구매 추가는 넘긴 값 없이 연다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    const { calls } = stubRoutes([
+      { match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } },
+    ]);
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "2", unitPaidPrice: "50000" }, 1);
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    let form = await screen.findByRole("form", { name: "구매 추가" });
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "구매 추가" })).not.toBeInTheDocument(),
+    );
+    await userEvent.click(heroAddPurchase());
+    form = await screen.findByRole("form", { name: "구매 추가" });
+
+    // 같은 값이 다시 채워지면 한 번 더 저장해 같은 구매가 둘이 되기 쉽다.
+    expect(within(form).getByLabelText("병수")).toHaveValue(1);
+    expect(within(form).getByLabelText("병당 실구매가 (원)")).toHaveValue(null);
+    expect(within(form).queryByText(/새 술 폼의 구매 입력/)).not.toBeInTheDocument();
+    expect(purchasePosts(calls)).toHaveLength(1);
+  });
+
+  it("넘겨받은 폼을 취소하고 머리부 구매 추가로 다시 열면 넘긴 값을 쓰지 않고 새 술 초안도 남긴다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    const { calls } = stubRoutes([
+      { match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } },
+    ]);
+    const purchaseHandoff = handOff({ volumeMl: "500", quantity: "3" }, 0);
+
+    renderProductsPage({ productId: "p1", context: { addPurchase: true, purchaseHandoff } });
+    await screen.findByRole("form", { name: "구매 추가" });
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "구매 이력" })).getByRole("button", {
+        name: "취소",
+      }),
+    );
+    await userEvent.click(heroAddPurchase());
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+
+    expect(within(form).getByLabelText("병수")).toHaveValue(1);
+    expect(within(form).queryByText(/새 술 폼의 구매 입력/)).not.toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+    await waitFor(() => expect(purchasePosts(calls)).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "구매 추가" })).not.toBeInTheDocument(),
+    );
+    expect(createDraft()).not.toBeNull();
+  });
+
+  it("넘겨받은 폼이 열린 채 머리부 구매 추가를 눌러도 넘긴 값과 안내를 그대로 둔다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    stubRoutes([{ match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } }]);
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "2" }, 1);
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+    await userEvent.click(heroAddPurchase());
+
+    expect(within(form).getByLabelText("병수")).toHaveValue(2);
+    expect(
+      within(form).getByText(
+        "새 술 폼의 구매 입력을 가져왔습니다. 구매를 저장하면 새 술 입력은 지웁니다.",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+    await waitFor(() => expect(createDraft()).toBeNull());
+  });
+
+  it("맥락으로 고른 규격만 남은 구매 초안은 작성 중인 입력으로 보지 않는다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "2" }, 1);
+    // 규격 칩을 고른 채 구매 추가 폼을 열었다 닫으면 규격만 초안에 남는다.
+    localStorage.setItem(
+      "sooljang-draft-v1:u1:handoff-tab:purchase:p1:skuId",
+      JSON.stringify({ value: "p1-sku", updatedAt: 2, revision: "context" }),
+    );
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+
+    expect(within(form).getByLabelText("병수")).toHaveValue(2);
+    expect(within(form).getByText(/새 술 폼의 구매 입력을 가져왔습니다/)).toBeInTheDocument();
+  });
+
+  it("새 술 폼에서 비운 구매처·구매일은 비운 채로 넘긴다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    setLastVendorName("지난번 가게");
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "1" }, 1);
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+
+    expect(within(form).getByLabelText("구매처")).toHaveValue("");
+    expect(within(form).getByLabelText("구매일")).toHaveValue("");
+  });
+
+  it("넘긴 뒤 새 술 초안이 바뀌었거나 구매 저장이 실패하면 새 술 초안을 지우지 않는다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    const { calls } = stubRoutes([
+      { match: "/purchases", method: "POST", status: 500, body: { detail: "저장 실패" } },
+    ]);
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "2" }, 1);
+
+    renderProductsPage({
+      productId: "p1",
+      context: { skuId: "p1-sku", addPurchase: true, purchaseHandoff },
+    });
+    let form = await screen.findByRole("form", { name: "구매 추가" });
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+    await waitFor(() => expect(purchasePosts(calls)).toHaveLength(1));
+    expect(await within(form).findByRole("alert")).toBeInTheDocument();
+    expect(createDraft()).not.toBeNull();
+
+    // 다른 탭에서 새 술 초안을 고친 뒤 저장이 성공해도 고친 초안은 남긴다.
+    const edited = JSON.parse(createDraft() ?? "{}");
+    localStorage.setItem(
+      "sooljang-draft-v1:u1:handoff-tab:product:create",
+      JSON.stringify({ ...edited, value: { ...edited.value, note: "고침" }, revision: "edited" }),
+    );
+    stubRoutes([{ match: "/purchases", method: "POST", status: 201, body: { id: "pu-new" } }]);
+    form = screen.getByRole("form", { name: "구매 추가" });
+    await userEvent.click(within(form).getByRole("button", { name: "구매 저장" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "구매 추가" })).not.toBeInTheDocument(),
+    );
+    expect(JSON.parse(createDraft() ?? "{}").value).toMatchObject({ note: "고침" });
+  });
+
+  it("같은 용량 규격이 여럿이면 고르지 않고 규격을 고르라고 안내한다", async () => {
+    await seedProductWithPurchase("p1", "넘겨받을 술");
+    await db.sku.put(row({ id: "p1-sku-2", product_id: "p1", volume_ml: 700 }));
+    const purchaseHandoff = handOff({ volumeMl: "700", quantity: "1" }, 2);
+
+    renderProductsPage({ productId: "p1", context: { addPurchase: true, purchaseHandoff } });
+    const form = await screen.findByRole("form", { name: "구매 추가" });
+
+    expect(within(form).getByLabelText("규격")).toHaveValue("");
+    expect(
+      within(form).getByText("700ml 규격이 여럿이라 고르지 않았습니다. 규격을 고르세요."),
+    ).toBeInTheDocument();
   });
 
   it("구매 건 삭제를 확인하면 삭제 요청을 보낸다", async () => {

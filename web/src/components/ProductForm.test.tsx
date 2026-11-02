@@ -5,6 +5,7 @@ import { ApiError } from "@/api/client";
 import type { CategoryNode, ProblemDetail } from "@/api/types";
 import { ProductForm } from "@/components/ProductForm";
 import { todayLocal } from "@/format";
+import type { PurchaseHandoff } from "@/router";
 import { hasDirtyForms } from "@/sync/update";
 
 afterEach(() => {
@@ -267,6 +268,8 @@ describe("ProductForm", () => {
   });
 
   it("이 술에 구매 추가는 적은 구매 칸과 새 술 초안을 넘기고 용량이 맞는 규격 하나만 고른다", async () => {
+    const { activateDatabase, lockDatabase } = await import("@/sync/db");
+    await activateDatabase("form-owner");
     const onSelectExisting = vi.fn();
     setup({
       existingProducts: [
@@ -301,9 +304,18 @@ describe("ProductForm", () => {
         purchasedOn: todayLocal(),
         volumeMl: "700",
         matchingSkus: 1,
-        draft: expect.objectContaining({ entries: expect.any(Array) }),
       }),
     });
+    // 넘길 때의 새 술 초안 스냅숏. 구매를 저장한 뒤 이 초안이 그대로면 지운다.
+    const handed = onSelectExisting.mock.calls[0]?.[1]?.purchaseHandoff as PurchaseHandoff;
+    const [entry, ...rest] = handed.draft.entries;
+    expect(rest).toEqual([]);
+    expect(entry?.[0]).toMatch(/:product:create$/);
+    expect(JSON.parse(entry?.[1] ?? "{}").value).toMatchObject({
+      name: "글렌알라키 12년",
+      quantity: "2",
+    });
+    lockDatabase();
   });
 
   it("부분 일치나 다른 이름은 중복으로 경고하지 않는다", async () => {

@@ -362,16 +362,22 @@ export function ProductDetail({
     heading.scrollIntoView?.({ block: "start" });
     heading.focus({ preventScroll: true });
   });
-  const [addPurchaseRequest, setAddPurchaseRequest] = useState(0);
-  const [handoff, setHandoff] = useState<PurchaseHandoff | null>(null);
+  // 구매 추가 요청과 그 요청에 실려 온 새 술 폼의 구매 칸. 넘긴 값은 그 요청에서 한 번만 쓰고,
+  // 머리부 "구매 추가"는 넘긴 값 없이 연다(D273).
+  const [addPurchaseRequest, setAddPurchaseRequest] = useState<AddPurchaseRequest>({
+    count: 0,
+    handoff: null,
+  });
   const addPurchaseDelivered = useRef(onAddPurchaseDelivered);
   addPurchaseDelivered.current = onAddPurchaseDelivered;
   const purchaseHandoffRef = useRef(purchaseHandoff);
   purchaseHandoffRef.current = purchaseHandoff;
   useEffect(() => {
     if (!addPurchase) return;
-    setHandoff(purchaseHandoffRef.current ?? null);
-    setAddPurchaseRequest((request) => request + 1);
+    setAddPurchaseRequest((request) => ({
+      count: request.count + 1,
+      handoff: purchaseHandoffRef.current ?? null,
+    }));
     addPurchaseDelivered.current?.();
   }, [addPurchase]);
   useEffect(() => {
@@ -591,7 +597,9 @@ export function ProductDetail({
               type="button"
               className={target ? undefined : "primary"}
               disabled={busy}
-              onClick={() => setAddPurchaseRequest((request) => request + 1)}
+              onClick={() =>
+                setAddPurchaseRequest((request) => ({ count: request.count + 1, handoff: null }))
+              }
             >
               구매 추가
             </button>
@@ -852,7 +860,6 @@ export function ProductDetail({
           onAddSku={onAddSku}
           addingSku={addingSku}
           openAddRequest={addPurchaseRequest}
-          handoff={handoff}
           correctionPending={savingCorrection}
           onCorrectSku={(id) => {
             if (!savingCorrection) setCorrectionPurchaseId(id);
@@ -962,14 +969,11 @@ function PurchaseSection({
   onCorrectSku,
   correctionPending,
   openAddRequest,
-  handoff,
 }: {
   onCorrectSku: (purchaseId: string) => void;
   correctionPending: boolean;
   /** 머리부 "구매 추가"·새 술 폼에서 온 요청. 바뀔 때마다 폼을 열고 그리로 옮긴다. */
-  openAddRequest: number;
-  /** 마지막 요청과 함께 넘어온 새 술 폼의 구매 칸. */
-  handoff: PurchaseHandoff | null;
+  openAddRequest: AddPurchaseRequest;
   onSavingChange: (saving: boolean) => void;
   product: Product;
   matchingPurchaseIds?: readonly string[] | undefined;
@@ -1031,8 +1035,6 @@ function PurchaseSection({
   const [addingLocally, setAddingLocally] = useState(false);
   // 넘겨받은 구매 칸. 이 술에 작성 중인 구매 입력이 있으면 섞지 않는다(applied: false, D273).
   const [prefill, setPrefill] = useState<HandoffPrefill | null>(null);
-  const handoffRef = useRef(handoff);
-  handoffRef.current = handoff;
   const addHandoff = useRef<PurchaseHandoff | null>(null);
   const addSnapshot = useRef<ReturnType<typeof captureFormDraft> | null>(null);
   const promiseAdding = useRef(false);
@@ -1068,19 +1070,16 @@ function PurchaseSection({
   const [focusAddRequest, setFocusAddRequest] = useState(0);
   const addFormRef = useRef<HTMLDivElement>(null);
   const offlineNoteRef = useRef<HTMLParagraphElement>(null);
+  const addFormOpenRef = useRef(addFormOpen);
+  addFormOpenRef.current = addFormOpen;
   useEffect(() => {
-    if (!openAddRequest || handledAddRequest.current === openAddRequest) return;
-    handledAddRequest.current = openAddRequest;
-    if (!offline && !busy) {
-      const next = handoffRef.current;
-      setPrefill(
-        next
-          ? {
-              handoff: next,
-              applied: captureFormDraft(`purchase:${product.id}`).entries.length === 0,
-            }
-          : null,
-      );
+    const { count, handoff } = openAddRequest;
+    if (!count || handledAddRequest.current === count) return;
+    handledAddRequest.current = count;
+    // 이미 열린 폼은 그대로 두고 그리로 옮기기만 한다. 적던 값·넘겨받은 값 안내를 다른 요청이
+    // 바꾸지 않는다.
+    if (!offline && !busy && !addFormOpenRef.current) {
+      setPrefill(handoff ? { handoff, applied: prepareHandoffFill(product.id) } : null);
       setAddFormOpen(true);
     }
     setFocusAddRequest((request) => request + 1);
@@ -1390,6 +1389,24 @@ interface HandoffPrefill {
   applied: boolean;
 }
 
+/** 구매 추가 폼을 여는 요청. `handoff`는 새 술 폼에서 온 요청에만 있다. */
+interface AddPurchaseRequest {
+  count: number;
+  handoff: PurchaseHandoff | null;
+}
+
+/**
+ * 넘겨받은 구매 칸으로 이 술의 구매 추가 폼을 채워도 되는지. 사용자가 적은 구매 입력이 있으면
+ * 섞지 않는다. 상세 맥락으로 고른 규격(`skuId`)만 남은 초안은 적은 입력이 아니라 지우고
+ * 채운다. 남겨 두면 넘긴 용량과 다른 규격이 기본으로 남는다.
+ */
+function prepareHandoffFill(productId: string): boolean {
+  const draft = captureFormDraft(`purchase:${productId}`);
+  if (draft.entries.some(([key]) => !key.endsWith(":skuId"))) return false;
+  if (draft.entries.length > 0) clearSubmittedDraft(draft);
+  return true;
+}
+
 function AddPurchaseForm({
   product,
   selectedSkuId,
@@ -1426,13 +1443,14 @@ function AddPurchaseForm({
     `purchase:${product.id}:quantity`,
     handed?.quantity || "1",
   );
+  // 새 술 폼에서 비운 구매처·구매일은 비운 채로 잇는다(그 폼의 기본값도 마지막 구매처·오늘이다).
   const [vendorName, setVendorName] = useDraftState(
     `purchase:${product.id}:vendorName`,
-    () => handed?.vendorName || getLastVendorName(),
+    () => handed?.vendorName ?? getLastVendorName(),
   );
   const [purchasedOn, setPurchasedOn] = useDraftState(
     `purchase:${product.id}:purchasedOn`,
-    () => handed?.purchasedOn || todayLocal(),
+    () => handed?.purchasedOn ?? todayLocal(),
   );
   const [unitListPrice, setUnitListPrice] = useDraftState(
     `purchase:${product.id}:unitListPrice`,
