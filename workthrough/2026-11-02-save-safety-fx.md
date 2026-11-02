@@ -8,7 +8,8 @@
 - 데이터/권한: schema 0021은 바꾸지 않는다. PR-A·PR-B는 웹만 바꾼다. 브라우저 localStorage에 요청 사본
   `sooljang-request-copy-v1:<계정>:<탭>:<폼>`이 새로 생기고(아래 「PR-A 데이터 변화」), 인사이트 보기
   상태(sessionStorage)에 고른 기간 칩 `period`가 붙는다(PR-B). PR-C는 구매 수정 PATCH와 동기화 구매
-  생성/수정의 입력 검증을 바꾼다(아래 「PR-C 데이터 변화」).
+  생성/수정의 입력 검증을 바꾼다(아래 「PR-C 데이터 변화」). PR-D는 웹 개발 의존성 lockfile만 바꾸며 빌드
+  산출물은 같다.
 - 결과: 진행 중.
 
 ## PR-A 저장 안전 (`feature/save-safety`)
@@ -228,3 +229,48 @@
 - 저장 직후 동기화 전에 수정 폼을 다시 열면 기기 미러의 이전 값으로 열린다(기존 동작, 이번 범위 밖).
 - 정가가 공란(NULL)인 구매를 고치면 공란을 0원으로 보내 이력에 "병당 정가 없음 → 0원"이 남는다. D211상 같은
   0원이라 계산은 같다(기존 동작, 이번 범위 밖).
+
+## PR-D 웹 개발 의존성 (`feature/web-deps-audit`)
+
+### 변경
+
+- `web/package-lock.json`만 바꿨다. `npm update fast-uri serialize-javascript`로 선언 범위 안에서 올렸고
+  `package.json`은 그대로다(lockfile 12줄: 두 패키지의 version·resolved·integrity).
+  - fast-uri 3.1.8 → 3.1.9(ajv `^3.0.1`)
+  - serialize-javascript 7.0.7 → 7.1.4(@rollup/plugin-terser `^7.0.3`)
+- 남은 경보는 근거를 기록했다(D277). #190(Dependabot fast-uri 3.1.9)은 같은 갱신을 담아 이 PR 병합 뒤
+  정리한다.
+
+### 경보 대조
+
+모두 `vite-plugin-pwa` 1.3.0 → `workbox-build` 7.4.1(최신) 아래의 개발(빌드) 의존성이다.
+
+| 패키지 | 경로 | 경보 | 처리 |
+|---|---|---|---|
+| fast-uri 3.1.8 | workbox-build → ajv 8.20.0 | Dependabot #9~#12(중간 2·낮음 2) | 3.1.9로 해소 |
+| serialize-javascript 7.0.7 | workbox-build → @rollup/plugin-terser 1.0.0 | #13(낮음), GHSA-m5mm-p8h7-m29v | 7.1.4로 해소 |
+| minimatch 10.2.6·5.1.9 | workbox-build → glob 11.1.0(`^10.1.1`), workbox-build → @trickfilm400/rollup-plugin-off-main-thread 3.0.0-pre1 → ejs 3.1.10 → jake 10.9.4 → filelist 1.0.6(`^5.0.1`) | #16(중간), GHSA-g3hv-75wg-m249 | 유지: 수정판 11.0.1이 두 경로의 범위 밖 |
+| glob 11.1.0 | workbox-build(`^11.0.1`) | npm audit(중간), GHSA-3g3m-2fjr-6pw4. Dependabot 경보 없음 | 유지: 수정판 14.0.2가 범위 밖 |
+| deepmerge 4.3.1 | workbox-build → @rollup/plugin-node-resolve 16.0.3(`^4.2.2`) | #14(낮음), GHSA-gcqx-w48m-w2h4 | 유지: 수정판 없음(4.3.1이 최신) |
+
+- vite-plugin-pwa 2.0.0도 `workbox-build ^7.4.1`이라 올려도 같은 경로가 남는다. `npm audit fix --force`는
+  vite-plugin-pwa를 1.1.0으로 내리는 제안이라 쓰지 않았다.
+- 남은 경보의 입력은 저장소의 빌드 설정과 precache glob 패턴뿐이다. 웹 런타임 이미지는 nginx가 빌드된
+  `dist`만 제공한다.
+
+### 실행 증거
+
+- 같은 갱신을 먼저 main `c49c257`의 임시 worktree에서 만들고, PR-C 병합 뒤 main `04a6d9d`에서 다시
+  만들었다. 두 lockfile은 바이트 단위로 같다.
+- 빌드 산출물: worktree에서 갱신 전(`npm ci`)과 갱신 뒤 `vite build`의 `dist/`(서비스워커 `sw.js`·
+  workbox 런타임·precache 목록 포함)를 비교했고 모두 같다.
+- `npm --prefix web run check`(이 브랜치): Biome(경고 18건은 기존 테스트 파일), 타입, Vitest 114파일 1,565 통과(statements 90.22%·branch 84.61%·lines 92.10%), 빌드 성공(PWA precache 27개)
+- `npm audit`: 12건(낮음 3·중간 9) → 10건(낮음 2·중간 8). 남은 10건은 위 세 원인(minimatch·glob·deepmerge)이
+  경로의 패키지로 번진 것이다. `npm audit --omit=dev`는 갱신 전후 모두 0건이다. CI 감사 기준
+  `--audit-level=high`는 어느 쪽도 막지 않는다.
+- Dependabot 열린 경보: 갱신 전 7건(#9~#14·#16). 병합 뒤 결과는 아래 버전 절에 적는다.
+
+### 제한
+
+- 남은 세 경보는 빌드 시점 도구라 이번 출시를 막지 않는다. workbox-build가 범위를 올리기 전에는 lockfile로
+  해소할 수 없다.
