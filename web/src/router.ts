@@ -1,4 +1,5 @@
 import type { PurchaseScope } from "@/api/types";
+import type { captureFormDraft } from "@/sync/drafts";
 /**
  * URL 해시 기반 최소 라우팅.
  *
@@ -60,6 +61,22 @@ export interface ProductContext {
   /** 구매 추가 폼을 연 채 상세로 들어온다(새 술 폼의 "이 술에 구매 추가"). 해시에 남기지 않아
    * 새로고침·뒤로가기로 폼이 다시 열리지 않는다. */
   addPurchase?: boolean | undefined;
+  /** `addPurchase`와 함께 새 술 폼에서 넘긴 구매 칸. 해시에 남기지 않는다(D273). */
+  purchaseHandoff?: PurchaseHandoff | undefined;
+}
+
+/** "이 술에 구매 추가"로 새 술 폼에 적은 구매 칸을 그 술의 구매 추가 폼으로 넘긴다(D273). */
+export interface PurchaseHandoff {
+  quantity: string;
+  purchasedOn: string;
+  unitListPrice: string;
+  unitPaidPrice: string;
+  vendorName: string;
+  volumeMl: string;
+  /** 새 술 폼 용량과 같은 그 술의 규격 수. 하나일 때만 그 규격을 고른다. */
+  matchingSkus: number;
+  /** 넘길 때의 새 술 초안. 넘긴 칸으로 구매를 저장한 뒤에도 그대로면 지운다. */
+  draft: ReturnType<typeof captureFormDraft>;
 }
 
 export interface Route extends ProductContext {

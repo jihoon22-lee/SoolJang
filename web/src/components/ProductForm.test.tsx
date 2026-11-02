@@ -5,6 +5,7 @@ import { ApiError } from "@/api/client";
 import type { CategoryNode, ProblemDetail } from "@/api/types";
 import { ProductForm } from "@/components/ProductForm";
 import { todayLocal } from "@/format";
+import type { PurchaseHandoff } from "@/router";
 import { hasDirtyForms } from "@/sync/update";
 
 afterEach(() => {
@@ -260,7 +261,61 @@ describe("ProductForm", () => {
       }),
     );
     // 그 술의 구매 추가 폼을 연 상세로 간다(D268).
-    expect(onSelectExisting).toHaveBeenCalledWith("p1", { addPurchase: true });
+    expect(onSelectExisting).toHaveBeenCalledWith("p1", {
+      addPurchase: true,
+      purchaseHandoff: expect.objectContaining({ volumeMl: "", matchingSkus: 0 }),
+    });
+  });
+
+  it("이 술에 구매 추가는 적은 구매 칸과 새 술 초안을 넘기고 용량이 맞는 규격 하나만 고른다", async () => {
+    const { activateDatabase, lockDatabase } = await import("@/sync/db");
+    await activateDatabase("form-owner");
+    const onSelectExisting = vi.fn();
+    setup({
+      existingProducts: [
+        {
+          id: "p1",
+          name: "글렌알라키 12년",
+          skus: [
+            { id: "s7", volume_ml: 700 },
+            { id: "s5", volume_ml: 500 },
+          ],
+        } as never,
+      ],
+      onSelectExisting,
+    });
+
+    await userEvent.type(screen.getByLabelText("이름 *"), "글렌알라키 12년");
+    await userEvent.type(screen.getByLabelText("용량 (ml)"), "700");
+    await userEvent.type(screen.getByLabelText("병수"), "2");
+    await userEvent.type(screen.getByLabelText("병당 실구매가 (원)"), "50000");
+    await userEvent.click(
+      await screen.findByRole("button", { name: /글렌알라키 12년.*이 술에 구매 추가/ }),
+    );
+
+    // 구매 칸은 그 술의 구매 추가 폼이 이어 쓰고, 새 술 초안은 구매를 저장한 뒤 정리한다(D273).
+    expect(onSelectExisting).toHaveBeenCalledWith("p1", {
+      skuId: "s7",
+      addPurchase: true,
+      purchaseHandoff: expect.objectContaining({
+        quantity: "2",
+        unitPaidPrice: "50000",
+        unitListPrice: "",
+        purchasedOn: todayLocal(),
+        volumeMl: "700",
+        matchingSkus: 1,
+      }),
+    });
+    // 넘길 때의 새 술 초안 스냅숏. 구매를 저장한 뒤 이 초안이 그대로면 지운다.
+    const handed = onSelectExisting.mock.calls[0]?.[1]?.purchaseHandoff as PurchaseHandoff;
+    const [entry, ...rest] = handed.draft.entries;
+    expect(rest).toEqual([]);
+    expect(entry?.[0]).toMatch(/:product:create$/);
+    expect(JSON.parse(entry?.[1] ?? "{}").value).toMatchObject({
+      name: "글렌알라키 12년",
+      quantity: "2",
+    });
+    lockDatabase();
   });
 
   it("부분 일치나 다른 이름은 중복으로 경고하지 않는다", async () => {
@@ -344,6 +399,7 @@ it("동일 이름의 빈티지·도수 후보를 구분하고 입력 용량과 �
   expect(onSelectExisting).toHaveBeenCalledWith("edition21", {
     skuId: "sku21",
     addPurchase: true,
+    purchaseHandoff: expect.objectContaining({ volumeMl: "750", matchingSkus: 1 }),
   });
   // 미리 채운 빈티지가 접힌 칸에 숨지 않게 펼쳐 둔다.
   expect(moreSection()).toHaveAttribute("open");

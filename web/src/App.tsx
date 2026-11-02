@@ -209,7 +209,7 @@ export function App() {
       if (!current[flag]) return current;
       return flag === "create"
         ? { ...current, create: undefined }
-        : { ...current, addPurchase: undefined };
+        : { ...current, addPurchase: undefined, purchaseHandoff: undefined };
     });
   }, []);
 

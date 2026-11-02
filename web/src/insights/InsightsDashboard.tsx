@@ -115,7 +115,11 @@ function periodRange(period: Exclude<Period, "custom">, today: string) {
   if (period === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
   return { from: "", to: today };
 }
-/** 기간 칩은 오늘 기준 범위와 같을 때만 눌린 상태다. 직접 고른 날짜는 "직접 설정"이다. */
+/**
+ * 이전 형식 보기 상태(고른 칩이 없음)의 칩을 날짜로 추정한다. 오늘 기준 범위와 같을 때만 눌린
+ * 상태이고 직접 고른 날짜는 "직접 설정"이다. 3/31(윤년 3/30)에는 최근 90일과 올해가 같은 범위라
+ * 고른 칩을 저장한다(D274).
+ */
 function activePeriod(filters: InsightFilters, today: string): Period {
   for (const period of ["recent", "year", "all"] as const) {
     const range = periodRange(period, today);
@@ -123,15 +127,22 @@ function activePeriod(filters: InsightFilters, today: string): Period {
   }
   return "custom";
 }
-/** 탭 세션에 둔 분석 범위. `day`는 저장한 날이다. */
-type StoredFilters = InsightFilters & { day: string };
+/** 탭 세션에 둔 분석 범위. `day`는 저장한 날, `period`는 고른 칩이다(이전 형식에는 없음). */
+type StoredFilters = InsightFilters & { day: string; period?: unknown };
+function storedPeriod(stored: StoredFilters): Period | null {
+  return PERIODS.some(({ id }) => id === stored.period) ? (stored.period as Period) : null;
+}
 
 /**
- * 저장해 둔 범위를 오늘에 맞춘다. 자정을 넘긴 탭에서도 "오늘까지"로 둔 종료일(과 기본 90일
+ * 저장해 둔 범위를 오늘에 맞춘다. 고른 칩의 범위는 오늘 기준으로 다시 계산한다(올해를 고른 채
+ * 해가 바뀌면 새해 1월 1일부터). 자정을 넘긴 탭에서도 "오늘까지"로 둔 종료일(과 기본 90일
  * 시작일)은 오늘로 따라오고, 직접 고른 날짜는 그대로 둔다. 모르는 상태 값은 전체로 되돌린다.
  */
-function currentFilters({ day, ...filters }: StoredFilters, today: string): InsightFilters {
+function currentFilters(stored: StoredFilters, today: string): InsightFilters {
+  const { day, period: _period, ...filters } = stored;
   const status = STATUSES.includes(filters.status) ? filters.status : "all";
+  const period = storedPeriod(stored);
+  if (period && period !== "custom") return { ...filters, status, ...periodRange(period, today) };
   if (day === today) return { ...filters, status };
   const before = initialFilters(day);
   const defaultWindow = filters.from === before.from && filters.to === before.to;
@@ -168,7 +179,9 @@ export function InsightsDashboard({
     day: today,
   });
   const filters = useMemo(() => currentFilters(stored, today), [stored, today]);
-  const setFilters = (next: InsightFilters) => setStored({ ...next, day: today });
+  const chosenPeriod = storedPeriod(stored);
+  const setFilters = (next: InsightFilters, period: Period | null = chosenPeriod) =>
+    setStored({ ...next, day: today, ...(period ? { period } : {}) });
   const [dimension, setDimension] = useViewState<RatingDimension>(
       "insights:dimension",
       "category",
@@ -181,7 +194,7 @@ export function InsightsDashboard({
   // 잘못된 범위로 돌아왔으면 펼쳐서 왜 결과가 비었는지 보이게 한다.
   const [customRequested, setCustomRequested] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(
-    () => invalid || activePeriod(filters, today) === "custom",
+    () => invalid || (chosenPeriod ?? activePeriod(filters, today)) === "custom",
   );
   const data = useMemo(() => {
     if (!source?.data) return null;
@@ -196,7 +209,7 @@ export function InsightsDashboard({
   const ratings = data.ratings[dimension],
     selectedRating = ratings.find((row) => row.label === ratingLabel) ?? ratings[0];
   const price = data.prices.find((row) => row.key === priceKey) ?? data.prices[0];
-  const period = customRequested ? "custom" : activePeriod(filters, today);
+  const period = customRequested ? "custom" : (chosenPeriod ?? activePeriod(filters, today));
   const categoryKnown = data.categories.some(({ id }) => id === filters.categoryId);
   const categoryLabel = categoryKnown
     ? (data.categories.find(({ id }) => id === filters.categoryId)?.label ?? "전체 주종")
@@ -218,7 +231,7 @@ export function InsightsDashboard({
                   return;
                 }
                 setCustomRequested(false);
-                setFilters({ ...filters, ...periodRange(item.id, today) });
+                setFilters({ ...filters, ...periodRange(item.id, today) }, item.id);
               }}
             >
               {item.label}
@@ -242,7 +255,7 @@ export function InsightsDashboard({
                 type="date"
                 value={filters.from}
                 max={filters.to || today}
-                onChange={(event) => setFilters({ ...filters, from: event.target.value })}
+                onChange={(event) => setFilters({ ...filters, from: event.target.value }, "custom")}
               />
             </label>
             <label>
@@ -252,7 +265,7 @@ export function InsightsDashboard({
                 value={filters.to}
                 min={filters.from}
                 max={today}
-                onChange={(event) => setFilters({ ...filters, to: event.target.value })}
+                onChange={(event) => setFilters({ ...filters, to: event.target.value }, "custom")}
               />
             </label>
             <label>
@@ -288,7 +301,7 @@ export function InsightsDashboard({
               type="button"
               onClick={() => {
                 setCustomRequested(false);
-                setFilters(initialFilters(today));
+                setFilters(initialFilters(today), "recent");
               }}
             >
               최근 90일·전체로 초기화

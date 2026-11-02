@@ -2853,6 +2853,15 @@ legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 2px var(--space-sm);
+}
+
+/* 별 묶음은 가능한 한 한 줄이다(6 × 44px + 간격 = 274px). 그보다 좁으면 별끼리 접는다. */
+.rating-stars-scale,
+.rating-stars-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
 }
 
@@ -2879,7 +2888,6 @@ legend {
 }
 
 .rating-clear {
-  margin-left: var(--space-sm);
   font-size: var(--text-sm);
 }
 
@@ -3035,6 +3043,11 @@ legend {
 
 .overflow-menu {
   position: relative;
+}
+
+/* "⋯"은 글자가 좁아 기본 좌우 여백만으로는 44px 폭이 안 된다. */
+.overflow-menu > button {
+  min-width: var(--control-h-md);
 }
 
 .overflow-menu-panel {

@@ -916,7 +916,8 @@ function CorrectionEditor({
     >
       <fieldset disabled={busy}>
         <legend>기록 내용과 현재 병 상태를 따로 확인합니다</legend>
-        <fieldset disabled={Boolean(retry)}>
+        {/* 비활성화만 묶는다. 바깥 패널 안에 테두리·여백을 한 겹 더 두면 별 줄 폭이 모자랐다. */}
+        <fieldset className="correction-fields" disabled={Boolean(retry)}>
           <DraftRecoveryButton form={formKey} />
           <p>
             {label(baseline.context)} · 시음 {baseline.tasted_on}
