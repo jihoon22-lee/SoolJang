@@ -453,11 +453,13 @@ function QuickTastingForm({
       const selectionCleared = clearSubmittedDraft(submittedSelection);
       // 저장 중 다른 탭이 같은 입력을 바꿨어도 기록은 확정됐다. 시트에 남기면 같은 잔을 다시 저장하기
       // 쉬워 저장을 마치고, 바뀐 입력은 지우지 않아 그 병을 다시 열면 이어 쓴다(D270).
+      // 다른 곳에서 입력을 지웠으면 남긴 것이 없다.
       const kept =
-        cleared && selectionCleared
-          ? ""
-          : ". 저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다";
-      const message = `${bottle.productName} 시음을 기록했습니다${effect.label}${kept}`;
+        !(cleared && selectionCleared) &&
+        [formId, SELECTION_FORM].some((form) => captureFormDraft(form).entries.length > 0);
+      const message = `${bottle.productName} 시음을 기록했습니다${effect.label}${
+        kept ? ". 저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다" : ""
+      }`;
       onRecorded({ tastingId: effect.id, bottle, message, finished: effect.finished });
     } catch (cause) {
       if (session.isCurrent())

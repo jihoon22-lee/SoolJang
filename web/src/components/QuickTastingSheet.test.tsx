@@ -561,6 +561,26 @@ it("저장 결과로 시음 ID·병·안내 문구를 넘기고 다 마신 병�
   expect(screen.queryByRole("button", { name: "한 잔 더" })).not.toBeInTheDocument();
 });
 
+it("저장 중 다른 탭이 같은 병 입력을 지웠으면 남긴 입력이 있다고 알리지 않는다", async () => {
+  const onRecorded = vi.fn();
+  renderWithQuery(<Harness onRecorded={onRecorded} />);
+  await chooseLarge();
+  await writeNote("제출한 노트");
+  const held = holdTastingSave();
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(() => expect(held.record).toHaveBeenCalledOnce());
+  const key = Object.keys(localStorage).find((item) => item.endsWith("quick-tasting:bottle:older"));
+  expect(key).toBeDefined();
+  localStorage.removeItem(key as string);
+  await act(async () => held.release());
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(onRecorded).toHaveBeenCalledWith(
+    expect.objectContaining({ message: "합성 위스키 시음을 기록했습니다 (개봉 처리)" }),
+  );
+  expect(await db.tasting_session.count()).toBe(1);
+});
+
 it("저장 중 다른 탭이 같은 병 입력을 바꿔도 저장을 마치고 바뀐 입력은 그 병에 남긴다", async () => {
   const onRecorded = vi.fn();
   renderWithQuery(<Harness onRecorded={onRecorded} />);
