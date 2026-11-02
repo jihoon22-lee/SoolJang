@@ -18,6 +18,7 @@ import {
 } from "@/components/productDisplay";
 import { SkuMetricsTable } from "@/components/SkuMetricsTable";
 import { TastingCorrectionForm } from "@/components/TastingCorrectionForm";
+import { convertedPaidPrice, FOREIGN_CURRENCIES, foreignPriceMismatch } from "@/domain/purchaseFx";
 import {
   formatAbv,
   formatCategoryPath,
@@ -49,28 +50,6 @@ export interface AddPurchaseInput {
   unitPaidPrice: string;
   /** 해외 구매. 실구매가(`unitPaidPrice`)는 외화 단가 × 환율의 원화 값이다. */
   foreign?: { currency: string; fxRate: string; foreignUnitPrice: string };
-}
-
-/** 해외 구매에 자주 쓰는 통화. */
-const FOREIGN_CURRENCIES = ["USD", "JPY", "EUR", "GBP", "CNY", "HKD", "TWD", "SGD", "AUD"];
-
-/** "12.34" → [1234n, 2]. 음수·지수 표기·빈 값은 null. */
-function decimalParts(value: string): [bigint, number] | null {
-  const match = /^(\d*)(?:\.(\d*))?$/.exec(value.trim());
-  if (!match || (!match[1] && !match[2])) return null;
-  const fraction = match[2] ?? "";
-  return [BigInt(`${match[1] ?? ""}${fraction}` || "0"), fraction.length];
-}
-/**
- * 외화 단가 × 환율을 원 단위로 반올림(0.5는 올림)한 원화 실구매가. 둘 중 하나라도 없으면 null.
- * 부동소수 곱셈(2.675 × 100 = 267.4999…)으로 1원이 어긋나지 않게 정수로 계산한다.
- */
-export function convertedPaidPrice(foreignUnitPrice: string, fxRate: string): string | null {
-  const foreign = decimalParts(foreignUnitPrice);
-  const rate = decimalParts(fxRate);
-  if (!foreign || !rate || rate[0] === 0n) return null;
-  const scale = 10n ** BigInt(foreign[1] + rate[1]);
-  return String((foreign[0] * rate[0] * 2n + scale) / (2n * scale));
 }
 
 export interface SplitPart {
@@ -130,19 +109,6 @@ interface ProductDetailProps {
 function errorText(error: unknown): string | null {
   if (!error) return null;
   return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * 외화 단가 × 환율과 원화 실구매가가 1%(최소 1원) 넘게 다른 구매. 수정·레거시로 어긋난 기록을
- * 맞는 것처럼 나란히 보이지 않게 표시한다(새 등록은 서버가 이 차이를 거부한다).
- */
-export function foreignPriceMismatch(
-  purchase: Pick<Purchase, "foreign_unit_price" | "fx_rate" | "unit_paid_price">,
-): boolean {
-  if (!purchase.foreign_unit_price || !purchase.fx_rate || purchase.unit_paid_price == null)
-    return false;
-  const converted = Number(purchase.foreign_unit_price) * Number(purchase.fx_rate);
-  return Math.abs(Number(purchase.unit_paid_price) - converted) > Math.max(1, converted / 100);
 }
 
 /**

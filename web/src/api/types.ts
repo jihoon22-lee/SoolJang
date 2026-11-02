@@ -267,6 +267,10 @@ export interface PurchaseUpdateInput {
   quantity?: number;
   unit_list_price?: string | null;
   unit_paid_price?: string | null;
+  /** 외화 값은 서버가 합친 값으로 검사한다(D276). 원화로 되돌리면 환율·외화 단가를 null 로 보낸다. */
+  currency?: string;
+  fx_rate?: string | null;
+  foreign_unit_price?: string | null;
   discount_note?: string | null;
 }
 

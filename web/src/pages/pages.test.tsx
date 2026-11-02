@@ -723,6 +723,57 @@ describe("ProductsPage", () => {
     expect(await screen.findByRole("button", { name: "수정" })).toBeInTheDocument();
   });
 
+  it("외화 구매 수정은 외화 칸을 고칠 때만 통화·환율·외화 단가와 환산 실구매가를 보낸다", async () => {
+    await seedProduct("p1", "해외 구매 술");
+    await db.sku.put(row({ id: "p1-sku", product_id: "p1", volume_ml: 700 }));
+    await db.purchase.put(
+      row({
+        id: "p1-pu",
+        sku_id: "p1-sku",
+        quantity: 1,
+        unit_list_price: null,
+        unit_paid_price: "66827.00",
+        currency: "USD",
+        fx_rate: "1431.900000",
+        foreign_unit_price: "46.67",
+      }),
+    );
+    const { calls } = stubRoutes([
+      { match: "/purchases/p1-pu", method: "PATCH", body: { id: "p1-pu" } },
+    ]);
+    const patches = () =>
+      calls.filter((call) => call.method === "PATCH").map((call) => call.body as object);
+
+    renderProductsPage({ productId: "p1" });
+    const edit = async () => {
+      await userEvent.click(await screen.findByRole("button", { name: "구매 기록 수정" }));
+      return screen.getByRole("form", { name: "구매 건 수정" });
+    };
+    let form = await edit();
+    await userEvent.type(within(form).getByLabelText("병당 정가 (원)"), "70000");
+    await userEvent.click(within(form).getByRole("button", { name: "수정 저장" }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    form = await edit();
+    const rate = within(form).getByLabelText("환율 (1 USD당 원)");
+    await userEvent.clear(rate);
+    await userEvent.type(rate, "1500");
+    await userEvent.click(within(form).getByRole("button", { name: "수정 저장" }));
+    await waitFor(() => expect(patches()).toHaveLength(2));
+
+    expect(patches()[0]).toEqual({
+      vendor_id: null,
+      purchased_on: null,
+      quantity: 1,
+      unit_list_price: "70000",
+    });
+    expect(patches()[1]).toMatchObject({
+      unit_paid_price: "70005",
+      currency: "USD",
+      fx_rate: "1500",
+      foreign_unit_price: "46.67",
+    });
+  });
+
   it("구매 추가 폼을 제출하면 새 구매 건을 만든다", async () => {
     await seedProductWithPurchase("p1", "구매 추가 대상");
     const { calls } = stubRoutes([
