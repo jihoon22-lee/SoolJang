@@ -26,8 +26,18 @@ export function pruneStaleDrafts(now = Date.now()): void {
         localStorage.removeItem(key);
       continue;
     }
-    if (!key.startsWith(PREFIX)) continue;
     if (current && key.includes(`:${current}:`)) continue;
+    if (key.startsWith(REQUEST_COPY_PREFIX)) {
+      // 요청 사본은 이어받는 데만 쓴다. 시각을 읽을 수 없는 사본은 이어받지도 못한다.
+      try {
+        const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
+        if (!Number.isFinite(at) || now - at > STALE_DRAFT_MS) localStorage.removeItem(key);
+      } catch {
+        localStorage.removeItem(key);
+      }
+      continue;
+    }
+    if (!key.startsWith(PREFIX)) continue;
     try {
       const at = Number(JSON.parse(localStorage.getItem(key) ?? "null")?.updatedAt);
       if (Number.isFinite(at) && now - at > STALE_DRAFT_MS) {
@@ -105,12 +115,80 @@ export function captureFormDraft(form: string) {
 }
 
 const REQUEST_PREFIX = "sooljang-request-v1:";
+/**
+ * 요청 기록의 localStorage 사본. 응답 전에 탭이 닫히면 sessionStorage 의 요청 키도 사라져, 그 탭의
+ * 초안을 불러온 탭이 같은 내용을 새 요청으로 보내 중복을 만들 수 있었다. 사본은 초안을 명시적으로
+ * 불러올 때만 이어받는다(`restoreFormDraft`).
+ */
+const REQUEST_COPY_PREFIX = "sooljang-request-copy-v1:";
 /** 같은 탭에서 폼을 다시 열어도 진행 중인 제출을 이어 본다. 파일·비밀은 저장하지 않는다. */
 export const submissionEvents = new EventTarget();
 function requestKey(form: string, userId: string): string {
   // 복제한 탭은 sessionStorage 를 복사해 오지만 탭 id 는 새로 받는다. 탭 id 를 넣어 두 탭의
   // 같은 내용 등록이 한 요청으로 합쳐지지 않게 한다.
   return `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${tabId()}:${form}`;
+}
+function requestCopyKey(form: string, userId: string, tab = tabId()): string {
+  return `${REQUEST_COPY_PREFIX}${encodeURIComponent(userId)}:${tab}:${form}`;
+}
+function copyRequest(form: string, userId: string, record: object): void {
+  try {
+    localStorage.setItem(
+      requestCopyKey(form, userId),
+      JSON.stringify({ ...record, updatedAt: Date.now() }),
+    );
+  } catch {
+    // 사본은 다른 탭이 이어받을 때만 쓴다. 이 탭의 요청 키는 그대로 유효하다.
+  }
+}
+function forgetRequestCopy(form: string, userId: string, requestId?: string): void {
+  const key = requestCopyKey(form, userId);
+  try {
+    if (
+      requestId === undefined ||
+      JSON.parse(localStorage.getItem(key) ?? "null")?.requestId === requestId
+    )
+      localStorage.removeItem(key);
+  } catch {
+    localStorage.removeItem(key);
+  }
+}
+/**
+ * `sourceTab` 이 남긴 `form`·`form:*` 요청을 이 탭으로 옮긴다. 이 탭에 이미 그 폼의 요청이 있으면
+ * 섞지 않는다. 옮긴 사본은 원래 자리에서 지워 또 다른 탭이 같은 요청을 다시 가져가지 않게 한다.
+ */
+function adoptRequests(form: string, sourceTab: string, userId: string): void {
+  const source = `${REQUEST_COPY_PREFIX}${encodeURIComponent(userId)}:${sourceTab}:`;
+  const own = `${REQUEST_PREFIX}${encodeURIComponent(userId)}:${tabId()}:`;
+  const inFamily = (kind: string) => kind === form || kind.startsWith(`${form}:`);
+  try {
+    if (
+      Object.keys(sessionStorage).some(
+        (key) => key.startsWith(own) && inFamily(key.slice(own.length)),
+      )
+    )
+      return;
+  } catch {
+    return;
+  }
+  let adopted = false;
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(source)) continue;
+    const kind = key.slice(source.length);
+    if (!inFamily(kind)) continue;
+    try {
+      const { requestId, progress } = JSON.parse(localStorage.getItem(key) ?? "null") ?? {};
+      if (typeof requestId !== "string" || containsSecret(progress)) continue;
+      const record = progress === undefined ? { requestId } : { requestId, progress };
+      sessionStorage.setItem(requestKey(kind, userId), JSON.stringify(record));
+      copyRequest(kind, userId, record);
+      localStorage.removeItem(key);
+      adopted = true;
+    } catch {
+      // 옮기지 못한 사본은 그대로 두고, 이 폼은 새 요청으로 보낸다.
+    }
+  }
+  if (adopted) submissionEvents.dispatchEvent(new Event("change"));
 }
 
 export function submissionSnapshot(form: string): string | null {
@@ -148,6 +226,7 @@ export function saveSubmissionProgress(form: string, progress: unknown): void {
     draftEvents.dispatchEvent(new Event("storage-error"));
     throw new Error("등록 진행 상태를 보관하지 못했습니다. 저장소를 확인한 뒤 다시 시도하세요");
   }
+  copyRequest(form, userId, { requestId, progress });
   submissionEvents.dispatchEvent(new Event("change"));
 }
 
@@ -155,7 +234,7 @@ export function saveSubmissionProgress(form: string, progress: unknown): void {
  * 온라인 생성 요청의 멱등 식별자. 결과가 확정될 때까지(`finishSubmission`) 같은 값을 돌려준다.
  * 응답을 잃은 뒤 내용을 고쳐 다시 보내도 같은 키라, 앞선 요청이 저장됐으면 서버가 중복을 만들지
  * 않고 409로 알린다. 기본값만으로 제출해 초안이 저장되지 않은 폼도 같은 값을 쓴다. 이 탭·계정
- * 안에서만 유효하다.
+ * 안에서만 유효하며, 이 탭의 초안을 명시적으로 불러온 탭만 이어받는다.
  */
 export function submissionRequestId(form: string): string {
   const userId = databaseIdentity().userId;
@@ -172,6 +251,7 @@ export function submissionRequestId(form: string): string {
   const requestId = crypto.randomUUID();
   try {
     sessionStorage.setItem(key, JSON.stringify({ requestId }));
+    copyRequest(form, userId, { requestId });
     submissionEvents.dispatchEvent(new Event("change"));
   } catch {
     // 저장할 수 없으면 이번 요청만 멱등하다(재시도는 새 요청).
@@ -196,6 +276,7 @@ export function finishSubmission(form: string, requestId?: string): void {
   } catch {
     sessionStorage.removeItem(key);
   }
+  forgetRequestCopy(form, userId, requestId);
   submissionEvents.dispatchEvent(new Event("change"));
 }
 
@@ -313,6 +394,8 @@ export function restoreFormDraft(form: string, sourceTab: string): void {
         (key) => (key === prefix || key.startsWith(`${prefix}:`)) && alreadyRestored(key),
       )
     : [];
+  // 응답을 받기 전에 닫힌 탭의 입력이면 그 요청 키로 다시 보내야 서버가 앞선 저장을 알아본다.
+  if (userId && sourceTab !== tabId()) adoptRequests(form, sourceTab, userId);
   draftEvents.dispatchEvent(
     new CustomEvent("restore", { detail: { form, sourceTab, userId, restored } }),
   );
