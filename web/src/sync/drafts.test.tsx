@@ -275,6 +275,86 @@ it("등록 진행에 비밀을 저장하지 않으며 깨진 요청 식별자는
   get.mockRestore();
 });
 
+it("응답 전에 닫힌 탭의 등록 요청은 그 초안을 복원한 탭이 같은 요청으로 이어받는다", async () => {
+  const { recoverableDraft, restoreFormDraft } = await import("@/sync/drafts");
+  sessionStorage.setItem("sooljang-draft-tab", "closed-tab");
+  const closed = renderHook(() => useDraftState("product:create", { name: "" }));
+  act(() => closed.result.current[1]({ name: "보낸 술" }));
+  const product = submissionRequestId("product:create:product");
+  saveSubmissionProgress("product:create:recovery", { sent: true });
+  closed.unmount();
+  // 탭이 닫히면 그 탭의 sessionStorage(요청 키)도 사라진다.
+  sessionStorage.clear();
+  sessionStorage.setItem("sooljang-draft-tab", "next-tab");
+  const next = renderHook(() => useDraftState("product:create", { name: "" }));
+  expect(submissionSnapshot("product:create:recovery")).toBeNull();
+
+  act(() => restoreFormDraft("product:create", recoverableDraft("product:create") ?? ""));
+
+  expect(next.result.current[0].name).toBe("보낸 술");
+  expect(submissionRequestId("product:create:product")).toBe(product);
+  expect(JSON.parse(submissionSnapshot("product:create:recovery") ?? "null")?.progress).toEqual({
+    sent: true,
+  });
+  // 이어받은 요청은 닫힌 탭 쪽 사본에서 지워 또 다른 탭이 다시 가져가지 않는다.
+  expect(
+    Object.keys(localStorage).filter((key) => key.includes(":closed-tab:product:create:")),
+  ).toEqual([]);
+});
+
+it("다른 탭의 요청은 명시적으로 복원할 때만 이어받고 이 탭에서 대기 중인 요청은 덮지 않는다", async () => {
+  const { restoreFormDraft } = await import("@/sync/drafts");
+  sessionStorage.setItem("sooljang-draft-tab", "other-tab");
+  const theirs = submissionRequestId("purchase:p1");
+  sessionStorage.clear();
+  sessionStorage.setItem("sooljang-draft-tab", "this-tab");
+  // 같은 내용을 따로 등록하는 두 탭은 계속 다른 요청이다.
+  const mine = submissionRequestId("purchase:p1");
+  expect(mine).not.toBe(theirs);
+
+  act(() => restoreFormDraft("purchase:p1", "other-tab"));
+
+  expect(submissionRequestId("purchase:p1")).toBe(mine);
+  expect(submissionRequestId("purchase:p2")).not.toBe(theirs);
+});
+
+it("결과가 확정된 요청은 다른 탭이 이어받을 사본도 지운다", () => {
+  sessionStorage.setItem("sooljang-draft-tab", "tab-a");
+  const sent = submissionRequestId("purchase:p1");
+  saveSubmissionProgress("product:create:recovery", { sent: true });
+  const copies = () =>
+    Object.keys(localStorage).filter((key) => key.startsWith("sooljang-request-copy-v1:"));
+  expect(copies()).toHaveLength(2);
+
+  finishSubmission("purchase:p1", "older-request");
+  expect(copies()).toHaveLength(2);
+  finishSubmission("purchase:p1", sent);
+  finishSubmission("product:create:recovery");
+
+  expect(copies()).toEqual([]);
+});
+
+it("30일 넘게 남은 다른 탭의 요청 사본만 정리한다", async () => {
+  const { pruneStaleDrafts, STALE_DRAFT_MS } = await import("@/sync/drafts");
+  const now = Date.now();
+  const copy = (tab: string, updatedAt: number) =>
+    localStorage.setItem(
+      `sooljang-request-copy-v1:draft-owner:${tab}:purchase:p1`,
+      JSON.stringify({ requestId: tab, updatedAt }),
+    );
+  copy("stale-tab", now - STALE_DRAFT_MS - 1);
+  copy("recent-tab", now - 1000);
+  copy("current-tab", now - STALE_DRAFT_MS - 1);
+  sessionStorage.setItem("sooljang-draft-tab", "current-tab");
+
+  pruneStaleDrafts(now);
+
+  const keys = Object.keys(localStorage).join();
+  expect(keys).not.toContain("stale-tab");
+  expect(keys).toContain("recent-tab");
+  expect(keys).toContain("current-tab");
+});
+
 it("이전 형식 키의 초안을 새 키로 옮기고 새 키에 이미 있는 초안은 덮지 않는다", async () => {
   const prefix = "sooljang-draft-v1:draft-owner:";
   const legacy = (tab: string, hash: string) => `${prefix}${tab}:product:edit:${hash}`;

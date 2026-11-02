@@ -10,6 +10,7 @@ import {
   getCorrectionBlockReason,
   submitPurchaseSkuCorrection,
   submitTastingCorrection,
+  waitForCorrectionSync,
 } from "@/sync/corrections";
 import { activateDatabase, db } from "@/sync/db";
 import { syncEngine } from "@/sync/engine";
@@ -88,6 +89,62 @@ it("부모 변경과 아직 서버에 없는 자식 참조도 확인하고 영�
   expect(await getCorrectionBlockReason(session, ["t1"])).toContain("동기화");
   await queue("unrelated", "failed", { bottle_id: "other-bottle" });
   expect(await getCorrectionBlockReason(session, ["t1"])).toBeNull();
+});
+it("방금 저장한 기록의 대기 변경이 보내지면 서버 기록을 열어도 된다고 알린다", async () => {
+  await queue("t1", "pending");
+  vi.mocked(syncEngine.triggerSync).mockImplementation(async () => {
+    await db.outbox.clear();
+  });
+  expect(
+    await waitForCorrectionSync(captureWriteSession(), ["t1"], undefined, { intervalMs: 1 }),
+  ).toBe(true);
+  expect(syncEngine.triggerSync).toHaveBeenCalledOnce();
+});
+it("다른 탭이 동기화 중이라 첫 요청이 건너뛰어져도 기다리는 동안 다시 요청한다", async () => {
+  await queue("t1", "pending");
+  // 다른 탭이 잠금을 쥐고 이미 대기열을 읽은 뒤라 첫 요청은 아무것도 보내지 않는다.
+  vi.mocked(syncEngine.triggerSync)
+    .mockResolvedValueOnce()
+    .mockImplementation(async () => {
+      await db.outbox.clear();
+    });
+  expect(
+    await waitForCorrectionSync(captureWriteSession(), ["t1"], undefined, {
+      intervalMs: 1,
+      retriggerMs: 5,
+    }),
+  ).toBe(true);
+  expect(vi.mocked(syncEngine.triggerSync).mock.calls.length).toBeGreaterThanOrEqual(2);
+});
+it("실패한 변경이 막고 있거나 시간이 다 되면 서버 확인을 기다리지 않는다", async () => {
+  await queue("t1", "failed");
+  expect(
+    await waitForCorrectionSync(captureWriteSession(), ["t1"], undefined, { intervalMs: 1 }),
+  ).toBe(false);
+  await db.outbox.clear();
+  await queue("t1", "pending");
+  expect(
+    await waitForCorrectionSync(captureWriteSession(), ["t1"], undefined, {
+      timeoutMs: 5,
+      intervalMs: 1,
+    }),
+  ).toBe(false);
+});
+it("오프라인이거나 화면이 닫혀 요청이 취소되면 기다림을 멈춘다", async () => {
+  await queue("t1", "pending");
+  const closed = new AbortController();
+  closed.abort();
+  expect(await waitForCorrectionSync(captureWriteSession(), ["t1"], closed.signal)).toBe(false);
+  Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+  expect(await waitForCorrectionSync(captureWriteSession(), ["t1"])).toBe(false);
+});
+it("기다리는 동안 계정이 바뀌면 이전 계정의 기록을 열지 않는다", async () => {
+  await queue("t1", "pending");
+  const waiting = expect(
+    waitForCorrectionSync(captureWriteSession(), ["t1"], undefined, { intervalMs: 1 }),
+  ).rejects.toThrow("계정이 변경");
+  await activateDatabase("another-owner");
+  await waiting;
 });
 it("재요청의 오래된 응답을 미러에 덮지 않고 pull을 요청한다", async () => {
   const old = { id: "t1", note: "과거 노트" } as ContextualTasting;

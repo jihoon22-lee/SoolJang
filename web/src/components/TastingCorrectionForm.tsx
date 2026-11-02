@@ -18,7 +18,11 @@ import { HistoryDetails } from "@/components/HistoryList";
 import { productEdition, purchaseReference } from "@/components/productDisplay";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
 import { formatVolume } from "@/format";
-import { getCorrectionBlockReason, submitTastingCorrection } from "@/sync/corrections";
+import {
+  getCorrectionBlockReason,
+  submitTastingCorrection,
+  waitForCorrectionSync,
+} from "@/sync/corrections";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { databaseIdentity } from "@/sync/db";
 import { captureFormDraft, clearSubmittedDraft, useDraftState } from "@/sync/drafts";
@@ -334,14 +338,21 @@ export function TastingCorrectionForm(props: TastingCorrectionFormProps) {
         ? await getLocalTasting(props.tastingId)
         : await tastingsApi.get(props.tastingId, signal).catch(async (cause: unknown) => {
             if (!(cause instanceof ApiError) || cause.status !== 404) throw cause;
-            const pending = await getCorrectionBlockReason(session, [props.tastingId]);
-            const local = pending ? await getLocalTasting(props.tastingId) : null;
+            if (!(await getCorrectionBlockReason(session, [props.tastingId]))) throw cause;
+            // 방금 기기에 저장해 서버에 아직 없다. 보내지면 서버 기록으로 열어 다시 확인 없이
+            // 정정하게 하고, 보내지 못하면 로컬 기록으로 입력만 먼저 시작한다(D272).
+            if (await waitForCorrectionSync(session, [props.tastingId], signal))
+              return tastingsApi.get(props.tastingId, signal);
+            const local = await getLocalTasting(props.tastingId);
             if (!local) throw cause;
             return { ...local, unconfirmed: true };
           });
       session.assertCurrent();
       return item;
     },
+    // 구매 규격 정정처럼 자동 재시도하지 않고 실패를 바로 "기록 다시 확인"으로 안내한다. 재시도는
+    // 서버에 없는 기록(404)의 동기화 대기도 되풀이해 안내만 늦춘다.
+    retry: false,
     refetchOnWindowFocus: false,
   });
   useEffect(() => {

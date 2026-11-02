@@ -339,8 +339,9 @@ export function ProductDetail({
   // 제품 전체 시음(최근 순)과 요약. 머리부 시음 평균과 병 구역의 최근 시음이 같이 쓴다. 로컬
   // 기록이라 방금 저장한 시음도 동기화 전에 반영된다. 평균은 이력 요약과 같은 값(Decimal 짝수
   // 반올림, 서버와 같은 규칙)이라 같은 화면의 평균 평점과 어긋나지 않는다.
+  // 읽기 실패는 null이다. 그대로 던지면 상세 화면 전체가 오류 화면으로 바뀐다.
   const productHistory = useLiveQuery(
-    () => getLocalTastingHistory({ product_id: product.id }),
+    () => getLocalTastingHistory({ product_id: product.id }).catch(() => null),
     [product.id],
   );
   const productTastings = productHistory?.items;
@@ -554,7 +555,7 @@ export function ProductDetail({
           <div>
             <dt>시음 평균</dt>
             <dd>
-              {formatRating(tastingSummary?.average_rating)}
+              {productHistory === null ? "확인 불가" : formatRating(tastingSummary?.average_rating)}
               {tastingSummary && tastingSummary.rated_count > 0 ? (
                 <span className="muted text-sm"> · {tastingSummary.rated_count}회 평가</span>
               ) : null}
@@ -695,6 +696,9 @@ export function ProductDetail({
       </nav>
       {/* 가장 잦은 일(병 상태·시음)을 구매 이력보다 먼저 둔다. */}
       <div id="detail-bottles" className="detail-anchor">
+        {productHistory === null ? (
+          <p role="alert">기기의 시음 기록을 불러오지 못했습니다.</p>
+        ) : null}
         {productTastings && productTastings.length > 0 ? (
           <section aria-labelledby="detail-recent-tastings" className="detail-recent-tastings">
             <h3 id="detail-recent-tastings">최근 시음</h3>

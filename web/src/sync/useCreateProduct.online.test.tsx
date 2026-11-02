@@ -6,7 +6,7 @@ import { ApiError, attachmentsApi, productsApi, purchasesApi, vendorsApi } from 
 import type { Product } from "@/api/types";
 import { EMPTY_PRODUCT_FORM } from "@/components/ProductForm";
 import { activateDatabase, db, lockDatabase } from "@/sync/db";
-import { captureFormDraft } from "@/sync/drafts";
+import { captureFormDraft, recoverableDraft, restoreFormDraft, useDraftState } from "@/sync/drafts";
 import { PartialProductCreationError, useCreateProduct } from "@/sync/useCreateProduct";
 import { creationLabel } from "@/sync/useCreateProductProgress";
 
@@ -112,6 +112,57 @@ const purchaseValues = {
   quantity: "1",
   unitPaidPrice: "50000",
 };
+
+/** 등록을 보낸 탭이 응답을 잃은 채 닫히고, 새 탭이 그 초안을 명시적으로 불러온다. */
+async function closeTabAfterLostResponse() {
+  vi.spyOn(vendorsApi, "list").mockResolvedValue([]);
+  const form = renderHook(() => useDraftState("product:create", EMPTY_PRODUCT_FORM));
+  act(() => form.result.current[1](purchaseValues));
+  const closed = renderHook(() => useCreateProduct(), { wrapper });
+  await expect(
+    submit(closed.result, { values: purchaseValues, labelFile: null }),
+  ).rejects.toThrow();
+  closed.unmount();
+  form.unmount();
+  sessionStorage.clear();
+  sessionStorage.setItem("sooljang-draft-tab", "next-tab");
+  const restored = renderHook(() => useDraftState("product:create", EMPTY_PRODUCT_FORM));
+  act(() => restoreFormDraft("product:create", recoverableDraft("product:create") ?? ""));
+  return restored.result.current[0];
+}
+
+it("응답 전에 닫힌 탭의 등록을 다른 탭이 복원해 다시 내면 같은 요청으로 확인해 중복을 만들지 않는다", async () => {
+  const createProduct = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    .mockResolvedValue(created);
+  const createPurchase = vi.spyOn(purchasesApi, "create").mockResolvedValue({} as never);
+  const values = await closeTabAfterLostResponse();
+  expect(values).toEqual(purchaseValues);
+  const { result } = renderHook(() => useCreateProduct(), { wrapper });
+
+  await submit(result, { values, labelFile: null });
+
+  const [first, second] = createProduct.mock.calls;
+  expect(createProduct).toHaveBeenCalledTimes(2);
+  expect(second?.[0].request_id).toBe(first?.[0].request_id);
+  expect(createPurchase).toHaveBeenCalledOnce();
+});
+
+it("복원한 초안을 고쳐 내면 새 제품을 만들지 않고 앞서 보낸 요청의 결과부터 확인하게 한다", async () => {
+  const createProduct = vi
+    .spyOn(productsApi, "create")
+    .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    .mockResolvedValue(created);
+  const values = await closeTabAfterLostResponse();
+  const { result } = renderHook(() => useCreateProduct(), { wrapper });
+
+  await expect(
+    submit(result, { values: { ...values, name: "고쳐 낸 이름" }, labelFile: null }),
+  ).rejects.toThrow("앞서 보낸 제품 결과가 미확정");
+
+  expect(createProduct).toHaveBeenCalledOnce();
+});
 
 async function partialFailure(promise: Promise<unknown>): Promise<PartialProductCreationError> {
   const error = await promise.catch((cause: unknown) => cause);

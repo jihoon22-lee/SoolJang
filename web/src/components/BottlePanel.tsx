@@ -22,7 +22,7 @@ import {
 } from "@/sync/bottleActions";
 import { DraftRecoveryButton } from "@/sync/DraftRecoveryButton";
 import { db } from "@/sync/db";
-import { captureFormDraft, clearSubmittedDraft } from "@/sync/drafts";
+import { captureFormDraft, clearSubmittedDraft, readFormDraftValue } from "@/sync/drafts";
 import { recordTasting, rememberTastingContext } from "@/sync/tastingActions";
 import { emptyTastingValues, tastingDraftKey, useTastingDraft } from "@/sync/tastingDraft";
 import { getLocalTasting } from "@/sync/tastingHistory";
@@ -451,6 +451,7 @@ function TastingForm({
   }, []);
   const [values, setValues, resetValues] = useTastingDraft(bottleId);
   const [error, setError] = useState<string | null>(null);
+  const [kept, setKept] = useState(false);
   const formKey = tastingDraftKey(bottleId);
 
   const mutation = useSessionMutation<string, { bottleId: string; values: TastingFieldValues }>({
@@ -469,6 +470,7 @@ function TastingForm({
     if (saving.current) return;
     saving.current = true;
     setPending(true);
+    setKept(false);
     onSavingChange(true);
     const session = captureWriteSession();
     const submitted = { ...values };
@@ -485,13 +487,16 @@ function TastingForm({
       if (cleared) clearSubmittedDraft(legacyDraft);
       if (!mounted.current) return;
       setError(null);
-      if (cleared) {
-        resetValues({
-          ...emptyTastingValues(),
-          place: submitted.place,
-          companions: submitted.companions,
-        });
-      }
+      const next = {
+        ...emptyTastingValues(),
+        place: submitted.place,
+        companions: submitted.companions,
+      };
+      // 저장 중 다른 곳에서 이 병 입력이 바뀌었다. 제출한 값을 폼에 남기면 같은 잔을 한 번 더
+      // 저장하기 쉬워, 저장소에 남은 바뀐 입력을 보여 준다(D270).
+      const kept = !cleared && captureFormDraft(formKey).entries.length > 0;
+      resetValues(kept ? readFormDraftValue(formKey, next) : next);
+      setKept(kept);
       await onSaved(id);
     } catch (cause) {
       if (mounted.current && session.isCurrent())
@@ -517,10 +522,12 @@ function TastingForm({
           remainingMl={remainingMl}
           onChange={(patch) => {
             if (saving.current) return;
+            setKept(false);
             setValues((current) => ({ ...current, ...patch }));
           }}
         />
 
+        {kept ? <output>저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다.</output> : null}
         {error ? (
           <p className="bottle-error" role="alert">
             {error}
