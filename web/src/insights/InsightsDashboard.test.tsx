@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { InsightsDashboard } from "@/insights/InsightsDashboard";
@@ -168,6 +168,66 @@ it("자정을 넘긴 탭에서 오늘까지로 둔 기간은 오늘로 따라오
   expect(await screen.findByLabelText("종료일")).toHaveValue("2026-02-10");
   // 직접 고른 범위로 돌아오면 입력을 펼쳐 둔다.
   expect(screen.getByLabelText("종료일")).toBeVisible();
+});
+
+it.each([
+  ["3월 31일", "2026-03-31"],
+  ["윤년 3월 30일", "2028-03-30"],
+])("최근 90일과 올해가 같은 범위인 %s에도 고른 칩을 그대로 보이고 다시 열어도 유지한다", async (_, today) => {
+  const first = render(<InsightsDashboard onSelectProduct={vi.fn()} today={today} />);
+  await screen.findByRole("heading", { name: "지금 보유한 술" });
+  const pressed = () =>
+    within(screen.getByRole("group", { name: "분석 기간" }))
+      .getAllByRole("button")
+      .filter((button) => button.getAttribute("aria-pressed") === "true")
+      .map((button) => button.textContent);
+  // 두 칩의 범위가 같아도 처음 고른(기본) 칩 하나만 눌린다.
+  expect(pressed()).toEqual(["최근 90일"]);
+  await userEvent.click(screen.getByRole("button", { name: "올해" }));
+  expect(pressed()).toEqual(["올해"]);
+  first.unmount();
+
+  render(<InsightsDashboard onSelectProduct={vi.fn()} today={today} />);
+  await screen.findByRole("heading", { name: "지금 보유한 술" });
+  expect(pressed()).toEqual(["올해"]);
+});
+
+it("올해를 고른 채 해가 바뀌면 새해 1월 1일부터 오늘까지로 따라온다", async () => {
+  sessionStorage.setItem(
+    "sooljang:view:insight-ui:insights:filters",
+    JSON.stringify({
+      from: "2026-01-01",
+      to: "2026-12-31",
+      categoryId: "",
+      status: "all",
+      day: "2026-12-31",
+      period: "year",
+    }),
+  );
+  render(<InsightsDashboard onSelectProduct={vi.fn()} today="2027-01-01" />);
+  await screen.findByRole("heading", { name: "지금 보유한 술" });
+
+  expect(screen.getByText("2027-01-01 ~ 2027-01-01 · 전체 주종 · 전체 상태")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "올해" })).toHaveAttribute("aria-pressed", "true");
+});
+
+it("날짜를 직접 고치면 직접 설정으로 저장하고 이전 형식 보기 상태는 날짜로 칩을 추정한다", async () => {
+  storeFilters({
+    from: "2026-01-01",
+    to: "2026-03-01",
+    categoryId: "",
+    status: "all",
+    day: "2026-03-01",
+  });
+  const legacy = render(<InsightsDashboard onSelectProduct={vi.fn()} today="2026-03-01" />);
+  await screen.findByRole("heading", { name: "지금 보유한 술" });
+  expect(screen.getByRole("button", { name: "올해" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2026-02-01" } });
+  expect(screen.getByRole("button", { name: "직접 설정" })).toHaveAttribute("aria-pressed", "true");
+  legacy.unmount();
+  expect(
+    JSON.parse(sessionStorage.getItem("sooljang:view:insight-ui:insights:filters") ?? "{}"),
+  ).toMatchObject({ from: "2026-02-01", period: "custom" });
 });
 
 it("첫 화면은 기간 칩과 범위 요약이고 칩을 누르면 범위만 바꾼다", async () => {
