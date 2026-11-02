@@ -54,7 +54,8 @@
 - `uv run ruff check .`·`uv run ruff format --check .`·`uv run ty check`: 통과(Python 변경 없음).
 - 실브라우저(Chromium, 일회용 컨텍스트 390×844, 합성 계정): 격리 PostgreSQL에 폐기용 DB
   `sooljang_savesafety_20261102`를 만들어 migration 0021을 적용하고 API 8210·웹 5173을 띄웠다.
-  운영 DB·실제 기록은 쓰지 않았다.
+  운영 DB·실제 기록은 쓰지 않았다. 검토 반영 커밋(`0684dc0`, 대기 중 2초마다 동기화 재요청) 전 코드로
+  확인했고, 재요청 동작 자체는 단위 테스트로만 확인했다.
 
 | 확인 | 결과 |
 |---|---|
