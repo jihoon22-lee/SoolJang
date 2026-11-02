@@ -11,13 +11,18 @@ import type {
   TastingCorrectionInput,
 } from "@/api/types";
 import { TastingCorrectionForm } from "@/components/TastingCorrectionForm";
-import { getCorrectionBlockReason, submitTastingCorrection } from "@/sync/corrections";
+import {
+  getCorrectionBlockReason,
+  submitTastingCorrection,
+  waitForCorrectionSync,
+} from "@/sync/corrections";
 import { activateDatabase, databaseIdentity, db } from "@/sync/db";
 import { getLocalTasting } from "@/sync/tastingHistory";
 
 vi.mock("@/sync/corrections", () => ({
   getCorrectionBlockReason: vi.fn(),
   submitTastingCorrection: vi.fn(),
+  waitForCorrectionSync: vi.fn(),
 }));
 vi.mock("@/sync/tastingHistory", () => ({ getLocalTasting: vi.fn() }));
 const TIME = "2026-01-10T10:00:00Z";
@@ -173,6 +178,7 @@ beforeEach(async () => {
   vi.spyOn(tastingsApi, "history").mockResolvedValue([]);
   vi.mocked(getLocalTasting).mockResolvedValue(tasting);
   vi.mocked(getCorrectionBlockReason).mockResolvedValue(null);
+  vi.mocked(waitForCorrectionSync).mockResolvedValue(false);
   vi.mocked(submitTastingCorrection).mockImplementation(async () => tasting);
 });
 afterEach(async () => {
@@ -705,6 +711,31 @@ it("방금 로컬 저장한 시음도 바로 수정 입력을 시작하고 서�
   await userEvent.type(screen.getByLabelText("시음 메모"), " 이어서 수정");
   expect(screen.getByRole("button", { name: "평점·메모 저장" })).toBeDisabled();
   expect(submitTastingCorrection).not.toHaveBeenCalled();
+});
+
+it("방금 로컬 저장한 시음이 서버로 보내지면 서버 기록으로 열어 다시 확인 없이 정정한다", async () => {
+  get.mockRejectedValueOnce(new ApiError(404, "아직 서버에 없음"));
+  vi.mocked(getCorrectionBlockReason).mockResolvedValueOnce(
+    "관련 기록에 동기화 대기 변경이 있습니다.",
+  );
+  vi.mocked(waitForCorrectionSync).mockResolvedValueOnce(true);
+  view();
+  expect(await screen.findByLabelText("시음 메모")).toHaveValue("보존할 메모");
+  expect(get).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText(/최신 기록과 병 상태를 확인한 뒤/)).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("시음 메모"), " 이어서 수정");
+  await userEvent.click(screen.getByRole("button", { name: "평점·메모 저장" }));
+  await waitFor(() => expect(submitTastingCorrection).toHaveBeenCalledOnce());
+  expect(lastInput().changes).toEqual({ note: "보존할 메모 이어서 수정", rating: "4.0" });
+});
+
+it("서버에 정말 없는 시음은 기다리거나 다시 요청하지 않고 확인하지 못했다고 알린다", async () => {
+  get.mockRejectedValue(new ApiError(404, "없음"));
+  // 운영 QueryClient처럼 기본 재시도를 켠 채로 연다.
+  view(false, new QueryClient());
+  expect(await screen.findByText(/정정할 기록을 확인하지 못했습니다/)).toBeInTheDocument();
+  expect(get).toHaveBeenCalledOnce();
+  expect(waitForCorrectionSync).not.toHaveBeenCalled();
 });
 
 async function openAdvanced() {
