@@ -42,7 +42,7 @@ export function RemainingEditor({
 
   return (
     <div className="remaining-editor">
-      <button type="button" className="sort-button" onClick={() => setOpen((value) => !value)}>
+      <button type="button" className="btn-quiet" onClick={() => setOpen((value) => !value)}>
         {open ? "잔량 조정 닫기" : "잔량 조정"}
       </button>
       {open ? (
