@@ -190,6 +190,68 @@ describe("외화 구매 수정 (D276)", () => {
     );
   });
 
+  function formFor(item: Purchase, onSubmit: (input: unknown) => void) {
+    return (
+      <PurchaseEditForm
+        purchase={item}
+        vendorNames={[]}
+        submitting={false}
+        error={null}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />
+    );
+  }
+
+  async function changeVendorAndSave() {
+    await userEvent.clear(screen.getByLabelText("구매처"));
+    await userEvent.type(screen.getByLabelText("구매처"), "해외 직구");
+    await userEvent.click(screen.getByRole("button", { name: "수정 저장" }));
+  }
+
+  it("열어 둔 사이 동기화로 바뀐 외화 값을 사용자가 고친 값으로 되돌려 보내지 않는다", async () => {
+    const onSubmit = vi.fn();
+    const view = renderWithQuery(formFor(foreign, onSubmit));
+    // 방금 저장한 환율 수정이나 다른 기기의 수정이 열린 폼 아래로 동기화된다.
+    view.rerender(
+      formFor({ ...foreign, fx_rate: "1500.000000", unit_paid_price: "70005.00" }, onSubmit),
+    );
+    await changeVendorAndSave();
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      purchasedOn: "2026-03-01",
+      vendorName: "해외 직구",
+      quantity: 1,
+      unitListPrice: "",
+    });
+  });
+
+  it("원화로 연 폼은 그 사이 외화로 바뀐 기록의 외화 값을 지우라고 보내지 않는다", async () => {
+    const onSubmit = vi.fn();
+    const view = renderWithQuery(formFor(purchase, onSubmit));
+    view.rerender(
+      formFor(
+        {
+          ...purchase,
+          unit_paid_price: "66827.00",
+          currency: "USD",
+          fx_rate: "1431.900000",
+          foreign_unit_price: "46.67",
+        },
+        onSubmit,
+      ),
+    );
+    await changeVendorAndSave();
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      purchasedOn: "2026-03-01",
+      vendorName: "해외 직구",
+      quantity: 3,
+      unitListPrice: "30000",
+      unitPaidPrice: "",
+    });
+  });
+
   it("외화로 바꿀 때 외화 단가·환율이 없거나 환산값이 저장 범위를 넘으면 보내지 않는다", async () => {
     const onSubmit = renderForm(purchase);
 

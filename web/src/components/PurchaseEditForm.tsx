@@ -86,10 +86,13 @@ export function PurchaseEditForm({
     `purchase-edit:${purchase.id}:unitPaidPrice`,
     priceInput(purchase.unit_paid_price),
   );
+  // 외화 칸을 고쳤는지는 폼을 연 때의 값과 비교한다. 열어 둔 사이 동기화로 바뀐 값을 사용자가
+  // 고친 것으로 보면, 고치지 않은 이전 외화 값을 보내 새 값을 되돌리거나 지우게 된다.
+  const [opened] = useState(purchase);
   // 빈 통화는 원화 구매다(구매 추가 폼과 같음).
-  const storedCurrency = purchase.currency === "KRW" ? "" : purchase.currency;
-  const storedRate = decimalInput(purchase.fx_rate);
-  const storedForeignPrice = decimalInput(purchase.foreign_unit_price);
+  const storedCurrency = opened.currency === "KRW" ? "" : opened.currency;
+  const storedRate = decimalInput(opened.fx_rate);
+  const storedForeignPrice = decimalInput(opened.foreign_unit_price);
   const [foreignCurrency, setForeignCurrency] = useDraftState(
     `purchase-edit:${purchase.id}:foreignCurrency`,
     storedCurrency,
@@ -121,8 +124,7 @@ export function PurchaseEditForm({
     !sameAmount(fxRate, storedRate) ||
     !sameAmount(foreignUnitPrice, storedForeignPrice);
   const convertedPaid = foreignCurrency ? convertedPaidPrice(foreignUnitPrice, fxRate) : null;
-  const storedMismatch =
-    Boolean(storedCurrency) && !foreignEdited && foreignPriceMismatch(purchase);
+  const storedMismatch = Boolean(storedCurrency) && !foreignEdited && foreignPriceMismatch(opened);
 
   const quantityValue = Number(quantity);
   const quantityValid =
@@ -244,7 +246,7 @@ export function PurchaseEditForm({
                   ? unitPaidPrice
                   : foreignEdited
                     ? (convertedPaid ?? "")
-                    : priceInput(purchase.unit_paid_price)
+                    : priceInput(opened.unit_paid_price)
               }
               readOnly={Boolean(foreignCurrency)}
               aria-describedby={foreignCurrency ? ids.note : undefined}
