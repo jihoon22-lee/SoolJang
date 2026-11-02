@@ -12,7 +12,6 @@ import {
 } from "@/components/drinkableBottleLabel";
 import { purchaseReferences } from "@/components/productDisplay";
 import { TastingFields, type TastingFieldValues } from "@/components/TastingFields";
-import { useToast } from "@/components/Toast";
 import { formatVolume } from "@/format";
 import type { ProductContext } from "@/router";
 import { matchesQuery } from "@/search";
@@ -37,7 +36,7 @@ const SELECTION_FORM = "quick-tasting:selection";
 const EMPTY_SELECTION = { bottleId: "", skuId: "", productName: "", labelNo: 0, volumeLabel: "" };
 type BottleSelection = typeof EMPTY_SELECTION;
 
-/** 저장이 끝나 초안까지 정리된 시음. 이어서 할 일(고치기·한 잔 더·보기)은 시트를 연 쪽이 띄운다. */
+/** 저장이 확정된 시음. 이어서 할 일(고치기·한 잔 더·보기)은 시트를 연 쪽이 띄운다. */
 export interface RecordedTasting {
   tastingId: string;
   bottle: DrinkableBottle;
@@ -55,7 +54,10 @@ export function QuickTastingSheet({
   initialBottle,
 }: {
   onClose: () => void;
-  /** 저장과 초안 정리가 끝나면 부른 뒤 시트를 닫는다(D267). 결과 미확정·실패는 시트에 남는다. */
+  /**
+   * 저장이 확정되면 부른 뒤 시트를 닫는다(D267·D270). 저장 중 다른 곳에서 바뀐 입력은 지우지 않고
+   * 알림 문구에 덧붙인다. 실패는 시트에 남는다.
+   */
   onRecorded: (recorded: RecordedTasting) => void;
   onSelectProduct?: ((productId: string, context?: ProductContext) => void) | undefined;
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
@@ -369,7 +371,6 @@ function QuickTastingForm({
   onChooseAnother: (values: TastingFieldValues, all: boolean) => void;
   onRecorded: (recorded: RecordedTasting) => void;
 }) {
-  const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [session] = useState(captureWriteSession);
   const formId = tastingDraftKey(selection.bottleId);
@@ -450,11 +451,14 @@ function QuickTastingForm({
       const cleared = clearSubmittedDraft(submittedDraft);
       if (cleared) clearSubmittedDraft(legacyDraft);
       const selectionCleared = clearSubmittedDraft(submittedSelection);
-      const message = `${bottle.productName} 시음을 기록했습니다${effect.label}`;
-      if (cleared && selectionCleared)
-        onRecorded({ tastingId: effect.id, bottle, message, finished: effect.finished });
-      // 저장 중 다른 탭이 같은 입력을 바꿨다. 기록은 남았고 바뀐 입력은 시트에 그대로 둔다(D248).
-      else toast.show({ message });
+      // 저장 중 다른 탭이 같은 입력을 바꿨어도 기록은 확정됐다. 시트에 남기면 같은 잔을 다시 저장하기
+      // 쉬워 저장을 마치고, 바뀐 입력은 지우지 않아 그 병을 다시 열면 이어 쓴다(D270).
+      const kept =
+        cleared && selectionCleared
+          ? ""
+          : ". 저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다";
+      const message = `${bottle.productName} 시음을 기록했습니다${effect.label}${kept}`;
+      onRecorded({ tastingId: effect.id, bottle, message, finished: effect.finished });
     } catch (cause) {
       if (session.isCurrent())
         setError(cause instanceof Error ? cause.message : "기록하지 못했습니다");

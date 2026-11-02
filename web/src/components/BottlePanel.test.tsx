@@ -778,6 +778,51 @@ it("이전 시음 폼의 늦은 성공은 다시 연 폼의 새 초안을 지우
   save.mockRestore();
 });
 
+it("저장하는 동안 다른 곳에서 이 병 입력이 바뀌면 제출한 값 대신 바뀐 입력을 보여 준다", async () => {
+  const target = bottle({ status: "open", remaining_ml: 700 });
+  await seedContext(target);
+  stubTastings(target.id);
+  let complete!: (value: string) => void;
+  const save = vi.spyOn(tastingActions, "recordTasting").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  renderWithQuery(<BottlePanel bottle={target} />);
+  const poured = screen.getByLabelText(/직접 입력\(ml\)/);
+  await userEvent.type(poured, "30");
+  await userEvent.click(screen.getByRole("button", { name: "기록 저장" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const key = Object.keys(localStorage).find((item) =>
+    item.endsWith(`quick-tasting:bottle:${target.id}`),
+  );
+  expect(key).toBeDefined();
+  const stored = JSON.parse(localStorage.getItem(key as string) ?? "{}");
+  localStorage.setItem(
+    key as string,
+    JSON.stringify({
+      ...stored,
+      value: { ...stored.value, pouredMl: "45" },
+      updatedAt: Date.now() + 1,
+    }),
+  );
+  await act(async () => complete("saved-tasting"));
+
+  // 방금 제출한 30ml가 폼에 남아 있으면 같은 잔을 한 번 더 저장하기 쉽다(D270).
+  expect(
+    await screen.findByText("저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다."),
+  ).toBeInTheDocument();
+  expect(poured).toHaveValue(45);
+  expect(localStorage.getItem(key as string)).toContain('"45"');
+  await waitFor(() => expect(poured).toBeEnabled());
+  await userEvent.type(poured, "0");
+  expect(
+    screen.queryByText("저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다."),
+  ).not.toBeInTheDocument();
+  save.mockRestore();
+});
+
 it("전달받은 시음 ID를 현재 페이지에서 강조하고 해당 기록에 초점을 둔다", async () => {
   const target = bottle();
   const tasting: Tasting = {

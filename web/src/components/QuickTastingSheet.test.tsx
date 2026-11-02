@@ -561,7 +561,7 @@ it("저장 결과로 시음 ID·병·안내 문구를 넘기고 다 마신 병�
   expect(screen.queryByRole("button", { name: "한 잔 더" })).not.toBeInTheDocument();
 });
 
-it("저장 중 다른 탭이 같은 병 입력을 바꾸면 기록만 알리고 바뀐 입력을 시트에 남긴다", async () => {
+it("저장 중 다른 탭이 같은 병 입력을 바꿔도 저장을 마치고 바뀐 입력은 그 병에 남긴다", async () => {
   const onRecorded = vi.fn();
   renderWithQuery(<Harness onRecorded={onRecorded} />);
   await chooseLarge();
@@ -572,14 +572,27 @@ it("저장 중 다른 탭이 같은 병 입력을 바꾸면 기록만 알리고 
   const key = Object.keys(localStorage).find((item) => item.endsWith("quick-tasting:bottle:older"));
   expect(key).toBeDefined();
   const stored = JSON.parse(localStorage.getItem(key as string) ?? "{}");
-  localStorage.setItem(key as string, JSON.stringify({ ...stored, updatedAt: Date.now() + 1 }));
+  localStorage.setItem(
+    key as string,
+    JSON.stringify({
+      ...stored,
+      value: { ...stored.value, nose: "다른 탭에서 고친 노트" },
+      updatedAt: Date.now() + 1,
+    }),
+  );
   await act(async () => held.release());
 
-  expect(
-    await screen.findByText("합성 위스키 시음을 기록했습니다 (개봉 처리)"),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
-  expect(onRecorded).not.toHaveBeenCalled();
-  expect(localStorage.getItem(key as string)).not.toBeNull();
+  // 저장이 확정됐으니 시트에 남겨 다시 저장하게 하지 않는다(D270).
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(onRecorded).toHaveBeenCalledWith(
+    expect.objectContaining({
+      message:
+        "합성 위스키 시음을 기록했습니다 (개봉 처리). 저장하는 동안 다른 곳에서 바뀐 입력은 남겨 두었습니다",
+    }),
+  );
+  expect((await db.tasting_session.toArray()).map((entry) => entry.nose)).toEqual(["제출한 노트"]);
+  await userEvent.click(screen.getByRole("button", { name: "한 잔 더" }));
+  expect(await screen.findByText(/700ml · #9 · 구매 2025-01-01/)).toBeInTheDocument();
+  expect(screen.getByLabelText("향")).toHaveValue("다른 탭에서 고친 노트");
   expect(await db.tasting_session.count()).toBe(1);
 });
